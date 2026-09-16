@@ -1,3 +1,11 @@
+/*
+  Defines the custom elements the seed's `elements` names — a library's chart, a rating. Imported
+  beside the vocabulary a template renders against, because that is what these tags join: the
+  renderer mounts any hyphenated tag already, and without this import one would mount as an empty
+  element nothing ever upgrades.
+*/
+import '@shared/registries/foreignElements.generated';
+
 import {
   AudioDisplay,
   BlockComposer,
@@ -27,6 +35,7 @@ import {
   EditableImage,
   FlipCard,
   Grid,
+  ImageLightbox,
   RerenderLog,
   Row,
   Search,
@@ -117,6 +126,12 @@ export const componentRegistry: ComponentRegistry = {
   EditableImage,
   FlipCard,
   Grid,
+  /*
+    The viewer a picture in a post opens into — `ImageDisplay` mounts it directly. Registered so a
+    template opening an image does not grow a second one: a relation's photos in the inspector and on
+    the record page open here too.
+  */
+  ImageLightbox,
   Row,
   Search,
   Select,

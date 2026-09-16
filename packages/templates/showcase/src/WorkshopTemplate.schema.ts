@@ -65,6 +65,7 @@ import {
   emptyState,
   field,
   formModal,
+  linkedRecords,
   panelHeader,
   panelScroll,
   peopleFilter,
@@ -752,6 +753,15 @@ const NOT_PEOPLE_FIELD = `(f.name != 'assignee' || !count(${PEOPLE_KINDS}))`;
 const SET_DETAILS = `local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && ${NOT_PEOPLE_FIELD})`;
 
 /** The same, as controls: everything set, title and summary included, since editing them is the point. */
+/**
+ * The relations holding something — a sighting's photos, the site it was seen at.
+ *
+ * Drawn as what they point at rather than as ids (see `linkedRecords`). A to-many holding an empty
+ * list is not a row, which is why `many` decides between counting and testing: an empty list is
+ * truthy. `WeNode`'s own relations — comments, signals — are not in `display.fields` at all.
+ */
+const SET_RELATIONS = `local.display.fields.filter(f, f.kind == 'relation' && f.target && (f.many ? count(row[f.name]) : row[f.name]))`;
+
 const SET_FIELDS = `local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && ${NOT_PEOPLE_FIELD})`;
 
 /**
@@ -1595,7 +1605,13 @@ const originLine: SchemaNode = {
   props: {
     condition: { $: `!(${IS_RELATIONSHIP})` },
     then: {
+      /*
+        The panel's width, stated. Without it this shrink-wraps, and the sentence — `flex: 1`, so a
+        basis of zero — is sized to its narrowest unbreakable piece, which is the timestamp: "Added
+        by you ·" fitted in that and the time went to a line of its own however wide the panel was.
+      */
       type: 'Column',
+      props: { width: '100%' },
       children: [
         {
           type: '$agent',
@@ -1612,7 +1628,7 @@ const originLine: SchemaNode = {
             */
             {
               type: 'Row',
-              props: { gap: '100', ay: 'start' },
+              props: { gap: '100', ay: 'start', width: '100%' },
               children: [
                 {
                   type: 'Row',
@@ -1690,14 +1706,12 @@ const connectionsSection: SchemaNode = {
  * see `composedContent`, and `CollectionBlock`'s own manifest entry for why it declares roles and
  * no field list. Nothing here offers to name a sticky note.
  *
- * Relations — `comments`, `signals`, `mentions`, a collection's `children` — are in neither, and
- * that is deliberate rather than an omission. `displayFor` lists them now, and they arrived here as
- * captioned blank space: the panel's query hydrates no relation (an `include` names its relations
- * literally, and this query's entity is an expression), so a relation reads as an empty list
- * whatever it holds, and there is no picker to write one with either. A row that can neither show a
- * value nor take one is a label with nothing behind it. Answering "what is this connected to"
- * properly means hydrating the declared half and reading `Relationship` records for the
- * community-named half, which is its own piece of work.
+ * A relation that holds something is a row of its own, after the fields: the photos a sighting was
+ * given, the site it names — drawn as what they point at by `linkedRecords`, which looks the records
+ * up by the ids the relation holds. `WeNode`'s own relations (comments, signals, mentions) are not
+ * fields of anything and are not listed; nor is an untyped one like a collection's `children`,
+ * which says no model to look its members up as. Relations are read-only here: writing one is the
+ * create form's, and what a card is *connected* to by a drawn line is the connections section.
  */
 const inspectorPanel: SchemaNode = {
   type: 'Column',
@@ -2105,6 +2119,24 @@ const inspectorPanel: SchemaNode = {
                                         },
                                       },
                                     },
+                                  ],
+                                },
+                              ],
+                            },
+                            {
+                              type: '$each',
+                              props: { items: { $: SET_RELATIONS }, as: 'field' },
+                              children: [
+                                {
+                                  type: 'Column',
+                                  props: { gap: '100', py: '100', borderTop: '1px solid border', width: '100%' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-faint' },
+                                      children: [{ $: 'field.label' }],
+                                    },
+                                    linkedRecords({ record: 'row', field: 'field' }),
                                   ],
                                 },
                               ],

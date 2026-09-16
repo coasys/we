@@ -51,6 +51,43 @@ also the top-to-bottom order of the rail. Reordering it for tidiness rearranges
 the interface. The rail sorts rather than reshuffling on load order, so the
 result is stable; it is simply this list's order.
 
+### `elements`
+
+Custom elements from libraries the deployment bundles — a chart, a rating, a map — which
+templates may then name like any primitive:
+
+```json
+"elements": [
+  {
+    "package": "@shoelace-style/shoelace",
+    "define": ["@shoelace-style/shoelace/dist/components/rating/rating.js"],
+    "tags": ["sl-rating"]
+  }
+]
+```
+
+A template is data and cannot load code, so a visual element WE does not ship used to mean a
+merge into this repository. The renderer already mounts any hyphenated tag; what this adds is
+the deployment saying it trusts the code that defines one — the same trust it extends to a
+bundled module.
+
+- `package` — the npm package. Add it to `packages/app-shell/package.json`.
+- `define` — modules imported for their side effect of defining the elements. Defaults to the
+  package itself; name per-component entry points where the library has them, so the build
+  carries only what is listed.
+- `tags` — the tags templates may name. Defaults to every element the package's
+  custom-elements manifest declares.
+- `manifest` — the manifest's path in the package, when its `package.json` has no
+  `customElements` field.
+
+`pnpm --filter @we/app-shell generate-elements` writes the imports (the build runs it), and
+`pnpm --filter @we/ai-context generate-context` reads each manifest into the reference and the
+validator — props, events, description — so the tags validate and an author can see how to use
+them. Two things differ from a primitive: a foreign element takes **no design-system props**
+(wrap it in a `Column` for spacing and colour), and its events keep their library's names, so a
+handler is written with the exact name — `"on:sl-change"` — since `onSlChange` would listen for
+`slchange`.
+
 ### `features`
 
 Experimental flags the running app reads. Currently `useQueryIR` — route

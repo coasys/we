@@ -2,6 +2,7 @@ import type {
   AssembledContext,
   ComponentEntry,
   EntityEntry,
+  ForeignElementEntry,
   ModuleCatalogEntry,
   PluginCatalog,
   PrimitiveEntry,
@@ -23,6 +24,7 @@ export function assembleReference(ctx: AssembledContext): string {
 
   // Component registry
   sections.push(formatComponentRegistry(context.primitives, context.components));
+  if (context.foreignElements?.length) sections.push(formatForeignElements(context.foreignElements));
 
   // Sub-registries a component resolves by name. Immediately after the component registry, because
   // the props above are unusable without them: `layout.type` is documented as a string, and the names
@@ -87,6 +89,40 @@ export function assembleReference(ctx: AssembledContext): string {
  */
 function demoteHeadings(text: string): string {
   return text.replace(/^(#{1,4}) /gm, (_match, hashes: string) => `${'#'.repeat(Math.min(hashes.length + 2, 6))} `);
+}
+
+/**
+ * The custom elements this deployment's seed allows, from their libraries' own manifests.
+ *
+ * Its own section rather than folded into the primitives, because two things an author would assume
+ * from that list are not true of these: they take no design-system props, and their events are named
+ * by their library — so a handler is `on:sl-change`, which camel case cannot spell.
+ */
+function formatForeignElements(elements: ForeignElementEntry[]): string {
+  const lines: string[] = [
+    '## Foreign Elements (this deployment)',
+    '',
+    'Custom elements from libraries this deployment bundles, allowed by its seed. Name them like any',
+    'primitive. Two differences: they take NO design-system props (wrap one in a Column or Row for',
+    "spacing and colour), and their events keep their library's names — listen with the exact name",
+    'after `on:`, e.g. { "on:sl-change": { "$action": "…", "args": [{ "$": "event.target.value" }] } }.',
+  ];
+  const byPackage = new Map<string, ForeignElementEntry[]>();
+  for (const element of elements) byPackage.set(element.package, [...(byPackage.get(element.package) ?? []), element]);
+  for (const [pkg, list] of byPackage) {
+    lines.push('', `${pkg}:`);
+    for (const element of list) {
+      const desc = element.description ? ` — ${demoteHeadings(element.description)}` : '';
+      lines.push(`- ${element.tagName}${desc}`);
+      if (element.props.length) {
+        lines.push(
+          `  Props: ${element.props.map((p) => `${p.name}: ${p.type}${p.default ? ` = ${p.default}` : ''}`).join(', ')}`,
+        );
+      }
+      if (element.events.length) lines.push(`  Events: ${element.events.map((e) => `on:${e}`).join(', ')}`);
+    }
+  }
+  return lines.join('\n');
 }
 
 function formatComponentRegistry(primitives: PrimitiveEntry[], components: ComponentEntry[]): string {

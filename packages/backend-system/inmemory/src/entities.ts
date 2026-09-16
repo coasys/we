@@ -24,6 +24,7 @@ import {
   type InMemoryRelation,
   type Row,
 } from '@we/backend-shared';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 /** The dataset handle the in-memory lifecycle mints — its `tables` are the store. */
 interface DatasetEntry {
@@ -147,9 +148,13 @@ export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, Enti
 export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime): Record<string, EntityClassLike> {
   const classes: Record<string, EntityClassLike> = {};
 
-  /** Everything an entity declares, including whatever it inherits. */
+  /**
+   * Everything an entity declares, including whatever it inherits — from the core vocabulary when
+   * the parent is not in this manifest, which is the case for every space shape extending `WeNode`.
+   */
   const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+    const entity = manifest.entities[name] ?? CORE_MANIFEST.entities[name];
+    if (!entity) throw new Error(`manifest: "${name}" is not declared here or in the core vocabulary`);
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {

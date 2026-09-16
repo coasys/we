@@ -39,6 +39,7 @@ import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
+import { useShapeStore } from '../stores/ShapeStore';
 import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 import { nodeControls } from './graphControls';
@@ -219,10 +220,25 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    *
    * Core first, so a foreign schema that happens to share a name cannot shadow WE's own.
    */
+  const shapeStore = useShapeStore();
   const manifest = createMemo(() => {
     const core = manifestEntries(CORE_MANIFEST);
     const known = new Set(core.map((entry) => entry.name));
-    return [...core, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
+    /*
+      The space's own models, from the shape records rather than only from the dataset's schemas.
+
+      `currentDatasetEntities` is read when a space is entered, so a model somebody defines while
+      the space is open is not in it until a reload — and a canvas asks only for types it can find
+      here. A record of a model made a minute ago was created, placed on the canvas and parented
+      into it, and never drawn: its type was skipped as undeclared. The shape list is live.
+    */
+    const shapes = shapeStore
+      .spaceShapes()
+      .filter((shape) => shape.manifest && !shape.problems.length && !known.has(shape.name))
+      .flatMap((shape) => manifestEntries(shape.manifest!, { parents: CORE_MANIFEST }))
+      .filter((entry) => !known.has(entry.name));
+    for (const entry of shapes) known.add(entry.name);
+    return [...core, ...shapes, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
   });
 
   function modelFor(entity: string, dataset?: string): EntityClass | undefined {

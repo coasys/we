@@ -757,19 +757,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'AudioInput',
-      props: [
-        { name: 'title', type: 'string | undefined', optional: false },
-        { name: 'artist', type: 'string | undefined', optional: false },
-        { name: 'audioUrl', type: 'string | FileData | undefined', optional: false },
-        { name: 'duration', type: 'number | undefined', optional: false },
-        { name: 'albumArt', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
       name: 'BlockComposer',
       superclass: 'DesignSystemElement',
       props: [
@@ -784,33 +771,12 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'BlockPlaceholder',
-      props: [
-        { name: 'icon', type: 'string', optional: false },
-        { name: 'label', type: 'string', optional: false },
-        { name: 'hint', type: 'string', optional: true },
-        { name: 'accept', type: 'string', optional: true },
-        { name: 'onFileDrop', type: '((file: File) => void)', optional: true },
-        { name: 'onClick', type: '(() => void)', optional: true },
-      ],
-      source: 'components',
-    },
-    {
       name: 'BlockRenderer',
       superclass: 'DesignSystemElement',
       props: [
         { name: 'editorState', type: 'EditorStateInput', optional: true },
         { name: 'perspective', type: 'unknown', optional: true },
         { name: 'rootClass', type: 'string', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'BlockToolbar',
-      props: [
-        { name: 'placement', type: 'BlockToolbarPlacement', optional: true },
-        { name: 'children', type: 'JSX.Element', optional: false },
-        { name: 'stopPropagation', type: 'boolean', optional: true },
       ],
       source: 'components',
     },
@@ -824,68 +790,11 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'CalloutInput',
-      props: [
-        { name: 'text', type: 'string | undefined', optional: false },
-        { name: 'variant', type: 'string | undefined', optional: false },
-        { name: 'icon', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
       name: 'CodeDisplay',
       props: [
         { name: 'code', type: 'string | undefined', optional: false },
         { name: 'language', type: 'string | undefined', optional: false },
         { name: 'title', type: 'string | undefined', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'CodeInput',
-      props: [
-        { name: 'code', type: 'string | undefined', optional: false },
-        { name: 'language', type: 'string | undefined', optional: false },
-        { name: 'title', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'CollectionDisplay',
-      props: [
-        { name: 'layout', type: 'string', optional: true },
-        { name: 'columnCount', type: 'number', optional: true },
-        { name: 'gap', type: 'string', optional: true },
-        { name: 'content', type: 'ContentBlock[]', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'CollectionInput',
-      props: [
-        { name: 'layout', type: 'string', optional: true },
-        { name: 'columnCount', type: 'number', optional: true },
-        { name: 'gap', type: 'string', optional: true },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'DividerDisplay',
-      props: [{ name: 'style', type: '"solid" | "dashed" | "dotted" | undefined', optional: false }],
-      source: 'components',
-    },
-    {
-      name: 'DividerInput',
-      props: [
-        { name: 'style', type: 'DividerVariant | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
       ],
       source: 'components',
     },
@@ -903,18 +812,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'EmbedInput',
-      props: [
-        { name: 'url', type: 'string | undefined', optional: false },
-        { name: 'target', type: 'string | undefined', optional: false },
-        { name: 'targetType', type: 'string | undefined', optional: false },
-        { name: 'displayMode', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
       name: 'EventDisplay',
       props: [
         { name: 'title', type: 'string | undefined', optional: false },
@@ -923,20 +820,6 @@ export const contextData: ContextData = {
         { name: 'endDate', type: 'string | undefined', optional: false },
         { name: 'location', type: 'string | undefined', optional: false },
         { name: 'allDay', type: 'boolean | undefined', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'EventInput',
-      props: [
-        { name: 'title', type: 'string | undefined', optional: false },
-        { name: 'description', type: 'string | undefined', optional: false },
-        { name: 'startDate', type: 'string | undefined', optional: false },
-        { name: 'endDate', type: 'string | undefined', optional: false },
-        { name: 'location', type: 'string | undefined', optional: false },
-        { name: 'allDay', type: 'boolean | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
       ],
       source: 'components',
     },
@@ -952,37 +835,12 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'FileInput',
-      props: [
-        { name: 'title', type: 'string | undefined', optional: false },
-        { name: 'name', type: 'string | undefined', optional: false },
-        { name: 'url', type: 'string | FileData | undefined', optional: false },
-        { name: 'mimeType', type: 'string | undefined', optional: false },
-        { name: 'size', type: 'number | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
       name: 'ImageDisplay',
       props: [
         { name: 'src', type: 'string | undefined', optional: false },
         { name: 'altText', type: 'string | undefined', optional: false },
         { name: 'width', type: 'number | undefined', optional: false },
         { name: 'height', type: 'number | undefined', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'ImageInput',
-      props: [
-        { name: 'src', type: 'string | FileData | undefined', optional: false },
-        { name: 'altText', type: 'string | undefined', optional: false },
-        { name: 'width', type: 'number | undefined', optional: false },
-        { name: 'height', type: 'number | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
       ],
       source: 'components',
     },
@@ -997,18 +855,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'LinkInput',
-      props: [
-        { name: 'url', type: 'string | undefined', optional: false },
-        { name: 'title', type: 'string | undefined', optional: false },
-        { name: 'description', type: 'string | undefined', optional: false },
-        { name: 'thumbnail', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
       name: 'LocationDisplay',
       props: [
         { name: 'name', type: 'string | undefined', optional: false },
@@ -1019,32 +865,10 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'LocationInput',
-      props: [
-        { name: 'name', type: 'string | undefined', optional: false },
-        { name: 'latitude', type: 'number | undefined', optional: false },
-        { name: 'longitude', type: 'number | undefined', optional: false },
-        { name: 'address', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
       name: 'TagDisplay',
       props: [
         { name: 'name', type: 'string | undefined', optional: false },
         { name: 'color', type: 'string | undefined', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'TagInput',
-      props: [
-        { name: 'name', type: 'string | undefined', optional: false },
-        { name: 'color', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
       ],
       source: 'components',
     },
@@ -1061,20 +885,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'TaskInput',
-      props: [
-        { name: 'title', type: 'string | undefined', optional: false },
-        { name: 'description', type: 'string | undefined', optional: false },
-        { name: 'status', type: 'string | undefined', optional: false },
-        { name: 'priority', type: 'string | undefined', optional: false },
-        { name: 'dueDate', type: 'string | undefined', optional: false },
-        { name: 'assignee', type: 'string | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
       name: 'VideoDisplay',
       props: [
         { name: 'url', type: 'string | undefined', optional: false },
@@ -1082,30 +892,6 @@ export const contextData: ContextData = {
         { name: 'thumbnail', type: 'string | undefined', optional: false },
         { name: 'provider', type: 'string | undefined', optional: false },
         { name: 'width', type: 'number | undefined', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'VideoInput',
-      props: [
-        { name: 'url', type: 'string | undefined', optional: false },
-        { name: 'title', type: 'string | undefined', optional: false },
-        { name: 'thumbnail', type: 'string | undefined', optional: false },
-        { name: 'provider', type: 'string | undefined', optional: false },
-        { name: 'width', type: 'number | undefined', optional: false },
-        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
-        { name: 'isSelected', type: '() => boolean', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'AudioVisualiser',
-      props: [
-        { name: 'src', type: 'string | undefined', optional: false },
-        { name: 'bars', type: 'number', optional: true },
-        { name: 'height', type: 'number', optional: true },
-        { name: 'color', type: 'string', optional: true },
-        { name: 'activeColor', type: 'string', optional: true },
       ],
       source: 'components',
     },
@@ -1263,19 +1049,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'ImageCrop',
-      props: [
-        { name: 'src', type: 'string', optional: false },
-        { name: 'fileName', type: 'string', optional: true },
-        { name: 'aspect', type: 'number', optional: true },
-        { name: 'maxSize', type: 'number', optional: true },
-        { name: 'outputType', type: 'string', optional: true },
-        { name: 'quality', type: 'number', optional: true },
-        { name: 'onReady', type: '((ref: ImageCropRef) => void)', optional: true },
-      ],
-      source: 'components',
-    },
-    {
       name: 'ImageLightbox',
       props: [
         { name: 'srcs', type: 'string[]', optional: false },
@@ -1284,7 +1057,6 @@ export const contextData: ContextData = {
       ],
       source: 'components',
     },
-    { name: 'RerenderLog', props: [{ name: 'location', type: 'string', optional: false }], source: 'components' },
     { name: 'Row', superclass: 'DesignSystemElement', props: [], source: 'components' },
     {
       name: 'Search',
@@ -2509,6 +2281,8 @@ export const contextData: ContextData = {
         savingRecord: { type: 'boolean' },
         lastCreatedId: { type: 'string' },
         pendingLink: { type: 'object' },
+        relationDraft: { type: 'object' },
+        relationErrors: { type: 'array' },
         relationshipKind: { type: 'string' },
       },
       actions: [
@@ -2517,6 +2291,15 @@ export const contextData: ContextData = {
         'connectNodesNow',
         'setRecordEntity',
         'setRecordField',
+        'openRelationForm',
+        'setRelationField',
+        'saveRelationForm',
+        'cancelRelationForm',
+        'pickRelation',
+        'removeRelationEntry',
+        'setRelationLocation',
+        'setRelationEntryField',
+        'addRelationImage',
         'setRelationshipKind',
         'cancelRecordForm',
         'saveRecord',
@@ -3793,6 +3576,7 @@ export const contextData: ContextData = {
         {
           name: 'Poll',
           className: 'Poll',
+          extends: 'WeNode',
           fields: [
             { name: 'question', type: 'string', predicate: 'we://module/polls/question', required: true },
             { name: 'options', type: 'string', predicate: 'we://module/polls/options', required: true },
@@ -3813,4 +3597,5 @@ export const contextData: ContextData = {
       ],
     },
   ],
+  foreignElements: [],
 };

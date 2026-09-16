@@ -25,6 +25,7 @@
 import type { EntityManifestEntry, SchemaPort } from '@we/backend-shared';
 import { type BlockEntityStatic, registerBlock, unregisterBlock } from '@we/block-shared';
 import { unregisterEntity } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   type Activity,
   type ActivityShape,
@@ -477,7 +478,7 @@ export const moduleRegistry = {
       there is a registry. Refusals refuse; warnings are reported and the module registers anyway,
       since taking a module out of the app over an inert setting is the larger failure.
     */
-    const lint = lintModule(definition);
+    const lint = lintModule(definition, { externalEntities: Object.keys(CORE_MANIFEST.entities) });
     if (lint.problems.length) return refuse(lint.problems);
     for (const warning of lint.warnings) console.warn(`module "${definition.manifest.id}": ${warning}`);
 

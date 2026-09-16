@@ -2,7 +2,7 @@
  * The declaration — what a third party's module looks like when it uses everything at once.
  */
 import { validateManifest } from '@we/backend-shared';
-import { checkModuleCompatibility, moduleCapabilities, storeSurface } from '@we/module-shared';
+import { checkModuleCompatibility, lintModule, moduleCapabilities, storeSurface } from '@we/module-shared';
 import { markAction, markState } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -20,9 +20,12 @@ describe('the polls module', () => {
     );
   });
 
-  it('declares a valid manifest with a blockable poll', () => {
-    const result = validateManifest(pollsModule.contributes!.entities!.manifest);
+  it('declares a valid manifest with a blockable poll that is a node', () => {
+    // `WeNode` lives in the host's vocabulary, so it is named as external — as the registry does.
+    const result = validateManifest(pollsModule.contributes!.entities!.manifest, { externalEntities: ['WeNode'] });
     expect(result.valid).toBe(true);
+    expect(lintModule(pollsModule).problems).toEqual([]);
+    expect(pollsModule.contributes!.entities!.manifest.entities.Poll.extends).toBe('WeNode');
     expect(pollsModule.contributes!.entities!.manifest.entities.Poll.blockable).toBe(true);
   });
 

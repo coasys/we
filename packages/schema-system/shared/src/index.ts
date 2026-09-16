@@ -50,6 +50,7 @@ export type {
   PluginCatalog,
   PluginEntry,
   ModuleCatalogEntry,
+  ForeignElementEntry,
   SourceEntry,
 } from './contextTypes';
 

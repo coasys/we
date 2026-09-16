@@ -20,12 +20,21 @@
  * stop the page, not for one whose absence merely makes the page different.
  */
 import type { Aggregation, Filter, IncludeMap, Op, Page, QueryIR, SortKey } from './queryIR';
+import { isRangeOp } from './rangeCompare';
 
 export type AggregateFn = Aggregation['fn'];
 
 export interface AdapterCapabilities {
   /** Filter operators supported natively. */
   operators: Op[];
+  /**
+   * The kinds of bound `lt`/`lte`/`gt`/`gte` compare natively. Absent means both.
+   *
+   * An operator list cannot say this, and it matters: AD4M's executor takes a range bound only as a
+   * number, and a string bound — which is how a date is written — is not rejected there but reread
+   * as a nested clause that matches no row. Declaring it turns that silence into a refusal.
+   */
+  rangeBounds?: ('number' | 'string')[];
   /** and / or / not nesting in filters. */
   booleanCombinators: boolean;
   /** `{ rel, some/none/exists }` relation-scoped filters. */
@@ -102,6 +111,18 @@ function analyzeFilter(filter: Filter, cap: AdapterCapabilities, path: string, g
       disposition: 'compute-up',
       note: `operator "${filter.op}" not native`,
     });
+    return;
+  }
+  if (isRangeOp(filter.op) && cap.rangeBounds) {
+    const kind = typeof filter.value;
+    if ((kind === 'number' || kind === 'string') && !cap.rangeBounds.includes(kind)) {
+      gaps.push({
+        feature: `operator:${filter.op}:${kind}`,
+        path: `${path}.value`,
+        disposition: 'compute-up',
+        note: `"${filter.op}" compares only ${cap.rangeBounds.join(' or ')} bounds natively`,
+      });
+    }
   }
 }
 

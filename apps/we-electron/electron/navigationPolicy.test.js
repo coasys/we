@@ -131,6 +131,13 @@ describe('the content security policy', () => {
     expect(production.split('; ').find((d) => d.startsWith('frame-src'))).toContain('https:');
   });
 
+  it('lets a custom-element library fetch its own inline icons, without widening the network', () => {
+    // Shoelace's sl-icon fetches `data:image/svg+xml,…`; without `data:` a rating renders no stars.
+    const connectSrc = production.split('; ').find((d) => d.startsWith('connect-src'));
+    expect(connectSrc).toContain(' data:');
+    expect(connectSrc).not.toMatch(/(^|\s)http:(\s|$)/);
+  });
+
   it('lets the app reach its own executor', () => {
     const connectSrc = production.split('; ').find((d) => d.startsWith('connect-src'));
     expect(connectSrc).toContain('ws://localhost:*');

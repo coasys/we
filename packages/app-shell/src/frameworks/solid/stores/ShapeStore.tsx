@@ -1120,7 +1120,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   } {
     const shape = spaceShapes().find((s) => s.name === entity && s.manifest);
     const manifest = shape?.manifest ?? CORE_MANIFEST;
-    const entry = manifestEntries(manifest).find((e) => e.name === entity);
+    const entry = manifestEntries(manifest, { parents: CORE_MANIFEST }).find((e) => e.name === entity);
     return {
       classHint: entry?.interpretationHint ?? '',
       rows: (entry?.properties ?? [])

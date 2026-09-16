@@ -22,10 +22,20 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import { datasetKey, type EntitySchema, HERE } from '@we/backend-shared';
+import { datasetKey, type EntitySchema, HERE, namePropertyOf } from '@we/backend-shared';
 import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { EdgeRoute, getEntity, Placement, PREDICATES, runEntityTransaction, TypeStyle } from '@we/entities';
+import {
+  compressImageToFileData,
+  dataURIToFileData,
+  EdgeRoute,
+  getEntitiesForPerspective,
+  getEntity,
+  Placement,
+  PREDICATES,
+  runEntityTransaction,
+  TypeStyle,
+} from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
@@ -37,10 +47,19 @@ import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shap
 import {
   asEntityName,
   emptyRecordDraft,
+  entryLabel,
+  fieldsFor,
   offeredForCreation,
   type RecordDraft,
+  recordDraftChanged,
   recordDraftErrors,
   recordDraftFields,
+  type RecordField,
+  type RecordFieldValue,
+  type RelationEntry,
+  type RelationTargetAbilities,
+  withoutRelationEntry,
+  withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
 import { useDatasetStore } from './DatasetStore';
@@ -237,8 +256,41 @@ export interface RecordStore {
   connectNodesNow: (link: PendingLink) => Promise<string>;
   /** Switch which model is being created, discarding the values typed against the last one. */
   setRecordEntity: (entity: string) => void;
-  /** Set one field's value. Takes the field name, so one action serves every control. */
-  setRecordField: (name: string, value: string | number | boolean) => void;
+  /**
+   * Set one field's value. Takes the field name, so one action serves every control — a file
+   * control's `File` included, which is read into the draft as the payload storage takes.
+   */
+  setRecordField: (name: string, value: unknown) => void;
+  /**
+   * The record being made inline for a relation field — an image for a sighting's `photo` — or null.
+   * Its non-nullness mounts the nested form, over the one it belongs to.
+   */
+  relationDraft: Accessor<RecordDraft | null>;
+  /** Validation errors from the nested form's last "Add". */
+  relationErrors: Accessor<string[]>;
+  /** Open the nested form on a relation field's target model. */
+  openRelationForm: (field: string) => void;
+  /** Set one field of the nested form. The same shape as `setRecordField`. */
+  setRelationField: (name: string, value: unknown) => void;
+  /**
+   * Add what the nested form holds to its relation field, and close it. Nothing is written yet: the
+   * record is made when the outer form saves, so abandoning the outer form leaves nothing behind.
+   */
+  saveRelationForm: () => void;
+  cancelRelationForm: () => void;
+  /** Point a relation field at an existing record, by id — what its picker's `onChange` passes. */
+  pickRelation: (field: string, id: unknown) => Promise<void>;
+  /** Take one entry off a relation field, by its `key`. */
+  removeRelationEntry: (field: string, key: string) => void;
+  /**
+   * Point a location relation at the place a `we-location-picker` reports — pass its `arg.detail`.
+   * The place is made when the form saves; its name follows the city unless one was typed.
+   */
+  setRelationLocation: (field: string, detail: unknown) => void;
+  /** Edit one field of a relation entry still to be made — the name or address under a picked place. */
+  setRelationEntryField: (field: string, key: string, name: string, value: unknown) => void;
+  /** Add a chosen, cropped image to an image relation — pass an `EditableImage`'s `onImageChange` event. */
+  addRelationImage: (field: string, file: unknown) => Promise<void>;
   /**
    * Which named kind the pending connection is, or empty for one carrying only a label.
    *
@@ -436,6 +488,10 @@ export function RecordStoreProvider(props: ParentProps) {
   const [pendingBoard, setPendingBoard] = createSignal('');
   const [relationshipKind, setKind] = createSignal('');
   const [pendingPoint, setPendingPoint] = createSignal<{ x: number; y: number } | null>(null);
+  const [relationDraft, setRelationDraft] = createSignal<RecordDraft | null>(null);
+  const [relationFieldName, setRelationFieldName] = createSignal('');
+  const [relationErrors, setRelationErrors] = createSignal<string[]>([]);
+  let entrySeq = 0;
 
   /**
    * WE's own authorable models, read straight off the core manifest.
@@ -479,14 +535,48 @@ export function RecordStoreProvider(props: ParentProps) {
    * of WE's own gets its own, which is the same precedence the graph host uses in reverse and for
    * the same reason — whichever is more local should win where the two can collide.
    */
-  function schemaFor(entity: string): { schema: EntitySchema; authorable: boolean; icon: string } | undefined {
+  function schemaFor(
+    entity: string,
+  ): { schema: EntitySchema; authorable: boolean; icon: string; label: string } | undefined {
     const shape = shapeStore.spaceShapes().find((row) => row.name === entity && row.manifest);
     const fromShape = shape?.manifest?.entities[entity];
-    if (fromShape) return { schema: fromShape, authorable: true, icon: shape?.icon || 'cube' };
+    if (fromShape) return { schema: fromShape, authorable: true, icon: shape?.icon || 'cube', label: entity };
 
     const core = CORE_MANIFEST.entities[entity];
-    if (core) return { schema: core, authorable: false, icon: BLOCK_ICONS[entity] ?? 'cube' };
+    if (core)
+      return { schema: core, authorable: false, icon: BLOCK_ICONS[entity] ?? 'cube', label: modelLabel(entity) };
     return undefined;
+  }
+
+  /**
+   * The class a record of `entity` is written through, in the dataset on screen.
+   *
+   * `getEntity` alone reads the global registry, which holds WE's own models and the modules'. A
+   * model a community defined is registered *per dataset* on AD4M — that is how two spaces can each
+   * have a `Sighting` — so saving one through this form failed with "Model "UfoSighting" not found in
+   * registry" while the model sat listed in the space's settings. The per-dataset lookup prefers the
+   * global class and falls back to the space's own, so every caller here goes through it.
+   */
+  function entityClass(entity: string, handle: unknown): ReturnType<typeof getEntity> {
+    return (getEntitiesForPerspective(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
+  }
+
+  /**
+   * What a relation field pointing at `target` may do.
+   *
+   * Make one when the target has a form of its own. Pick an existing one when the target is not a
+   * block: an image in a sighting belongs to that sighting, where the species it names is a record
+   * many sightings share.
+   */
+  function relationTarget(target: string): RelationTargetAbilities | undefined {
+    const found = schemaFor(target);
+    if (!found) return undefined;
+    return {
+      canCreate: fieldsFor(found.schema, found.authorable).length > 0,
+      canPick: !found.schema.blockable,
+      label: found.label,
+      inline: inlineEditorFor(target, found.schema),
+    };
   }
 
   /*
@@ -590,7 +680,13 @@ export function RecordStoreProvider(props: ParentProps) {
     batch(() => {
       setRecordErrors([]);
       setRecordDraft(
-        emptyRecordDraft({ entity, schema: found.schema, authorable: found.authorable, icon: found.icon }),
+        emptyRecordDraft({
+          entity,
+          schema: found.schema,
+          authorable: found.authorable,
+          icon: found.icon,
+          relationTarget,
+        }),
       );
     });
   }
@@ -613,8 +709,271 @@ export function RecordStoreProvider(props: ParentProps) {
    * text is already in the DOM. The wizard needs `commitDraft` because its rows *do* derive things
    * from what is typed; this one has nothing to keep in step.
    */
-  function setRecordField(name: string, value: string | number | boolean): void {
-    writeFieldValue(recordDraft(), name, value);
+  function setRecordField(name: string, value: unknown): void {
+    writeInto(recordDraft, name, value);
+  }
+
+  /**
+   * Write a control's value into whichever draft it belongs to.
+   *
+   * A file control reports a `File` (or a list of one), which is read here into the payload the
+   * file-storage language takes — compressed first when it is a picture, as every other upload in
+   * WE is. Asynchronous, and written into the draft that is open when it finishes, so a form closed
+   * in the meantime is not written into. A file-backed model that also asks for a `name` has it
+   * filled from the file when nobody has typed one.
+   */
+  function writeInto(draft: Accessor<RecordDraft | null>, name: string, value: unknown): void {
+    const file = Array.isArray(value) ? value[0] : value;
+    if (typeof File === 'undefined' || !(file instanceof File)) {
+      writeFieldValue(draft(), name, value === null || value === undefined ? '' : (value as RecordFieldValue));
+      return;
+    }
+    const opened = draft();
+    void readFile(file)
+      .then((payload) => {
+        if (draft() !== opened) return;
+        writeFieldValue(opened, name, payload);
+        const named = opened?.fields.find((field) => field.name === 'name' && field.control === 'text');
+        if (named && typeof named.value === 'string' && !named.value.trim()) named.value = file.name;
+      })
+      .catch((error) => {
+        console.error('RecordStore: reading a file failed', error);
+        toastService.error('Could not read that file.');
+      });
+  }
+
+  async function readFile(file: File): Promise<RecordFieldValue> {
+    if (file.type.startsWith('image/')) return compressImageToFileData(file, file.name);
+    const uri = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    return dataURIToFileData(uri, file.name);
+  }
+
+  /**
+   * Whether a relation's target is better made where the relation is than in a form of its own.
+   *
+   * A place is picked on a map, and a picture is chosen and cropped — neither is a list of fields.
+   * The generic nested form asked for a location as two number boxes and showed nothing of an image
+   * once it was chosen. So those two targets get the controls WE already has for them, inline: the
+   * location picker (with its name and address beneath, as the profile page has) and the image
+   * editor with its cropper and a preview.
+   */
+  function inlineEditorFor(target: string, schema: EntitySchema): RelationTargetAbilities['inline'] {
+    if (target === 'LocationBlock') return 'location';
+    const properties = schema.properties;
+    const picture = imagePropertyOf(schema);
+    return picture && properties[picture]?.required ? 'image' : '';
+  }
+
+  /** The property that holds a target's picture — a file whose name reads as one. */
+  function imagePropertyOf(schema: EntitySchema): string {
+    return (
+      Object.keys(schema.properties).find(
+        (name) =>
+          schema.properties[name].format === 'file' &&
+          /image|avatar|photo|picture|thumbnail|cover|poster|src/i.test(name),
+      ) ?? ''
+    );
+  }
+
+  function setRelationLocation(field: string, detail: unknown): void {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    const current = recordDraft();
+    if (!relation || !found || !current || !detail || typeof detail !== 'object') return;
+    const picked = detail as Record<string, unknown>;
+    if (typeof picked.latitude !== 'number' || typeof picked.longitude !== 'number') return;
+
+    const existing = relation.many ? undefined : relation.entries[0];
+    // Only what the target declares: a picker reporting a field the model lacks is not a write.
+    const fields: Record<string, unknown> = { ...(existing?.fields ?? {}) };
+    for (const key of ['latitude', 'longitude', 'city', 'country', 'countryCode', 'address']) {
+      if (found.schema.properties[key] && picked[key] !== undefined) fields[key] = picked[key];
+    }
+    // A name the author typed survives moving the pin; otherwise the place names itself.
+    if (found.schema.properties.name && !(typeof fields.name === 'string' && fields.name.trim())) {
+      const named = picked.city ?? picked.address;
+      if (typeof named === 'string' && named) fields.name = named;
+    }
+    const label =
+      (typeof fields.name === 'string' && fields.name) ||
+      `${(picked.latitude as number).toFixed(4)}, ${(picked.longitude as number).toFixed(4)}`;
+    setRecordDraft(
+      withRelationEntry(current, field, {
+        key: existing?.key ?? `new-${++entrySeq}`,
+        label,
+        entity: relation.target,
+        fields,
+      }),
+    );
+  }
+
+  /**
+   * Edit one field of an entry still to be made — the name under a picked place.
+   *
+   * In place, as a typed form field is, so the input keeps focus; the chip's label follows the name.
+   */
+  function setRelationEntryField(field: string, key: string, name: string, value: unknown): void {
+    const entry = relationFieldOf(field)?.entries.find((candidate) => candidate.key === key);
+    if (!entry?.fields) return;
+    entry.fields[name] = value;
+    if (name === 'name' && typeof value === 'string' && value.trim()) entry.label = value.trim();
+  }
+
+  async function addRelationImage(field: string, file: unknown): Promise<void> {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    const property = found ? imagePropertyOf(found.schema) : '';
+    const picked = Array.isArray(file) ? file[0] : file;
+    if (!relation || !property || typeof File === 'undefined' || !(picked instanceof File)) return;
+    try {
+      const payload = (await readFile(picked)) as { data_base64: string; file_type: string; name: string };
+      const current = recordDraft();
+      if (!current) return;
+      setRecordDraft(
+        withRelationEntry(current, field, {
+          key: `new-${++entrySeq}`,
+          label: picked.name,
+          entity: relation.target,
+          fields: { [property]: payload },
+          preview: `data:${payload.file_type};base64,${payload.data_base64}`,
+        }),
+      );
+    } catch (error) {
+      console.error('RecordStore: reading an image failed', error);
+      toastService.error('Could not read that image.');
+    }
+  }
+
+  function relationFieldOf(name: string): RecordField | undefined {
+    return recordDraft()?.fields.find((field) => field.name === name && field.control === 'relation');
+  }
+
+  function openRelationForm(field: string): void {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    if (!relation || !found) return;
+    batch(() => {
+      setRelationErrors([]);
+      setRelationFieldName(field);
+      // No `relationTarget`: a nested form offers no relations of its own. One level is a form
+      // inside a form; two is a maze, and nothing a community models needs it to say what it means.
+      setRelationDraft(
+        emptyRecordDraft({
+          entity: relation.target,
+          label: relation.targetLabel,
+          schema: found.schema,
+          authorable: found.authorable,
+          icon: found.icon,
+        }),
+      );
+    });
+  }
+
+  function setRelationField(name: string, value: unknown): void {
+    writeInto(relationDraft, name, value);
+  }
+
+  function saveRelationForm(): void {
+    const nested = relationDraft();
+    const parent = recordDraft();
+    if (!nested || !parent) return;
+    const errors = recordDraftErrors(nested);
+    if (errors.length) {
+      setRelationErrors(errors);
+      return;
+    }
+    const found = schemaFor(nested.entity);
+    const entry: RelationEntry = {
+      key: `new-${++entrySeq}`,
+      label: entryLabel(nested, found ? namePropertyOf(found.schema) : '', nested.label),
+      entity: nested.entity,
+      fields: recordDraftFields(nested),
+    };
+    batch(() => {
+      setRecordDraft(withRelationEntry(parent, relationFieldName(), entry));
+      setRelationDraft(null);
+      setRelationErrors([]);
+    });
+  }
+
+  function cancelRelationForm(): void {
+    batch(() => {
+      setRelationDraft(null);
+      setRelationErrors([]);
+    });
+  }
+
+  async function pickRelation(field: string, id: unknown): Promise<void> {
+    const picked = asEntityName(id);
+    const relation = relationFieldOf(field);
+    const dataset = datasetStore.currentDataset();
+    if (!picked || !relation) return;
+    // Named as it is everywhere else, read off the record — a picker's `onChange` carries only the id.
+    let label = picked;
+    const found = schemaFor(relation.target);
+    const nameProperty = found ? namePropertyOf(found.schema) : '';
+    if (dataset && nameProperty) {
+      try {
+        const row = (await entityClass(relation.target, dataset.handle).findOne(dataset.handle, {
+          where: { id: picked },
+        })) as Record<string, unknown> | null;
+        const name = row?.[nameProperty];
+        if (typeof name === 'string' && name.trim()) label = name.trim();
+      } catch (error) {
+        console.warn('RecordStore: could not read the picked record for its name', error);
+      }
+    }
+    const current = recordDraft();
+    if (current)
+      setRecordDraft(withRelationEntry(current, field, { key: picked, id: picked, label, entity: relation.target }));
+  }
+
+  function removeRelationEntry(field: string, key: string): void {
+    const current = recordDraft();
+    if (current) setRecordDraft(withoutRelationEntry(current, field, key));
+  }
+
+  /**
+   * Point a saved record's relations at what the form chose — making the records that were filled in
+   * inline first. After the create because a relation in a create payload is skipped by the ORM.
+   *
+   * A to-many is written through the contract's `setRelation`. A to-one has no neutral write yet —
+   * the contract refuses to guess between "point at" and "membership" — so it goes through the
+   * instance's own accessor, the way a relationship's endpoints do above.
+   */
+  async function linkRelations(
+    draft: RecordDraft,
+    created: { id?: string } & Record<string, unknown>,
+    handle: unknown,
+  ): Promise<void> {
+    if (!created.id) return;
+    const Model = entityClass(draft.entity, handle);
+    for (const field of draft.fields) {
+      if (field.control !== 'relation' || !field.entries.length) continue;
+      const ids: string[] = [];
+      for (const entry of field.entries) {
+        if (entry.id) {
+          ids.push(entry.id);
+          continue;
+        }
+        const made = (await entityClass(entry.entity, handle).create(handle, entry.fields ?? {})) as { id?: string };
+        if (made?.id) ids.push(made.id);
+      }
+      if (!ids.length) continue;
+      if (field.many) {
+        await Model.setRelation(handle, created.id, field.name, ids);
+        continue;
+      }
+      const suffix = field.name.charAt(0).toUpperCase() + field.name.slice(1);
+      const setter = (created[`set${suffix}`] ?? created[`add${suffix}`]) as
+        ((id: string) => Promise<unknown>) | undefined;
+      if (setter) await setter.call(created, ids[0]);
+    }
   }
 
   /** Takes `unknown` for the reason `openRecordForm` does — a picker's event can arrive here. */
@@ -693,16 +1052,14 @@ export function RecordStoreProvider(props: ParentProps) {
       Strings are trimmed on both sides so typing a space and deleting it is not work; other kinds
       compare directly, since a boolean or a number is only ever set deliberately.
     */
-    return draft.fields.some((f) =>
-      typeof f.value === 'string' && typeof f.initial === 'string'
-        ? f.value.trim() !== f.initial.trim()
-        : f.value !== f.initial,
-    );
+    return recordDraftChanged(draft);
   });
 
   function cancelRecordForm(): void {
     batch(() => {
       setRecordDraft(null);
+      setRelationDraft(null);
+      setRelationErrors([]);
       setRecordErrors([]);
       setPendingLink(null);
       setPendingBoard('');
@@ -1113,7 +1470,7 @@ export function RecordStoreProvider(props: ParentProps) {
     else if (raw !== null && raw !== undefined && typeof raw !== 'string') next = String(raw);
     if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
     try {
-      await getEntity(entity).update(dataset.handle, id, { [field]: next });
+      await entityClass(entity, dataset.handle).update(dataset.handle, id, { [field]: next });
     } catch (error) {
       console.error('RecordStore: updating a record field failed', error);
       toastService.error('Could not save that change.');
@@ -1187,7 +1544,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     setSavingRecord(true);
     try {
-      const Model = getEntity(draft.entity);
+      const Model = entityClass(draft.entity, dataset.handle);
       const link = pendingLink();
       /*
         The endpoint *types* go in with the fields; the endpoints themselves are linked after.
@@ -1229,6 +1586,18 @@ export function RecordStoreProvider(props: ParentProps) {
       if (link) {
         await created.setSource?.(link.sourceId);
         await created.setTarget?.(link.targetId);
+      }
+
+      /*
+        The relations, once the record exists — and reported separately if they fail, because by then
+        the record *has* been made. Leaving the form open on an error here would invite saving it again
+        and making a second one.
+      */
+      try {
+        await linkRelations(draft, created as { id?: string } & Record<string, unknown>, dataset.handle);
+      } catch (error) {
+        console.error('RecordStore: attaching related records failed', error);
+        toastService.error(`${draft.label} created, but what was attached to it could not be saved.`);
       }
 
       /*
@@ -1294,6 +1663,17 @@ export function RecordStoreProvider(props: ParentProps) {
     updateRecordField,
     setRecordEntity,
     setRecordField,
+    relationDraft,
+    relationErrors,
+    openRelationForm,
+    setRelationField,
+    saveRelationForm,
+    cancelRelationForm,
+    pickRelation,
+    removeRelationEntry,
+    setRelationLocation,
+    setRelationEntryField,
+    addRelationImage,
     relationshipKind,
     setRelationshipKind,
     cancelRecordForm,

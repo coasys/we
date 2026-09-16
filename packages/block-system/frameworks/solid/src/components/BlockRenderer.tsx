@@ -20,6 +20,7 @@ import { getBlockSchema } from './BlockComposer';
 import { useDisplayOverride } from './BlockDisplayOverrides';
 import { useBlockHost } from './BlockHost';
 import { CollectionDisplay } from './CollectionBlock/CollectionDisplay';
+import { FallbackBlockCard } from './FallbackBlockCard/FallbackBlockCard';
 
 registerCoreBlocks();
 registerCoreBlockComponents();
@@ -60,7 +61,7 @@ function CustomBlockElement(props: { block: ContentBlock }): JSX.Element {
   };
   return (
     <div class="we-block" data-block-type={props.block._type}>
-      <Switch fallback={<div class="we-unknown-block">Unsupported block: {props.block._type}</div>}>
+      <Switch fallback={<FallbackBlockCard block={fields()} type={props.block._type} />}>
         <Match when={Display()}>{(D) => <Dynamic component={D()} {...fields()} />}</Match>
       </Switch>
     </div>

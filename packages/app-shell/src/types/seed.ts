@@ -25,6 +25,40 @@ export interface WeSeedModule {
   enabled?: boolean;
 }
 
+/**
+ * Custom elements from a library this deployment bundles — a chart, a rating, a map — that templates
+ * may then name as ordinary nodes.
+ *
+ * ## Why this is a seed decision
+ *
+ * A template is data and cannot load code, so a visual primitive WE does not ship used to mean a merge
+ * into this repository. But the renderer already mounts any hyphenated tag, and a custom element
+ * is framework-neutral by construction. What was missing was a deployment saying "these tags are
+ * defined here, trust them" — so the validator stops calling them unknown, the reference documents
+ * them, and the build imports what defines them. The trust is the deployment's, exactly as it is for
+ * a bundled module: it chose the package and rebuilt.
+ */
+export interface WeSeedElements {
+  /** The npm package providing the elements. Must be a dependency of `@we/app-shell`. */
+  package: string;
+  /**
+   * Modules imported for their side effect of defining the elements, in order. Defaults to the package
+   * itself. Name the per-component entry points where a library offers them, so the build carries
+   * only the elements listed.
+   */
+  define?: string[];
+  /**
+   * The tags templates may name. Defaults to every element the package's custom-elements manifest
+   * declares — list them to allow a few from a large library.
+   */
+  tags?: string[];
+  /**
+   * Path to the custom-elements manifest within the package. Defaults to the `customElements` field
+   * of its `package.json`, which is where the convention puts it.
+   */
+  manifest?: string;
+}
+
 export interface WeSeedFile {
   /** Project metadata */
   project: {
@@ -57,6 +91,13 @@ export interface WeSeedFile {
    * people to opt into. See {@link WeSeedModule}.
    */
   modules?: Array<string | WeSeedModule>;
+
+  /**
+   * Custom elements from libraries this deployment bundles, which templates may name. See
+   * {@link WeSeedElements}. Generated into the build by `pnpm --filter @we/app-shell generate-elements`,
+   * and into the reference and the validator by `generate-context`.
+   */
+  elements?: WeSeedElements[];
 
   /**
    * What this deployment believes each capability's settings should start as.

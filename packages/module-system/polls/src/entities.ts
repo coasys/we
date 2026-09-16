@@ -27,11 +27,18 @@ import type { EntityManifest } from '@we/backend-shared';
  * A poll is something a person composes into a post, so it is `blockable` — which obliges a `version`,
  * the counter concurrent edits inside a document are resolved by. The module names `pollCard` as its
  * card, so a poll renders inside a post the way an image or a task does.
+ *
+ * ## A node
+ *
+ * `extends: 'WeNode'` gives a poll the relations every built-in content type has — comments,
+ * signals, participants, mentions — read from the core vocabulary when the manifest is compiled.
  */
 export const POLLS_MANIFEST: EntityManifest = {
   version: '1',
   entities: {
     Poll: {
+      // A node, so a poll can be reacted to and commented on like any post it sits in.
+      extends: 'WeNode',
       blockable: true,
       authoring: { fields: ['question', 'options'] },
       display: { title: 'question', fields: ['question', 'options'] },

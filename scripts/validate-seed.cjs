@@ -149,6 +149,44 @@ function main() {
     if (seed.modules.length) success(`Found ${seed.modules.length} module(s): ${[...moduleIds].join(', ')}`);
   }
 
+  // Validate elements — custom elements from libraries the build defines and templates may name.
+  if (seed.elements !== undefined) {
+    console.log('\n🧱 Validating elements...');
+    if (!Array.isArray(seed.elements)) {
+      error('Invalid field: elements (must be an array of { package, define?, tags?, manifest? } entries)');
+    } else {
+      const tags = new Set();
+      seed.elements.forEach((entry, index) => {
+        if (!entry || typeof entry.package !== 'string' || !entry.package) {
+          error(`  Elements ${index + 1}: needs a package`);
+          return;
+        }
+        for (const key of ['define', 'tags']) {
+          if (
+            entry[key] !== undefined &&
+            !(Array.isArray(entry[key]) && entry[key].every((v) => typeof v === 'string'))
+          ) {
+            error(`  Elements '${entry.package}': ${key} must be a list of strings`);
+          }
+        }
+        for (const tag of entry.tags ?? []) {
+          if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/.test(tag))
+            error(`  Elements '${entry.package}': "${tag}" is not a custom-element name`);
+          else if (tag.startsWith('we-')) error(`  Elements '${entry.package}': "${tag}" is in WE's own namespace`);
+          else if (tags.has(tag)) error(`  Elements '${entry.package}': "${tag}" is named twice`);
+          tags.add(tag);
+        }
+        const installed = fs.existsSync(
+          path.join(__dirname, '..', 'packages', 'app-shell', 'node_modules', entry.package),
+        );
+        if (!installed) {
+          warn(`  Elements '${entry.package}': not installed for @we/app-shell — the build will fail until it is`);
+        }
+      });
+      if (seed.elements.length) success(`Found ${seed.elements.length} element package(s)`);
+    }
+  }
+
   // Validate each app
   console.log('\n📦 Validating apps...');
 

@@ -69,10 +69,21 @@ export type EntityManifestEntry = {
  * produce an entry that resolves to a predicate nothing was ever written under — a drill-down that
  * silently returns nothing, which is worse than one that fails loudly.
  */
-export function manifestEntries(manifest: EntityManifest): EntityManifestEntry[] {
-  /** Flatten `extends` so an entry carries what it inherits — `scope` resolves on the child's name. */
-  const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+export function manifestEntries(
+  manifest: EntityManifest,
+  opts: { parents?: EntityManifest } = {},
+): EntityManifestEntry[] {
+  /**
+   * Flatten `extends` so an entry carries what it inherits — `scope` resolves on the child's name.
+   *
+   * A parent this manifest does not declare is read from `opts.parents` — a space shape's manifest
+   * holds only the shape, and names `WeNode` from the core vocabulary, which this package cannot
+   * import. Not found in either, the entity carries only its own members rather than throwing: an
+   * entry list is for reading, and one missing parent should not take every other entry with it.
+   */
+  const resolved = (name: string): EntitySchema | undefined => {
+    const entity = manifest.entities[name] ?? opts.parents?.entities[name];
+    if (!entity) return undefined;
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {
@@ -82,8 +93,8 @@ export function manifestEntries(manifest: EntityManifest): EntityManifestEntry[]
     };
   };
 
-  return Object.entries(manifest.entities).map(([name]) => {
-    const entity = resolved(name);
+  return Object.entries(manifest.entities).map(([name, declared]) => {
+    const entity = resolved(name) ?? declared;
     // After flattening, so an entity that inherits its naming property from a parent carries it.
     const nameProperty = namePropertyOf(entity);
     return {

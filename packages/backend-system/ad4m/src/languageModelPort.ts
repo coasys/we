@@ -35,8 +35,19 @@ export function createAd4mLanguageModelPort(backendClient: unknown): LanguageMod
       if (!task) {
         task = await client.ai.addTask(TASK_NAME, 'default', system, []);
       } else if (task.systemPrompt !== system) {
-        // The system prompt evolves with the app; the stored task follows it.
-        task = await client.ai.updateTask(task.taskId, { ...task, systemPrompt: system });
+        /*
+          The system prompt evolves with the app; the stored task follows it — by replacement, not
+          `updateTask`.
+
+          `updateTask` cannot succeed over the executor's WebSocket RPC: the client sends the task
+          without its `taskId`, `createdAt` or `updatedAt`, and the handler deserialises a whole
+          `AITask`, so every call is refused with "missing field `taskId`". It went unnoticed because
+          it only runs when the prompt changes — the first release to change the model-authoring
+          schema made generation fail for everyone who had generated before. Remove and add are both
+          sound, and the task holds nothing but what this function writes into it.
+        */
+        await client.ai.removeTask(task.taskId);
+        task = await client.ai.addTask(TASK_NAME, 'default', system, []);
       }
       return client.ai.prompt(task.taskId, input);
     },
