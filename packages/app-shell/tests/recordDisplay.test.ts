@@ -277,3 +277,31 @@ describe('what a model is called on screen', () => {
     expect(modelLabel('SignalType')).toBe('Signal type');
   });
 });
+
+describe('a picture held by relation', () => {
+  const sighting: EntitySchema = {
+    properties: { species: { type: 'string', required: true } },
+    relations: {
+      site: { target: 'Site', cardinality: 'one' },
+      photos: { target: 'ImageBlock', cardinality: 'many' },
+    },
+  };
+
+  it('is the record’s picture when no property is, and leaves the detail rows', () => {
+    const display = displayFor({ entity: 'Sighting', schema: sighting, authorable: true });
+    expect(display.media).toBe('');
+    expect(display.mediaRelation).toBe('photos');
+    expect(display.fields.find((f) => f.name === 'photos')?.role).toBe('media');
+    expect(display.fields.find((f) => f.name === 'site')?.role).toBe('detail');
+  });
+
+  it('gives way to a property that pictures the record, which a template can draw directly', () => {
+    const withCover: EntitySchema = {
+      ...sighting,
+      properties: { ...sighting.properties, cover: { type: 'string', format: 'file' } },
+    };
+    const display = displayFor({ entity: 'Sighting', schema: withCover, authorable: true });
+    expect(display.media).toBe('cover');
+    expect(display.mediaRelation).toBe('');
+  });
+});

@@ -30,8 +30,11 @@ import { expr } from '@we/schema-shared';
 interface ControlSpec {
   tag: string;
   event: string;
-  /** Prop the current value is bound to. `we-switch` calls it `checked`. */
-  valueProp?: string;
+  /**
+   * Prop the current value is bound to. `we-switch` calls it `checked`; `null` for a control that
+   * holds its own value and takes none back, as a file picker does.
+   */
+  valueProp?: string | null;
   props?: Record<string, SchemaProp>;
 }
 
@@ -47,10 +50,17 @@ const CONTROLS: Record<string, ControlSpec> = {
   date: { tag: 'we-date-picker', event: 'onChange', props: PLACEHOLDER },
   datetime: { tag: 'we-date-picker', event: 'onChange', props: { showTime: true, ...PLACEHOLDER } },
   color: { tag: 'we-color-picker', event: 'onChange' },
+  // A file is read into the draft when it is chosen, and uploaded only when the form saves.
+  file: { tag: 'we-file-upload', event: 'onChange', valueProp: null, props: { accept: { $: 'field.accept' } } },
 };
 
-/** One row of the form: the label, and whichever control the field's `control` names. */
-function controlRow(control: string, spec: ControlSpec): SchemaNode {
+/**
+ * One row of the form: the label, and whichever control the field's `control` names.
+ *
+ * `setter` is the store action the value is written through — the outer form's, or the nested
+ * form's for a record being made inline — so both forms are the same rows.
+ */
+function controlRow(control: string, spec: ControlSpec, setter = 'recordStore.setRecordField'): SchemaNode {
   return {
     type: '$if',
     props: {
@@ -62,12 +72,12 @@ function controlRow(control: string, spec: ControlSpec): SchemaNode {
           {
             type: spec.tag,
             props: {
-              [spec.valueProp ?? 'value']: { $: 'field.value' },
+              ...(spec.valueProp === null ? {} : { [spec.valueProp ?? 'value']: { $: 'field.value' } }),
               width: '100%',
               // One action for every control, taking the field's name — the only shape that works
               // when the fields are data and no handler can be written per field.
               [spec.event]: {
-                $action: 'recordStore.setRecordField',
+                $action: setter,
                 args: [{ $: 'field.name' }, { $: 'event.detail' }],
               },
               ...spec.props,
@@ -78,6 +88,222 @@ function controlRow(control: string, spec: ControlSpec): SchemaNode {
     },
   };
 }
+
+/**
+ * A relation: what it will point at, as chips, and the ways to give it something.
+ *
+ * Two ways, offered by what the target is. A record that stands on its own — a species, a person —
+ * can be **picked** from those the space already holds. Anything with a form of its own can be
+ * **made** here, in a small form over this one; that is the only way for a block, since an image
+ * belongs to the sighting it was added to. Nothing is written until the outer form saves.
+ *
+ * A to-one relation with something in it offers neither: the chip's remove is how it is changed.
+ */
+const relationRow: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "field.control == 'relation'" },
+    then: {
+      type: 'we-form-field',
+      props: { label: { $: 'field.label' }, width: '100%' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '200', width: '100%' },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'count(field.entries)' },
+                then: {
+                  type: 'Row',
+                  props: { gap: '200', wrap: true, width: '100%' },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $: 'field.entries' }, as: 'entry' },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: {
+                            gap: '100',
+                            ay: 'center',
+                            bg: 'surface-sunken',
+                            r: 'control',
+                            pl: '300',
+                            pr: '100',
+                            py: '100',
+                            maxWidth: '100%',
+                          },
+                          children: [
+                            {
+                              type: 'we-icon',
+                              props: {
+                                name: { $: "recordStore.displays[entry.entity].icon ?? 'cube'" },
+                                size: 'xs',
+                                color: 'text-muted',
+                              },
+                            },
+                            {
+                              type: 'we-text',
+                              props: { variant: 'label', truncate: true, minWidth: '0' },
+                              children: [{ $: 'entry.label' }],
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'xs',
+                                square: true,
+                                label: { $: '`Remove ${entry.label}`' },
+                                onClick: {
+                                  $action: 'recordStore.removeRelationEntry',
+                                  args: [{ $: 'field.name' }, { $: 'entry.key' }],
+                                },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'x' } }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'field.many || !count(field.entries)' },
+                then: {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center', width: '100%', wrap: true },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'field.canPick' },
+                        then: {
+                          type: 'Row',
+                          props: { flex: '1 1 12rem', minWidth: '0' },
+                          // One subscription per picker, mounted only where there is a picker.
+                          $queries: { candidates: { entity: { $: 'field.target' }, limit: 200 } },
+                          children: [
+                            {
+                              type: 'we-select',
+                              props: {
+                                width: '100%',
+                                searchable: true,
+                                placeholder: { $: '`Choose ${lower(field.targetLabel)}…`' },
+                                options: {
+                                  $: 'local.candidates.map(row, { label: row[recordStore.displays[field.target].title] ?? row.id, value: row.id })',
+                                },
+                                value: '',
+                                onChange: {
+                                  $action: 'recordStore.pickRelation',
+                                  args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'field.canCreate' },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'secondary',
+                            size: 'sm',
+                            onClick: { $action: 'recordStore.openRelationForm', args: [{ $: 'field.name' }] },
+                          },
+                          children: [
+                            { type: 'we-icon', props: { name: 'plus' } },
+                            { $: '`Add ${lower(field.targetLabel)}`' },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * The small form a relation's record is made in — the same rows as the outer form, over the nested
+ * draft, and nothing written until the outer form saves.
+ */
+const relationFormModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'recordStore.relationDraft' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'sm', close: { $action: 'recordStore.cancelRelationForm' } },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center', width: '100%' },
+          slot: 'header',
+          children: [
+            { type: 'we-icon', props: { name: { $: 'recordStore.relationDraft.icon' } } },
+            {
+              type: 'we-text',
+              props: { variant: 'heading-md' },
+              children: [{ $: '`New ${lower(recordStore.relationDraft.label)}`' }],
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'recordStore.relationDraft.fields' }, as: 'field' },
+          children: [
+            {
+              type: 'Column',
+              props: { width: '100%' },
+              children: Object.entries(CONTROLS).map(([control, spec]) =>
+                controlRow(control, spec, 'recordStore.setRelationField'),
+              ),
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'recordStore.relationErrors' }, as: 'problem' },
+          children: [
+            { type: 'we-text', props: { variant: 'footnote', color: 'danger-text' }, children: [{ $: 'problem' }] },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '300', ax: 'end', width: '100%' },
+          slot: 'footer',
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'secondary', onClick: { $action: 'recordStore.cancelRelationForm' } },
+              children: ['Cancel'],
+            },
+            {
+              type: 'we-button',
+              props: { variant: 'primary', onClick: { $action: 'recordStore.saveRelationForm' } },
+              children: ['Add'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
 
 export interface RecordFormModalOptions {
   /**
@@ -307,7 +533,10 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               {
                 type: 'Column',
                 props: { width: '100%' },
-                children: Object.entries(CONTROLS).map(([control, spec]) => controlRow(control, spec)),
+                children: [
+                  ...Object.entries(CONTROLS).map(([control, spec]) => controlRow(control, spec)),
+                  relationRow,
+                ],
               },
             ],
           },
@@ -369,6 +598,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               },
             ],
           },
+          relationFormModal,
           guard.node,
         ],
       },

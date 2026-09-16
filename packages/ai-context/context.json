@@ -5916,6 +5916,12 @@
         "pendingLink": {
           "type": "object"
         },
+        "relationDraft": {
+          "type": "object"
+        },
+        "relationErrors": {
+          "type": "array"
+        },
         "relationshipKind": {
           "type": "string"
         }
@@ -5926,6 +5932,12 @@
         "connectNodesNow",
         "setRecordEntity",
         "setRecordField",
+        "openRelationForm",
+        "setRelationField",
+        "saveRelationForm",
+        "cancelRelationForm",
+        "pickRelation",
+        "removeRelationEntry",
         "setRelationshipKind",
         "cancelRecordForm",
         "saveRecord",

@@ -2620,20 +2620,28 @@ ProfileStore:
 RecordStore:
 - State:
   - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest (unless it says `offered: false` — made somewhere specific, like a drawn connection or a vocabulary entry), or by being a shape this community defined
-  - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
+  - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value, accept, target, targetLabel, many, canCreate, canPick, entries }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for. control 'file' is a we-file-upload (accept names the types); control 'relation' points at another record: entries are the chips ({ key, label }), canCreate offers openRelationForm, canPick offers a picker over existing target records
   - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`
-  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
+  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
   - pendingLink: the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected
+  - relationDraft: the record being made inline for a relation field — an image for a sighting — as a draft of the same shape, or null. Its non-nullness mounts the nested form over the outer one. It is not written until the outer form saves
+  - relationErrors: string[] — why the nested form's last Add was refused
   - relationshipKind: string — which named RelationshipType the pending connection is, or empty for one carrying only a label. Held beside the draft because the kinds are a list to pick from, which a generated form cannot render
 - Actions:
   - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
   - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
   - connectNodesNow(link): writes the Relationship straight away, with no label and no kind, and answers with its id. The same onEdgeCreate payload; the choice between this and connectNodes is the template's. Ask first where the claim is the point (a knowledge map); write first where the arrangement is (a canvas beside a live call), and let the words be added in an inspector afterwards. Pair it with an onSuccess that selects the new line — a connection nobody is shown is a connection nobody knows is a record
   - setRecordEntity(entity): switches which model is being created, discarding what was typed
-  - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data
+  - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data. A file control passes its File as event.detail
+  - openRelationForm(field): opens the nested form on a relation field’s target model
+  - setRelationField(name, value): sets one field of the nested form, as setRecordField does for the outer one
+  - saveRelationForm(): adds what the nested form holds to its relation field as a chip, and closes it. Nothing is written until the outer form saves
+  - cancelRelationForm(): closes the nested form, discarding it
+  - pickRelation(field, id): points a relation field at an existing record — pass a picker’s event.detail
+  - removeRelationEntry(field, key): takes one chip off a relation field
   - setRelationshipKind(id): sets which named kind the pending connection is; an empty value clears it
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
@@ -4043,6 +4051,35 @@ resolved once in the store so a template switches on one word. Add branches for 
 The `$localState` holding the display is a convenience: `recordStore.displays['Sighting']` could be
 read in place each time. For a feed of *mixed* types, index by the row instead —
 `recordStore.displays[row.type]` — and the same card draws every kind of record the space holds.
+
+**A picture held by relation.** A community model carries its photo as a relation to an
+`ImageBlock` rather than as a string, so `display.media` is empty and `display.mediaRelation`
+names the relation. The row holds ids, not a URL — look the image up, and gate the query so an
+unresolved id does not widen it to every image in the space:
+
+```json
+{
+  "type": "$if",
+  "props": {
+    "condition": { "$": "local.display.mediaRelation && row[local.display.mediaRelation]" },
+    "then": {
+      "type": "Column",
+      "$queries": {
+        "pictures": {
+          "entity": "ImageBlock",
+          "where": { "id": { "$": "row[local.display.mediaRelation]" } },
+          "when": { "$": "row[local.display.mediaRelation]" },
+          "limit": 1
+        }
+      },
+      "children": [
+        { "type": "$if", "props": { "condition": { "$": "count(local.pictures)" },
+          "then": { "type": "we-image", "props": { "src": { "$": "first(local.pictures).src" }, "fit": "cover", "r": "media" } } } }
+      ]
+    }
+  }
+}
+```
 
 ### A group of faces with a count
 

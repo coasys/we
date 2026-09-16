@@ -110,6 +110,17 @@ export interface RecordDisplay {
   summary: string;
   /** Property holding the picture or file, or empty. */
   media: string;
+  /**
+   * A relation to an `ImageBlock` that pictures the record, or empty — the way a community's model
+   * carries a photo, since an image is content with its own alt text rather than a string on the
+   * record.
+   *
+   * Its own key rather than folded into `media`, because the two are read differently: `media` is
+   * a value to hand a `we-image` directly, and this is an id (or ids) to look the image up by. A
+   * template drawing `row[display.media]` as a picture keeps working, and draws nothing here rather
+   * than an id as a URL.
+   */
+  mediaRelation: string;
   /** Every field worth showing, in order — title, summary and media included, with their role. */
   fields: DisplayField[];
 }
@@ -240,6 +251,15 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     pick(declared.summary, (name) => name !== title && properties[name].control === 'textarea') ||
     pick(undefined, (name) => name !== title && isString(properties[name]));
   const media = pick(declared.media, (name) => properties[name].format === 'file');
+  const relationsDeclared = schema.relations ?? {};
+  const isPicture = (name: string) => relationsDeclared[name]?.target === 'ImageBlock';
+  // Only when no property already pictures it: a declared `media` naming a relation, else the first
+  // relation to an image.
+  const mediaRelation = media
+    ? ''
+    : declared.media && isPicture(declared.media)
+      ? declared.media
+      : (Object.keys(relationsDeclared).find(isPicture) ?? '');
 
   const fields: DisplayField[] = names.map((name) => ({
     name,
@@ -282,7 +302,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
       name,
       label: humanise(name),
       kind: 'relation',
-      role: 'detail',
+      role: name === mediaRelation ? 'media' : 'detail',
       options: [],
       vocabulary: '',
       target: relations[name].target ?? '',
@@ -297,6 +317,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     title,
     summary,
     media,
+    mediaRelation,
     fields,
   };
 }

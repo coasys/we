@@ -19,7 +19,52 @@
 import type { EntityManifest, EntitySchema, PropertySchema } from '@we/backend-shared';
 
 /** Which control a field is edited with. Resolved once, here, so no consumer re-derives it. */
-export type RecordControl = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'date' | 'datetime' | 'color';
+export type RecordControl =
+  'text' | 'textarea' | 'number' | 'switch' | 'select' | 'date' | 'datetime' | 'color' | 'file' | 'relation';
+
+/**
+ * A chosen file, as the file-storage language takes it — what a `format: 'file'` property is written
+ * with on create. Held in the draft rather than uploaded when picked, so a form somebody abandons
+ * leaves nothing behind in storage.
+ */
+export interface FileValue {
+  data_base64: string;
+  name: string;
+  file_type: string;
+}
+
+export type RecordFieldValue = string | number | boolean | FileValue;
+
+/**
+ * One record a relation field will point at when the form is saved.
+ *
+ * Either an existing record somebody picked (`id`), or one to be made (`fields`) — made at save
+ * rather than when it was filled in, for the reason a file is uploaded at save: a form closed
+ * without saving must not leave an orphan image in the space.
+ */
+export interface RelationEntry {
+  /** Stable within the draft — the id for a picked record, a local key for one still to be made. */
+  key: string;
+  /** What the chip reads: the record's name, or the file's. */
+  label: string;
+  /** The target model. */
+  entity: string;
+  id?: string;
+  fields?: Record<string, unknown>;
+}
+
+/** What a relation's target allows a form to do, answered by whoever knows the space's models. */
+export interface RelationTargetAbilities {
+  /** The target has a form — its own `authoring`, or it is a model this space defined. */
+  canCreate: boolean;
+  /**
+   * Existing records are worth choosing from: anything that is not a block. A block is content
+   * owned by what it sits in, so an image is added to a sighting rather than borrowed from another.
+   */
+  canPick: boolean;
+  /** The target's display name — "Image", not `ImageBlock`. */
+  label: string;
+}
 
 export interface RecordField {
   name: string;
@@ -31,7 +76,7 @@ export interface RecordField {
   options: { label: string; value: string }[];
   /** Placeholder text, where the type suggests one worth having. */
   placeholder: string;
-  value: string | number | boolean;
+  value: RecordFieldValue;
   /**
    * What this field started as, so "has anything been typed" can be answered by comparison.
    *
@@ -41,7 +86,17 @@ export interface RecordField {
    * had touched raised "discard your changes?". A dialog people learn to click through is worse
    * than no dialog.
    */
-  initial: string | number | boolean;
+  initial: RecordFieldValue;
+  /** A `file` control's accepted types (`image/*`), or empty for any file. */
+  accept: string;
+  /** For a `relation` field: the model it points at, and whether it holds several. Empty otherwise. */
+  target: string;
+  targetLabel: string;
+  many: boolean;
+  canCreate: boolean;
+  canPick: boolean;
+  /** For a `relation` field: what it will point at once saved. Empty for every other control. */
+  entries: RelationEntry[];
 }
 
 export interface RecordDraft {
@@ -84,6 +139,8 @@ export function humanise(name: string): string {
  */
 export function controlFor(property: PropertySchema): RecordControl {
   if (property.options?.length) return 'select';
+  // A file is chosen, never typed: a text box on an image's `src` asked for an address nobody has.
+  if (property.format === 'file') return 'file';
   if (property.control === 'textarea') return 'textarea';
   if (property.control === 'date') return 'date';
   if (property.control === 'datetime') return 'datetime';
@@ -102,6 +159,17 @@ function initialValue(property: PropertySchema, control: RecordControl): string 
   return '';
 }
 
+/** Which files a file property takes, read from its name — the manifest carries no media type. */
+function acceptFor(name: string): string {
+  if (/image|avatar|photo|picture|thumbnail|cover|poster|art|src/i.test(name)) return 'image/*';
+  if (/audio/i.test(name)) return 'audio/*';
+  if (/video/i.test(name)) return 'video/*';
+  return '';
+}
+
+/** The fields every kind of row carries, so a consumer can read any of them off any field. */
+const NO_RELATION = { target: '', targetLabel: '', many: false, canCreate: false, canPick: false, entries: [] };
+
 function fieldFrom(name: string, property: PropertySchema): RecordField {
   const control = controlFor(property);
   const initial = initialValue(property, control);
@@ -109,12 +177,41 @@ function fieldFrom(name: string, property: PropertySchema): RecordField {
     name,
     label: humanise(name),
     control,
+    // A default of '' on a required file is the empty value, not an answer.
     required: property.required === true,
     options: (property.options ?? []).map((value) => ({ label: humanise(String(value)), value: String(value) })),
     placeholder: property.control === 'url' ? 'https://…' : '',
     value: initial,
     // Kept beside the value rather than re-derived, so the comparison cannot drift from the seed.
     initial,
+    accept: control === 'file' ? acceptFor(name) : '',
+    ...NO_RELATION,
+    entries: [],
+  };
+}
+
+function relationFieldFrom(
+  name: string,
+  target: string,
+  many: boolean,
+  abilities: RelationTargetAbilities,
+): RecordField {
+  return {
+    name,
+    label: humanise(name),
+    control: 'relation',
+    required: false,
+    options: [],
+    placeholder: '',
+    value: '',
+    initial: '',
+    accept: '',
+    target,
+    targetLabel: abilities.label,
+    many,
+    canCreate: abilities.canCreate,
+    canPick: abilities.canPick,
+    entries: [],
   };
 }
 
@@ -141,13 +238,33 @@ export function offeredForCreation(schema: EntitySchema): boolean {
   return Boolean(schema.authoring?.fields.length) && schema.authoring?.offered !== false;
 }
 
-export function fieldsFor(schema: EntitySchema, authorable: boolean): RecordField[] {
-  const names = schema.authoring?.fields ?? (authorable ? Object.keys(schema.properties) : []);
+export function fieldsFor(
+  schema: EntitySchema,
+  authorable: boolean,
+  relationTarget?: (target: string) => RelationTargetAbilities | undefined,
+): RecordField[] {
+  const relations = schema.relations ?? {};
+  const names =
+    schema.authoring?.fields ?? (authorable ? [...Object.keys(schema.properties), ...Object.keys(relations)] : []);
   return names.flatMap((name) => {
     const property = schema.properties[name];
-    // A declaration naming a property the entity does not have is an authoring error in the
+    if (property) return [fieldFrom(name, property)];
+    /*
+      A relation, where whoever built the draft can say what its target allows.
+
+      Offered only with a declared target: pointing at "anything" is a different question — which
+      kind? — and nothing a community defines asks it, since the wizard refuses a relationship
+      with nothing to point at. And only where the caller answers for the target, because a form
+      control that can neither make nor pick anything is a control that does nothing.
+    */
+    const relation = relations[name];
+    const abilities = relation?.target ? relationTarget?.(relation.target) : undefined;
+    if (relation?.target && abilities && (abilities.canCreate || abilities.canPick)) {
+      return [relationFieldFrom(name, relation.target, relation.cardinality === 'many', abilities)];
+    }
+    // A declaration naming a member the entity does not have is an authoring error in the
     // manifest, not something to render an empty control for.
-    return property ? [fieldFrom(name, property)] : [];
+    return [];
   });
 }
 
@@ -173,6 +290,8 @@ export interface DraftSource {
   schema: EntitySchema;
   /** True for a model this space defined: every property is the author's. */
   authorable: boolean;
+  /** What each relation's target allows. Absent, a draft offers no relation fields. */
+  relationTarget?: (target: string) => RelationTargetAbilities | undefined;
 }
 
 export function emptyRecordDraft(source: DraftSource): RecordDraft {
@@ -180,7 +299,7 @@ export function emptyRecordDraft(source: DraftSource): RecordDraft {
     entity: source.entity,
     label: source.label || source.entity,
     icon: source.icon || 'cube',
-    fields: fieldsFor(source.schema, source.authorable),
+    fields: fieldsFor(source.schema, source.authorable, source.relationTarget),
   };
 }
 
@@ -202,7 +321,7 @@ export function schemaFromManifest(manifest: EntityManifest, entity: string): En
  * come back *the same objects*, which is the whole of the fix and the part a later tidy-up would
  * otherwise quietly undo.
  */
-export function writeFieldValue(draft: RecordDraft | null, name: string, value: string | number | boolean): void {
+export function writeFieldValue(draft: RecordDraft | null, name: string, value: RecordFieldValue): void {
   const field = draft?.fields.find((row) => row.name === name);
   if (field) field.value = value;
 }
@@ -220,7 +339,7 @@ export function recordDraftErrors(draft: RecordDraft): string[] {
     .map((field) => `${field.label} is required.`);
 }
 
-function isBlank(value: string | number | boolean): boolean {
+function isBlank(value: RecordFieldValue): boolean {
   return typeof value === 'string' ? value.trim() === '' : value === null || value === undefined;
 }
 
@@ -235,8 +354,63 @@ function isBlank(value: string | number | boolean): boolean {
 export function recordDraftFields(draft: RecordDraft): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of draft.fields) {
+    // A relation is linked after the record exists — the ORM skips a relation in a create payload.
+    if (field.control === 'relation') continue;
     if (!field.required && isBlank(field.value)) continue;
     out[field.name] = field.control === 'number' ? Number(field.value) : field.value;
   }
   return out;
+}
+
+/**
+ * Whether anything in the draft differs from how it opened — a value changed, a file chosen, a
+ * relation given something to point at.
+ */
+export function recordDraftChanged(draft: RecordDraft): boolean {
+  return draft.fields.some((f) => {
+    if (f.control === 'relation') return f.entries.length > 0;
+    if (typeof f.value === 'string' && typeof f.initial === 'string') return f.value.trim() !== f.initial.trim();
+    return f.value !== f.initial;
+  });
+}
+
+/**
+ * A relation field with one more entry — or, for a to-one, with this entry instead of the last.
+ *
+ * Returns a new draft whose other field objects are the *same* objects, so `<For>` keeps every other
+ * row mounted and a half-typed input elsewhere keeps its focus. Only the changed row is new, and it
+ * has to be: its chips are drawn from `entries`, and an in-place push would draw nothing.
+ */
+export function withRelationEntry(draft: RecordDraft, name: string, entry: RelationEntry): RecordDraft {
+  return {
+    ...draft,
+    fields: draft.fields.map((field) => {
+      if (field.name !== name || field.control !== 'relation') return field;
+      if (field.entries.some((existing) => existing.key === entry.key)) return field;
+      return { ...field, entries: field.many ? [...field.entries, entry] : [entry] };
+    }),
+  };
+}
+
+export function withoutRelationEntry(draft: RecordDraft, name: string, key: string): RecordDraft {
+  return {
+    ...draft,
+    fields: draft.fields.map((field) =>
+      field.name === name && field.control === 'relation'
+        ? { ...field, entries: field.entries.filter((entry) => entry.key !== key) }
+        : field,
+    ),
+  };
+}
+
+/**
+ * What a record made inline is called on its chip: its name if it has one yet, else the file that
+ * was chosen for it, else the kind of thing it is.
+ */
+export function entryLabel(draft: RecordDraft, nameProperty: string, fallback: string): string {
+  const named = draft.fields.find((f) => f.name === nameProperty)?.value;
+  if (typeof named === 'string' && named.trim()) return named.trim();
+  const file = draft.fields.find((f) => f.control === 'file' && typeof f.value === 'object')?.value as
+    FileValue | undefined;
+  return file?.name || fallback;
 }

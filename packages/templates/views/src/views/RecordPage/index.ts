@@ -72,34 +72,75 @@ const idExpr = { $: 'routeStore.params.id' };
  * which is the honest default: a value nobody has taught this page to draw is still a value worth
  * showing.
  */
+/*
+  A relation, by the names of what it points at rather than their ids.
+
+  One query per relation row, over the ids the record holds — a to-one is an id and a to-many a list,
+  and the where-object reads a list as membership — named the way every other surface names a record
+  of that model.
+*/
+const relationValue: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', wrap: true, ax: 'end', minWidth: '0' },
+  $queries: {
+    linked: {
+      entity: { $: 'field.target' },
+      where: { id: { $: 'row[field.name]' } },
+      when: { $: 'row[field.name]' },
+      limit: 50,
+    },
+  },
+  children: [
+    {
+      type: '$each',
+      props: { items: { $: 'local.linked' }, as: 'other' },
+      children: [
+        {
+          type: 'we-badge',
+          children: [
+            { $: 'other[recordStore.displays[field.target].title] ?? recordStore.displays[field.target].label' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 const detailValue: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
-    then: { type: 'we-timestamp', props: { value: { $: 'row[field.name]' }, relative: true } },
+    condition: { $: "field.kind == 'relation' && field.target" },
+    then: relationValue,
     else: {
       type: '$if',
       props: {
-        condition: { $: "field.kind == 'boolean'" },
-        then: { type: 'we-badge', children: [{ $: "row[field.name] ? 'Yes' : 'No'" }] },
+        condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+        then: { type: 'we-timestamp', props: { value: { $: 'row[field.name]' }, relative: true } },
         else: {
           type: '$if',
           props: {
-            condition: { $: "field.kind == 'image'" },
-            then: {
-              type: 'we-image',
-              props: { src: { $: 'row[field.name]' }, fit: 'cover', r: 'media', maxWidth: '100%' },
-            },
+            condition: { $: "field.kind == 'boolean'" },
+            then: { type: 'we-badge', children: [{ $: "row[field.name] ? 'Yes' : 'No'" }] },
             else: {
               type: '$if',
               props: {
-                condition: { $: "field.kind == 'url'" },
+                condition: { $: "field.kind == 'image'" },
                 then: {
-                  type: 'we-link',
-                  props: { href: { $: 'row[field.name]' }, target: '_blank' },
-                  children: [{ $: 'row[field.name]' }],
+                  type: 'we-image',
+                  props: { src: { $: 'row[field.name]' }, fit: 'cover', r: 'media', maxWidth: '100%' },
                 },
-                else: { type: 'we-text', children: [{ $: 'row[field.name]' }] },
+                else: {
+                  type: '$if',
+                  props: {
+                    condition: { $: "field.kind == 'url'" },
+                    then: {
+                      type: 'we-link',
+                      props: { href: { $: 'row[field.name]' }, target: '_blank' },
+                      children: [{ $: 'row[field.name]' }],
+                    },
+                    else: { type: 'we-text', children: [{ $: 'row[field.name]' }] },
+                  },
+                },
               },
             },
           },
@@ -158,6 +199,46 @@ const genericBody: SchemaNode = {
         then: {
           type: 'we-image',
           props: { src: { $: 'row[local.display.media]' }, fit: 'cover', r: 'media', width: '100%' },
+        },
+      },
+    },
+    /*
+      The picture a record points at rather than holds — a community model's photo is an ImageBlock,
+      related. Looked up by the id the relation holds; the first, where there are several.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.display.mediaRelation && row[local.display.mediaRelation]' },
+        then: {
+          type: 'Column',
+          props: { width: '100%' },
+          $queries: {
+            pictures: {
+              entity: 'ImageBlock',
+              where: { id: { $: 'row[local.display.mediaRelation]' } },
+              when: { $: 'row[local.display.mediaRelation]' },
+              limit: 1,
+            },
+          },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'count(local.pictures)' },
+                then: {
+                  type: 'we-image',
+                  props: {
+                    src: { $: 'first(local.pictures).src' },
+                    alt: { $: "first(local.pictures).altText ?? ''" },
+                    fit: 'cover',
+                    r: 'media',
+                    width: '100%',
+                  },
+                },
+              },
+            },
+          ],
         },
       },
     },
