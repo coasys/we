@@ -991,6 +991,18 @@ export class GraphEngine {
   }
 
   /**
+   * The fold holding this card, if a fold is what put it out of sight.
+   *
+   * So that something *beside* the graph asking for a card — an inspector opening one end of a
+   * connection, a link somebody sent — can be answered by revealing it rather than by selecting
+   * nothing. The outermost fold where several are nested, which is one step rather than the whole
+   * path: unfolding it leaves the card held by the next fold down, and asking again walks the rest.
+   */
+  foldHiding(id: string): string | undefined {
+    return this.fold.hidden.has(id) ? this.fold.owners.get(id) : undefined;
+  }
+
+  /**
    * How much of a card is left, while it travels — 1 at full size, 0 folded away.
    *
    * Read by the renderer to scale and fade the card, and by {@link clearanceFor} so the line to it

@@ -375,6 +375,36 @@ describe('GraphView folding', () => {
     expect([...host.querySelectorAll('.we-graph__edge-label')].map((el) => el.textContent?.trim())).toContain('1');
   });
 
+  it('opens the fold holding a card something else asked to show', async () => {
+    /*
+      The inspector case. A panel opens one end of a connection by writing the address, the canvas
+      follows it through `focus` — and if a fold is holding that card, clearing the selection would
+      leave the panel describing something nobody can see. So the fold is reported for opening, the
+      way clicking a search result opens the sections above it in an outline.
+    */
+    const seen: { recordId?: string; folded: boolean }[] = [];
+    mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      folded: ['parent'],
+      focus: 'child',
+      onNodeFold: (payload) => seen.push(payload),
+    });
+    await until(() => seen.length > 0);
+
+    // Once, not once per redraw: the fold set here is never actually changed, and a live graph
+    // redraws whenever anybody writes anything.
+    expect(seen).toEqual([
+      {
+        id: entityAddress('ds', 'TaskBlock', 'parent'),
+        recordId: 'parent',
+        recordType: 'TaskBlock',
+        folded: false,
+        count: 1,
+      },
+    ]);
+  });
+
   it('offers no fold control when nothing is listening for one', async () => {
     // The bargain every other gesture here makes: an affordance that could not do anything is worse
     // than none, so binding the handler is what puts the control on the card.

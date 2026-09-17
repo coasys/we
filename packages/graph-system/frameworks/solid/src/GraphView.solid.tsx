@@ -701,11 +701,28 @@ export function GraphView(props: GraphViewProps) {
    * line itself, but it is between the two things the line joins, which is what bringing a
    * connection into view is for.
    */
-  function focusTarget(recordId: string): { kind: 'node' | 'edge'; id: string; at: Point } | null {
+  function focusTarget(
+    recordId: string,
+  ): { kind: 'node' | 'edge'; id: string; at: Point } | { kind: 'folded'; id: string; owner: string } | null {
     const positions = engine.getPositions();
     for (const node of engine.store.nodes()) {
       const address = parseAddress(node.id);
       if (address?.kind !== 'entity' || address.id !== recordId) continue;
+      /*
+        Asked before the position, not after it — which is the difference between this working and
+        working except when it matters. A card is *held by a fold* from the moment the fold is made,
+        and it keeps a position for the two-tenths of a second it spends travelling into one: read
+        the position first and a focus arriving during that window selects a card on its way out of
+        sight, and then never looks again, because a focus is applied once per value.
+
+        Held is also a different answer from "not on this canvas", and wants the opposite response.
+        Something beside the graph has asked for this card — an inspector opening one end of a
+        connection, a link somebody sent — so clearing the selection would leave a panel describing
+        a card nobody can see. The fold is opened instead, exactly as clicking a search result opens
+        the sections above it in an outline.
+      */
+      const owner = engine.foldHiding(node.id);
+      if (owner) return { kind: 'folded', id: node.id, owner };
       const at = positions.get(node.id);
       if (at) return { kind: 'node', id: node.id, at: { x: at.x, y: at.y } };
     }
@@ -754,6 +771,40 @@ export function GraphView(props: GraphViewProps) {
   }
 
   /**
+   * The fold set, translated from records to nodes and handed to the engine.
+   *
+   * Re-run when the graph moves as well as when the prop does, which is what makes a fold *patient*:
+   * a canvas still loading, or one whose folded card arrives a second later from a live query, has no
+   * node to fold yet, and the fold is applied the moment there is one. The engine ignores a set it is
+   * already holding, so re-running on every redraw costs a comparison.
+   *
+   * Nothing is animated on the first application. A fold that arrives in a link is how the canvas
+   * *opens*, and cards travelling into a fold as the page appears would read as the canvas doing
+   * something to itself; a fold somebody presses is a movement they asked for and should see.
+   *
+   * **Before the focus effect below**, and that is an ordering rather than a coincidence: what the
+   * graph *shows* has to be settled before what is selected within it. The other way round, a focus
+   * arriving on the same frame as a fold selects a card that is about to be hidden — and a focus is
+   * applied once per value, so it never looks again.
+   */
+  let foldApplied = false;
+  createEffect(() => {
+    version();
+    const wanted = new Set(props.folded ?? []);
+    const nodeIds = untrack(() => {
+      if (!wanted.size) return [];
+      const ids: string[] = [];
+      for (const node of engine.store.nodes()) {
+        const address = parseAddress(node.id);
+        if (address?.kind === 'entity' && address.id && wanted.has(address.id)) ids.push(node.id);
+      }
+      return ids;
+    });
+    untrack(() => engine.setFolded(nodeIds, foldApplied ? foldTravel() : 0));
+    foldApplied = true;
+  });
+
+  /**
    * Apply `focus` — once per value, and as soon as the graph holds what it names.
    *
    * Reads `version()` so it runs again as the graph fills in: a line written a moment ago is not
@@ -776,16 +827,52 @@ export function GraphView(props: GraphViewProps) {
    * record is still missing must stay selected, not be swept away by the next redraw.
    */
   let clearedFor: string | undefined;
+  /** The fold last asked to open for this focus, so an interface that ignores it is asked once. */
+  let revealedFor: string | undefined;
   createEffect(() => {
     version();
     const recordId = props.focus;
     if (!recordId) {
       applied = undefined;
       clearedFor = undefined;
+      revealedFor = undefined;
       return;
     }
     if (recordId === applied) return;
     const target = untrack(() => focusTarget(recordId));
+
+    /*
+      Held by a fold: open the fold and let this run again.
+
+      Reported rather than unfolded here, because the fold set is the interface's — the graph does
+      not write it, the same way it does not write a position. One fold per pass, and the pass
+      repeats as the graph changes, so a card several folds deep is uncovered a level at a time;
+      each step removes an id from the set, so it terminates. Nothing to do where the interface has
+      no fold control, in which case this is a record that simply cannot be shown.
+    */
+    if (target?.kind === 'folded') {
+      /*
+        Asked once per fold, not once per redraw.
+
+        The interface is free to ignore this — a fold set that does not change leaves the card
+        exactly as hidden as it was — and a live graph redraws whenever anybody writes anything, so
+        without the guard an ignored request would be re-sent for as long as the focus stood. Keyed
+        on the pair, so a card several folds deep still asks about the next one down once the first
+        has opened.
+      */
+      const key = `${recordId}\u0000${target.owner}`;
+      if (props.onNodeFold && revealedFor !== key) {
+        revealedFor = key;
+        const at = parseAddress(target.owner);
+        props.onNodeFold({
+          id: target.owner,
+          folded: false,
+          count: engine.foldedCount(target.owner),
+          ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+        });
+      }
+      return;
+    }
 
     applyingFocus = true;
     try {
@@ -819,35 +906,6 @@ export function GraphView(props: GraphViewProps) {
       applyingFocus = false;
     }
     untrack(() => revealPoint(target.at));
-  });
-
-  /**
-   * The fold set, translated from records to nodes and handed to the engine.
-   *
-   * Re-run when the graph moves as well as when the prop does, which is what makes a fold *patient*:
-   * a canvas still loading, or one whose folded card arrives a second later from a live query, has no
-   * node to fold yet, and the fold is applied the moment there is one. The engine ignores a set it is
-   * already holding, so re-running on every redraw costs a comparison.
-   *
-   * Nothing is animated on the first application. A fold that arrives in a link is how the canvas
-   * *opens*, and cards travelling into a fold as the page appears would read as the canvas doing
-   * something to itself; a fold somebody presses is a movement they asked for and should see.
-   */
-  let foldApplied = false;
-  createEffect(() => {
-    version();
-    const wanted = new Set(props.folded ?? []);
-    const nodeIds = untrack(() => {
-      if (!wanted.size) return [];
-      const ids: string[] = [];
-      for (const node of engine.store.nodes()) {
-        const address = parseAddress(node.id);
-        if (address?.kind === 'entity' && address.id && wanted.has(address.id)) ids.push(node.id);
-      }
-      return ids;
-    });
-    untrack(() => engine.setFolded(nodeIds, foldApplied ? foldTravel() : 0));
-    foldApplied = true;
   });
 
   /**
