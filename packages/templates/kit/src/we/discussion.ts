@@ -47,7 +47,7 @@
  *   declare nothing. Two discussions in one tree would share them — put the second one behind a
  *   route or a modal, which is where a second conversation belongs anyway.
  */
-import { composerModal, emptyNote } from '@we/schema-kit';
+import { composerModal, confirmModal, emptyNote } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { commentThread } from '../lists/commentThread.ts';
@@ -58,6 +58,8 @@ import { activitySummary } from './signals.ts';
 const REPLY_TO = 'discussionReplyTo';
 /** The reply the thread is currently rooted at, or empty for the record itself. */
 const ROOT = 'discussionRoot';
+/** The reply whose delete is being confirmed, or empty. The same trick `REPLY_TO` uses. */
+const DELETING = 'discussionDeleting';
 
 export interface DiscussionSectionOptions {
   /** Context key of the record being discussed — `'row'`, `'link'`, `'card'`. */
@@ -117,8 +119,64 @@ function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
               } as SchemaNode,
             ]
           : [replyButton(as)]),
+        /*
+          Taking your own words back.
+
+          Your own only, which is a narrower rule than the one `EdgeDetail` applies to a drawn
+          connection — there, anybody may retract a claim the community's records carry, and the
+          deletion being authored is what holds it accountable. A reply is not a claim about the
+          records; it is somebody's sentence, and a neighbourhood being writable by every member is
+          a fact about the protocol rather than an invitation to edit each other's speech.
+
+          `ml: 0` because the Reply button above it already took the auto margin: the pair sits
+          together at the right end rather than at opposite ends of the row.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: `${as}.author == me.did` },
+            then: {
+              type: 'we-tooltip',
+              props: { content: 'Delete this reply' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'ghost',
+                    size: 'xs',
+                    square: true,
+                    color: 'danger-text',
+                    label: 'Delete this reply',
+                    onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                },
+              ],
+            },
+          },
+        },
       ],
     },
+    /*
+      The question, per reply, gated on this reply's id — so one local serves every level of the
+      thread, exactly as the composer's does.
+
+      It says what goes with it. A reply carries its own replies, and `deleteBlocks` follows
+      `we://comment` now, so deleting one three people answered takes those three answers too: a
+      dialog that said only "this cannot be undone" would be telling the truth and hiding the part
+      that matters. The sentence names the number, and says nothing about responses where there are
+      none rather than reading "and its 0 responses".
+    */
+    confirmModal({
+      open: { $: `local.${DELETING} == ${as}.id` },
+      close: { $setLocal: DELETING, value: '' },
+      title: 'Delete this reply?',
+      body: {
+        $: `count(${as}.comments) ? \`This reply, and the \${count(${as}.comments)} \${plural(count(${as}.comments), 'response', 'responses')} under it, will be permanently deleted.\` : 'This reply will be permanently deleted.'`,
+      },
+      confirmLabel: 'Delete',
+      confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: `${as}.id` }] },
+    }),
   ];
 }
 
@@ -132,6 +190,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
     $localState: {
       [REPLY_TO]: { type: 'string', initial: '' },
       [ROOT]: { type: 'string', initial: '' },
+      [DELETING]: { type: 'string', initial: '' },
     },
     $queries: {
       /*

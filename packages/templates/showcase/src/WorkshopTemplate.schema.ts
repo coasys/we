@@ -64,6 +64,7 @@ import {
   CHANGED,
   composerModal,
   discussionSection,
+  emptyNote,
   emptyState,
   field,
   formModal,
@@ -1810,7 +1811,19 @@ const connectionsSection: SchemaNode = {
 const reactionsSection: SchemaNode = {
   type: 'Column',
   props: { gap: '100', pt: '200', borderTop: '1px solid border', width: '100%' },
-  children: [sectionCaption('Reactions'), signalsSection({ record: 'row' })],
+  children: [
+    sectionCaption('Reactions'),
+    signalsSection({
+      record: 'row',
+      /*
+        A space arrives with no reactions at all — nothing seeds a heart on a community's behalf, and
+        that is the design rather than an omission. Without this the section was a caption over empty
+        space, which reads as something failing to load; the line is also the only place anybody
+        would learn that a space names its own.
+      */
+      empty: emptyNote('No reactions here yet — a space names its own in Settings → Vocabulary.'),
+    }),
+  ],
 };
 
 /**

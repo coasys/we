@@ -34,11 +34,35 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './signalTypes.ts';
 
+/**
+ * One type's signals, less the ones from agents this reader has muted.
+ *
+ * Muting already hides somebody's posts and their replies — `collectionFeed`, `mediaGrid` and
+ * `commentThread` all filter on `spaceStore.mutedDids` — and their reactions were the one thing that
+ * went on counting. That is the inconsistency worth removing rather than the harm: a mute is this
+ * reader's own view of a shared space, so it changes what *they* are shown and nothing about what
+ * anybody else sees or what is stored.
+ *
+ * Client-side, where `not` over a list means what it reads as. The same clause in a `$query` would
+ * be answered differently by the two backends — see `signalTypes.ts` for the longer version of that
+ * warning, which is the reason this filtering lives at the point of use at all.
+ */
+const MINE_AND_UNMUTED = (as: string) => `{ signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } }`;
+
 export interface SignalsSectionOptions {
   /** Context key of the record being reacted to — `'row'`, `'link'`, `'card'`. */
   record: string;
   /** Context key bound per signal type. Defaults to `'sig'`; change it inside another `$each` using that name. */
   as?: string;
+  /**
+   * What to draw where the community has defined no reactions at all. Omit for nothing.
+   *
+   * Worth passing on a surface with a heading — a caption reading "Reactions" over empty space is a
+   * section that looks broken, where one line saying where reactions come from is the only place
+   * anybody would learn that a space names its own. Nothing seeds a default type, deliberately: a
+   * space that has not said what reacting means here should not be given a heart on its behalf.
+   */
+  empty?: SchemaNode;
 }
 
 /**
@@ -49,8 +73,8 @@ export interface SignalsSectionOptions {
  * needs a control, and hiding it leaves a space whose vocabulary is unreachable from every surface
  * at once. A detail panel has the room a feed row does not.
  *
- * Renders nothing where the community has defined no types, which is correct rather than a gap: a
- * space that has not said what reacting means here should not be offered a heart on its behalf.
+ * Renders `empty`, or nothing, where the community has defined no types. Nothing is seeded on its
+ * behalf: a space that has not said what reacting means here should not be given a heart by default.
  * Retired types are left out through {@link OFFERED_SIGNAL_TYPES} — withdrawn from use, while the
  * counts they already carry go on resolving, which is what retiring means.
  */
@@ -60,6 +84,7 @@ export function signalsSection(opts: SignalsSectionOptions): SchemaNode {
     type: '$if',
     props: {
       condition: { $: HAS_OFFERED_SIGNAL_TYPES },
+      ...(opts.empty && { else: opts.empty }),
       then: {
         /*
           Wrapping, and a floor under its height.
@@ -80,7 +105,7 @@ export function signalsSection(opts: SignalsSectionOptions): SchemaNode {
                 type: 'SignalControl',
                 props: {
                   signalType: { $: as },
-                  signals: { $: `filter(${opts.record}.signals, { signalTypeId: ${as}.id })` },
+                  signals: { $: `filter(${opts.record}.signals, ${MINE_AND_UNMUTED(as)})` },
                   myDid: { $: 'me.did' },
                   onSignal: {
                     $action: 'spaceStore.upsertSignal',
@@ -125,7 +150,7 @@ export interface ActivitySummaryOptions {
  */
 export function activitySummary(opts: ActivitySummaryOptions): SchemaNode {
   const as = opts.as ?? 'sum';
-  const given = `filter(${opts.record}.signals, { signalTypeId: ${as}.id })`;
+  const given = `filter(${opts.record}.signals, ${MINE_AND_UNMUTED(as)})`;
   const replies = opts.replies !== false;
   /*
     Absent, not empty, for a record nobody has touched.
@@ -134,9 +159,8 @@ export function activitySummary(opts: ActivitySummaryOptions): SchemaNode {
     is still a flex child, and a parent's `gap` applies between children whether or not they have
     any height. Every card on a quiet board would have carried one row's worth of space for nothing.
   */
-  const anything = replies
-    ? `count(${opts.record}.signals) || count(${opts.record}.comments)`
-    : `count(${opts.record}.signals)`;
+  const reacted = `count(filter(${opts.record}.signals, { author: { not: spaceStore.mutedDids } }))`;
+  const anything = replies ? `${reacted} || count(${opts.record}.comments)` : reacted;
   const row: SchemaNode = {
     type: 'Row',
     props: {
