@@ -16,6 +16,18 @@ class FakeMediaStream {
   getTracks() {
     return [...this.#tracks];
   }
+  /*
+    Both by-kind readers, because both are asked. The mesh only ever adds and removes, but the store
+    asks a peer's stream whether it holds a live video track — that is what decides video-or-avatar
+    on every tile. Absent, the first test to put somebody on the roster died in `hasLiveVideo` rather
+    than in anything it was testing.
+  */
+  getVideoTracks() {
+    return this.#tracks.filter((track) => (track as { kind?: string }).kind === 'video');
+  }
+  getAudioTracks() {
+    return this.#tracks.filter((track) => (track as { kind?: string }).kind === 'audio');
+  }
   addTrack(track: unknown) {
     if (!this.#tracks.includes(track)) this.#tracks.push(track);
   }
