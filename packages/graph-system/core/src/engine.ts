@@ -1308,15 +1308,22 @@ export class GraphEngine {
       moved.
     */
     for (const id of this.fold.hidden) {
-      if (this.foldAnim.has(id)) continue;
-      // Measured on the way out, where both the card and the fold that swallowed it still have a
-      // place — see `foldedOffset`. The only moment it is knowable, and only the first time.
+      /*
+        Measured on the way out, where both the card and the fold that swallowed it still have a
+        place — see `foldedOffset`. The only moment it is knowable, and only the first time.
+
+        Measured for a card in mid-travel as well, which is why this comes before the `continue`: the
+        travel ends in `stepFold`, which deletes the position without coming back through here, so a
+        card that animated out would never have been measured at all — and then dragging the fold
+        carried nothing, on the one path every real fold takes.
+      */
       if (!this.foldedOffset.has(id)) {
         const at = positions.get(id);
         const owner = this.fold.owners.get(id);
         const root = owner ? positions.get(owner) : undefined;
         if (at && root) this.foldedOffset.set(id, { x: at.x - root.x, y: at.y - root.y });
       }
+      if (this.foldAnim.has(id)) continue;
       positions.delete(id);
     }
     this.positions = positions;

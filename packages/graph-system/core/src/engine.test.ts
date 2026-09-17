@@ -1781,6 +1781,33 @@ describe('GraphEngine folding', () => {
     expect(engine.foldedUnder('chain')).toEqual(carried);
   });
 
+  it('carries what it is holding after an animated fold, not only an instant one', async () => {
+    /*
+      The path every real fold takes. A travelling card's position is deleted when the travel ends,
+      which does not go through the place the offsets are measured — so measuring only the instant
+      case left the ordinary one carrying nothing, silently, and only when somebody dragged a fold
+      they had made a moment earlier.
+    */
+    vi.useFakeTimers();
+    try {
+      const engine = await folded();
+      const chain = engine.getPositions().get('chain')!;
+      const branch = engine.getPositions().get('branch')!;
+
+      engine.setFolded(['chain'], 200);
+      vi.advanceTimersByTime(300);
+      engine.pin('chain', { x: chain.x + 40, y: chain.y });
+
+      expect(engine.foldedUnder('chain').find((row) => row.id === 'branch')).toEqual({
+        id: 'branch',
+        x: branch.x + 40,
+        y: branch.y,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('travels, and is gone once it arrives', async () => {
     vi.useFakeTimers();
     try {
