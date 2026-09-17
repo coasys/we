@@ -29,6 +29,9 @@ import {
   CANVAS_KEY,
   CARD_FILL,
   CARD_KEY,
+  FOLD_COUNT,
+  FOLD_FROM_GRAPH,
+  FOLDED_CARDS,
   HIDDEN_KINDS,
   KIND_DEFAULTS,
   kindFill,
@@ -1797,5 +1800,56 @@ describe('putting a kind away from the canvas', () => {
     const workshop = showcase.workshopTemplate;
     const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
     expect(canvas).toContain(`"hiddenTypes":{"$":"${HIDDEN_KINDS}"}`);
+  });
+});
+
+describe('folding a card on the canvas', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+
+  /** What the address would hold after the graph reported a press on one card's fold control. */
+  const next = (fold: string, recordId: string, folded: boolean) => {
+    const action = FOLD_FROM_GRAPH as { args: [string, { $: string }] };
+    return run(action.args[1].$, { event: { recordId, folded }, routeStore: { params: { fold } } });
+  };
+
+  it('adds the card the graph folded, and takes it back out', () => {
+    // Real record ids, because they are URIs: a comma-joined list is only safe if none of them can
+    // contain a comma, and this is the test that would fail if that stopped being true.
+    const one = 'we://ds/uuid-one';
+    const two = 'we://ds/uuid-two';
+
+    expect(next('', one, true)).toBe(one);
+    expect(next(one, two, true)).toBe(`${one},${two}`);
+    expect(next(`${one},${two}`, one, false)).toBe(two);
+    // Unfolding the last one leaves a clean address rather than an empty parameter.
+    expect(next(two, two, false)).toBe('');
+  });
+
+  it('folds once, however many times the same card is reported', () => {
+    const one = 'we://ds/uuid-one';
+
+    expect(next(one, one, true)).toBe(one);
+  });
+
+  it('reads nothing at all as nothing folded', () => {
+    expect(run(FOLDED_CARDS, { routeStore: { params: {} } })).toEqual([]);
+    expect(run(FOLD_COUNT, { routeStore: { params: {} } })).toBe(0);
+  });
+
+  it('hands the folded cards to the canvas, and draws the lines a fold leaves behind', () => {
+    const canvas = JSON.stringify((showcase.workshopTemplate.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+    expect(canvas).toContain(`"folded":{"$":"${FOLDED_CARDS}"}`);
+    expect(canvas).toContain('"onNodeFold"');
+    // The summary line has to look unlike a connection somebody drew — see the canvas's edgeStyle.
+    expect(canvas).toContain('"when":{"type":"fold-bundle"}');
+    expect(canvas).toContain('"dashed":true');
   });
 });

@@ -99,6 +99,46 @@ export function toggleKindShown(kind: string): SchemaProp {
 }
 
 /**
+ * The cards a reader has **folded** — what hangs off each of them is off the canvas until it is
+ * unfolded. Held in the address for the reasons the lenses are, and one more: a fold is an
+ * arrangement of what you are reading, so a canvas you tidied and sent somebody should arrive
+ * tidied. Comma-separated record ids; absent folds nothing.
+ *
+ * Record ids carry colons and slashes and no commas, which is what makes a comma-joined list safe —
+ * the same reason `?card=` can hold one.
+ */
+export const FOLD_PARAM = 'fold';
+
+/** The folded cards, as a list — what the canvas hands to the graph. */
+export const FOLDED_CARDS = `split(routeStore.params.${FOLD_PARAM})`;
+
+/** How many cards are folded, for a reader who has lost track of one. */
+export const FOLD_COUNT = `count(${FOLDED_CARDS})`;
+
+/**
+ * Fold a card, or unfold it — from the graph's own report, which says which way it is going.
+ *
+ * `event.folded` rather than a test of the list here: the graph knows whether the control that was
+ * pressed said fold or unfold, and re-deriving it would be a second answer able to disagree with the
+ * one the reader saw on the button. Unfolding the last fold writes nothing at all, so a canvas
+ * nobody has folded has a clean address.
+ */
+export const FOLD_FROM_GRAPH: SchemaProp = {
+  $action: 'routeStore.setParam',
+  args: [
+    FOLD_PARAM,
+    {
+      $:
+        `join(event.folded ? distinct(${FOLDED_CARDS}, [event.recordId])` +
+        ` : ${FOLDED_CARDS}.filter(k, k != event.recordId), ',')`,
+    },
+  ],
+};
+
+/** Bring every folded card back — see `foldSection` for why this exists at all. */
+export const UNFOLD_ALL: SchemaProp = { $action: 'routeStore.setParam', args: [FOLD_PARAM, null] };
+
+/**
  * Turn one lens on or off, leaving the other as it is.
  *
  * Writes the parameter rather than a local, for the reason above. The result that equals the default
@@ -892,6 +932,56 @@ const suggestionsSection: SchemaNode = {
   ],
 };
 
+/**
+ * What is folded, and the way out of all of it at once.
+ *
+ * The one thing a fold needs that the card cannot provide. A folded card says what it is holding,
+ * which is enough when you can see the card — and a canvas is pannable, so the card you folded is
+ * routinely off screen, and then the only evidence is cards that are not there. Somebody who folded
+ * something ten minutes ago and cannot find a task should not have to hunt for the fold it went
+ * into. So the count is here too, where what-is-on-this-canvas is already explained, with one press
+ * that brings everything back.
+ *
+ * Absent when nothing is folded, rather than reading "0 folded": a row explaining a state nobody is
+ * in is a row every reader has to learn to ignore.
+ */
+const foldSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: FOLD_COUNT },
+    enterTransition: [
+      { type: 'reveal', duration: 200 },
+      { type: 'fade', duration: 150 },
+    ],
+    then: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      children: [
+        sectionLabel({
+          label: 'Folded',
+          help: 'A card can be folded from its header, which takes everything connected out from it off the canvas until it is unfolded. The card keeps a count of what it is holding, and the connections it hid come back as one line each, labelled with how many they stand for.',
+        }),
+        {
+          type: 'Row',
+          props: { ay: 'center', ax: 'between', gap: '300', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: [{ $: `${FOLD_COUNT} + ' ' + plural(${FOLD_COUNT}, 'card', 'cards') + ' folded'` }],
+            },
+            {
+              type: 'we-button',
+              props: { size: 'xs', variant: 'ghost', flexShrink: '0', onClick: UNFOLD_ALL },
+              children: ['Unfold all'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string; extracted: string }): SchemaNode {
   /*
     Two things have to be true for the key to mean anything: the canvas is the page on screen, and
@@ -976,6 +1066,9 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                     ],
                   },
                   suggestionsSection,
+                  // Beside the suggestions, because both sections answer "why can I not see
+                  // something" — one about drafts nobody has kept, one about cards a fold is holding.
+                  foldSection,
                   lensSection({
                     lens: 'kind',
                     label: 'Kinds',

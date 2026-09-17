@@ -1206,6 +1206,12 @@ export const contextData: ContextData = {
           optional: true,
         },
         { name: 'focus', type: 'string', optional: true },
+        { name: 'folded', type: 'string[]', optional: true },
+        {
+          name: 'onNodeFold',
+          type: '((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void)',
+          optional: true,
+        },
         {
           name: 'onDeleteSelection',
           type: '((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void)',

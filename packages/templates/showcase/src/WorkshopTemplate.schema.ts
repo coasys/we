@@ -91,6 +91,8 @@ import {
 } from './WorkshopCards.ts';
 import {
   CANVAS_FILL,
+  FOLD_FROM_GRAPH,
+  FOLDED_CARDS,
   HIDDEN_KINDS,
   keyPanel,
   kindFill,
@@ -2820,7 +2822,22 @@ const canvas: SchemaNode = {
       colour actually asked for, since an SVG marker paints in its own right rather than inheriting
       from the path that references it.
     */
-    edgeStyle: [{ style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true, color: { $: LINK_FILL } } }],
+    edgeStyle: [
+      { style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true, color: { $: LINK_FILL } } },
+      /*
+        The line a fold leaves behind, where what it hid was connected to something still on screen.
+
+        Dashed and thicker, with the count it stands for as its label — the graph mints one per
+        surviving neighbour and labels it with the weight. It has to look unlike a connection
+        somebody drew, because it is not one: it summarises several, nothing opens when it is
+        clicked, and drawing it in the same ink would make the canvas assert a relationship nobody
+        asserted. Same colour, so it still reads as part of this canvas's vocabulary.
+      */
+      {
+        when: { type: 'fold-bundle' },
+        style: { curve: 'straight', arrow: 'target', width: 3, dashed: true, showLabel: true, color: { $: LINK_FILL } },
+      },
+    ],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
     /*
@@ -2879,6 +2896,22 @@ const canvas: SchemaNode = {
       the last one lit.
     */
     focus: { $: 'routeStore.params.card' },
+    /*
+      The folded cards, from the address — and the press that folds one, back into it.
+
+      A fold takes everything connected out from a card off the canvas: a call's board produces a
+      task with three notes hanging off it and six related tasks, and after twenty minutes of
+      conversation the arrangement is unreadable without being able to put a cluster away. Held in
+      the address rather than on the placement, and that is the decision worth knowing: a fold is
+      *this reader's* view of a shared canvas, so folding is not something you do to everybody in the
+      call — and it travels in a link, so the canvas somebody sent you arrives tidied the way they
+      tidied it. See `FOLD_PARAM`.
+
+      The count stays on the card, and the key carries the total with a way to undo all of it, since
+      a canvas pans and the fold holding what you are looking for is routinely off screen.
+    */
+    folded: { $: FOLDED_CARDS },
+    onNodeFold: FOLD_FROM_GRAPH,
     /*
       The line, drawn — and written on the spot, with nothing filled in.
 
