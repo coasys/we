@@ -2951,10 +2951,16 @@ const canvas: SchemaNode = {
       the graph names a node `we-graph://entity/<dataset>/<type>/<id>` and a template has no operator
       that could take that apart.
     */
-    onNodeDragEnd: {
-      $action: 'recordStore.placeOnCanvas',
-      args: [CALL, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
-    },
+    /*
+      `dragOnCanvas` rather than `placeOnCanvas`, because a fold travels with its contents.
+
+      The whole payload rather than four values picked out of it: a folded card arrives carrying a
+      placement for each card hidden under it, and a schema cannot loop over a list whose length it
+      does not know — `$action` calls a method once. Without it, folding a cluster and carrying it
+      into a corner would scatter everything back where it was the moment you unfolded, which makes
+      a fold a way of hiding things rather than of tidying them.
+    */
+    onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [CALL, { $: 'event' }] },
     onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CALL, { $: 'event' }] },
     /*
       Routing a line by hand, written back — and binding these is what puts the handles on one.

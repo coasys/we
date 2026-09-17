@@ -338,6 +338,28 @@ export interface RecordStore {
    */
   placeOnCanvas: (canvas: string, nodeId: string, nodeType: string, x: number, y: number) => Promise<void>;
   /**
+   * Write where a drag left a card — and everything a **folded** card carried with it.
+   *
+   * Takes the graph's `onNodeDragEnd` payload whole, the way `resizeOnCanvas` takes `onNodeResize`'s,
+   * which is what lets one action cover both cases: an ordinary card is `placeOnCanvas` spelt
+   * differently, and a fold is that plus a placement per card hidden under it.
+   *
+   * It exists because a schema cannot loop. The carried cards arrive as a list whose length nothing
+   * knows in advance, and `$action` calls a method once — so "place this, and each of those" has to
+   * be one call. Without it, carrying a fold into a corner and unfolding it there scatters the
+   * contents back to where they were, which makes a fold a way of hiding rather than of tidying.
+   */
+  dragOnCanvas: (
+    canvas: string,
+    payload: {
+      recordId?: string;
+      recordType?: string;
+      x: number;
+      y: number;
+      carried?: { recordId: string; recordType: string; x: number; y: number }[];
+    },
+  ) => Promise<void>;
+  /**
    * Put something dragged in from elsewhere onto a canvas, where it landed.
    *
    * Takes the graph's `onDrop` payload as it arrives, the way `resizeOnCanvas` takes `onNodeResize`'s.
@@ -1231,6 +1253,37 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * One drag, written: the card that moved, plus whatever a fold was holding.
+   *
+   * Sequential rather than in parallel, and that is deliberate. Each placement is a read-then-write
+   * against the same canvas's children, so issuing them together would have every one of them read
+   * the state before any of the others wrote — which is exactly how a canvas ends up with two
+   * placements for one card. A fold holds a handful of cards, so the cost is a handful of round
+   * trips on a gesture that happens when somebody lets go of a mouse.
+   *
+   * A carried card whose write fails leaves the fold where it was dropped and that card where it
+   * was; `placeOnCanvas` says so once per failure. Better than the alternative of unwinding the
+   * lot, which would move the card back out from under the reader's cursor.
+   */
+  async function dragOnCanvas(
+    canvas: string,
+    payload: {
+      recordId?: string;
+      recordType?: string;
+      x: number;
+      y: number;
+      carried?: { recordId: string; recordType: string; x: number; y: number }[];
+    },
+  ): Promise<void> {
+    if (!payload?.recordId || !payload.recordType) return;
+    await placeOnCanvas(canvas, payload.recordId, payload.recordType, payload.x, payload.y);
+    for (const card of payload.carried ?? []) {
+      if (!card?.recordId || !card.recordType) continue;
+      await placeOnCanvas(canvas, card.recordId, card.recordType, card.x, card.y);
+    }
+  }
+
   /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
   const CARD_STYLE_FIELDS = ['width', 'height', 'contentScale', 'rotation', 'z', 'color', 'cardShape'] as const;
 
@@ -1824,6 +1877,7 @@ export function RecordStoreProvider(props: ParentProps) {
     createOnCanvas,
     createCardOnCanvas,
     placeOnCanvas,
+    dragOnCanvas,
     removeFromCanvas,
     pendingCardStyle,
     confirmPending,

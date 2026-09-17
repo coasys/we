@@ -289,7 +289,23 @@ export interface GraphViewProps {
    * stands for no record — a property, a literal, a synthetic cluster — which is also how a
    * template can tell that there is nothing to save.
    */
-  onNodeDragEnd?: (payload: { id: string; x: number; y: number; recordId?: string; recordType?: string }) => void;
+  onNodeDragEnd?: (payload: {
+    id: string;
+    x: number;
+    y: number;
+    recordId?: string;
+    recordType?: string;
+    /**
+     * What a folded card brought with it — every record hidden under it, at the place it now sits.
+     *
+     * Absent unless the card that was dragged is a fold holding something (see `folded`), so a
+     * consumer that ignores it behaves exactly as it did. A consumer that *writes* positions should
+     * write these too: otherwise carrying a fold across the canvas and unfolding it scatters the
+     * contents back to where they were, which makes a fold a way of hiding things rather than a way
+     * of tidying them.
+     */
+    carried?: { recordId: string; recordType: string; x: number; y: number }[];
+  }) => void;
   /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *

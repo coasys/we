@@ -1852,4 +1852,17 @@ describe('folding a card on the canvas', () => {
     expect(canvas).toContain('"when":{"type":"fold-bundle"}');
     expect(canvas).toContain('"dashed":true');
   });
+
+  it('lets a fold carry its contents when it is dragged', () => {
+    const canvas = JSON.stringify((showcase.workshopTemplate.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+    /*
+      The whole payload, and `dragOnCanvas` rather than `placeOnCanvas`. A folded card arrives
+      carrying a placement per card hidden under it, and a schema cannot loop — so picking four
+      values out of the payload would silently drop every carried card and unfolding in a corner
+      would scatter them back.
+    */
+    expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
+    expect(canvas).toContain('{"$":"event"}]');
+  });
 });

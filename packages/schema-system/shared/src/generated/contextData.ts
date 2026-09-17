@@ -1186,7 +1186,7 @@ export const contextData: ContextData = {
         { name: 'onSelectionChange', type: '((ids: string[]) => void)', optional: true },
         {
           name: 'onNodeDragEnd',
-          type: '((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void)',
+          type: '((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)',
           optional: true,
         },
         {
@@ -2328,6 +2328,7 @@ export const contextData: ContextData = {
         'cancelRecordForm',
         'saveRecord',
         'placeOnCanvas',
+        'dragOnCanvas',
         'dropOnCanvas',
         'bringIn',
         'updateRecordField',

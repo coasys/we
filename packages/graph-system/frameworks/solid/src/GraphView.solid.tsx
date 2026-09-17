@@ -540,11 +540,26 @@ export function GraphView(props: GraphViewProps) {
           break;
         case 'nodeDragEnd': {
           const at = parseAddress(event.node.id);
+          /*
+            A fold travels with its contents.
+
+            Without this, folding a cluster and carrying it into a corner scatters everything back
+            where it was the moment you unfold — which makes the fold a way of hiding things rather
+            than a way of tidying, and the difference is the whole reason to have one. The cards are
+            reported rather than written, like every other gesture here: where a position lives is
+            the interface's business.
+          */
+          const carried = engine.foldedUnder(event.node.id).flatMap((row) => {
+            const address = parseAddress(row.id);
+            if (address?.kind !== 'entity' || !address.id) return [];
+            return [{ recordId: address.id, recordType: address.type ?? '', x: row.x, y: row.y }];
+          });
           props.onNodeDragEnd?.({
             id: event.node.id,
             x: event.position.x,
             y: event.position.y,
             ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+            ...(carried.length ? { carried } : {}),
           });
           break;
         }

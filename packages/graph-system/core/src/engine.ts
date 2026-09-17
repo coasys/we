@@ -280,13 +280,16 @@ export class GraphEngine {
    */
   private foldableIds?: Set<string>;
   /**
-   * Where a hidden card was standing when it went.
+   * How far each hidden card sat from the fold holding it, captured as it went away.
    *
-   * Kept because a fold is a thing you tidy *with*: fold a cluster, move it into a corner, unfold it
-   * there. Without the last known position there is nothing to offset, and unfolding after a drag
-   * scatters the contents back to where they were before — see {@link foldedUnder}.
+   * Kept because a fold is a thing you tidy *with*: fold a cluster, carry it into a corner, unfold it
+   * there. An offset rather than a position, so it stays true however the fold moves and whoever
+   * moves it — a delta would need the drag's start, and a remembered coordinate would have to be
+   * re-remembered on every frame of one. Captured once and only once: the layout goes on reporting
+   * the card's stored place, which does not move when the fold does, so recomputing this would
+   * shrink the offset by exactly the distance the fold had travelled. See {@link foldedUnder}.
    */
-  private foldedAt = new Map<string, Point>();
+  private foldedOffset = new Map<string, Point>();
   /** Cards travelling between the two states, and how far along each is. See {@link stepFold}. */
   private foldAnim = new Map<string, { from: Point; to: Point; started: number; at: number; out: boolean }>();
   private foldTimer?: ReturnType<typeof setTimeout>;
@@ -498,7 +501,7 @@ export class GraphEngine {
         construction and is simply re-derived against whatever arrives.
       */
       this.foldAnim.clear();
-      this.foldedAt.clear();
+      this.foldedOffset.clear();
       this.status = { ...this.status, budgetReached: false };
       this.layoutWarnings = [];
 
@@ -937,11 +940,6 @@ export class GraphEngine {
       else this.foldAnim.delete(id);
     }
 
-    for (const id of this.fold.hidden) {
-      const at = before.get(id);
-      if (at) this.foldedAt.set(id, { x: at.x, y: at.y });
-    }
-
     if (this.foldAnim.size) this.stepFold();
     else this.notify('graph');
   }
@@ -1013,16 +1011,17 @@ export class GraphEngine {
    * contents around it, not back where they were. Cards with no remembered position are left out —
    * nothing useful can be said about where they should land.
    */
-  foldedUnder(id: string, dx: number, dy: number): { id: string; x: number; y: number }[] {
+  foldedUnder(id: string): { id: string; x: number; y: number }[] {
+    const root = this.positions.get(id);
+    if (!root) return [];
     const carried: { id: string; x: number; y: number }[] = [];
     for (const [nodeId, owner] of this.fold.owners) {
       if (owner !== id) continue;
-      const at = this.foldedAt.get(nodeId);
-      if (!at) continue;
-      const moved = { x: at.x + dx, y: at.y + dy };
-      // Remembered as moved, so a second drag is measured from where the first one left it.
-      this.foldedAt.set(nodeId, moved);
-      carried.push({ id: nodeId, ...moved });
+      const offset = this.foldedOffset.get(nodeId);
+      // No offset means the card was never on screen to measure one from — it arrived from a live
+      // query already under the fold. Left out rather than guessed at: it keeps the place it has.
+      if (!offset) continue;
+      carried.push({ id: nodeId, x: root.x + offset.x, y: root.y + offset.y });
     }
     return carried;
   }
@@ -1037,7 +1036,7 @@ export class GraphEngine {
   private recomputeFold(): void {
     this.fold = this.foldedIds.size ? foldGraph(this.foldedIds, this.store) : NO_FOLD;
     this.foldableIds = undefined;
-    for (const id of this.foldedAt.keys()) if (!this.fold.hidden.has(id)) this.foldedAt.delete(id);
+    for (const id of this.foldedOffset.keys()) if (!this.fold.hidden.has(id)) this.foldedOffset.delete(id);
   }
 
   /**
@@ -1296,7 +1295,18 @@ export class GraphEngine {
       keeps the position {@link stepFold} is writing, or a fold would snap the moment anything else
       moved.
     */
-    for (const id of this.fold.hidden) if (!this.foldAnim.has(id)) positions.delete(id);
+    for (const id of this.fold.hidden) {
+      if (this.foldAnim.has(id)) continue;
+      // Measured on the way out, where both the card and the fold that swallowed it still have a
+      // place — see `foldedOffset`. The only moment it is knowable, and only the first time.
+      if (!this.foldedOffset.has(id)) {
+        const at = positions.get(id);
+        const owner = this.fold.owners.get(id);
+        const root = owner ? positions.get(owner) : undefined;
+        if (at && root) this.foldedOffset.set(id, { x: at.x - root.x, y: at.y - root.y });
+      }
+      positions.delete(id);
+    }
     this.positions = positions;
     this.reindex();
     this.routeEdges();

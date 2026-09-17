@@ -1754,12 +1754,22 @@ describe('GraphEngine folding', () => {
     expect(engine.canFold('chain')).toBe(true);
   });
 
-  it('carries what it is holding when the fold is dragged', async () => {
+  it('carries what it is holding, wherever the fold has got to', async () => {
     const engine = await folded();
+    const chain = engine.getPositions().get('chain')!;
     const branch = engine.getPositions().get('branch')!;
     engine.setFolded(['chain'], 0);
 
-    const carried = engine.foldedUnder('chain', 50, -20);
+    // Where the contents are is answered against where the fold is *now*, so a fold that has not
+    // moved reports its contents exactly where they were.
+    expect(engine.foldedUnder('chain').find((row) => row.id === 'branch')).toEqual({
+      id: 'branch',
+      x: branch.x,
+      y: branch.y,
+    });
+
+    engine.pin('chain', { x: chain.x + 50, y: chain.y - 20 });
+    const carried = engine.foldedUnder('chain');
 
     expect(carried).toHaveLength(2);
     expect(carried.find((row) => row.id === 'branch')).toEqual({
@@ -1767,8 +1777,8 @@ describe('GraphEngine folding', () => {
       x: branch.x + 50,
       y: branch.y - 20,
     });
-    // A second drag is measured from where the first one left it, not from where the card started.
-    expect(engine.foldedUnder('chain', 50, 0).find((row) => row.id === 'branch')?.x).toBe(branch.x + 100);
+    // Idempotent: asking twice is the same answer, so a drag that reports twice cannot double it.
+    expect(engine.foldedUnder('chain')).toEqual(carried);
   });
 
   it('travels, and is gone once it arrives', async () => {
