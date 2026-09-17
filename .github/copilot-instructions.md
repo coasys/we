@@ -3174,7 +3174,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - problem — Why the call could not start or a device could not be reached, as a sentence to show, or null.
   - solo — Whether the spotlight has the stage to itself, with everyone else hidden.
   - tiles — One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.
-  - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture — looked up with find() so a tile never remounts.
+  - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.
 - Actions (`{ "$action": "modules.call.<name>" }`):
   - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
   - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
@@ -3184,6 +3184,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - joinAnchoredCall — Join the call already happening about the record whose id is given, or start one about it.
   - joinCall — Join a running call by its id, as liveCalls lists it, leaving any call this agent is in.
   - leave — Leave the call, releasing the camera, the microphone and every connection.
+  - reconnectPeer — Build one peer's connection again from scratch, without leaving the call.
   - returnToCall — Go back to the space the call is in; does nothing outside a call.
   - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.
   - startCall — Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.
@@ -3193,6 +3194,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
 - Parts: `call.anchoredCallButton`, `call.continueCallButton`, `call.startCallButton`, `call.tile`
 - Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
+- Settings: `iceServers` (string; deployment, space, agent) — ICE servers
 - Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean }
 
 ### Transcription (`transcribe`)

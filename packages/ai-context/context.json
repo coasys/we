@@ -7229,6 +7229,11 @@
           "doc": "Why the call could not start or a device could not be reached, as a sentence to show, or null."
         },
         {
+          "name": "reconnectPeer",
+          "kind": "action",
+          "doc": "Build one peer's connection again from scratch, without leaving the call."
+        },
+        {
           "name": "returnToCall",
           "kind": "action",
           "doc": "Go back to the space the call is in; does nothing outside a call."
@@ -7256,7 +7261,7 @@
         {
           "name": "tileStates",
           "kind": "state",
-          "doc": "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture — looked up with find() so a tile never remounts."
+          "doc": "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts."
         },
         {
           "name": "toggleAudio",
@@ -7306,7 +7311,15 @@
           "label": "Start call"
         }
       ],
-      "settings": [],
+      "settings": [
+        {
+          "key": "iceServers",
+          "label": "ICE servers",
+          "description": "Where calls look for NAT traversal, one per line — stun:host:port, or turn:user:password@host:port for a relay. Empty uses public STUN, which cannot connect every pair of networks. A JSON array of RTCIceServer objects is also accepted.",
+          "type": "string",
+          "levels": ["deployment", "space", "agent"]
+        }
+      ],
       "activities": {
         "call": {
           "id": "string",

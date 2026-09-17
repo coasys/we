@@ -300,6 +300,42 @@ const faceOf = (field: string) => ({ $: `find(modules.call.tileFaces, { id: tile
 const hasVideo = stateOf('hasPicture');
 
 /**
+ * What the chip in the corner of a tile says.
+ *
+ * A name where there is one, and otherwise what is happening instead of one — which is the whole
+ * point, because the case that produced an empty chip was a peer whose profile had not arrived
+ * *and* whose connection was still being made. Neither fact was reaching the person looking at it.
+ *
+ * The order is a ranking of usefulness, not of certainty. A repair in progress outranks a late
+ * profile, because "Reconnecting…" is the more useful thing to know about somebody whose name you
+ * were not going to read off this chip anyway. "Someone" is the floor: a peer who is connected,
+ * named nothing, and is doing nothing that needs explaining still deserves a word, or the chip
+ * collapses to an avatar with a blank beside it — which is what this replaced.
+ */
+const tileLabel = expr`tile.isSelf ? 'You'
+  : ${faceOf('name')} ? ${faceOf('name')}
+  : ${stateOf('retrying')} ? 'Reconnecting…'
+  : ${stateOf('failed')} ? 'Not connected'
+  : ${stateOf('connection')} != 'connected' ? 'Connecting…'
+  : 'Someone'`;
+
+/**
+ * What the connection badge says when you point at it.
+ *
+ * The one diagnostic that separates the two failures that look identical from outside: a pair whose
+ * handshake was lost, and a pair that cannot traverse its NAT. Nothing in the app could tell them
+ * apart before, which is why "it doesn't connect" had no next question — and the second one has a
+ * fix (a relay, in the `iceServers` setting) that the first one does not.
+ *
+ * `relay` is the interesting word: it means this pair only works *because* a TURN server is carrying
+ * it, so a deployment seeing it everywhere is a deployment whose relay is load-bearing. Nothing at
+ * all means no route was ever selected, which is the case where the setting is worth reading about.
+ */
+const transportTip = expr`${stateOf('transport')}
+  ? 'Connected over ' + ${stateOf('transport')} + (${stateOf('attempts')} ? ' · retried ' + ${stateOf('attempts')} : '')
+  : 'No route to this person yet. If this keeps happening on a call, this network may need a TURN relay.'`;
+
+/**
  * One participant: a picture the right shape, and everything that belongs on top of it.
  *
  * Two boxes rather than one, and the split is what fixed the overlays. The outer box is the grid
@@ -554,55 +590,88 @@ const tile: SchemaNode = {
                  * small tile: one absolutely positioned strip, laid out left to right, name first.
                  */
                 {
-                  type: '$if',
+                  /**
+                   * Whose tile this is, and what it is doing.
+                   *
+                   * Always rendered, which is the change. It used to be gated on
+                   * `tile.isSelf || name`, so a peer whose profile had not arrived — which is *every*
+                   * peer for the first seconds of a call, and any peer whose profile never resolves —
+                   * had no chip at all. The result read as a bug rather than as a delay: a wall of
+                   * faces where some of them are labelled and some are not, and the unlabelled ones
+                   * are exactly the ones you cannot identify from the picture.
+                   *
+                   * A name is never *absent* now, only late: `label` below falls back to what is
+                   * being done about the missing one.
+                   */
+                  type: 'we-badge',
                   props: {
-                    // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
-                    // Your own tile always has something to say, so it is exempt.
-                    condition: expr`tile.isSelf || ${faceOf('name')}`,
-                    then: {
-                      type: 'we-badge',
-                      props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
-                      children: [
-                        {
-                          /**
-                           * The small avatar appears only while video is playing.
-                           *
-                           * With the camera off the large avatar is already in the middle of the tile, and a
-                           * second copy of the same face two centimetres below it is noise. While video is
-                           * playing it is the opposite: a shared desktop carries no clue whose it is.
-                           */
-                          type: '$if',
+                    variant: 'neutral',
+                    size: 'xs',
+                    maxWidth: '150px',
+                    /*
+                      Tighter than the badge's own `xs` padding, which is `space-200` each side.
+
+                      A badge is normally a thing in a row of things and wants room around its word.
+                      This one sits on a picture, at a corner, beside other badges — the padding is
+                      the gap between it and its neighbours twice over, and at this size it read as a
+                      pill with a word lost in the middle of it. `gap` comes down with it so the
+                      avatar and the name stay one object rather than two.
+                    */
+                    px: '100',
+                    gap: '100',
+                  },
+                  children: [
+                    {
+                      /**
+                       * The small avatar appears only while video is playing.
+                       *
+                       * With the camera off the large avatar is already in the middle of the tile, and a
+                       * second copy of the same face two centimetres below it is noise. While video is
+                       * playing it is the opposite: a shared desktop carries no clue whose it is.
+                       */
+                      type: '$if',
+                      props: {
+                        condition: hasVideo,
+                        then: {
+                          type: 'we-avatar',
                           props: {
-                            condition: hasVideo,
-                            then: {
-                              type: 'we-avatar',
-                              props: {
-                                image: faceOf('image'),
-                                hash: faceOf('hash'),
-                                initials: faceOf('name'),
-                                size: 'xxs',
-                              },
-                            },
+                            image: faceOf('image'),
+                            hash: faceOf('hash'),
+                            initials: faceOf('name'),
+                            size: 'xxs',
                           },
                         },
-                        {
-                          type: 'we-text',
-                          // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
-                          // minimum is its content, so without it a long name pushes the badge wider than
-                          // its own `maxWidth` instead of being clipped.
-                          props: { variant: 'footnote', truncate: true, minWidth: '0' },
-                          // "You" rather than your own name: it is shorter, and it is the thing you are
-                          // actually looking for when scanning a grid for your own picture.
-                          children: [
-                            {
-                              type: '$if',
-                              props: { condition: { $: 'tile.isSelf' }, then: 'You', else: faceOf('name') },
-                            },
-                          ],
-                        },
-                      ],
+                      },
                     },
-                  },
+                    {
+                      type: 'we-text',
+                      // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
+                      // minimum is its content, so without it a long name pushes the badge wider than
+                      // its own `maxWidth` instead of being clipped.
+                      props: {
+                        variant: 'footnote',
+                        truncate: true,
+                        minWidth: '0',
+                        // A status is not a name, and should not be read as one.
+                        color: expr`${faceOf('name')} ? 'text' : 'text-muted'`,
+                        italic: expr`!${faceOf('name')} && !tile.isSelf`,
+                      },
+                      /*
+                        Name, else what is happening instead.
+
+                        The ladder matters as much as the words: a repair in progress outranks the
+                        profile being late, because "Reconnecting…" is the more useful thing to know
+                        about somebody whose name you were never going to read off this chip anyway.
+                        "Connecting…" is last before giving up and saying nothing, and it covers the
+                        case that produced the empty chip — a peer who is here, whose profile has not
+                        landed, and whose connection is still being made.
+
+                        "You" rather than your own name: it is shorter, and it is the thing you are
+                        actually looking for when scanning a grid for your own picture.
+                      */
+                      children: [tileLabel],
+                    },
+                  ],
                 },
                 {
                   type: '$if',
@@ -636,13 +705,85 @@ const tile: SchemaNode = {
                   props: {
                     condition: expr`${hasVideo} && ${stateOf('connection')} in ['connecting', 'disconnected', 'failed']`,
                     then: {
-                      type: 'we-badge',
-                      props: { variant: 'warning', size: 'xs' },
-                      children: [stateOf('connection')],
+                      type: 'we-tooltip',
+                      props: { content: transportTip, placement: 'top' },
+                      children: [
+                        {
+                          type: 'we-badge',
+                          props: { variant: 'warning', size: 'xs', px: '100' },
+                          children: [stateOf('connection')],
+                        },
+                      ],
                     },
                   },
                 },
               ],
+            },
+            /**
+             * Build this one connection again, without leaving the call.
+             *
+             * The honest bottom of the recovery ladder. Everything above it is the mesh repairing
+             * itself and most of the time that is enough; this is what is left when it is not, and
+             * the alternative people were using is leaving the call and rejoining — which takes
+             * everyone's picture down to fix one pair, and briefly tells the whole room you left.
+             *
+             * ## Why it is not gated on the connection looking broken
+             *
+             * A pair can be `connected` and useless: one-way audio, a picture that froze a minute
+             * ago, a stream that never recovered from a laptop lid. Offering the button only in the
+             * states WebRTC admits to would be the app insisting that what somebody is plainly
+             * looking at is fine. It is hidden on hover instead of on state — always reachable,
+             * never in the way.
+             *
+             * Deliberately *not* on your own tile: there is no connection to yourself, and a control
+             * that did nothing would be worse than no control.
+             */
+            {
+              type: '$if',
+              props: {
+                condition: expr`!tile.isSelf`,
+                then: {
+                  type: 'we-tooltip',
+                  props: { content: 'Reconnect to this person', placement: 'left' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'secondary',
+                        size: 'xs',
+                        square: true,
+                        position: 'absolute',
+                        top: '200',
+                        right: '200',
+                        /*
+                          Faint until it is wanted, and never invisible.
+
+                          Zero opacity was the obvious choice and is the wrong one here. A control at
+                          zero has to be revealed by hovering something *else* — the picture — which
+                          a schema cannot express: a tile has no hover state to read, and `$if` on
+                          one would remount a node over the video on every pointer move. Hovering the
+                          button itself cannot reveal it either, because you cannot point at what you
+                          cannot see.
+
+                          Faint solves the mechanics and is the better design anyway. This is the
+                          control for the moment everything else has failed, and a control nobody
+                          knows exists is one nobody reaches for then — so it sits quietly in the
+                          corner until it is pointed at, and stops being quiet the moment the
+                          connection is in trouble.
+                        */
+                        opacity: expr`${stateOf('failed')} || ${stateOf('retrying')} ? 1 : 0.35`,
+                        hoverProps: { opacity: 1 },
+                        focusProps: { opacity: 1 },
+                        // A repair already running is not a reason to hide it, but it is a reason to
+                        // say something is happening rather than inviting a second press.
+                        loading: stateOf('retrying'),
+                        onClick: { $action: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+                    },
+                  ],
+                },
+              },
             },
           ],
         },
@@ -1849,6 +1990,45 @@ export const callModule = defineModule({
     activities: {
       call: { id: 'string', anchor: 'object', media: 'object', record: 'string', continued: 'boolean' },
     },
+
+    /**
+     * Where to find NAT traversal.
+     *
+     * The module ships public STUN and no TURN, and that is a real ceiling rather than a
+     * conservative default: two peers behind symmetric NAT — ordinary on mobile carriers and
+     * corporate networks — cannot reach each other without a relay, however healthy the signalling
+     * is. It is also invisible, because a pair that cannot traverse looks exactly like a pair whose
+     * handshake was lost. (`modules.call.tileTransport` is what tells them apart.)
+     *
+     * A module still must not *require* infrastructure, so it does not ship a relay. What it had no
+     * business doing was making one unreachable. Flux had this right and WE lost it on the way over:
+     * Flux shipped `turn:relay.ad4m.dev` as a default and let anybody add their own in settings. That
+     * relay is decommissioned now, which argues against shipping a default and not at all against the
+     * setting — a deployment that runs a relay declares it in its seed, and a community or a person
+     * who has one can say so without waiting for a release.
+     *
+     * Three levels and no `agent-in-space`: which relay reaches you is a fact about your network, not
+     * about the room you are in.
+     *
+     * Deliberately `string` rather than `secret`. TURN credentials are commonly ephemeral and
+     * shared — Flux's were literally `openrelay`/`openrelay` in a constants file — and a `secret` is
+     * agent-level only, which would take the deployment and space levels away. A relay whose
+     * credentials are worth protecting should mint short-lived ones, which is a property of the
+     * relay rather than of this field.
+     */
+    settings: [
+      {
+        key: 'iceServers',
+        label: 'ICE servers',
+        description:
+          'Where calls look for NAT traversal, one per line — stun:host:port, or ' +
+          'turn:user:password@host:port for a relay. Empty uses public STUN, which cannot connect ' +
+          'every pair of networks. A JSON array of RTCIceServer objects is also accepted.',
+        type: 'string',
+        default: '',
+        levels: ['deployment', 'space', 'agent'],
+      },
+    ],
   },
 
   // ── The one piece that is code ───────────────────────────────────────────

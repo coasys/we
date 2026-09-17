@@ -10,6 +10,8 @@
 import { markAction, markState, storeSurface } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_ICE_SERVERS } from './mesh';
+import { parseCallMessage } from './protocol';
 import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
 /**
@@ -160,6 +162,7 @@ describe('what a template may reach', () => {
       'toggleSolo',
       'setArrangement',
       'dismissProblem',
+      'reconnectPeer',
     ];
     for (const name of states) expect(surface[name]?.kind, name).toBe('state');
     for (const name of actions) expect(surface[name]?.kind, name).toBe('action');
@@ -265,13 +268,15 @@ describe('transport and device lifetime', () => {
    * unregistering during a call — which a hot reload does — dropped the only reference to the live
    * peer connections and the media stream, leaving the camera on with nothing able to close it.
    */
-  function callable(options: { unicast?: string; personal?: boolean } = {}) {
+  function callable(options: { unicast?: string; personal?: boolean; settings?: Record<string, string> } = {}) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
     };
 
     let disposed = 0;
+    /** Everything the store put on the signalling channel, so the warm-up send can be asserted on. */
+    const published: unknown[] = [];
     const scope = {
       capabilities: {
         unicast: options.unicast ?? 'emulated',
@@ -279,9 +284,22 @@ describe('transport and device lifetime', () => {
         coalesce: true,
         confidential: false,
       },
-      channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+      channel: () => ({ publish: (payload: unknown) => void published.push(payload), onMessage: () => () => {} }),
       dispose: () => (disposed += 1),
     };
+
+    /** The `RTCConfiguration` each peer connection was built with — where the ICE settings land. */
+    const configs: RTCConfiguration[] = [];
+
+    /**
+     * Who presence says is in the call.
+     *
+     * A connection exists per *peer*, so nothing about a peer connection can be asserted on until
+     * somebody else is in the room: with an empty roster the mesh is built and then has nothing to
+     * build a connection for. `joinedBy` below fills this in and re-runs the reconcile effect, which
+     * is what a heartbeat would have done.
+     */
+    let roster: { agentId: string; activities: { type: string; id: string }[] }[] = [];
 
     const disposers: Array<() => void> = [];
     let created = 0;
@@ -300,12 +318,13 @@ describe('transport and device lifetime', () => {
       acquires is the one stream a listening module ever hears, so a join must publish it and a leave
       must publish `null` — the contract `audioSource` used to meet by string key.
     */
-    const published: (MediaStream | null)[] = [];
+    const publishedMedia: (MediaStream | null)[] = [];
     const mic = fakeMicStream();
     const store = createCallStore({
       signal,
       state: markState,
       action: markAction,
+      settings: () => options.settings ?? {},
       effect: (fn: () => void) => {
         effects.push(fn);
         fn();
@@ -328,16 +347,34 @@ describe('transport and device lifetime', () => {
       // Exactly the kernels the manifest names, as the host would hand them over.
       kernels: {
         ephemeral: () => (options.personal ? null : scope),
-        presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+        presence: { peers: () => roster, setActivity: () => {}, clearActivity: () => {} },
         records: { create: async () => `rec-${++created}` },
-        peerConnection: { create: () => ({}) as RTCPeerConnection },
+        peerConnection: {
+          create: (configuration?: RTCConfiguration) => {
+            configs.push(configuration ?? {});
+            /*
+              Enough of a connection for the mesh to set one up without complaining.
+
+              It used to be `{}`, which was fine only because no test here ever put a second person
+              in the call — so nothing was ever built. The mesh reports a failed `addTransceiver`
+              rather than throwing, so an empty object does not fail a test; it just fills the run
+              with errors about a connection the test never meant to exercise. Negotiation itself is
+              `mesh.test.ts`'s subject, against a fake that models the state machine.
+            */
+            return {
+              addTransceiver: () => ({ sender: { replaceTrack: async () => {} } }),
+              close: () => {},
+              connectionState: 'new',
+            } as unknown as RTCPeerConnection;
+          },
+        },
         media: {
           getUserMedia: async () => mic,
           getDisplayMedia: async () => {
             throw new Error('no screen here');
           },
-          publish: (stream: MediaStream | null) => void published.push(stream),
-          input: () => published.at(-1) ?? null,
+          publish: (stream: MediaStream | null) => void publishedMedia.push(stream),
+          input: () => publishedMedia.at(-1) ?? null,
         },
       },
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
@@ -345,11 +382,18 @@ describe('transport and device lifetime', () => {
     return {
       store,
       mic,
-      published,
+      configs,
+      signalling: published,
+      published: publishedMedia,
       scopeDisposals: () => disposed,
       recordsCreated: () => created,
       disposers,
       removeDataset: (uri: string) => notifyRemoved?.(uri),
+      /** Somebody else joins the call this store is in, and the roster catches up. */
+      joinedBy: (agentId: string) => {
+        roster = [...roster, { agentId, activities: [{ type: 'call', id: store.callId() ?? '' }] }];
+        for (const run of effects) run();
+      },
       signOut: () => {
         me = null;
         for (const run of effects) run();
@@ -547,6 +591,97 @@ describe('transport and device lifetime', () => {
 
     expect(store.callId()).toBeNull();
     expect(scopeDisposals()).toBe(1);
+  });
+  describe('where a call looks for NAT traversal', () => {
+    /**
+     * The ceiling this removes is real and was invisible: with STUN alone, two peers behind
+     * symmetric NAT — ordinary on mobile carriers and corporate networks — cannot reach each other
+     * at all, and the failure is indistinguishable from a lost handshake.
+     *
+     * The module still ships no relay, because a module that requires infrastructure is a module
+     * that has stopped being local-first. What it had no business doing was making one unreachable.
+     */
+    it('uses the servers a deployment configured', async () => {
+      const { store, configs, joinedBy } = callable({
+        settings: { iceServers: 'turn:alice:s3cret@relay.example.org:3478' },
+      });
+
+      await store.startCall();
+      await Promise.resolve();
+      joinedBy('did:peer');
+
+      expect(configs[0]?.iceServers).toEqual([
+        { urls: 'turn:relay.example.org:3478', username: 'alice', credential: 's3cret' },
+      ]);
+    });
+
+    it('falls back to its own when the setting is empty or unreadable', async () => {
+      // Unreadable must degrade to the default and never to "no call can connect" — the value is
+      // read on the way into a call, so a typo in a settings box is otherwise a broken app.
+      for (const iceServers of ['', 'not a stun server at all']) {
+        const { store, configs, joinedBy } = callable({ settings: { iceServers } });
+        await store.startCall();
+        await Promise.resolve();
+        joinedBy('did:peer');
+        expect(configs[0]?.iceServers).toEqual(DEFAULT_ICE_SERVERS);
+      }
+    });
+
+    it('gathers candidates before anybody asks for them', async () => {
+      // ICE otherwise starts gathering at `setLocalDescription`, so the STUN round trip is spent
+      // inside the handshake rather than while the permission prompt is still on screen.
+      const { store, configs, joinedBy } = callable();
+      await store.startCall();
+      await Promise.resolve();
+      joinedBy('did:peer');
+      expect(configs[0]?.iceCandidatePoolSize).toBe(1);
+    });
+  });
+
+  it('warms the signalling channel before the handshake needs it', async () => {
+    /*
+      The AD4M adapter measures the *first* broadcast on a freshly joined neighbourhood at eighteen
+      seconds, and every send after it at tens of milliseconds. Until now the message that paid that
+      was the opening SDP offer, so a call's handshake could sit unsent for most of twenty seconds
+      while both peers waited on each other — which is why the *start* of a call is the part that
+      misbehaves, and why several rounds of leaving and rejoining make it settle down.
+    */
+    const { store, signalling } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    // Something went first, and it is not signalling: `parseCallMessage` rejects a payload with no
+    // `kind`, so every peer drops it. It has to be a real publish to be worth anything, and it has
+    // to mean nothing to anybody who receives it.
+    expect(signalling.length).toBeGreaterThan(0);
+    expect(parseCallMessage(signalling[0])).toBeNull();
+  });
+
+  it('reconnects one peer without touching the rest of the call', async () => {
+    // The alternative people were left with is leaving and rejoining, which takes everyone's picture
+    // down to fix one pair — and, because a roster is presence, briefly tells the room you left.
+    const { store } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+    const id = store.callId();
+
+    store.reconnectPeer('did:someone');
+
+    expect(store.callId()).toBe(id);
+    expect(store.active()).toBe(true);
+  });
+
+  it('refuses to reconnect your own tile, which is not a connection', async () => {
+    // A no-op in the mesh either way; refused here so `retrying` cannot light up on a tile that
+    // nothing is going to repair.
+    const { store } = callable();
+    await store.startCall();
+    await Promise.resolve();
+
+    expect(() => store.reconnectPeer('did:test:me')).not.toThrow();
+    expect(store.tileStates().every((tile: { retrying: boolean }) => !tile.retrying)).toBe(true);
   });
 });
 

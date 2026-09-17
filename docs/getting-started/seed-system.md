@@ -55,6 +55,36 @@ also the top-to-bottom order of the rail. Reordering it for tidiness rearranges
 the interface. The rail sorts rather than reshuffling on load order, so the
 result is stable; it is simply this list's order.
 
+### `settings`
+
+What this deployment believes each capability's settings should start as, keyed by module id
+and then by setting key:
+
+```json
+"settings": {
+  "call": {
+    "iceServers": "stun:stun.l.google.com:19302\nturn:USER:PASSWORD@turn.example.org:3478"
+  }
+}
+```
+
+This is the **least specific** of the four levels — a community, and then an agent, can still
+decide differently where the module's declaration allows it (see
+`docs/architecture/capabilities-and-surfaces.md`). It is the right place for a fact about the
+deployment rather than about any one space.
+
+**`call.iceServers` is the one worth knowing about**, because the thing it fixes is otherwise
+invisible. WE's calls ship with public STUN and no TURN relay, and two peers behind symmetric
+NAT — ordinary on mobile carriers and corporate networks — cannot reach each other without one.
+It does not look like a missing relay from inside the app; it looks like a peer who never
+finishes connecting, and only that pair is affected, so the same call works for everybody else.
+(Hovering a tile's connection badge says which it is: `relay` means TURN is carrying that pair,
+and nothing at all means no route was found.)
+
+A module cannot _ship_ a relay — infrastructure somebody has to run is not a module's to
+require — so a deployment that runs one says so here. One URL per line, or a JSON array of
+`RTCIceServer` objects if that is the shape your relay provider hands you.
+
 ### `elements`
 
 Custom elements from libraries the deployment bundles — a chart, a rating, a map — which

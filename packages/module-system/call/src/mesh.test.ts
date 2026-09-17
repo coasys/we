@@ -13,7 +13,15 @@
 import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createCallMesh } from './mesh';
+import {
+  createCallMesh,
+  DISCONNECT_GRACE_MS,
+  HANDSHAKE_GRACE_MS,
+  MAX_RECOVERY_ATTEMPTS,
+  RECOVERY_INTERVAL_MS,
+  type RecoveryRung,
+  type SignallingChannel,
+} from './mesh';
 import { CALL_PROTOCOL_VERSION, parseCallMessage, recordCallId } from './protocol';
 
 // ── A fake RTCPeerConnection ────────────────────────────────────────────────
@@ -110,6 +118,20 @@ class FakePeerConnection {
     this.candidates.push(candidate);
   }
 
+  /** How many ICE restarts this connection was asked for — the cheapest rung of the ladder. */
+  restartIceCalls = 0;
+  restartIce() {
+    this.restartIceCalls += 1;
+    // A real restart re-gathers and renegotiates, which is the whole point of preferring it.
+    this.queueNegotiation();
+  }
+
+  /** What `transportOf` reads. Empty unless a test says otherwise. */
+  stats: Record<string, unknown>[] = [];
+  async getStats() {
+    return new Map(this.stats.map((report) => [report.id as string, report]));
+  }
+
   close() {
     this.closed = true;
   }
@@ -118,9 +140,42 @@ class FakePeerConnection {
   emitCandidate(candidate: RTCIceCandidateInit) {
     this.onicecandidate?.({ candidate: { toJSON: () => candidate } });
   }
+
+  /** Test helper: drive the connection state the recovery ladder reads. */
+  setConnectionState(state: RTCPeerConnectionState) {
+    this.connectionState = state;
+    this.onconnectionstatechange?.();
+  }
 }
 
-function makeMesh(bus: InMemoryBus, dataset: object, selfId: string, callId: string) {
+interface MeshOptions {
+  /** ICE servers to hand the mesh, so what reaches the connection can be asserted on. */
+  iceServers?: RTCIceServer[];
+  /**
+   * Swallow an outgoing message instead of publishing it — a lossy transport, which is what the
+   * real one is. Mutable so a test can lose the opening handshake and then let the repair through.
+   */
+  drop?: (payload: unknown) => boolean;
+}
+
+/**
+ * A clock the tests move by hand.
+ *
+ * The recovery ladder is defined in seconds and a test that waited them out would take a minute and
+ * be flaky besides. Nothing here sleeps: `advance` moves the clock and `mesh.tick()` is the sweep.
+ */
+function makeClock() {
+  let at = 1_000;
+  return { now: () => at, advance: (ms: number) => (at += ms) };
+}
+
+function makeMesh(
+  bus: InMemoryBus,
+  dataset: object,
+  selfId: string,
+  callId: string,
+  options: MeshOptions & { now?: () => number } = {},
+) {
   const port = createInMemoryEphemeralPort(bus, selfId);
   const scope = port(dataset);
   if (!scope) throw new Error('expected a scope');
@@ -128,22 +183,67 @@ function makeMesh(bus: InMemoryBus, dataset: object, selfId: string, callId: str
   const connections: FakePeerConnection[] = [];
   const streams: Map<string, MediaStream>[] = [];
   const errors: { context: string; error: unknown }[] = [];
+  const recoveries: { peerId: string; rung: RecoveryRung; attempts: number }[] = [];
+  const configs: RTCConfiguration[] = [];
+  const sent: unknown[] = [];
+
+  const underlying = scope.channel('rtc', { coalesce: false });
+  const watchers = new Set<(result: { ok: boolean; ms: number }) => void>();
+  underlying.onPublishResult?.((result) => watchers.forEach((cb) => cb(result)));
+
+  /*
+    Wrapped rather than replaced, so everything the in-memory port does still happens.
+
+    `drop` models the transport's actual failure, which is the part worth getting right: a lost
+    message is one the executor **accepted** and no peer received. That is precisely what
+    `reliability: 'send-acked'` promises and the whole of what it promises. Reporting a *failure*
+    instead would be a different bug — the mesh treats an unreported send as still in flight and
+    would rightly refuse to repair around it forever.
+  */
+  const channel: SignallingChannel = {
+    publish(payload, to) {
+      sent.push(payload);
+      if (options.drop?.(payload)) {
+        watchers.forEach((cb) => cb({ ok: true, ms: 0 }));
+        return;
+      }
+      underlying.publish(payload, to);
+    },
+    onMessage: (cb) => underlying.onMessage(cb),
+    onPublishResult: (cb) => {
+      watchers.add(cb);
+      return () => watchers.delete(cb);
+    },
+  };
 
   const mesh = createCallMesh({
     callId,
     selfId,
-    channel: scope.channel('rtc', { coalesce: false }),
-    createPeerConnection: () => {
+    channel,
+    iceServers: options.iceServers,
+    now: options.now,
+    // No timer: every test drives `tick()` itself, so a sweep never fires between an act and its
+    // assertion. The interval is exercised by its own test below.
+    sweepMs: 0,
+    createPeerConnection: (configuration) => {
+      configs.push(configuration);
       const pc = new FakePeerConnection();
       connections.push(pc);
       return pc as unknown as RTCPeerConnection;
     },
     onRemoteStreamsChanged: (s) => streams.push(s),
+    onPeerRecovery: (peerId, attempt) => recoveries.push({ peerId, ...attempt }),
     onError: (context, error) => errors.push({ context, error }),
   });
 
-  return { mesh, connections, streams, errors };
+  /** The connection currently serving a pair — the last one built, after any rebuilds. */
+  const live = () => connections[connections.length - 1];
+
+  return { mesh, connections, streams, errors, recoveries, configs, sent, live };
 }
+
+/** Everything the mesh published, narrowed to one message kind. */
+const kinds = (sent: unknown[]) => sent.map((payload) => (payload as { kind?: string }).kind);
 
 /** Let queued microtasks and promise chains settle. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -387,6 +487,579 @@ describe('call mesh', () => {
     await settle();
 
     expect(alice.errors).toEqual([]);
+  });
+});
+
+describe('an unordered transport', () => {
+  /**
+   * The channel dispatches sends concurrently and the port's own capabilities say
+   * `reliability: 'send-acked'` — so a candidate overtaking the description it belongs to is not a
+   * race to be defended against, it is the ordinary case. It used to be thrown away: `addIceCandidate`
+   * throws with no remote description, and the mesh caught that and moved on.
+   */
+  let bus: InMemoryBus;
+  const dataset = { id: 'space-1' };
+  const callId = recordCallId('rec-abc');
+
+  beforeEach(() => {
+    bus = new InMemoryBus();
+  });
+
+  const offerFrom = (from: string) => ({
+    v: CALL_PROTOCOL_VERSION,
+    call: callId,
+    to: 'did:alice',
+    kind: 'description' as const,
+    description: { type: 'offer' as const, sdp: `${from}-offer` },
+  });
+
+  const candidateFrom = (candidate: string) => ({
+    v: CALL_PROTOCOL_VERSION,
+    call: callId,
+    to: 'did:alice',
+    kind: 'ice' as const,
+    candidate: { candidate },
+  });
+
+  it('holds candidates that arrive before the description, and applies them after', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:aaron']);
+    await settle();
+
+    // Three candidates overtake the offer they belong to.
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', candidateFrom('a'));
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', candidateFrom('b'));
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', candidateFrom('c'));
+    await settle();
+
+    // Nothing applied and, crucially, nothing lost or reported as an error.
+    expect(alice.live().candidates).toEqual([]);
+    expect(alice.errors).toEqual([]);
+
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', offerFrom('did:aaron'));
+    await settle();
+
+    // All three, in the order they were sent: a candidate is not optional, it is a route that may
+    // be the only one that works.
+    expect(alice.live().candidates.map((c) => c.candidate)).toEqual(['a', 'b', 'c']);
+    expect(alice.errors).toEqual([]);
+  });
+
+  it('does not hold candidates without bound, for a peer whose description never comes', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:aaron']);
+    await settle();
+
+    for (let n = 0; n < 500; n += 1) {
+      bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', candidateFrom(`c${n}`));
+    }
+    await settle();
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', offerFrom('did:aaron'));
+    await settle();
+
+    // Bounded, and it kept the *earliest* — a full gathering round is what matters, and host
+    // candidates come first and are the ones most likely to connect.
+    expect(alice.live().candidates.length).toBeLessThanOrEqual(64);
+    expect(alice.live().candidates[0]?.candidate).toBe('c0');
+  });
+
+  it('applies signalling one message at a time', async () => {
+    /*
+      Two descriptions delivered in the same tick used to run concurrently: each awaits
+      `setRemoteDescription`, so the collision test read `makingOffer` and `signalingState` at a
+      moment that was already stale, and the two could be applied out of order. The queue is what
+      makes the state machine a state machine.
+    */
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:aaron']);
+    await settle();
+
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', offerFrom('first'));
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', {
+      ...offerFrom('second'),
+      description: { type: 'offer' as const, sdp: 'second-offer' },
+    });
+    await settle();
+    await settle();
+
+    // The later one is what the connection ends up on, and nothing threw on the way.
+    expect(alice.live().remoteDescription?.sdp).toBe('second-offer');
+    expect(alice.errors).toEqual([]);
+  });
+});
+
+describe('recovering a pair that did not connect', () => {
+  let bus: InMemoryBus;
+  const dataset = { id: 'space-1' };
+  const callId = recordCallId('rec-abc');
+
+  beforeEach(() => {
+    bus = new InMemoryBus();
+  });
+
+  it('resends a description that was lost, rather than rebuilding the connection', async () => {
+    /*
+      The deadlock, end to end, and the reason any of this exists.
+
+      Alice is impolite ('did:alice' < 'did:bob'), so on a collision she ignores Bob's offer and
+      expects her own to win. Her own is the one the transport drops. Both then wait forever:
+      `connectionState` never reaches `failed`, so nothing was even reportable — the tile spun
+      "Connecting…" for the rest of the call, and leaving and rejoining was the only way out.
+    */
+    const clock = makeClock();
+    let losing = true;
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, {
+      now: clock.now,
+      drop: (payload) => losing && (payload as { kind?: string }).kind === 'description',
+    });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, { now: clock.now });
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+    await settle();
+
+    // Deadlocked exactly as described: Alice never heard an answer, Bob never heard an offer he
+    // could use, and neither connection is anywhere near `failed`.
+    expect(alice.live().signalingState).toBe('have-local-offer');
+    expect(alice.live().remoteDescription).toBeNull();
+
+    // The transport recovers, and the sweep notices the handshake never finished.
+    losing = false;
+    clock.advance(HANDSHAKE_GRACE_MS + 1);
+    alice.mesh.tick();
+    await settle();
+    await settle();
+    await settle();
+
+    expect(alice.recoveries.map((r) => r.rung)).toEqual(['resend']);
+    // The connection was never rebuilt — nothing was wrong with it, only with the message.
+    expect(alice.connections).toHaveLength(1);
+    expect(bob.live().remoteDescription?.type).toBe('offer');
+    expect(alice.live().signalingState).toBe('stable');
+    expect(alice.errors).toEqual([]);
+    expect(bob.errors).toEqual([]);
+  });
+
+  it('resends the answer when that is the half that was lost', async () => {
+    /*
+      The other direction of the same failure, and the one the first version of this ladder missed.
+
+      When the *answer* is dropped, the answerer has a remote description and believes it is done
+      while the offerer is still waiting — so a rung gated on "we never got a remote description"
+      skipped straight past the cheap fix and rebuilt both connections to recover one message.
+      Nothing is wrong with either peer connection here.
+    */
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    // Bob answers, and his answer never arrives. He is polite, so his deadline is the doubled one.
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, {
+      now: clock.now,
+      drop: (payload) => (payload as { kind?: string }).kind === 'description',
+    });
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+    await settle();
+
+    // Bob heard the offer and answered it; Alice heard nothing back.
+    expect(bob.live().remoteDescription?.type).toBe('offer');
+    expect(bob.live().localDescription?.type).toBe('answer');
+    expect(alice.live().remoteDescription).toBeNull();
+
+    clock.advance(HANDSHAKE_GRACE_MS * 2 + 1);
+    bob.mesh.tick();
+    await settle();
+
+    expect(bob.recoveries.map((r) => r.rung)).toEqual(['resend']);
+    expect(bob.connections).toHaveLength(1);
+  });
+
+  it('resends a description once, then escalates rather than repeating it', async () => {
+    // A peer that did not act on the same description twice is not a peer waiting for a third copy.
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, {
+      now: clock.now,
+      drop: (payload) => (payload as { kind?: string }).kind === 'description',
+    });
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+
+    clock.advance(HANDSHAKE_GRACE_MS + 1);
+    alice.mesh.tick();
+    await settle();
+    clock.advance(RECOVERY_INTERVAL_MS + 1);
+    alice.mesh.tick();
+    await settle();
+    await settle();
+
+    expect(alice.recoveries.map((r) => r.rung)).toEqual(['resend', 'rebuild']);
+  });
+
+  it('restarts ICE when a connected pair fails, before throwing anything away', async () => {
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, { now: clock.now });
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+    await settle();
+
+    alice.live().setConnectionState('connected');
+    alice.live().setConnectionState('failed');
+    await settle();
+
+    clock.advance(RECOVERY_INTERVAL_MS + 1);
+    alice.mesh.tick();
+    await settle();
+
+    // The rung the W3C's own perfect-negotiation example includes and this file did not: the peer
+    // connection, its transceivers and its DTLS session all survive, and only the route is re-gathered.
+    expect(alice.live().restartIceCalls).toBe(1);
+    expect(alice.recoveries.map((r) => r.rung)).toEqual(['ice-restart']);
+    expect(alice.connections).toHaveLength(1);
+  });
+
+  it('gives a disconnected pair a shorter grace, since it often comes back by itself', async () => {
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, { now: clock.now });
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+    await settle();
+
+    alice.live().setConnectionState('connected');
+    alice.live().setConnectionState('disconnected');
+
+    clock.advance(DISCONNECT_GRACE_MS - 1);
+    alice.mesh.tick();
+    expect(alice.live().restartIceCalls).toBe(0);
+
+    clock.advance(2);
+    alice.mesh.tick();
+    await settle();
+    expect(alice.live().restartIceCalls).toBe(1);
+  });
+
+  it('rebuilds the pair, and says so, once the cheaper rungs have not worked', async () => {
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, { now: clock.now });
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+    await settle();
+
+    // A pair that connected, so there is a remote description and nothing to resend — but whose
+    // `restartIce` the host does not implement. Straight to the last rung.
+    alice.live().setConnectionState('connected');
+    alice.live().setConnectionState('failed');
+    (alice.live() as { restartIce?: unknown }).restartIce = undefined;
+
+    clock.advance(RECOVERY_INTERVAL_MS + 1);
+    alice.mesh.tick();
+    await settle();
+    await settle();
+
+    expect(alice.recoveries.map((r) => r.rung)).toEqual(['rebuild']);
+    expect(alice.connections).toHaveLength(2);
+    expect(alice.connections[0].closed).toBe(true);
+    // And the peer is told, or it would be left holding a connection to a session that is gone.
+    expect(kinds(alice.sent)).toContain('reset');
+    expect(bob.connections).toHaveLength(2);
+  });
+
+  it('answers a reset without sending one back', async () => {
+    // Two peers each answering a reset with a reset is a loop with no floor, and it would run for
+    // as long as the call did.
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:bob', {
+      v: CALL_PROTOCOL_VERSION,
+      call: callId,
+      to: 'did:alice',
+      kind: 'reset',
+    });
+    await settle();
+    await settle();
+
+    expect(alice.connections).toHaveLength(2);
+    expect(kinds(alice.sent)).not.toContain('reset');
+  });
+
+  it('stops repairing after a few attempts, so a spinner is not a promise', async () => {
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    for (let n = 0; n < MAX_RECOVERY_ATTEMPTS + 3; n += 1) {
+      clock.advance(HANDSHAKE_GRACE_MS + RECOVERY_INTERVAL_MS + 1);
+      alice.mesh.tick();
+      await settle();
+    }
+
+    // A pair that has failed a full ladder is behind a NAT that needs TURN or on a network that is
+    // down, and a fifth attempt is not persistence. Stopping lets the tile say so.
+    expect(alice.recoveries.length).toBe(MAX_RECOVERY_ATTEMPTS);
+  });
+
+  it('lets the impolite peer repair first, and the polite one wait', async () => {
+    const clock = makeClock();
+    // Alice is impolite for this pair; Bob is polite. Neither ever hears from the other.
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now, drop: () => true });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, { now: clock.now, drop: () => true });
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+
+    clock.advance(HANDSHAKE_GRACE_MS + 1);
+    alice.mesh.tick();
+    bob.mesh.tick();
+    await settle();
+
+    // Two peers restarting ICE at each other is the glare problem one layer up, and this pair
+    // already has a deterministic way to pick one of them.
+    expect(alice.recoveries).toHaveLength(1);
+    expect(bob.recoveries).toHaveLength(0);
+
+    // The polite side is not merely passive, though — it covers the case the impolite side cannot
+    // see, where that peer has no slot for this pair at all and so notices nothing.
+    clock.advance(HANDSHAKE_GRACE_MS + 1);
+    bob.mesh.tick();
+    await settle();
+    expect(bob.recoveries).toHaveLength(1);
+  });
+
+  it('waits while a send is still outstanding, rather than piling onto a stalled transport', async () => {
+    /*
+      The distinction the whole ladder turns on. An offer that has not been delivered and an offer
+      that was lost look identical from here — and the AD4M adapter measures the *first* broadcast on
+      a fresh neighbourhood at eighteen seconds. Repairing that one adds sends to the executor that is
+      the reason nothing has moved.
+    */
+    const clock = makeClock();
+    const results: ((r: { ok: boolean; ms: number }) => void)[] = [];
+    let published = 0;
+
+    const channel: SignallingChannel = {
+      publish: () => (published += 1),
+      onMessage: () => () => {},
+      onPublishResult: (cb) => {
+        results.push(cb);
+        return () => {};
+      },
+    };
+
+    const mesh = createCallMesh({
+      callId,
+      selfId: 'did:alice',
+      channel,
+      now: clock.now,
+      sweepMs: 0,
+      createPeerConnection: () => new FakePeerConnection() as unknown as RTCPeerConnection,
+    });
+
+    mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    const duringHandshake = published;
+    expect(duringHandshake).toBeGreaterThan(0);
+
+    clock.advance(HANDSHAKE_GRACE_MS * 4);
+    mesh.tick();
+    await settle();
+
+    // Nothing added while the offer is unaccounted for.
+    expect(published).toBe(duringHandshake);
+
+    // The transport reports, so now the silence means something.
+    results.forEach((cb) => cb({ ok: true, ms: 18_000 }));
+    await settle();
+    mesh.tick();
+    await settle();
+
+    expect(published).toBeGreaterThan(duringHandshake);
+    mesh.close();
+  });
+
+  it('forgets a pair’s failures once it connects', async () => {
+    // The budget bounds one failure, not a session: a call that drops and recovers twice must not
+    // arrive at the ceiling while nothing is wrong.
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    clock.advance(HANDSHAKE_GRACE_MS + 1);
+    alice.mesh.tick();
+    await settle();
+    expect(alice.recoveries).toHaveLength(1);
+
+    alice.live().setConnectionState('connected');
+    alice.live().setConnectionState('failed');
+
+    for (let n = 0; n < MAX_RECOVERY_ATTEMPTS; n += 1) {
+      clock.advance(RECOVERY_INTERVAL_MS + 1);
+      alice.mesh.tick();
+      await settle();
+    }
+
+    // Four more after the reset, rather than three more before hitting a ceiling it had already
+    // spent one attempt against.
+    expect(alice.recoveries).toHaveLength(1 + MAX_RECOVERY_ATTEMPTS);
+  });
+
+  it('reconnects one peer on request, whatever the connection claims to be', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    const bob = makeMesh(bus, dataset, 'did:bob', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+    await settle();
+
+    // Deliberately healthy: whether a connection is bad enough is a judgement the person watching it
+    // makes better than `connectionState` does.
+    alice.live().setConnectionState('connected');
+    alice.mesh.reconnect('did:bob');
+    await settle();
+    await settle();
+
+    expect(alice.connections).toHaveLength(2);
+    expect(alice.connections[0].closed).toBe(true);
+    expect(kinds(alice.sent)).toContain('reset');
+    // And the other end starts from the same place, rather than holding a session that is gone.
+    expect(bob.connections).toHaveLength(2);
+  });
+
+  it('does nothing when asked to reconnect someone who is not in the call', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    alice.mesh.reconnect('did:nobody');
+    await settle();
+
+    expect(alice.connections).toHaveLength(1);
+    expect(kinds(alice.sent)).not.toContain('reset');
+  });
+
+  it('repairs one pair per sweep', async () => {
+    // A call whose network has just come back has every pair due at once, and rebuilding all of them
+    // in one tick is a burst of offers onto the transport that made them fail.
+    const clock = makeClock();
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    alice.mesh.setRoster(['did:alice', 'did:bob', 'did:carol', 'did:dave']);
+    await settle();
+
+    clock.advance(HANDSHAKE_GRACE_MS + 1);
+    alice.mesh.tick();
+    await settle();
+
+    expect(alice.recoveries).toHaveLength(1);
+  });
+});
+
+describe('what a call is told about its own connections', () => {
+  let bus: InMemoryBus;
+  const dataset = { id: 'space-1' };
+  const callId = recordCallId('rec-abc');
+
+  beforeEach(() => {
+    bus = new InMemoryBus();
+  });
+
+  it('uses the ICE servers it is given, and its own when given none', async () => {
+    const mine = [{ urls: 'turn:relay.example.org:3478', username: 'u', credential: 'p' }];
+    const configured = makeMesh(bus, dataset, 'did:alice', callId, { iceServers: mine });
+    configured.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    expect(configured.configs[0].iceServers).toEqual(mine);
+
+    const bare = makeMesh(bus, dataset, 'did:zoe', callId);
+    bare.mesh.setRoster(['did:zoe', 'did:bob']);
+    await settle();
+    expect(bare.configs[0].iceServers?.[0]).toMatchObject({
+      urls: expect.arrayContaining(['stun:stun.l.google.com:19302']),
+    });
+  });
+
+  it('says how the media is actually reaching the other end', async () => {
+    /*
+      The one fact that separates "this pair needs a relay" from "this pair's handshake was lost",
+      which are otherwise the same spinner. `relay` means it only works because a TURN server is
+      carrying it; nothing at all means nothing connected.
+    */
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    alice.live().stats = [
+      { id: 'pair-1', type: 'candidate-pair', state: 'failed', localCandidateId: 'cand-1' },
+      { id: 'pair-2', type: 'candidate-pair', state: 'succeeded', localCandidateId: 'cand-2' },
+      { id: 'cand-1', type: 'local-candidate', candidateType: 'host' },
+      { id: 'cand-2', type: 'local-candidate', candidateType: 'relay' },
+    ];
+
+    expect(await alice.mesh.transportOf('did:bob')).toBe('relay');
+    expect(await alice.mesh.transportOf('did:nobody')).toBeNull();
+  });
+
+  it('answers nothing rather than guessing when no pair has succeeded', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    alice.live().stats = [{ id: 'pair-1', type: 'candidate-pair', state: 'in-progress', localCandidateId: 'cand-1' }];
+    expect(await alice.mesh.transportOf('did:bob')).toBeNull();
+  });
+
+  it('sweeps on its own timer when it is given one', async () => {
+    // Every other test drives `tick()` by hand, which would leave the one line that actually makes
+    // this run in production untested.
+    const port = createInMemoryEphemeralPort(bus, 'did:alice');
+    const scope = port(dataset);
+    if (!scope) throw new Error('expected a scope');
+
+    const clock = makeClock();
+    const recoveries: RecoveryRung[] = [];
+    const mesh = createCallMesh({
+      callId,
+      selfId: 'did:alice',
+      channel: scope.channel('rtc', { coalesce: false }),
+      now: clock.now,
+      sweepMs: 1,
+      createPeerConnection: () => new FakePeerConnection() as unknown as RTCPeerConnection,
+      onPeerRecovery: (_peerId, attempt) => recoveries.push(attempt.rung),
+    });
+
+    mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    clock.advance(HANDSHAKE_GRACE_MS + 1);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(recoveries.length).toBeGreaterThan(0);
+    mesh.close();
+
+    // And the timer goes with the mesh, or a closed call keeps sweeping for the life of the tab.
+    const after = recoveries.length;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(recoveries).toHaveLength(after);
   });
 });
 
