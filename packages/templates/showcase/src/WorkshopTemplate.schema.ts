@@ -4590,11 +4590,19 @@ export const workshopTemplate: TemplateSchema = {
     canvasRoute,
     kanbanRoute,
     calendarRoute,
-    {
-      path: '*',
-      type: 'Column',
-      props: { flex: '1', ax: 'center', ay: 'center', p: '600' },
-      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['No such page.'] }],
-    },
+    /*
+      An address this template has no screen for goes to the canvas, rather than saying so.
+
+      This drew "No such page." and stopped there, which is a dead end with no way out of it but the
+      switcher — and the addresses that land here are not typos. They are a section's address under a
+      template that has no sections (`/space/<id>/about`, from a link sent before the space switched
+      to this template, or from anywhere in the app that still names one), and the host's redirect
+      deliberately leaves a self-routing template's addresses alone, so nothing else was going to move
+      them.
+
+      Relative, like the index redirect above and for the same reason — and it resolves against the
+      space, not against the unmatched address, however many segments that address has.
+    */
+    { path: '*', redirect: './canvas' },
   ],
 };
