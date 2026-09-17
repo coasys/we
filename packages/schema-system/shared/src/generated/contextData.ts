@@ -1186,7 +1186,7 @@ export const contextData: ContextData = {
         { name: 'onSelectionChange', type: '((ids: string[]) => void)', optional: true },
         {
           name: 'onNodeDragEnd',
-          type: '((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void)',
+          type: '((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)',
           optional: true,
         },
         {
@@ -1206,6 +1206,12 @@ export const contextData: ContextData = {
           optional: true,
         },
         { name: 'focus', type: 'string', optional: true },
+        { name: 'folded', type: 'string[]', optional: true },
+        {
+          name: 'onNodeFold',
+          type: '((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void)',
+          optional: true,
+        },
         {
           name: 'onDeleteSelection',
           type: '((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void)',
@@ -2322,6 +2328,7 @@ export const contextData: ContextData = {
         'cancelRecordForm',
         'saveRecord',
         'placeOnCanvas',
+        'dragOnCanvas',
         'dropOnCanvas',
         'bringIn',
         'updateRecordField',

@@ -91,6 +91,9 @@ import {
 } from './WorkshopCards.ts';
 import {
   CANVAS_FILL,
+  FOLD_FROM_GRAPH,
+  FOLD_QUERY,
+  FOLDED_CARDS,
   HIDDEN_KINDS,
   keyPanel,
   kindFill,
@@ -189,7 +192,7 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     that spelt only the call would turn the lens back to its default on every change of call.
   */
   $action: 'routeStore.navigate',
-  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}\`` }],
+  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}\`` }],
 });
 
 /** Look at a call, wherever you are. */
@@ -265,7 +268,7 @@ const NAV = [
  * switch that spelt its query without it would silently put the colours back to the default.
  */
 const navPath = {
-  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}\``,
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}\``,
 };
 
 /**
@@ -2820,7 +2823,22 @@ const canvas: SchemaNode = {
       colour actually asked for, since an SVG marker paints in its own right rather than inheriting
       from the path that references it.
     */
-    edgeStyle: [{ style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true, color: { $: LINK_FILL } } }],
+    edgeStyle: [
+      { style: { curve: 'smooth', arrow: 'target', width: 2, showLabel: true, color: { $: LINK_FILL } } },
+      /*
+        The line a fold leaves behind, where what it hid was connected to something still on screen.
+
+        Dashed and thicker, with the count it stands for as its label — the graph mints one per
+        surviving neighbour and labels it with the weight. It has to look unlike a connection
+        somebody drew, because it is not one: it summarises several, nothing opens when it is
+        clicked, and drawing it in the same ink would make the canvas assert a relationship nobody
+        asserted. Same colour, so it still reads as part of this canvas's vocabulary.
+      */
+      {
+        when: { type: 'fold-bundle' },
+        style: { curve: 'straight', arrow: 'target', width: 3, dashed: true, showLabel: true, color: { $: LINK_FILL } },
+      },
+    ],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
     /*
@@ -2880,6 +2898,22 @@ const canvas: SchemaNode = {
     */
     focus: { $: 'routeStore.params.card' },
     /*
+      The folded cards, from the address — and the press that folds one, back into it.
+
+      A fold takes everything connected out from a card off the canvas: a call's board produces a
+      task with three notes hanging off it and six related tasks, and after twenty minutes of
+      conversation the arrangement is unreadable without being able to put a cluster away. Held in
+      the address rather than on the placement, and that is the decision worth knowing: a fold is
+      *this reader's* view of a shared canvas, so folding is not something you do to everybody in the
+      call — and it travels in a link, so the canvas somebody sent you arrives tidied the way they
+      tidied it. See `FOLD_PARAM`.
+
+      The count stays on the card, and the key carries the total with a way to undo all of it, since
+      a canvas pans and the fold holding what you are looking for is routinely off screen.
+    */
+    folded: { $: FOLDED_CARDS },
+    onNodeFold: FOLD_FROM_GRAPH,
+    /*
       The line, drawn — and written on the spot, with nothing filled in.
 
       `connectNodesNow` rather than `connectNodes`, which is the knowledge map's answer and stays it:
@@ -2918,10 +2952,16 @@ const canvas: SchemaNode = {
       the graph names a node `we-graph://entity/<dataset>/<type>/<id>` and a template has no operator
       that could take that apart.
     */
-    onNodeDragEnd: {
-      $action: 'recordStore.placeOnCanvas',
-      args: [CALL, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
-    },
+    /*
+      `dragOnCanvas` rather than `placeOnCanvas`, because a fold travels with its contents.
+
+      The whole payload rather than four values picked out of it: a folded card arrives carrying a
+      placement for each card hidden under it, and a schema cannot loop over a list whose length it
+      does not know — `$action` calls a method once. Without it, folding a cluster and carrying it
+      into a corner would scatter everything back where it was the moment you unfolded, which makes
+      a fold a way of hiding things rather than of tidying them.
+    */
+    onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [CALL, { $: 'event' }] },
     onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CALL, { $: 'event' }] },
     /*
       Routing a line by hand, written back — and binding these is what puts the handles on one.

@@ -8,6 +8,11 @@
  * - **Exploration** — {@link GraphStore}, {@link ExpansionState}, {@link GraphEngine}. Expanders,
  *   expansion state, reference-counted collapse, bundling, budgets.
  *
+ * {@link foldGraph} sits with the scene rather than with exploration, which is why it is not part of
+ * {@link ExpansionState}: folding a card on a canvas is a reader hiding what is *already loaded*,
+ * where expanding is a graph fetching what it has not got. Same two rules — never take a card
+ * somebody else is holding, and say what went away — asked of the edges instead of of provenance.
+ *
  * A canvas built on this uses the scene and none of the exploration; a knowledge map uses both. That
  * is the split that stops a canvas dragging in expansion state it has no use for, and stops undo and
  * marquee selection leaking into an explorer that will never want them.
@@ -57,6 +62,8 @@ export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
 export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';
 export type { CollapseResult } from './expansion';
+export { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, wouldFold } from './fold';
+export type { FoldResult } from './fold';
 export { PluginRegistry } from './registry';
 export type { GraphPlugins } from './registry';
 export { SpatialIndex } from './spatial';

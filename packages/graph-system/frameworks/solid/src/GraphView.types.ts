@@ -289,7 +289,23 @@ export interface GraphViewProps {
    * stands for no record — a property, a literal, a synthetic cluster — which is also how a
    * template can tell that there is nothing to save.
    */
-  onNodeDragEnd?: (payload: { id: string; x: number; y: number; recordId?: string; recordType?: string }) => void;
+  onNodeDragEnd?: (payload: {
+    id: string;
+    x: number;
+    y: number;
+    recordId?: string;
+    recordType?: string;
+    /**
+     * What a folded card brought with it — every record hidden under it, at the place it now sits.
+     *
+     * Absent unless the card that was dragged is a fold holding something (see `folded`), so a
+     * consumer that ignores it behaves exactly as it did. A consumer that *writes* positions should
+     * write these too: otherwise carrying a fold across the canvas and unfolding it scatters the
+     * contents back to where they were, which makes a fold a way of hiding things rather than a way
+     * of tidying them.
+     */
+    carried?: { recordId: string; recordType: string; x: number; y: number }[];
+  }) => void;
   /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
@@ -420,6 +436,57 @@ export interface GraphViewProps {
    * card sitting under a floating panel counts as off screen and is brought out from under it.
    */
   focus?: string;
+  /**
+   * Records whose cards are **folded**: everything hanging off each of them is hidden, and the card
+   * says how much.
+   *
+   * The reading counterpart of `expansion`, and a different question from it. Expansion is about
+   * resolution — how much of the graph is fetched at all — where a fold hides part of what is
+   * already here, so folding costs no query, moves nothing that stays, and unfolding puts every card
+   * back exactly where it was. On a canvas, where position is the work, that distinction is the
+   * whole feature: a fold has to be able to tidy the board without rearranging it.
+   *
+   * **Record ids, like `focus`**, and for the same reason: a template has no operator that could
+   * build `we-graph://entity/<dataset>/<type>/<id>`, and it already holds the id. An id the graph
+   * does not hold is ignored rather than refused, so a fold outliving a deleted card leaves the rest
+   * of the fold alone.
+   *
+   * Which cards go away is worked out from the connections, pointing outward — see `foldGraph` in
+   * `@we/graph-core`. Two consequences worth knowing, because both are deliberate:
+   *
+   * - **A card a second, unfolded card still points at stays.** Folding must not take something
+   *   somebody else is holding, or the canvas shows a line running to nothing.
+   * - **A connection that crossed the boundary comes back as one aggregate line** from the folded
+   *   card, labelled with how many it stands for. A fold that quietly dropped it would be a canvas
+   *   showing an isolated card where there were six related ones. Those lines carry no record, so
+   *   `onEdgeClick` finds nothing behind them — they are a summary, not a claim.
+   *
+   * Hold this in something shareable. It is view state — what a reader is looking at rather than
+   * anything about the space — so WE's canvas keeps it in the address, which makes a folded canvas
+   * a thing you can send somebody and something a reload comes back to.
+   */
+  folded?: string[];
+  /**
+   * The fold control on a card was pressed — `folded` says which way.
+   *
+   * Binding it is what puts the control on a card at all, the same bargain `onNodeResize` and
+   * `onEdgeCreate` make: a graph nobody is listening to offers no affordance that would do nothing.
+   * The graph writes nothing itself — where the fold set is kept is the interface's business — so a
+   * handler that does not put the id into `folded` is a button that visibly does nothing.
+   *
+   * Offered only where it would take something away, which the graph works out and the interface
+   * cannot: a card whose only child a second parent is holding folds to nothing, and a control that
+   * promised otherwise would be worse than none. `count` is how many cards the press is about to
+   * hide, or — unfolding — how many it is about to bring back.
+   */
+  onNodeFold?: (payload: {
+    id: string;
+    recordId?: string;
+    recordType?: string;
+    /** The state being asked for, not the state it was in. */
+    folded: boolean;
+    count: number;
+  }) => void;
   /**
    * The delete key, pressed while the graph holds focus and something is selected.
    *
