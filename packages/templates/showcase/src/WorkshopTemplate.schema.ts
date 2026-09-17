@@ -92,6 +92,7 @@ import {
 import {
   CANVAS_FILL,
   FOLD_FROM_GRAPH,
+  FOLD_QUERY,
   FOLDED_CARDS,
   HIDDEN_KINDS,
   keyPanel,
@@ -191,7 +192,7 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     that spelt only the call would turn the lens back to its default on every change of call.
   */
   $action: 'routeStore.navigate',
-  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}\`` }],
+  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}\`` }],
 });
 
 /** Look at a call, wherever you are. */
@@ -267,7 +268,7 @@ const NAV = [
  * switch that spelt its query without it would silently put the colours back to the default.
  */
 const navPath = {
-  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}\``,
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}\``,
 };
 
 /**

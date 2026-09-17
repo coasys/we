@@ -135,6 +135,19 @@ export const FOLD_FROM_GRAPH: SchemaProp = {
   ],
 };
 
+/**
+ * The fold, ready to append to a query string the template builds — empty when nothing is folded.
+ *
+ * The same job `LENS_QUERY` does, for the same reason: every navigation this template makes spells
+ * its query out in full, and an explicit `?` drops whatever the address held. Without this, going to
+ * the board to look something up and coming back would quietly unfold everything — which is most of
+ * the value of holding the fold in the address in the first place.
+ *
+ * Ids from another call are no trouble: a fold naming a card this canvas does not hold is ignored,
+ * so carrying the parameter across a change of call costs a long address and nothing else.
+ */
+export const FOLD_QUERY = `\${routeStore.params.${FOLD_PARAM} ? '&${FOLD_PARAM}=' + routeStore.params.${FOLD_PARAM} : ''}`;
+
 /** Bring every folded card back — see `foldSection` for why this exists at all. */
 export const UNFOLD_ALL: SchemaProp = { $action: 'routeStore.setParam', args: [FOLD_PARAM, null] };
 

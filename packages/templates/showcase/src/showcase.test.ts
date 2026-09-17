@@ -31,6 +31,7 @@ import {
   CARD_KEY,
   FOLD_COUNT,
   FOLD_FROM_GRAPH,
+  FOLD_QUERY,
   FOLDED_CARDS,
   HIDDEN_KINDS,
   KIND_DEFAULTS,
@@ -1851,6 +1852,23 @@ describe('folding a card on the canvas', () => {
     // The summary line has to look unlike a connection somebody drew — see the canvas's edgeStyle.
     expect(canvas).toContain('"when":{"type":"fold-bundle"}');
     expect(canvas).toContain('"dashed":true');
+  });
+
+  it('carries the fold from page to page, like the lens', () => {
+    /*
+      Every navigation this template makes spells its query out in full, and an explicit `?` drops
+      whatever the address held — so going to the board to look something up and coming back would
+      quietly unfold everything, which is most of the reason the fold is in the address at all.
+    */
+    const workshop = JSON.stringify(showcase.workshopTemplate);
+    // The fragment is a `${…}` hole in a template literal, so it is evaluated by lifting the
+    // expression out of it — the same thing the renderer does when it interpolates the path.
+    const inner = FOLD_QUERY.slice(2, -1);
+
+    // Every path the template navigates to carries it: the page switcher and the call links.
+    expect(workshop.split('&fold=').length).toBeGreaterThan(2);
+    expect(run(inner, { routeStore: { params: { fold: 'we://a' } } })).toBe('&fold=we://a');
+    expect(run(inner, { routeStore: { params: {} } })).toBe('');
   });
 
   it('lets a fold carry its contents when it is dragged', () => {
