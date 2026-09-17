@@ -436,6 +436,11 @@ export interface KeyRowOptions {
   label: string | ExpressionToken;
   /** Shown at the end of the row — the reset, where there is something to reset. */
   trailing?: SchemaNode;
+  /**
+   * An expression that is true while the row's thing is put away from the canvas — its glyph and name
+   * are drawn faint then, as its eye is, so a hidden kind reads as switched off across the whole row.
+   */
+  dimmed?: string;
 }
 
 /**
@@ -446,23 +451,53 @@ export interface KeyRowOptions {
  * below rather than the lists spacing them, so a list is a plain column whatever it is built from.
  */
 export function keyRow(opts: KeyRowOptions): SchemaNode {
-  const glyph: SchemaNode = { type: 'we-icon', props: { size: 'xs', color: 'text-muted', name: opts.icon } };
+  const faint = opts.dimmed;
+  const glyph: SchemaNode = {
+    type: 'we-icon',
+    props: {
+      size: 'xs',
+      color: faint ? { $: `${faint} ? 'text-faint' : 'text-muted'` } : 'text-muted',
+      name: opts.icon,
+    },
+  };
   return {
     type: 'Row',
     props: { gap: '300', ay: 'center', width: '100%', py: '100' },
     children: [
       opts.mark,
-      // A literal glyph is always there; one read from data is drawn only where there is one, since
-      // a model that declares no icon would otherwise leave a gap the size of one in every row.
-      ...(!opts.icon
-        ? []
-        : typeof opts.icon === 'string'
-          ? [glyph]
-          : [{ type: '$if', props: { condition: opts.icon, then: glyph } } as SchemaNode]),
       {
-        type: 'we-text',
-        props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
-        children: [opts.label],
+        /*
+          The glyph and the name, together — so a hidden kind can fade both at once, the same step its
+          eye takes. An icon has no visual layer of its own to fade, so the row around it does.
+        */
+        type: 'Row',
+        props: {
+          gap: '300',
+          ay: 'center',
+          flex: '1',
+          minWidth: '0',
+          ...(faint && { opacity: { $: `${faint} ? 0.5 : 1` } }),
+        },
+        children: [
+          // A literal glyph is always there; one read from data is drawn only where there is one, since
+          // a model that declares no icon would otherwise leave a gap the size of one in every row.
+          ...(!opts.icon
+            ? []
+            : typeof opts.icon === 'string'
+              ? [glyph]
+              : [{ type: '$if', props: { condition: opts.icon, then: glyph } } as SchemaNode]),
+          {
+            type: 'we-text',
+            props: {
+              variant: 'label',
+              truncate: true,
+              flex: '1',
+              minWidth: '0',
+              ...(faint && { color: { $: `${faint} ? 'text-faint' : 'text'` } }),
+            },
+            children: [opts.label],
+          },
+        ],
       },
       ...(opts.trailing ? [opts.trailing] : []),
     ],
@@ -608,6 +643,7 @@ function kindRow(kind: string): SchemaNode {
     ),
     icon: { $: kindIcon(kind) },
     label: { $: kindLabel(kind) },
+    dimmed: `(${kind} in ${HIDDEN_KINDS})`,
     trailing: {
       type: 'Row',
       props: { gap: '100', ay: 'center' },
