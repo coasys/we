@@ -120,6 +120,13 @@ const CSS_STYLES = css`
     pointer-events: none;
     background: var(--we-role-accent, #3b82f6);
     color: var(--we-role-on-accent, #fff);
+    /*
+      Set, not inherited. The zone adopts no shared primitive stylesheet, so nothing on its host names
+      the design system's face, and a hint is the one piece of text this element draws itself.
+      Resolved here rather than at :root, so a space's theme changing the face moves this too.
+    */
+    font-family: var(--we-font-family);
+    line-height: var(--we-line-height-normal, 1.5);
     font-size: var(--we-font-size-200, 14px);
     font-weight: var(--we-font-weight-medium, 500);
     white-space: nowrap;
