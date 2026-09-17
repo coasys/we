@@ -1188,14 +1188,35 @@ const suggestedChangesGroup: SchemaNode = {
                                 },
                               },
                             },
-                            answerButton('success', 'Accept this change', {
-                              $action: 'modules.transcribe.applyChange',
-                              args: [{ $: 'proposal.id' }, { $: 'change.name' }],
-                            }),
-                            answerButton('danger', 'Reject this change — keeps the current value', {
-                              $action: 'modules.transcribe.dismissChange',
-                              args: [{ $: 'proposal.id' }, { $: 'change.name' }],
-                            }),
+                            {
+                              /*
+                                The pair never gives up room, however long the line beside it runs.
+
+                                Without this the two buttons are ordinary flex items and shrink like
+                                anything else, so a long value — a transcribed title, a sentence of
+                                description — squeezed them until the glyphs were unreadable. The
+                                line is what should absorb the pressure, and it already says so:
+                                `flex: '1 1 auto'` with `minWidth: '0'` on the text is the half that
+                                gives, and this is the half that does not.
+
+                                The card above does exactly this around the same pair, in a `Row`
+                                with the same `flexShrink`. That it was done there and not here is
+                                the whole bug: one answer surface held its shape and the other did
+                                not, for no reason anybody chose.
+                              */
+                              type: 'Row',
+                              props: { gap: '100', ay: 'center', flexShrink: '0' },
+                              children: [
+                                answerButton('success', 'Accept this change', {
+                                  $action: 'modules.transcribe.applyChange',
+                                  args: [{ $: 'proposal.id' }, { $: 'change.name' }],
+                                }),
+                                answerButton('danger', 'Reject this change — keeps the current value', {
+                                  $action: 'modules.transcribe.dismissChange',
+                                  args: [{ $: 'proposal.id' }, { $: 'change.name' }],
+                                }),
+                              ],
+                            },
                           ],
                         },
                       ],
@@ -2548,7 +2569,7 @@ const extract: SchemaNode = {
 
       It was a tick and "N records written.", which every pass left standing above the chips until
       the next one — and the two readouts below say it with more: the results themselves appear under
-      "Extracted", and `ExtractionPass` records the outcome and the count of every pass, one-shot and
+      "Accepted", and `ExtractionPass` records the outcome and the count of every pass, one-shot and
       standing alike, so the history holds what this held and keeps holding it after the next press.
 
       Worth knowing what went with it: a pass that finds *nothing* now changes nothing on screen
@@ -4037,7 +4058,7 @@ export const extractionPanel: SchemaNode = {
                       /*
                   One name over the results, and it stays while they scroll.
 
-                  It went briefly, replaced by a heading per kind, because a single "Extracted" here
+                  It went briefly, replaced by a heading per kind, because a single "Accepted" here
                   cannot hide itself when there is nothing under it — the rows are one subscription
                   per kind, so nothing above them can ask whether any of them found anything. Per-kind
                   headings could answer that about themselves, and made the results read as several
@@ -4103,9 +4124,19 @@ export const extractionPanel: SchemaNode = {
                                   these are settled rather than waiting. `solid` for the reason that
                                   one is: a tint of the hue against a panel leaves the number
                                   competing with its own background.
+
+                                  "Accepted", not "Extracted", though the rows come off the
+                                  `extracted` relation — because {@link EXTRACTED_ROWS} takes
+                                  `unconfirmedIds` back out of it, so what is drawn here is not what
+                                  a pass wrote but what somebody agreed to keep. The old name was a
+                                  description of the query rather than of the list, and it named the
+                                  one property these rows have in common with the suggestions above
+                                  them instead of the one that tells them apart. Every other heading
+                                  in this panel is about the decision — "Pending acceptance",
+                                  "Pending changes" — and this is the answer to both.
                                 */
                                   foldingSectionLabel({
-                                    label: 'Extracted',
+                                    label: 'Accepted',
                                     count: EXTRACTED_COUNT,
                                     tone: 'success',
                                     field: 'extractedOpen',

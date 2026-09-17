@@ -951,7 +951,7 @@ describe('the extraction panel', () => {
   it('leaves what a pass produced to the two readouts that already say it', () => {
     /*
       A tick and "N records written." stood above the chips until the next press. The results
-      themselves appear under "Extracted", and `ExtractionPass` records the outcome and count of
+      themselves appear under "Accepted", and `ExtractionPass` records the outcome and count of
       every pass — one-shot and standing alike — so the history holds what this held and keeps
       holding it afterwards.
 
@@ -1006,7 +1006,7 @@ describe('the extraction panel', () => {
       say one thing eight times and crowd the titles they sit beside.
 
       Nothing is left relying on colour alone, which is what the rule actually asks. Each section
-      says in words what its cards are — "Pending acceptance", "Pending changes", "Extracted" — and every card on
+      says in words what its cards are — "Pending acceptance", "Pending changes", "Accepted" — and every card on
       screen sits under one of those headings.
     */
     // The card's own former shape. `we-alert` still draws the two genuine alerts in this panel — a
@@ -1181,7 +1181,7 @@ describe('the extraction panel', () => {
     const heading = (label: string) =>
       JSON.stringify({ ...SECTION_LABEL_PROPS, flex: '1' }) + `,"children":["${label}"]`;
 
-    for (const label of ['Things to extract', 'Logs', 'Pending acceptance', 'Pending changes', 'Extracted']) {
+    for (const label of ['Things to extract', 'Logs', 'Pending acceptance', 'Pending changes', 'Accepted']) {
       expect(json).toContain(heading(label));
     }
     expect(json).not.toContain('Things to extract:');
@@ -1705,7 +1705,7 @@ describe('the history of what was read', () => {
     for (const [field, label] of [
       ['proposalsOpen', 'Pending acceptance'],
       ['changesListOpen', 'Pending changes'],
-      ['extractedOpen', 'Extracted'],
+      ['extractedOpen', 'Accepted'],
       ['logsOpen', 'Logs'],
     ]) {
       expect(found[field].some((toggle) => toggle.includes(`"${label}"`))).toBe(true);
@@ -1727,7 +1727,7 @@ describe('the history of what was read', () => {
     const logs = json.indexOf('"Logs"');
     const awaiting = json.indexOf('"Pending acceptance"');
     const changes = json.indexOf('"Pending changes"');
-    const extracted = json.indexOf('"Extracted"');
+    const extracted = json.indexOf('"Accepted"');
 
     expect(chips).toBeGreaterThan(-1);
     expect(logs).toBeGreaterThan(chips);
