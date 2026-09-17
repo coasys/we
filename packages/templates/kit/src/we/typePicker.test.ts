@@ -24,7 +24,7 @@ const kinds = [
   { value: 'TaskBlock', label: 'Task', group: 'Built in', via: 'form', description: 'Something to do' },
 ];
 
-const lists = typePickerLists({ lead: ['TaskBlock', 'EventBlock'], composedLabel: 'Note (block collection)' });
+const lists = typePickerLists({ lead: ['TaskBlock', 'EventBlock'], composedLabel: 'Note' });
 const values = (source: string, search = '') =>
   (
     run(source, { recordStore: { creatableEntities: kinds }, local: { typeSearch: search } }) as { value: string }[]

@@ -1301,8 +1301,8 @@ describe('the workshop’s canvas', () => {
     expect(canvas).toContain(
       `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
     );
-    // Named apart from Text, which is one paragraph where a note is several blocks.
-    expect(canvas).toContain("'Note (block collection)'");
+    // A collection is called a note here; its description says it is a document of blocks.
+    expect(canvas).toContain("(kind.via == 'composer' ? 'Note' : kind.label)");
     expect(canvas).toContain(
       `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );

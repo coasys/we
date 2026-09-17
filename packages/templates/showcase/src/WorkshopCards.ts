@@ -88,8 +88,8 @@ export const BACK_TO_CHOOSER: SchemaProp[] = [{ $setLocal: 'chooserOpen', value:
 /**
  * "What goes here?" — anything this space can make, as `typePicker`'s searchable grid.
  *
- * The note first (a collection, written in the composer — "(block collection)" because Text is in
- * the same grid), then this space's own types, then WE's blocks led by tasks and events. Each card's
+ * The note first (a collection, written in the composer — its description says it is a document of
+ * blocks, which is what tells it apart from Text), then this space's own types, then WE's blocks led by tasks and events. Each card's
  * icon is drawn in the colour the key gives its kind, so the chooser and the key agree.
  *
  * A composed kind opens the composer. Anything else opens the generic form through `createOnCanvas`,
@@ -113,7 +113,7 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
           { type: 'we-text', slot: 'header', props: { variant: 'heading-md' }, children: ['Add to the canvas'] },
           typePicker({
             lead: LEADING_KINDS,
-            composedLabel: 'Note (block collection)',
+            composedLabel: 'Note',
             composedIcon: 'note',
             // The key's colour is looked up by the kind's *name*; a picker entry is the whole row.
             fill: (kind) => kindFill(`${kind}.value`),

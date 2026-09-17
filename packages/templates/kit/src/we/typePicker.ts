@@ -14,8 +14,8 @@ export interface TypePickerOptions {
    */
   fill?: (kind: string) => string;
   /**
-   * What a composed kind is called here — "Note (block collection)" on a canvas, where a collection is
-   * a sticky note and Text is in the same grid. Defaults to the kind's own label.
+   * What a composed kind is called here — "Note" on a canvas, where a collection is a sticky note.
+   * Defaults to the kind's own label ("Collection"), which is the class rather than the word.
    */
   composedLabel?: string;
   /** Its icon, likewise. */
@@ -94,7 +94,11 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
       p: '300',
       r: '300',
       bg: 'surface-sunken',
-      border: '1px solid border',
+      /*
+        A step lighter than the default border — part of the way to `border-strong`. On the sunken
+        ground the default edge all but disappeared; the strong one draws a box around every card.
+      */
+      border: '1px solid color-mix(in srgb, var(--we-role-border) 65%, var(--we-role-border-strong))',
       hoverProps: { bg: 'surface-hover' },
       label: { $: nameOf(kind) },
       onClick: opts.pick(kind),
