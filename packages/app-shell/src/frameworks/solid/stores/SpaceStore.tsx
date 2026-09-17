@@ -1629,7 +1629,13 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
-      await datasetStore.trackDataset(spaceRef);
+      //
+      // Re-read rather than tracking `spaceRef`: patching its uri above does not reach its handle,
+      // whose `sharedUrl` stays empty from before the publish, and the transport for presence and
+      // calls is opened from the handle. A fresh read carries both.
+      const tracked =
+        access === 'shared' ? ((await lifecycle.get(spaceRef.id).catch(() => null)) ?? spaceRef) : spaceRef;
+      await datasetStore.trackDataset(tracked);
       setMySpaces((prev) => [...prev, spaceRecord]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
