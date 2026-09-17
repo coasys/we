@@ -891,6 +891,12 @@ export class GraphEngine {
     const before = new Map(this.positions);
     const wasHidden = this.fold.hidden;
     const wasOwners = this.fold.owners;
+    /*
+      The offsets as they stand, because `recomputeFold` below forgets the ones it no longer needs —
+      and the cards being *unfolded* are exactly the ones it forgets. Those offsets are where they
+      are going: see the correction after the relayout.
+    */
+    const wasOffsets = new Map(this.foldedOffset);
 
     this.foldedIds = next;
     this.foldDuration = Math.max(0, durationMs);
@@ -911,9 +917,8 @@ export class GraphEngine {
       }
       /*
         The way back in: a card returns *from* the fold it was in rather than fading up where it
-        belongs, so unfolding reads as the same movement run backwards. Its destination is whatever
-        the relayout below hands back, which for a canvas is the position on its placement — the
-        card's real home, not somewhere a layout invented for it.
+        belongs, so unfolding reads as the same movement run backwards. Where it is going is settled
+        after the relayout below.
       */
       for (const id of wasHidden) {
         if (this.fold.hidden.has(id)) continue;
@@ -931,17 +936,53 @@ export class GraphEngine {
     */
     this.relayout();
 
-    // The arriving cards' real destinations, now that the layout has answered. Registered above with
-    // a placeholder so a single pass over `wasHidden` could do both halves.
-    for (const [id, anim] of this.foldAnim) {
-      if (anim.out) continue;
-      const home = this.positions.get(id);
-      if (home) anim.to = { x: home.x, y: home.y };
-      else this.foldAnim.delete(id);
+    /*
+      Where the arriving cards are going — beside the fold they came out of, not where the layout
+      says they live.
+
+      The layout is right about a fold that has not moved and stale about one that has. A canvas
+      reads each card's coordinates from its stored placement, and a fold carried across the canvas
+      writes new placements for its contents (see `foldedUnder`) which take a round trip to the data
+      layer and a re-read to arrive. Unfolding in that window sent every card back to where it was
+      before the fold was moved, and then the re-read landed and moved them all again — two jumps,
+      the first of them to a place nobody had put anything.
+
+      The offset is the answer to both: it is what the drag wrote, and it is what the placement will
+      say once it comes back, so the card goes straight where it belongs and the re-read agrees with
+      what is already on screen. A card with no offset — one that arrived under the fold from a live
+      query and was never measured — falls back to the layout, which is all anybody knows about it.
+    */
+    let corrected = false;
+    for (const id of wasHidden) {
+      if (this.fold.hidden.has(id)) continue;
+      const offset = wasOffsets.get(id);
+      const root = this.positions.get(wasOwners.get(id) ?? '');
+      const home = offset && root ? { x: root.x + offset.x, y: root.y + offset.y } : this.positions.get(id);
+      const anim = this.foldAnim.get(id);
+      if (!home) {
+        // Nowhere to go and nothing to animate — the card is not placed at all.
+        this.foldAnim.delete(id);
+        continue;
+      }
+      if (anim) {
+        anim.to = { x: home.x, y: home.y };
+        continue;
+      }
+      // No travel (reduced motion, or the fold arrived with the canvas): put it in the right place
+      // at once rather than letting the stale coordinate paint a frame.
+      this.positions.set(id, { ...this.positions.get(id), x: home.x, y: home.y });
+      corrected = true;
     }
 
     if (this.foldAnim.size) this.stepFold();
-    else this.notify('graph');
+    else {
+      // The positions were written after the relayout had already indexed and routed them.
+      if (corrected) {
+        this.reindex();
+        this.routeEdges();
+      }
+      this.notify('graph');
+    }
   }
 
   /** The cards the reader has folded, as given. */

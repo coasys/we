@@ -1754,6 +1754,45 @@ describe('GraphEngine folding', () => {
     expect(engine.canFold('chain')).toBe(true);
   });
 
+  it('brings the contents back beside the fold, not to where they were before it moved', async () => {
+    /*
+      The two-jump bug. A canvas reads each card's coordinates from its stored placement, and a fold
+      carried across the canvas writes new placements for its contents — which take a round trip and
+      a re-read to arrive. Unfolding in that window sent every card back to where it was before the
+      fold moved, and then the re-read landed and moved them all again. The offset is what the drag
+      wrote and what the placement will say, so it is where the card goes.
+    */
+    const engine = await folded();
+    const chain = engine.getPositions().get('chain')!;
+    const branch = engine.getPositions().get('branch')!;
+    engine.setFolded(['chain'], 0);
+    engine.pin('chain', { x: chain.x + 300, y: chain.y + 120 });
+
+    engine.setFolded([], 0);
+
+    expect(engine.getPositions().get('branch')).toMatchObject({ x: branch.x + 300, y: branch.y + 120 });
+  });
+
+  it('travels back to the same place, rather than animating to the wrong one', async () => {
+    // The same fix on the animated path, where it decides where the travel *ends*.
+    vi.useFakeTimers();
+    try {
+      const engine = await folded();
+      const chain = engine.getPositions().get('chain')!;
+      const branch = engine.getPositions().get('branch')!;
+      engine.setFolded(['chain'], 200);
+      vi.advanceTimersByTime(300);
+      engine.pin('chain', { x: chain.x + 300, y: chain.y + 120 });
+
+      engine.setFolded([], 200);
+      vi.advanceTimersByTime(300);
+
+      expect(engine.getPositions().get('branch')).toMatchObject({ x: branch.x + 300, y: branch.y + 120 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('carries what it is holding, wherever the fold has got to', async () => {
     const engine = await folded();
     const chain = engine.getPositions().get('chain')!;
