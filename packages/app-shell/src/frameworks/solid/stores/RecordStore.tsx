@@ -525,6 +525,16 @@ export function RecordStoreProvider(props: ParentProps) {
 
   const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
   const [recordErrors, setRecordErrors] = createSignal<string[]>([]);
+  /*
+    Counts writes into a draft's fields, for whatever has to notice them.
+
+    A field is written in place (see `writeFieldValue`) so the control being typed into keeps its row
+    and its focus — which also means the draft signal never changes while somebody types. Anything
+    derived from the draft saw the form as it opened: `recordDraftDirty` stayed false through a whole
+    paragraph, so closing or going Back threw the work away without asking, while a location pin, which
+    replaces the draft, did ask. Reading this beside the draft is what makes the two agree.
+  */
+  const [draftEdits, setDraftEdits] = createSignal(0);
   const [savingRecord, setSavingRecord] = createSignal(false);
   const [lastCreatedId, setLastCreatedId] = createSignal('');
   const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
@@ -801,6 +811,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const file = Array.isArray(value) ? value[0] : value;
     if (typeof File === 'undefined' || !(file instanceof File)) {
       writeFieldValue(draft(), name, value === null || value === undefined ? '' : (value as RecordFieldValue));
+      setDraftEdits((n) => n + 1);
       return;
     }
     const opened = draft();
@@ -808,6 +819,7 @@ export function RecordStoreProvider(props: ParentProps) {
       .then((payload) => {
         if (draft() !== opened) return;
         writeFieldValue(opened, name, payload);
+        setDraftEdits((n) => n + 1);
         const named = opened?.fields.find((field) => field.name === 'name' && field.control === 'text');
         if (named && typeof named.value === 'string' && !named.value.trim()) named.value = file.name;
       })
@@ -1115,6 +1127,8 @@ export function RecordStoreProvider(props: ParentProps) {
    */
   const recordDraftDirty = createMemo(() => {
     const draft = recordDraft();
+    // Tracked, not used: a field written in place changes nothing the memo would otherwise see.
+    draftEdits();
     if (!draft) return false;
     /*
       Changed from what it started as — not "holds something".

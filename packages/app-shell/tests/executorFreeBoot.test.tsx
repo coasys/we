@@ -685,6 +685,24 @@ describe('blocks on a canvas', () => {
   }, 10000);
 });
 
+describe('a record form with something typed in it', () => {
+  it('knows it has changed as soon as a field is typed into, not only when the draft is replaced', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    stores.records.openRecordForm('TaskBlock');
+    expect(stores.records.recordDraftDirty()).toBe(false);
+
+    // Written in place, so the input keeps its focus — which once left this false for good, and
+    // closing or going Back threw the typing away without asking.
+    stores.records.setRecordField('title', 'Book the room');
+    expect(stores.records.recordDraftDirty()).toBe(true);
+
+    stores.records.setRecordField('title', '');
+    expect(stores.records.recordDraftDirty()).toBe(false);
+  }, 10000);
+});
+
 describe('bringing a note into a space', () => {
   it('copies it in as a post, with nothing saying where it came from, and undoes', async () => {
     const stores = mountShell();

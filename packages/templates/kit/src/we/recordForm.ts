@@ -543,6 +543,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
   const guard = discardGuard({
     dirty: { $: 'recordStore.recordDraftDirty' },
     close: { $action: 'recordStore.cancelRecordForm' },
+    ...(opts.back && { back: opts.back }),
     title: 'Discard this entry?',
     body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
   });
@@ -575,13 +576,8 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                   props: {
                     condition: { $: '!recordStore.pendingLink' },
                     then: {
-                      ...backButton({
-                        $if: {
-                          condition: { $: 'recordStore.recordDraftDirty' },
-                          then: guard.close,
-                          else: [{ $action: 'recordStore.cancelRecordForm' }, ...opts.back],
-                        },
-                      }),
+                      // Through the guard, so Discard finishes going back rather than only closing.
+                      ...backButton(guard.back!),
                       slot: 'start-button',
                     },
                   },

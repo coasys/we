@@ -120,7 +120,10 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
     in the kit whose source is a component rather than a control, because the editor's document is not
     reachable from `$local` — see `BlockComposer.onDirtyChange`.
   */
-  const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $: 'local.draftDirty' }, close });
+  const guard =
+    opts.guardDraft === false
+      ? null
+      : discardGuard({ dirty: { $: 'local.draftDirty' }, close, ...(opts.back && { back: opts.back }) });
 
   return {
     /*
@@ -153,17 +156,8 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
           ...(opts.back
             ? [
                 {
-                  ...backButton(
-                    guard
-                      ? {
-                          $if: {
-                            condition: { $: 'local.draftDirty' },
-                            then: guard.close,
-                            else: [...(Array.isArray(close) ? close : [close]), ...opts.back],
-                          },
-                        }
-                      : [...(Array.isArray(close) ? close : [close]), ...opts.back],
-                  ),
+                  // Through the guard, so Discard finishes going back rather than only closing.
+                  ...backButton(guard?.back ?? [...(Array.isArray(close) ? close : [close]), ...opts.back]),
                   slot: 'start-button',
                 },
               ]
