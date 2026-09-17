@@ -20,6 +20,8 @@ export interface TypePickerOptions {
   composedLabel?: string;
   /** Its icon, likewise. */
   composedIcon?: string;
+  /** The heading over the composed kind's section. Defaults to "Documents" — what a composed kind is. */
+  composedHeading?: string;
   /** The `$localState` name the search text lives in. Declared here. */
   searchLocal?: string;
 }
@@ -29,8 +31,8 @@ export interface TypePickerOptions {
  *
  * ## Sections
  *
- * A composed kind first (a note, written in the composer), then **This space** (the community's own
- * types), then **Blocks** (WE's). A community that modelled its vocabulary means those types, so they
+ * **Documents** first (a composed kind — a note, written in the composer), then **This space** (the
+ * community's own types), then **Blocks** (WE's). A community that modelled its vocabulary means those types, so they
  * come before the built-ins. A section with nothing matching the search is left out, not drawn empty.
  *
  * ## Search
@@ -41,9 +43,9 @@ export interface TypePickerOptions {
  *
  * ## Cards
  *
- * Icon, name and description. The icon sits in a ring of the kind's colour where the caller gives one —
- * a ring rather than a fill, so the glyph stays legible whatever colour a community chose and whatever
- * the theme.
+ * Icon, name and description, one step off the modal's own ground so a card reads as something to
+ * press. Where the caller gives a kind's colour, the card's edge, the ring around the icon and the
+ * icon itself take it — the same colour the canvas draws that kind in, so the chooser reads as a key.
  *
  * One fragment rather than one per surface, because a canvas's chooser, a record form's type selector
  * and a graph's add button all ask the same question of the same list. The caller says what a pick
@@ -80,6 +82,10 @@ export function typePickerLists(opts: Pick<TypePickerOptions, 'items' | 'lead' |
 export function typePicker(opts: TypePickerOptions): SchemaNode {
   const { search, nameOf, matches, composed, own, builtIn, drawnOrder } = typePickerLists(opts);
 
+  /** The kind's colour as a border, or the plain border where the caller gives none. */
+  const edge = (kind: string, width: string) =>
+    opts.fill ? { $: `'${width} solid ' + ${opts.fill(kind)}` } : `${width} solid border`;
+
   const card = (kind: string): SchemaNode => ({
     type: 'we-button',
     props: {
@@ -90,7 +96,8 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
       ay: 'start',
       p: '300',
       r: '300',
-      border: '1px solid border',
+      bg: 'surface-raised',
+      border: edge(kind, '1px'),
       hoverProps: { bg: 'surface-hover' },
       label: { $: nameOf(kind) },
       onClick: opts.pick(kind),
@@ -110,7 +117,7 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
               ax: 'center',
               ay: 'center',
               bg: 'surface-sunken',
-              border: opts.fill ? { $: `'2px solid ' + ${opts.fill(kind)}` } : '1px solid border',
+              border: edge(kind, '2px'),
             },
             children: [
               {
@@ -119,7 +126,7 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
                   name: {
                     $: `${kind}.via == 'composer' ? '${opts.composedIcon ?? 'note'}' : ${kind}.icon ? ${kind}.icon : 'cube'`,
                   },
-                  color: 'text',
+                  color: opts.fill ? { $: opts.fill(kind) } : 'text',
                 },
               },
             ],
@@ -190,8 +197,9 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
             },
           },
         },
+        children: [{ type: 'we-icon', slot: 'start', props: { name: 'magnifying-glass', color: 'text-muted' } }],
       },
-      section(composed),
+      section(composed, opts.composedHeading ?? 'Documents'),
       section(own, 'This space'),
       section(builtIn, 'Blocks'),
       {
