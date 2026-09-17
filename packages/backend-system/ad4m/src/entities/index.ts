@@ -18,6 +18,7 @@ export * from './DividerBlock';
 export * from './EdgeRoute';
 export * from './EmbedBlock';
 export * from './EventBlock';
+export * from './ExtractionAmendment';
 export * from './ExtractionPass';
 export * from './FileBlock';
 export * from './ImageBlock';

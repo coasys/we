@@ -829,6 +829,84 @@ const peerExchangeModal: SchemaNode = {
   },
 };
 
+/**
+ * What this node turned out not to support — the account of a backend older than the app in front
+ * of it.
+ *
+ * ## Why this is a section and not a toast
+ *
+ * A capability gap is a property of what you are connected to, true for the whole session, and an
+ * event notification is the wrong shape for a standing fact: it fires once, before anybody has hit
+ * the symptom, and is gone by the time they go looking. It is also unactionable by most of the
+ * people who would see it — on a shared node the person who can rebuild the executor is not the
+ * person whose cards look wrong — and a danger toast nobody can act on teaches people to dismiss
+ * toasts. So it waits here, on the page somebody already comes to when the data layer is misbehaving.
+ *
+ * ## Why it names methods rather than symptoms
+ *
+ * WE knows precisely what it asked for and does not know what breaks as a result, and a sentence
+ * per known gap would be one more thing to write after each one has already cost somebody a day of
+ * diagnosis. The method name is the actionable half: it maps to a commit in the backend's history
+ * and to a decision about rebuilding a node. Hidden entirely when there is nothing to report, since
+ * an empty section here would be a claim this cannot make — see the note in the body.
+ */
+export const executorSupport: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(runtimeStore.unsupportedCapabilities)' },
+    then: adminSection({
+      title: 'Unsupported by this node',
+      icon: 'warning',
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: [
+            'The app asked this node for these and it does not have them, so whatever needed each ' +
+              'one is running with less than it was built for. Usually it means the node is ' +
+              'running an older build than the app: rebuilding it is the fix.',
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'runtimeStore.unsupportedCapabilities' }, as: 'gap' },
+          children: [
+            {
+              type: 'Row',
+              props: {
+                gap: '300',
+                ay: 'center',
+                ax: 'between',
+                wrap: true,
+                bg: 'surface-sunken',
+                r: '300',
+                px: '300',
+                py: '200',
+              },
+              children: [
+                // The name verbatim, in code type: it is a string to search a codebase for, not
+                // prose, and a proportional font invites reading it as a description.
+                { type: 'we-code', children: [{ $: 'gap.name' }] },
+                {
+                  type: 'we-timestamp',
+                  props: { value: { $: 'gap.firstSeen' }, relative: true, fontSize: '100', color: 'text-muted' },
+                },
+              ],
+            },
+          ],
+        },
+        /*
+          The honest limit, said where the list is rather than in a docblock nobody reading this
+          screen will see. Nothing is recorded until something asks for it, so this list answers
+          "what has been refused" and never "is this node current" — and somebody who came here
+          after a symptom and found the section absent would otherwise take that as a clean bill.
+        */
+        emptyNote('Only what has actually been asked for so far — this is not a full check of the node.'),
+      ],
+    }),
+  },
+};
+
 /** Diagnostics and out-of-band peer exchange for the networking layer. */
 export const peerNetwork: SchemaNode = {
   type: '$if',

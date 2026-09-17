@@ -520,39 +520,101 @@ const switcher: SchemaNode = {
 };
 
 /**
- * What a pass has made, of one kind, on the call on screen.
+ * A call is running **in this space**, whoever is in it.
  *
- * One query per class rather than one over both: a `$query` names an entity, and the two have
- * nothing in common to sort by across the pair. Newest first, because this is a "what just
- * happened" readout rather than a record — the canvas and the calendar are where they are kept.
+ * It was `modules.call.active || count(modules.call.liveCalls)`, and the first half of that is a
+ * different question: `active` is true of a call in *any* space. So standing in a space with no call
+ * at all, while in one somewhere else, every door this template has read "Go to the call" and led out
+ * of the space you were looking at — there was no way to start one where you were standing.
+ *
+ * `liveCalls` is the space on screen, and it includes this agent's own call when that call is here,
+ * so it answers both halves of what the old expression was reaching for. Being in a call elsewhere
+ * is a separate fact, and it already has its own control: the call bar's "Back to the call in …",
+ * which is the module's to draw and not this template's to duplicate.
  */
-/**
- * The way into a call: start one, or go to the one already running.
- *
- * `goToCall` is the call module's own verb and does both — it joins when there is no call and moves
- * to the running one when there is. It is a button somebody presses, which is the one place a verb
- * that starts a call means what it says; `meta.panels` opens a panel through the module's `show`
- * key, which for the stage only shows the video, and the entry below says `open: false` so even
- * that waits for a call to exist.
- *
- * ## And it stops naming a call
- *
- * `openLiveCall` after it, or a new call opens behind the *old* one: the address still named
- * whichever call you had been looking at, and `CALL` prefers what the address names, so the
- * transcript and the readout went on showing a finished meeting while a new one was being recorded
- * beside them. Nothing said which was which.
- *
- * Right for the other branch too. "Go to the call" means the one running now, and that is exactly
- * what naming none of them resolves to.
- *
- * Gated on `canCall`, which is "this space can hold a call at all" — a personal space cannot, and an
- * offer to start one there fails at the point of pressing.
- */
-/** A call is running somewhere in this space, whether or not this agent is in it. */
-const A_CALL_IS_RUNNING = 'modules.call.active || count(modules.call.liveCalls)';
+const CALL_RUNNING_HERE = 'count(modules.call.liveCalls)';
 
 /**
- * Start a call, join the one running here, or go back to your own.
+ * This agent is in a call, and it is a call in this space — so "go to it" means bringing it up
+ * rather than travelling.
+ *
+ * `active` alone would be true of a call in another space, where the honest offer is not "go to the
+ * call" but "join the one here" or "start one".
+ */
+const IN_A_CALL_HERE = 'modules.call.active && !modules.call.elsewhere';
+
+/**
+ * Start a call about nothing in particular.
+ *
+ * `args: ['']` rather than no args, and the empty string is the point. A handler with no `args` does
+ * not call the method with none — it forwards the handler's own arguments, so a click passes the
+ * PointerEvent as the first parameter. `startCall` takes an optional anchor id, so it received the
+ * event and the backend refused the write: "invalid type: map, expected a string". `args: []` does
+ * not help either; an empty list reads as "no args given" and forwards the event too.
+ *
+ * `''` is falsy, which is how `startCall` already spells "no anchor" — a call about the space rather
+ * than about some node in it.
+ */
+const NEW_CALL_ACTION: SchemaProp = { $action: 'modules.call.startCall', args: [''] };
+
+/**
+ * Start a second call, beside the one already running here.
+ *
+ * Only while there *is* one — otherwise the primary button beside it already says "New call", and
+ * two controls doing the same thing is worse than one.
+ *
+ * ## What it costs, said in the tooltip
+ *
+ * This agent can be in one call at a time: `join` tears the current one down before the new one
+ * starts. Pressing this while in a call therefore leaves that call, and the tooltip says so rather
+ * than letting "New call" imply two at once. Everybody else stays where they are — what ends is your
+ * part in it, which is why this is not a destructive-looking control.
+ *
+ * Ghost, and secondary in both senses: the common act on arriving at a space with a conversation in
+ * it is joining that conversation, and a breakout is the deliberate minority case.
+ */
+const newCallButton = (size: 'sm' | 'md'): SchemaNode => ({
+  type: '$if',
+  props: {
+    condition: { $: CALL_RUNNING_HERE },
+    then: {
+      type: 'we-tooltip',
+      props: {
+        content: {
+          $: "modules.call.active ? 'Leave your call and start a new one' : 'Start a new call beside the one running'",
+        },
+      },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            size,
+            variant: 'ghost',
+            gap: '200',
+            /*
+              Icon-only in the panel header, where the row is a title and a control and a word would
+              crowd it; worded under a route's sentence, where a bare `+` beside "Join the call" is a
+              glyph nobody has a reason to hover.
+
+              `label` only on the square one, because that is the half with no visible word to serve
+              as its accessible name — and a tooltip is not one.
+            */
+            ...(size === 'sm' ? { square: true, label: 'New call' } : {}),
+            onClick: [NEW_CALL_ACTION, openLiveCall],
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'plus' } },
+            ...(size === 'md' ? [{ type: 'we-text', children: ['New call'] }] : []),
+          ],
+        },
+      ],
+    },
+  },
+});
+
+/**
+ * The way into a call: go to yours, join the one running here, or start one — and, beside it, always
+ * a way to start a *new* one.
  *
  * Takes its size because it is placed at two scales. `md` on a page with no call to be about —
  * under the sentence each of the three routes shows there, which is the template's main way in and
@@ -562,16 +624,43 @@ const A_CALL_IS_RUNNING = 'modules.call.active || count(modules.call.liveCalls)'
  *
  * It used to sit in the corner beside the pill as well. That placement showed on the same condition
  * the page gates do and did the same thing, so it was the same door drawn twice — see `callChrome`.
+ *
+ * Gated on `canCall`, which is "this space can hold a call at all" — a personal space cannot, and an
+ * offer to start one there fails at the point of pressing.
+ *
+ * ## Both halves stop naming a call
+ *
+ * `openLiveCall` after each of them, or a new call opens behind the *old* one: the address still
+ * named whichever call you had been looking at, and `CALL` prefers what the address names, so the
+ * transcript and the readout went on showing a finished meeting while a new one was being recorded
+ * beside them. Nothing said which was which.
+ *
+ * Right for the other branches too. "Go to the call" and "Join the call" both mean one that is
+ * running now, and that is exactly what naming none of them resolves to.
+ *
+ * ## Why it is two buttons
+ *
+ * It was one, branching three ways, and the branch that starts a call was the one that got shadowed:
+ * the moment anybody in the space was in a call the button read "Join the call" everywhere this
+ * template puts it — the panel header and all three route gates — and there was no start left
+ * anywhere in the template. Somebody wanting a second conversation had to leave the first.
+ *
+ * That narrowing was right when it was made and it predates calls being plural. `liveCalls` is a
+ * list; the call module offers a `+` beside its own join prompt for exactly this reason. So the
+ * contextual verb keeps the primary, which is what somebody arriving almost always wants, and
+ * starting a new one stands beside it whenever the primary is not itself a start.
  */
 const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
   type: '$if',
   props: {
     condition: { $: 'modules.call.canCall' },
     then: {
-      type: 'we-button',
+      type: 'Row',
       props: {
-        size,
         gap: '200',
+        ay: 'center',
+        // Its words are fixed, so it is the wrong half of the pair to shorten — see `callPill`.
+        flexShrink: '0',
         /*
           Room above it, in the placement that sits under a sentence.
 
@@ -580,65 +669,75 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
           make three items in a list rather than a statement and the thing to do about it. `sm` is the
           calls panel header, where a top margin would push the control out of a band whose height
           `panelShell` has already reserved.
+
+          On the row rather than on the button, so the pair moves together.
         */
         ...(size === 'md' ? { mt: '400' } : {}),
-        // Its words are fixed, so it is the wrong half of the pair to shorten — see `callPill`.
-        flexShrink: '0',
-        variant: { $: "modules.call.active ? 'secondary' : 'primary'" },
-        /*
-          `goToCall` only where there is a call to go to.
-
-          It was the whole of this button, and `goToCall` has a branch that continues the call *in
-          the address* when nothing is running — which is exactly right for the module rail, where it
-          is how you pick up the meeting you are reading, and exactly wrong here. With a call
-          selected in the list below, pressing "New call" reopened the selected one.
-
-          The two other branches are still wanted, which is why this is a narrowing rather than a
-          swap to `startCall`. Somebody already in a call gets taken back to it; somebody who is not,
-          in a space where a call is running, joins that one rather than opening a second beside it.
-          Only the third case starts anything.
-
-          Branched in the handler rather than in the node, so one button is rendered either way and
-          the conditions read the store at the press instead of at the paint that happened to be
-          current when the panel opened.
-        */
-        onClick: [
-          {
-            $if: {
-              condition: { $: A_CALL_IS_RUNNING },
-              then: { $action: 'modules.call.goToCall' },
-              /*
-                `args` explicitly, and the empty string is the point.
-
-                A handler with no `args` does not call the method with none — it forwards the
-                handler's own arguments, so a click passes the PointerEvent as the first parameter.
-                `startCall` takes an optional anchor id, so it received the event and the backend
-                refused the write: "invalid type: map, expected a string". `args: []` does not help
-                either; an empty list reads as "no args given" and forwards the event too.
-
-                `''` is falsy, which is how `startCall` already spells "no anchor" — a call about the
-                space rather than about some node in it.
-              */
-              else: { $action: 'modules.call.startCall', args: [''] },
-            },
-          },
-          openLiveCall,
-        ],
       },
       children: [
-        { type: 'we-icon', props: { name: 'phone-call' } },
         {
-          type: 'we-text',
-          /*
-            Three words for three acts, because the middle one used to be missing: with a call
-            running that this agent had not joined, the button said "New call" and joined it.
-          */
+          type: 'we-button',
+          props: {
+            size,
+            gap: '200',
+            variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
+            /*
+              Three branches, flat, and read at the press.
+
+              `goToCall` used to be the whole of this button, and it has a branch that continues the
+              call *in the address* when nothing is running — right for the module rail, where it is
+              how you pick up the meeting you are reading, and wrong here: with a call selected in
+              the list below, pressing "New call" reopened the selected one.
+
+              `joinCall` rather than `goToCall` for the middle branch, because `goToCall` answers
+              "bring me to my call" and this button is asking about *this space*. In a call elsewhere
+              with one running here, `goToCall` navigates you away — while the button plainly says
+              "Join the call". `joinCall` names the call it means and leaves whatever you were in,
+              which is what the word promises.
+
+              Flat `$if` entries rather than nesting, so each condition is one sentence and the
+              handler array resolves them lazily — the state at the press, not at the paint that
+              happened to be current when the panel opened.
+            */
+            onClick: [
+              { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
+              {
+                $if: {
+                  condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
+                  // The first of them, which is the whole of what a singular button can mean. Which
+                  // call, where there are several, is the list's question — see `callsPanel`.
+                  then: {
+                    $action: 'modules.call.joinCall',
+                    args: [{ $: 'first(modules.call.liveCalls).id' }],
+                  },
+                },
+              },
+              {
+                $if: {
+                  condition: { $: `!(${IN_A_CALL_HERE}) && !(${CALL_RUNNING_HERE})` },
+                  then: NEW_CALL_ACTION,
+                },
+              },
+              openLiveCall,
+            ],
+          },
           children: [
+            { type: 'we-icon', props: { name: 'phone-call' } },
             {
-              $: "modules.call.active ? 'Go to the call' : count(modules.call.liveCalls) ? 'Join the call' : 'New call'",
+              type: 'we-text',
+              /*
+                Three words for three acts, because the middle one used to be missing: with a call
+                running that this agent had not joined, the button said "New call" and joined it.
+              */
+              children: [
+                {
+                  $: `${IN_A_CALL_HERE} ? 'Go to the call' : ${CALL_RUNNING_HERE} ? 'Join the call' : 'New call'`,
+                },
+              ],
             },
           ],
         },
+        newCallButton(size),
       ],
     },
   },
@@ -2201,6 +2300,17 @@ const inspectorPanel: SchemaNode = {
 };
 
 /**
+ * The live call one row of the calls list *is*, or nothing — that row's own entry in `liveCalls`.
+ *
+ * By `recordId`, because that is what a row is: a call's record. `liveCalls` is keyed by call id,
+ * which is derived from the record rather than equal to it.
+ */
+const ROW_LIVE_CALL = 'find(modules.call.liveCalls, { recordId: call.id })';
+
+/** That row is the call this agent is in. */
+const ROW_IS_MINE = 'call.id == modules.call.callRecordId';
+
+/**
  * The calls, as a panel — how you change which call every other surface is about.
  *
  * The same list the `/calls` route draws, without the transcripts: choosing is a two-second act and
@@ -2208,6 +2318,17 @@ const inspectorPanel: SchemaNode = {
  *
  * Declared with no `route`, so it is reachable from the kanban as well. Selection is a
  * *navigation* — `./canvas/<id>` — which is what makes it survive a reload and paste into a message.
+ *
+ * ## It says which of them are happening now
+ *
+ * The list is a query over `CollectionBlock` — the archive — and for a while that was all it was, so
+ * a meeting three people were sitting in looked exactly like one from last Tuesday. That is a gap
+ * the header's single button cannot cover: with two calls running, "Join the call" joins whichever
+ * `liveCalls` happens to list first, and nothing on screen says there was a choice.
+ *
+ * So a row that is live says so and carries its own Join. The header keeps the one-press default for
+ * the ordinary case — one conversation, join it — and the list is where "which one" is answered,
+ * which is the same argument the call module makes for listing a row per call in its own join bar.
  */
 const callsPanel: SchemaNode = {
   type: 'Column',
@@ -2310,12 +2431,18 @@ const callsPanel: SchemaNode = {
                               type: 'we-icon',
                               props: {
                                 name: 'phone-call',
-                                // The fill role, for the reason the record icon above uses it: a
-                                // live-call marker is a signal rather than a sentence, and the
-                                // derived foreground goes pale in a dark theme.
-                                color: {
-                                  $: "call.id == modules.call.callRecordId ? 'danger' : 'text-faint'",
-                                },
+                                /*
+                                  The fill role, for the reason the record icon above uses it: a
+                                  live-call marker is a signal rather than a sentence, and the
+                                  derived foreground goes pale in a dark theme.
+
+                                  Red for any call that is happening, not only this agent's. It was
+                                  `callRecordId`, which marked the one call you were in and left a
+                                  meeting two colleagues were sitting in looking like last Tuesday's.
+                                  Which of them is *yours* is said twice over beside it — the row's
+                                  selected fill, and a button that says "Go to" rather than "Join".
+                                */
+                                color: { $: `${ROW_LIVE_CALL} ? 'danger' : 'text-faint'` },
                               },
                             },
                             {
@@ -2352,6 +2479,91 @@ const callsPanel: SchemaNode = {
                               ],
                             },
                           ],
+                        },
+                        {
+                          /*
+                            Who is in this call, and the way in — on the rows where there is one.
+
+                            The panel's whole job is choosing which call every other surface is
+                            about, and until now choosing was all it could do: a live meeting was
+                            selectable and not joinable, so the only way in was the header's button,
+                            which is singular and therefore a guess the moment two calls are running.
+                            A row names the call it means, which is what makes this the right place
+                            for the choice rather than a second copy of the header.
+
+                            Absent rather than disabled on a finished call: there is nothing to join,
+                            and picking one back up is what the pill's `call.continueCallButton` is
+                            for — a different act, with a different warning attached to it.
+                          */
+                          type: '$if',
+                          props: {
+                            condition: { $: ROW_LIVE_CALL },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '100', ay: 'center', flexShrink: '0' },
+                              children: [
+                                {
+                                  // Faces rather than a count: three avatars say "a meeting is
+                                  // happening and these are the people in it" in the width a number
+                                  // and a noun would take. The stack carries its own "+N" past `max`.
+                                  type: 'AvatarStack',
+                                  props: { avatars: { $: `${ROW_LIVE_CALL}.faces` }, size: 'xs', max: 3 },
+                                },
+                                {
+                                  type: 'we-tooltip',
+                                  props: {
+                                    content: {
+                                      $:
+                                        `${ROW_IS_MINE} ? 'Go to this call' : ` +
+                                        `modules.call.active ? 'Leave your call and join this one' : 'Join this call'`,
+                                    },
+                                    placement: 'top',
+                                  },
+                                  children: [
+                                    {
+                                      type: 'we-button',
+                                      props: {
+                                        size: 'sm',
+                                        variant: { $: `${ROW_IS_MINE} ? 'secondary' : 'primary'` },
+                                        /*
+                                          Branched at the press, and `joinCall` rather than
+                                          `goToCall` for the row that is not yours.
+
+                                          `goToCall` means "bring me to my call", so pressed on
+                                          somebody else's row while in a call of your own it would
+                                          take you to *yours* — a button beside one conversation
+                                          doing something about another. `joinCall` names the id the
+                                          row carries and leaves whatever you were in, which is what
+                                          the word on it promises.
+                                        */
+                                        onClick: [
+                                          {
+                                            $if: {
+                                              condition: { $: ROW_IS_MINE },
+                                              then: { $action: 'modules.call.goToCall' },
+                                            },
+                                          },
+                                          {
+                                            $if: {
+                                              condition: { $: `!(${ROW_IS_MINE})` },
+                                              then: {
+                                                $action: 'modules.call.joinCall',
+                                                args: [{ $: `${ROW_LIVE_CALL}.id` }],
+                                              },
+                                            },
+                                          },
+                                          // And point every other surface at it, which is what
+                                          // clicking the row itself would have done.
+                                          openCall('call.id'),
+                                        ],
+                                      },
+                                      children: [{ $: `${ROW_IS_MINE} ? 'Go to' : 'Join'` }],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          },
                         },
                         {
                           type: 'we-tooltip',
@@ -4590,11 +4802,19 @@ export const workshopTemplate: TemplateSchema = {
     canvasRoute,
     kanbanRoute,
     calendarRoute,
-    {
-      path: '*',
-      type: 'Column',
-      props: { flex: '1', ax: 'center', ay: 'center', p: '600' },
-      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['No such page.'] }],
-    },
+    /*
+      An address this template has no screen for goes to the canvas, rather than saying so.
+
+      This drew "No such page." and stopped there, which is a dead end with no way out of it but the
+      switcher — and the addresses that land here are not typos. They are a section's address under a
+      template that has no sections (`/space/<id>/about`, from a link sent before the space switched
+      to this template, or from anywhere in the app that still names one), and the host's redirect
+      deliberately leaves a self-routing template's addresses alone, so nothing else was going to move
+      them.
+
+      Relative, like the index redirect above and for the same reason — and it resolves against the
+      space, not against the unmatched address, however many segments that address has.
+    */
+    { path: '*', redirect: './canvas' },
   ],
 };

@@ -14,6 +14,7 @@ import { languagesLocalState, languagesSection } from './LanguageSettings.schema
 import {
   backup,
   connectedApps,
+  executorSupport,
   logging,
   loggingLocalState,
   mcpServer,
@@ -985,7 +986,7 @@ export const settingsTemplate: TemplateSchema = {
       // Logging sits here rather than on a page of its own: this is where someone goes when the
       // data layer is misbehaving, which is the same moment they want more of it in the log.
       $localState: { ...networkLocalState, ...loggingLocalState },
-      ...page([runtimeError, trustedAgents, peerNetwork, logging]),
+      ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging]),
     },
     { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
     // No `$if` on the route itself: its nav entry is already gated, and a production build resolves

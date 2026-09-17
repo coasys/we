@@ -3735,6 +3735,12 @@
           "name": "extracted",
           "kind": "HasMany",
           "predicate": "we://extracted"
+        },
+        {
+          "name": "amendments",
+          "kind": "HasMany",
+          "predicate": "we://extraction_amendment",
+          "target": "ExtractionAmendment"
         }
       ]
     },
@@ -5164,6 +5170,44 @@
       ]
     },
     {
+      "name": "ExtractionAmendment",
+      "className": "ExtractionAmendment",
+      "extends": "Ad4mModel",
+      "fields": [
+        {
+          "name": "property",
+          "type": "string",
+          "predicate": "we://amended_property",
+          "required": false
+        },
+        {
+          "name": "previousValue",
+          "type": "string",
+          "predicate": "we://previous_value",
+          "required": false
+        },
+        {
+          "name": "newValue",
+          "type": "string",
+          "predicate": "we://new_value",
+          "required": false
+        },
+        {
+          "name": "nodeType",
+          "type": "string",
+          "predicate": "we://node_type",
+          "required": false
+        }
+      ],
+      "relations": [
+        {
+          "name": "node",
+          "kind": "HasOne",
+          "predicate": "we://amended_node"
+        }
+      ]
+    },
+    {
       "name": "ExtractionPass",
       "className": "ExtractionPass",
       "extends": "Ad4mModel",
@@ -6079,6 +6123,10 @@
         },
         "canConfigureExecutor": {
           "type": "boolean"
+        },
+        "unsupportedCapabilities": {
+          "type": "array",
+          "properties": ["name", "firstSeen"]
         },
         "aiModels": {
           "type": "array",
@@ -7594,6 +7642,11 @@
           "name": "proposalsFor",
           "kind": "state",
           "doc": "Suggestions staged on one conversation, by record id — read as proposalsFor[id]."
+        },
+        {
+          "name": "reconnecting",
+          "kind": "state",
+          "doc": "The link to the speech model dropped and is being re-established; what is said meanwhile is held."
         },
         {
           "name": "refreshProposals",

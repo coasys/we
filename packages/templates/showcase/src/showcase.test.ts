@@ -352,16 +352,98 @@ describe('the workshop template’s call selection', () => {
     */
     const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
 
-    expect(calls).toContain('"condition":{"$":"modules.call.active || count(modules.call.liveCalls)"}');
     /*
       With `args`, and the empty string carries the whole point. A handler with none does not call
       the method with none — it forwards the click, and `startCall` takes an optional anchor id, so
       it was handed a PointerEvent and the backend refused the write. `''` is how `startCall`
       already spells "no anchor".
     */
-    expect(calls).toContain('"else":{"$action":"modules.call.startCall","args":[""]}');
+    expect(calls).toContain('{"$action":"modules.call.startCall","args":[""]}');
     // And it says which of the three it is about to do. The middle one had no words of its own.
     expect(calls).toContain("'Join the call'");
+  });
+
+  it('still offers a new call while one is running', () => {
+    /*
+      The regression this pair exists for, and it only appeared once calls became plural.
+
+      One button branched three ways, and the branch that starts a call is the one the other two
+      shadow: the moment anybody in the space was in a call it read "Join the call" — in the panel
+      header and in all three route gates, which is every door this template has — so there was no
+      way to start a second conversation without leaving the first. The call module had noticed the
+      same thing and put a `+` beside its own join prompt; this template had nothing.
+
+      Asserted as the pair rather than as the words, because the failure is one control doing two
+      jobs: a start that is only reachable when nothing is running is a start that is missing exactly
+      when somebody wants it.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // The contextual verb keeps the primary — all three of its readings.
+    expect(calls).toContain("'Go to the call'");
+    expect(calls).toContain("'Join the call'");
+    expect(calls).toContain("'New call'");
+    // And starting one stands beside it, on exactly the condition that makes the primary not a start.
+    expect(calls).toContain('"condition":{"$":"count(modules.call.liveCalls)"}');
+    expect(calls).toContain("'Leave your call and start a new one'");
+
+    // The same pair on the page, which is where somebody with no call is actually looking.
+    for (const path of ['/kanban', '/calendar']) {
+      const route = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
+      expect(route, path).toContain("'Leave your call and start a new one'");
+    }
+  });
+
+  it('asks about this space, not about wherever your call is', () => {
+    /*
+      `modules.call.active` is true of a call in *any* space, and the button was gated on it — so
+      standing in a space with no call at all, while in one somewhere else, every door read "Go to
+      the call" and led out of the space you were looking at. There was no way to start one where you
+      were standing, and nothing said why.
+
+      `liveCalls` is the space on screen and includes your own call when it is here, so it answers
+      both halves. Being in a call elsewhere keeps its own control — the call bar's "Back to the call
+      in …" — which is the module's to draw.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    expect(calls).not.toContain('modules.call.active || count(modules.call.liveCalls)');
+    expect(calls).toContain('modules.call.active && !modules.call.elsewhere');
+  });
+
+  it('joins the call it names rather than the one you are in', () => {
+    /*
+      `goToCall` answers "bring me to my call", and in a call elsewhere that is a different call from
+      the one the button is about: pressed on "Join the call", or on a live row in the list, it took
+      you to yours. `joinCall` names an id and leaves whatever you were in, which is what the word on
+      both controls promises.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // The header's singular default: the first of them, which is all a single button can mean.
+    expect(calls).toContain('{"$action":"modules.call.joinCall","args":[{"$":"first(modules.call.liveCalls).id"}]}');
+    // And the row's, which names the call beside it — see the next test for why the rows exist.
+    expect(calls).toContain('find(modules.call.liveCalls, { recordId: call.id }).id');
+  });
+
+  it('says which calls in the list are happening now, and lets you join one', () => {
+    /*
+      The list is a query over the archive, so a meeting three people were sitting in looked exactly
+      like one from last Tuesday — and the header's button cannot cover that gap, being singular:
+      with two calls running it joins whichever `liveCalls` lists first and nothing says there was a
+      choice. The call module makes the same argument for listing a row per call in its own join bar.
+
+      Asserted on the row's own affordances rather than on the section, because the fix is that a row
+      names the call it means: a marker with no way in is the state this replaces.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // A live row is told apart by being live, not by being yours — which is what it used to test.
+    expect(calls).not.toContain("call.id == modules.call.callRecordId ? 'danger' : 'text-faint'");
+    expect(calls).toContain("find(modules.call.liveCalls, { recordId: call.id }) ? 'danger' : 'text-faint'");
+    // Who is in it, and the two words that tell your call from somebody else's.
+    expect(calls).toContain('"type":"AvatarStack"');
+    expect(calls).toContain("'Go to' : 'Join'");
   });
 
   it('keeps a calendar where the archive of calls used to be', () => {
@@ -463,9 +545,14 @@ describe('the workshop template’s call selection', () => {
     const json = JSON.stringify(workshop);
 
     expect(json).not.toContain("'danger-text'");
-    // The calls list's own dot. The transcript panel's is the module's now — see its
-    // `Panel.schema.test.ts`, which is where that half of this test went.
-    expect(json).toContain("modules.call.callRecordId ? 'danger' : 'text-faint'");
+    /*
+      The calls list's own dot. The transcript panel's is the module's now — see its
+      `Panel.schema.test.ts`, which is where that half of this test went.
+
+      It asks whether the row is live rather than whether it is *yours*, which is a separate test —
+      this one is only about the colour that answer is drawn in.
+    */
+    expect(json).toContain("find(modules.call.liveCalls, { recordId: call.id }) ? 'danger' : 'text-faint'");
   });
 
   it('draws a card nobody has agreed to yet as unsettled, and offers the decision on it', () => {

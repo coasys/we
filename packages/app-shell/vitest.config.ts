@@ -22,6 +22,9 @@ const SOLID_TESTS = [
   // Not a component test, but it drives real `we-iframe` elements with shadow roots and real
   // `MessageEvent`s — the DOM is what is under test.
   'tests/appBridge.test.ts',
+  // Reads a served `index.html` with `DOMParser`, dispatches real `vite:preloadError` events at a
+  // real `window` and drives `visibilitychange` on a real `document` — the DOM is the subject.
+  'tests/buildFreshness.test.ts',
   // Nothing renders, but the whole point is the fallback path: a real `document`, a real textarea
   // appended and removed, and `navigator.clipboard` absent the way it is outside a secure context.
   'tests/copyText.test.ts',

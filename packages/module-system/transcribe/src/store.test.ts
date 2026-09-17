@@ -48,14 +48,14 @@ function peer(agentId: string, ...activities: Activity[]): Peer {
  *
  * The kernels by their contract names — a test overriding `transcription` puts a port under
  * `deps.kernels.transcription`, and `records` merges over the harness's recording writes so a test
- * can replace one of the three without restating the others. Loosely typed on purpose: most tests
+ * can replace one of the four without restating the others. Loosely typed on purpose: most tests
  * hand over the two or three members they are about, not a whole kernel.
  */
 interface HarnessDeps {
   transcription?: Record<string, unknown>;
   interpretation?: Record<string, unknown>;
   media?: { input: () => MediaStream | null };
-  records?: Partial<Record<'create' | 'link' | 'update', unknown>>;
+  records?: Partial<Record<'create' | 'link' | 'update' | 'find', unknown>>;
   presence?: Record<string, unknown>;
   dataset?: () => unknown;
   settings?: (() => Record<string, boolean | string | number>) | undefined;
@@ -1785,6 +1785,130 @@ describe('staged suggestions', () => {
 
     expect(h.store.canEditProposals()).toBe(false);
   });
+
+  /**
+   * Keeping a change, and the account of it.
+   *
+   * A *create* survives being accepted — it is a record, and the call links it as `extracted`. An
+   * *update* did not: it applied its value to a record that was already agreed and resolved its
+   * overlay, and after that nothing anywhere said it had happened. The record held a new value with
+   * no provenance and the reviewer's decision left no mark, so the panel had three of the four
+   * quadrants a review surface has and no way to write the fourth.
+   *
+   * These are about the one fact that cannot be recovered afterwards: what the record held before.
+   */
+  describe('keeping a change writes it down', () => {
+    const change = {
+      id: 'task-1',
+      kind: 'update',
+      entity: 'TaskBlock',
+      values: { status: 'done', title: 'Ship the docs' },
+    };
+    /** The record as it stands before the change — what the store reads, and reads only once. */
+    const held = { id: 'task-1', status: 'todo', title: 'Ship the docs' };
+
+    /** A host whose records kernel can be read as well as written to. */
+    const withRecord = (i: ReturnType<typeof interpreterWith>, rows: Record<string, unknown>[] = [held]) =>
+      harness(inCall, { interpretation: i.port, records: { find: async () => rows } });
+
+    const amendments = (h: ReturnType<typeof harness>) => h.created.filter((c) => c.entity === 'ExtractionAmendment');
+
+    it('records the property, both values and the record it was to', async () => {
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)).toHaveLength(1);
+      expect(amendments(h)[0].fields).toMatchObject({
+        property: 'status',
+        previousValue: 'todo',
+        newValue: 'done',
+        nodeType: 'TaskBlock',
+        // A to-one relation, as the single-entry list the model layer takes.
+        node: ['task-1'],
+      });
+    });
+
+    it('hangs it off the call, so a panel open on one reads it with the same subject', async () => {
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://extraction_amendment' });
+    });
+
+    it('writes nothing for a value equal to what the record already held', async () => {
+      /*
+        A staged update carries every value the pass proposed, including the ones that change
+        nothing — the panel filters those out of its diff for the same reason. Logged, they would
+        bury the one line somebody actually decided under a run of "Ship the docs → Ship the docs".
+      */
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'title');
+
+      expect(amendments(h)).toEqual([]);
+    });
+
+    it('records every changed property when the whole suggestion is kept at once', async () => {
+      // "Accept all" goes through `acceptProposal`, which is also how a create is kept — so the read
+      // has to happen there too, and only for a change.
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.acceptProposal('task-1');
+
+      expect(amendments(h).map((a) => a.fields.property)).toEqual(['status']);
+    });
+
+    it('writes nothing when a create is kept', async () => {
+      // A create has no previous values, so there is no amendment to make and no reason to spend a
+      // read finding that out.
+      const i = interpreterWith([{ id: 'task-2', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.acceptProposal('task-2');
+
+      expect(amendments(h)).toEqual([]);
+    });
+
+    it('still applies the change when the record cannot be read first', async () => {
+      /*
+        The order that matters, and the priority within it. Losing the log is a smaller harm than a
+        change somebody pressed accept on not being applied, so a failed read leaves the accept
+        alone and simply records nothing — rather than a row claiming a value came from nowhere.
+      */
+      const i = interpreterWith([change]);
+      const h = harness(inCall, {
+        interpretation: i.port,
+        records: {
+          find: async () => {
+            throw new Error('nope');
+          },
+        },
+      });
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(i.resolved).toContainEqual({ action: 'accept', id: 'task-1' });
+      expect(amendments(h)).toEqual([]);
+    });
+  });
 });
 
 /**
@@ -2488,14 +2612,17 @@ describe('transcribing', () => {
 });
 
 /**
- * A stream the backend let go of.
+ * A stream that went away mid-call.
  *
- * AD4M reaps a stream nobody has fed for thirty seconds, and this module feeds only when somebody
- * speaks — so any long pause killed transcription for the rest of the call, with the panel still
- * saying it was listening. Driven through a stand-in audio graph, since this is the listening half
- * the rest of the file deliberately avoids.
+ * An utterance is an HTTP request to a node that may be on the other side of the internet, so one
+ * failing says nothing about whether the session is over: the connection dropped, the request timed
+ * out, the node let the stream go. Recording used to end on the first of those it could not undo in
+ * one attempt, which is how transcription stopped at a different moment for each member of a call.
+ *
+ * Driven through a stand-in audio graph, since this is the listening half the rest of the file
+ * deliberately avoids.
  */
-describe('a stream the backend dropped', () => {
+describe('a stream that went away', () => {
   /** The worklet node the store builds, kept so a test can post an utterance through its port. */
   let nodes: { port: { onmessage: ((event: { data: unknown }) => void) | null } }[];
 
@@ -2531,6 +2658,10 @@ describe('a stream the backend dropped', () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   const utterance = () => ({ data: { kind: 'utterance', audio: new Float32Array(1600) } });
 
+  /**
+   * A backend whose nth stream behaves as the nth entry says — the last entry describing every
+   * attempt after it, so `['fails', 'fails']` is a node that stays unreachable.
+   */
   function streams(behaviour: ('fails' | 'works')[]) {
     const fed: number[] = [];
     let opens = 0;
@@ -2542,7 +2673,7 @@ describe('a stream the backend dropped', () => {
         models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
         open: async () => {
           const index = opens++;
-          const how = behaviour[index] ?? 'works';
+          const how = behaviour[index] ?? behaviour[behaviour.length - 1] ?? 'works';
           if (how === 'fails' && index > 0) throw new Error('model gone');
           return {
             feed: async () => {
@@ -2556,27 +2687,30 @@ describe('a stream the backend dropped', () => {
     };
   }
 
-  it('reopens the stream and resends the utterance that found it gone', async () => {
+  it('opens another stream and resends the utterance that found the first gone', async () => {
     const s = streams(['fails', 'works']);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
     await settle();
     expect(h.store.status()).toBe('listening');
 
     nodes[0].port.onmessage?.(utterance());
+    await settle();
     await settle();
 
     expect(s.opens()).toBe(2);
     expect(s.fed).toEqual([1]);
     expect(h.store.status()).toBe('listening');
+    expect(h.store.reconnecting()).toBe(false);
   });
 
-  it('shares one reopen between utterances that fail together', async () => {
+  it('shares one reconnection between utterances that fail together', async () => {
     const s = streams(['fails', 'works']);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
     await settle();
 
     nodes[0].port.onmessage?.(utterance());
     nodes[0].port.onmessage?.(utterance());
+    await settle();
     await settle();
 
     expect(s.opens()).toBe(2);
@@ -2584,17 +2718,129 @@ describe('a stream the backend dropped', () => {
     expect(h.store.status()).toBe('listening');
   });
 
-  it('stops and says so when the stream cannot be reopened', async () => {
-    const s = streams(['fails', 'fails']);
-    const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+  /**
+   * The case the hold exists for: somebody carries on talking while the stream is being put back.
+   * Their words are sent once it is, in the order they were said, rather than falling in the gap.
+   */
+  it('holds what is said while reconnecting, and sends it when the stream is back', async () => {
+    let releaseOpen = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    const fed: number[] = [];
+    let opens = 0;
+    const transcription = {
+      available: () => true,
+      models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+      open: async () => {
+        const index = opens++;
+        // The second open is kept in flight, so the utterances below arrive mid-reconnection.
+        if (index === 1) await held;
+        return {
+          feed: async () => {
+            if (index === 0) throw new Error('stream not found');
+            fed.push(index);
+          },
+          close: async () => {},
+        };
+      },
+    };
+
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription });
     await settle();
 
     nodes[0].port.onmessage?.(utterance());
     await settle();
+    expect(h.store.reconnecting()).toBe(true);
+
+    nodes[0].port.onmessage?.(utterance());
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    expect(fed).toEqual([]);
+
+    releaseOpen();
+    await settle();
     await settle();
 
-    expect(h.store.status()).toBe('error');
-    expect(h.store.error()).toContain('could not be reached again');
-    expect(h.store.listening()).toBe(false);
+    // All three: the one that found the stream gone, and the two said while it was being replaced.
+    expect(fed).toEqual([1, 1, 1]);
+    expect(h.store.reconnecting()).toBe(false);
+    expect(h.store.status()).toBe('listening');
+  });
+
+  /**
+   * The failure this was all found through: an utterance larger than the proxy in front of a hosted
+   * node would carry, refused with a 413 the browser reports as a failed fetch. Resending it was the
+   * whole recovery, so it failed identically and the session stopped — for the rest of the call, on
+   * the first long thing anybody said. One utterance is the correct price.
+   */
+  it('drops an utterance the far end keeps refusing, and keeps transcribing', async () => {
+    const fed: number[] = [];
+    let opens = 0;
+    const transcription = {
+      available: () => true,
+      models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+      // Opening always works: the node is reachable, which is what makes the utterance the suspect.
+      open: async () => {
+        opens += 1;
+        return {
+          feed: async (audio: Float32Array) => {
+            // Stands in for the proxy's body limit: anything long is refused, however often it is sent.
+            if (audio.length > 100_000) throw new Error('Failed to fetch');
+            fed.push(audio.length);
+          },
+          close: async () => {},
+        };
+      },
+    };
+
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription });
+    await settle();
+
+    // Larger than the proxy in front of a hosted node will carry, and refused identically every time.
+    nodes[0].port.onmessage?.({ data: { kind: 'utterance', audio: new Float32Array(480_000) } });
+    // Real timers: the second attempt is a second away, and this test shares a file with one that
+    // runs the clock forward a minute. Long enough for the two refusals that settle it.
+    await new Promise((resolve) => setTimeout(resolve, 1_400));
+
+    // Dropped rather than retried for ever, and the session is still recording.
+    expect(h.store.status()).toBe('listening');
+    expect(h.store.reconnecting()).toBe(false);
+    expect(h.store.error()).toBe('');
+
+    // And the next thing said still lands.
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    await settle();
+    expect(fed).toEqual([1600]);
+    // The one it started with, and the ones that proved the node was answering.
+    expect(opens).toBeLessThanOrEqual(3);
+  });
+
+  it('keeps trying, and stops only once a minute of attempts has failed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const s = streams(['fails', 'fails']);
+      const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+      await settle();
+
+      nodes[0].port.onmessage?.(utterance());
+      await settle();
+
+      // Still recording, and saying why nothing is arriving, rather than over.
+      expect(h.store.reconnecting()).toBe(true);
+      expect(h.store.status()).toBe('listening');
+      expect(h.store.listening()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(s.opens()).toBeGreaterThan(2);
+      expect(h.store.status()).toBe('error');
+      expect(h.store.error()).toContain('could not be reached again');
+      expect(h.store.reconnecting()).toBe(false);
+      expect(h.store.listening()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

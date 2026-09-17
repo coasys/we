@@ -231,4 +231,60 @@ export interface RuntimeAdminPort {
   /** Grant a pending request. Returns a secret to relay back to the asker, when there is one. */
   approve?(request: ConsentRequest): Promise<string | void>;
   deny?(request: ConsentRequest): Promise<void>;
+
+  // ── What this backend turned out not to have ────────────────────────────────
+  /**
+   * Capabilities WE asked this backend for and it does not have.
+   *
+   * ## Why the shell is told at all
+   *
+   * An adapter degrades rather than failing where a backend predates a feature — a review list
+   * without model names beats no review list — and until this existed it degraded *silently*, so
+   * the symptom reached a person as a cosmetic bug with nothing anywhere connecting it to a stale
+   * node. Somebody has to be able to find out; this is how they do.
+   *
+   * ## Why it reports names rather than consequences
+   *
+   * An adapter knows exactly what it asked for and refuses to guess at what breaks. What a caller
+   * does with the answer differs — a settings page lists it, a diagnostic bundle attaches it — and
+   * a sentence written for one of those would be wrong in the other. Names also survive: a new gap
+   * appears here with no change to this contract, which is the whole point of reporting the
+   * question rather than an interpretation of it.
+   *
+   * ## Synchronous, and why
+   *
+   * Every other member here is a round trip; this one is a local reading of what earlier round
+   * trips already discovered. Returning a Promise would say a call goes out, which would be a lie
+   * about both the cost and the meaning — there is nothing to ask, and nothing to fail.
+   *
+   * **An empty list is not a clean bill of health.** Nothing is recorded until something asks for
+   * it, so this says "nothing has been refused yet", never "this backend is current". A caller
+   * rendering it should say as much.
+   */
+  unsupported?(): UnsupportedCapability[];
+  /**
+   * Be told when {@link unsupported} gains an entry. Returns an unsubscribe function.
+   *
+   * Needed because a gap is discovered by whichever call needed it, which is never the surface that
+   * shows them. Without it a settings page renders whatever was known when it mounted, and for the
+   * first gap of a session that is an empty list — the one case somebody is looking for.
+   */
+  onUnsupported?(handler: () => void): () => void;
+}
+
+/**
+ * One capability a backend turned out not to have.
+ *
+ * `name` is the backend's own word for it, unmodified — an AD4M executor's RPC method name — so it
+ * can be searched for in that backend's source and matched against its history. Translating it into
+ * something friendlier would take away the only part that is actionable.
+ */
+export interface UnsupportedCapability {
+  name: string;
+  /**
+   * When it was first refused, ISO 8601 — the same shape as every other timestamp in the contract,
+   * so a caller can render it without knowing where it came from. When, not how often: a capability
+   * gap does not heal, so a second refusal says nothing a first did not.
+   */
+  firstSeen: string;
 }

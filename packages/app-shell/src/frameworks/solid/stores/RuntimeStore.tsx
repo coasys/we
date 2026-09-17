@@ -43,6 +43,7 @@ import type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
+  UnsupportedCapability,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import {
@@ -80,6 +81,20 @@ export interface RuntimeStore {
   canConfigureExecutor: Accessor<boolean>;
 
   // ── State ────────────────────────────────────────────────────────────────────
+  /**
+   * Capabilities this backend was asked for and does not have, each as `{ name, firstSeen }`.
+   *
+   * What a stale node looks like from inside the app. The adapter degrades rather than failing when
+   * the backend predates a feature, so the symptom reaches a person as a part of the app quietly
+   * doing less — a review list with no model names, a card with no icon — with nothing connecting
+   * it to the node. This is the connection, and `name` is the backend's own word for the capability
+   * so it can be searched for in that backend's source.
+   *
+   * **Empty means nothing has been refused yet, not that the backend is current.** Nothing is
+   * recorded until something asks, so a screen showing this should say so rather than reporting
+   * silence as health.
+   */
+  unsupportedCapabilities: Accessor<UnsupportedCapability[]>;
   /** Installed models, each carrying the strings its row displays. Empty until loadAiModels(). */
   aiModels: Accessor<AiModelView[]>;
   /** Named prompts apps registered against a model. */
@@ -254,6 +269,27 @@ export function RuntimeStoreProvider(props: ParentProps) {
   // Both halves are needed: the backend writes the file, the host is what can name one. Neither is
   // any use alone, which is why this is one flag rather than two.
   const canBackUp = createMemo(() => !!runtime()?.exportDatabase && !!executorHost()?.chooseFile);
+
+  /**
+   * What the backend turned out not to support, kept current as more of it is discovered.
+   *
+   * A signal fed by the port's own subscription rather than a memo over `runtime()`: the list grows
+   * when some unrelated call is refused, which changes nothing a memo could be tracking. Without
+   * the subscription a settings page would render whatever was known when it mounted — and for the
+   * first gap of a session that is an empty list, which is exactly the reader who went looking.
+   *
+   * Re-read wholesale on each notification rather than appended to, so the port stays the one
+   * answer to what is missing and the handler carries no payload to get out of step with it.
+   */
+  const [unsupportedCapabilities, setUnsupportedCapabilities] = createSignal<UnsupportedCapability[]>([]);
+  createEffect(() => {
+    const port = runtime();
+    setUnsupportedCapabilities(port?.unsupported?.() ?? []);
+    // A backend that reports gaps but cannot say when a new one appears is still worth showing;
+    // it is simply a snapshot, which is what an absent subscription honestly is.
+    const stop = port?.onUnsupported?.(() => setUnsupportedCapabilities(port.unsupported?.() ?? []));
+    if (stop) onCleanup(stop);
+  });
 
   // Sorted, so adding an override does not reorder the rows under the cursor.
   const logLevels = createMemo(() =>
@@ -788,6 +824,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canConfigureAi,
     canConfigureExecutor,
 
+    unsupportedCapabilities,
     canBackUp,
     logLevels,
     backupStatus,

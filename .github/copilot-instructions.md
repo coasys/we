@@ -2145,6 +2145,7 @@ CollectionBlock extends WeNode:
   - board: HasOne → CollectionBlock [we://board]
   - extractionPasses: HasMany → ExtractionPass [we://extraction_pass_record]
   - extracted: HasMany [we://extracted]
+  - amendments: HasMany → ExtractionAmendment [we://extraction_amendment]
 
 DividerBlock extends WeNode:
   Fields:
@@ -2432,6 +2433,15 @@ Theme extends WeNode:
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
+ExtractionAmendment extends Ad4mModel:
+  Fields:
+  - property: string [we://amended_property]
+  - previousValue: string [we://previous_value]
+  - newValue: string [we://new_value]
+  - nodeType: string [we://node_type]
+  Relations:
+  - node: HasOne [we://amended_node]
+
 ExtractionPass extends Ad4mModel:
   Fields:
   - outcome: string = 'done' [we://outcome]
@@ -2710,6 +2720,7 @@ RuntimeStore:
   - canManageAi: boolean — gate the AI section on this
   - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
   - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
+  - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (an AD4M executor's RPC method), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
   - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
@@ -3233,6 +3244,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposalDraft — What has been typed into the open suggestion, keyed by property name.
   - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
+  - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.

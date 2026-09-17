@@ -916,8 +916,21 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Add a dataset to the list, or replace the entry already there.
+   *
+   * Replace, not skip. The backend's added event routinely wins the race with the action that made
+   * the dataset — a shared space is created, then published, and the event lands in between — so the
+   * entry already listed can predate the publish: no `sharedUri`, and a handle whose `sharedUrl` is
+   * empty. Anything looking the space up by its shared uri then misses it, which is how a new space's
+   * presence never started and its transcript had no call to write into until a reload re-listed it.
+   * The caller's ref is the one that knows how the action ended.
+   */
   async function trackDataset(ref: DatasetRef): Promise<void> {
-    if (datasets().some((existing) => existing.id === ref.id)) return;
+    if (datasets().some((existing) => existing.id === ref.id)) {
+      setDatasets((prev) => prev.map((d) => (d.id === ref.id ? toApp(ref) : d)));
+      return;
+    }
     setDatasets((prev) => [...prev, toApp(ref)]);
     // reorderDatasets dedupes, so re-tracking a dataset the change event already ordered is safe.
     await reorderDatasets([...getDatasetOrder(), ref.id]);

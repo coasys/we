@@ -35,6 +35,8 @@ import type {
 import { trace } from '@we/backend-shared';
 import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
+import { recordMissingMethod } from './missingMethods';
+
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
 /** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
@@ -253,7 +255,7 @@ async function entitiesOf(perspective: PerspectiveProxy, bases: string[]): Promi
   try {
     classes = await perspective.subjectClassesOf(bases);
   } catch (error) {
-    if (!isMissingHandler(error)) console.warn('interpretation: could not classify staged records —', error);
+    if (!recordMissingMethod(error)) console.warn('interpretation: could not classify staged records —', error);
     return out;
   }
   for (const [base, names] of Object.entries(classes ?? {})) {
@@ -424,28 +426,14 @@ const UNSUPPORTED =
   'This runtime does not support interpretation. It needs an AD4M build with the generic ' +
   'extraction stack; everything else in the app works normally without it.';
 
-/**
- * Whether a rejection means "this executor has never heard of that method".
- *
- * The WS dispatcher answers an unregistered method with a 404 whose message is
- * `Unknown type: <method>`, and that is a categorically different failure from the call being
- * attempted and going wrong: it says the node is running a build that predates the feature, and no
- * retry, model configuration or permission grant will change it.
- *
- * Both the status and the message are checked because only one of them is guaranteed to survive.
- * The client raises a typed error carrying `status`, but that type is not exported from the package
- * root, and an error crossing a transport or a rewrapping layer can arrive as a plain `Error` with
- * the text intact and the status gone.
- *
- * Deliberately narrow. Anything broader would let an unrelated outage — a busy node, a dropped
- * socket — be recorded as a permanent capability gap, which is the one mistake here that a user
- * cannot recover from without reloading.
- */
-function isMissingHandler(error: unknown): boolean {
-  const status = (error as { status?: unknown; code?: unknown })?.status ?? (error as { code?: unknown })?.code;
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return status === 404 || /unknown type/i.test(message);
-}
+/*
+  `isMissingHandler` used to live here. It now lives in `missingMethods.ts` as
+  `recordMissingMethod`, which answers the same question and keeps the method name it reads out of
+  the message on the way past, so every guard below feeds one list the settings page can show.
+
+  Renamed at the call sites rather than aliased: the function has a side effect now, and a
+  question-shaped name over a recording call is how the next reader gets surprised.
+*/
 
 /**
  * Whether the runtime can hold a standing watch, probed separately from `interpret`.
@@ -871,7 +859,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         await proxy(dataset).interpretationOverlays();
         executorSupports = true;
       } catch (error) {
-        if (!isMissingHandler(error)) {
+        if (!recordMissingMethod(error)) {
           // Inconclusive. Left unset so the next dataset change asks again.
           trace('interpretation', 'probe:inconclusive', { error: String(error) });
           return true;
@@ -952,7 +940,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
             observed ? passId : undefined,
           );
         } catch (error) {
-          if (!isMissingHandler(error)) throw error;
+          if (!recordMissingMethod(error)) throw error;
           executorSupports = false;
           throw new Error(UNSUPPORTED);
         }
@@ -1177,7 +1165,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         // by the caller and, before this, disappeared into a console line — which is why a node
         // that could not auto-extract looked for three days like one that simply had nothing to
         // extract.
-        if (!isMissingHandler(error)) throw error;
+        if (!recordMissingMethod(error)) throw error;
         executorSupports = false;
         throw new Error(UNSUPPORTED_WATCH);
       }

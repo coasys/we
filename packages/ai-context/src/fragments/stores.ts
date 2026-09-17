@@ -72,6 +72,7 @@ export const storeEntries: StoreEntry[] = [
       canManageAi: { type: 'boolean' },
       canConfigureAi: { type: 'boolean' },
       canConfigureExecutor: { type: 'boolean' },
+      unsupportedCapabilities: { type: 'array', properties: ['name', 'firstSeen'] },
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
       executorRestartPending: { type: 'boolean' },
@@ -670,6 +671,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
         canConfigureExecutor:
           'boolean — this host starts the backend, so how it starts it can be changed. False on web',
+        unsupportedCapabilities:
+          "{ name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (an AD4M executor's RPC method), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health",
         mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
         mcpPort: 'number — the port MCP is served on',
         executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',

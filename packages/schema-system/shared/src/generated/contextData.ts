@@ -1389,6 +1389,7 @@ export const contextData: ContextData = {
           target: 'ExtractionPass',
         },
         { name: 'extracted', kind: 'HasMany', predicate: 'we://extracted' },
+        { name: 'amendments', kind: 'HasMany', predicate: 'we://extraction_amendment', target: 'ExtractionAmendment' },
       ],
     },
     {
@@ -1822,6 +1823,18 @@ export const contextData: ContextData = {
         { name: 'overrides', type: 'string', predicate: 'we://token_overrides', required: false, default: 'null' },
       ],
       relations: [{ name: 'screenshots', kind: 'HasMany', predicate: 'we://screenshot', target: 'ImageBlock' }],
+    },
+    {
+      name: 'ExtractionAmendment',
+      className: 'ExtractionAmendment',
+      extends: 'Ad4mModel',
+      fields: [
+        { name: 'property', type: 'string', predicate: 'we://amended_property', required: false },
+        { name: 'previousValue', type: 'string', predicate: 'we://previous_value', required: false },
+        { name: 'newValue', type: 'string', predicate: 'we://new_value', required: false },
+        { name: 'nodeType', type: 'string', predicate: 'we://node_type', required: false },
+      ],
+      relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://amended_node' }],
     },
     {
       name: 'ExtractionPass',
@@ -2347,6 +2360,7 @@ export const contextData: ContextData = {
         canManageAi: { type: 'boolean' },
         canConfigureAi: { type: 'boolean' },
         canConfigureExecutor: { type: 'boolean' },
+        unsupportedCapabilities: { type: 'array', properties: ['name', 'firstSeen'] },
         aiModels: {
           type: 'array',
           properties: [
@@ -3328,6 +3342,11 @@ export const contextData: ContextData = {
           name: 'proposalsFor',
           kind: 'state',
           doc: 'Suggestions staged on one conversation, by record id — read as proposalsFor[id].',
+        },
+        {
+          name: 'reconnecting',
+          kind: 'state',
+          doc: 'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
         },
         { name: 'refreshProposals', kind: 'action', doc: 'Re-reads what is staged on a call, or on the live one.' },
         { name: 'rejectProposal', kind: 'action', doc: 'Drops a suggestion.' },

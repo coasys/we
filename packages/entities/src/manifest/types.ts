@@ -111,6 +111,7 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   board?: CollectionBlockRecord;
   extractionPasses: string[];
   extracted: string[];
+  amendments: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   setChildren(values: (string | { id: string })[], batch?: string): Promise<unknown>;
@@ -408,6 +409,14 @@ export interface ThemeRecord extends WeNodeRecord {
   addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+}
+
+export interface ExtractionAmendmentRecord extends RecordInstance {
+  property: string;
+  previousValue: string;
+  newValue: string;
+  nodeType: string;
+  node?: string;
 }
 
 export interface ExtractionPassRecord extends RecordInstance {

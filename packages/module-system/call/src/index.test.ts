@@ -136,7 +136,6 @@ describe('the bar keeps to the screen', () => {
 });
 
 describe('the compact bar', () => {
-  const COMPACT = { $: "surface.tier == 'base'" };
   const ROOMY = { $: "surface.tier != 'base'" };
   const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
 
@@ -152,23 +151,60 @@ describe('the compact bar', () => {
         node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $action: action }),
     ) as SchemaNode;
 
+  /** The menu's lines are a prop rather than child nodes, so they are read rather than walked. */
+  const entries = (): { onToggle?: { $action: string }; onAction?: { $action: string }; hidden?: unknown }[] =>
+    props(inCall()).items as { onToggle?: { $action: string }; onAction?: { $action: string }; hidden?: unknown }[];
+
   it('folds screen share, show/hide and solo into one menu below the base tier', () => {
     const menu = inCall();
     expect(menu).toBeDefined();
-    const gates = tierGates(menu);
-    expect(gates.map((gate) => props(gate).condition)).toEqual([COMPACT]);
+
+    const toggles = entries().filter((entry) => entry.onToggle);
+    expect(toggles.map((entry) => entry.onToggle!.$action).sort()).toEqual([
+      'modules.call.toggleScreenShare',
+      'modules.call.toggleSolo',
+      'modules.call.toggleStage',
+    ]);
 
     /*
-      The menu's lines are a prop rather than child nodes, so they are read rather than walked —
-      and one of them is wrapped in a `$if`, since solo is only offered while something is focused.
-      Unwrapping the branch is what keeps this an assertion about *which three toggles fold*, which
-      is the thing worth pinning, rather than about how one of them is gated.
+      The fold is on the entries, not on the menu.
+
+      It used to be a `whenCompact` around the whole menu, which made the menu itself a thing that
+      only existed below `base` — see the next test for why that stopped being right. `hidden` says
+      the same thing one level down, so each of the three is still withdrawn from the menu at exactly
+      the width the row is showing it, and the invariant holds: the same three specs build both.
+
+      Tested as "the condition mentions the tier" rather than as its exact text, because solo's also
+      carries its own gate — it is offered only while something is focused — and that is a different
+      question from folding.
     */
-    const actions = (props(menu).items as unknown[])
-      .map((entry) => (entry as { $if?: { then: unknown } }).$if?.then ?? entry)
-      .map((item) => (item as { onToggle: { $action: string } }).onToggle.$action)
-      .sort();
-    expect(actions).toEqual(['modules.call.toggleScreenShare', 'modules.call.toggleSolo', 'modules.call.toggleStage']);
+    for (const entry of toggles) {
+      expect(JSON.stringify(entry.hidden), JSON.stringify(entry.onToggle)).toContain(ROOMY.$);
+    }
+  });
+
+  it('keeps the menu at every width, because it holds more than the fold now', () => {
+    /*
+      Starting a second call mid-call had nowhere to live. The join bar offers a `+` for it, and only
+      somebody *not* in a call ever sees that — so on a wide screen the control did not exist and a
+      breakout meant hanging up first.
+
+      A menu that existed only below `base` was the wrong home for it, so the menu stands at every
+      width and the fold moved onto the entries. Asserted on the tier gates *above* the menu, since
+      the failure being guarded against is somebody restoring the `whenCompact` wrapper and taking
+      the start away from every desktop with it.
+    */
+    expect(tierGates(inCall())).toEqual([]);
+
+    const start = entries().find((entry) => entry.onAction);
+    /*
+      `args` explicitly, and the empty string is the point: a handler with none forwards the click,
+      and `startCall` takes an optional anchor id — so it would be handed a PointerEvent and the
+      write refused. `''` is how the store spells "about the space rather than about a node in it".
+    */
+    expect(start?.onAction).toEqual({ $action: 'modules.call.startCall', args: [''] });
+    // Never folded: it is the one entry the row does not show somewhere else.
+    expect(start?.hidden).toBeUndefined();
   });
 
   it('takes the same three out of the row at that tier, so nothing is shown twice', () => {

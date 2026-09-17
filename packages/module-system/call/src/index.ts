@@ -113,7 +113,7 @@ const CALL_BAR_INSET = '10px';
  * ## Why the strip is a `$surface`
  *
  * The strip's width is the content's width, which is exactly the number the bar needs in order to
- * decide how much of itself to show — see `COMPACT`. A surface is the one mechanism the system has
+ * decide how much of itself to show — see `ROOMY`. A surface is the one mechanism the system has
  * for a schema to read its own room, and it needs a box whose inline size is decided from outside,
  * which a strip pinned at both ends is and a shrink-to-fit bar is not.
  *
@@ -169,18 +169,21 @@ function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
  *
  * One tier rather than a gradual collapse, because a control that moves at 700 and another at 500
  * is a bar nobody can learn. The rule is: below `base` it is the small bar, otherwise the whole
- * one, and both are one schema with these two gates in it rather than two schemas that drift.
+ * one, and both are one schema with this gate in it rather than two schemas that drift.
  *
  * The same question the mobile plan asks, answered once — a narrow window and a narrow content
  * box are the same problem to a bar, and the surface reports them as one number.
+ *
+ * Stated as its negative — "the row has room" — because that is the direction every use runs in
+ * now. The row shows a control while roomy, and the menu keeps the same control `hidden` while
+ * roomy; there is no longer anything mounted only *because* the bar is compact, so the positive
+ * spelling and the `whenCompact` built on it are gone rather than kept as a second way to say this.
  */
-const COMPACT = { $: "surface.tier == 'base'" };
 const ROOMY = { $: "surface.tier != 'base'" };
 const whenRoomy = (node: SchemaNode): SchemaNode => ({
   type: '$if',
   props: { condition: ROOMY, then: node },
 });
-const whenCompact = (node: SchemaNode): SchemaNode => ({ type: '$if', props: { condition: COMPACT, then: node } });
 
 /**
  * The bar's own corners, following the theme's **control** radius.
@@ -926,7 +929,7 @@ const participants: SchemaNode = peopleTooltip({
           },
         },
         /*
-          The sentence is the first thing to go when the bar is short of room — see `COMPACT`. The
+          The sentence is the first thing to go when the bar is short of room — see `ROOMY`. The
           faces stay, and the stack's own "+N" carries the count past three; the roster on hover is
           unchanged, so nothing is lost that was not already a hover away.
         */
@@ -1055,7 +1058,8 @@ function menuToggle(opts: CallToggle) {
 }
 
 /**
- * Where the secondary controls go when the row is compact — see `COMPACT`.
+ * The bar's secondary controls: what the row folds away when it is compact — see `ROOMY` — and what
+ * belongs in a menu at any width.
  *
  * The design system's `DropdownMenu`, which this could not use until recently: it drew a filled pill
  * for a trigger with no way to say otherwise, and this has to sit in a row of ghost squares as one
@@ -1066,14 +1070,28 @@ function menuToggle(opts: CallToggle) {
  *
  * Opens upward: the bar is on the bottom edge and there is nothing below it.
  *
- * What is in here is exactly what `whenRoomy` takes out of the row, and it is built from the same
+ * What folds in here is exactly what `whenRoomy` takes out of the row, and it is built from the same
  * three specs, so a toggle cannot be lost in the fold or appear twice. Mute, camera and hang-up
  * never fold: they are the call, and a menu between a person and their microphone is a step too
  * many at the moment they need it.
  *
- * Solo is only offered while something is focused. A `$if` with no `else` resolves to nothing, and
- * the dropdown skips an entry that resolved to nothing — which is what makes a conditional line
- * expressible here at all, and was the second reason this was hand-rolled.
+ * A line that comes and goes says so on itself, with `hidden`, rather than being wrapped in
+ * anything: the items are a *prop*, and an entry carries a handler, which no value expression can
+ * hold — so there is nowhere outside an entry to put the condition. That is what makes a conditional
+ * line expressible here at all, and it was the second reason this was hand-rolled. Solo uses it for
+ * "only while something is focused"; the three folding toggles use it for the fold.
+ *
+ * ## It is always in the row now, not only when the row is compact
+ *
+ * The menu used to be `whenCompact(moreMenu)` — present only below `base`, because folding was the
+ * only reason it existed. That made it the wrong home for anything that is not a fold, and the bar
+ * needed one: starting a second call is a real thing to want mid-call (see the join bar's `+`, which
+ * offers exactly that to somebody who is *not* in one) and there was nowhere in the in-call bar to
+ * put it. On a wide screen the control simply did not exist, so a breakout meant hanging up first.
+ *
+ * So the menu stands at every width and the fold is expressed on the entries instead, with `hidden`
+ * — which keeps the invariant the paragraph above states, since the same three specs still build
+ * them. What is left in a roomy bar is the one entry that never folds.
  */
 const moreMenu: SchemaNode = {
   type: 'DropdownMenu',
@@ -1084,11 +1102,32 @@ const moreMenu: SchemaNode = {
     placement: 'top',
     itemSize: 'sm',
     items: [
-      menuToggle(SCREEN_SHARE),
-      menuToggle(STAGE),
+      // Folded away while the row is roomy, because the row is showing them itself — the other half
+      // of `whenRoomy`, said on the entry now that the menu outlives the fold.
+      { ...menuToggle(SCREEN_SHARE), hidden: ROOMY },
+      { ...menuToggle(STAGE), hidden: ROOMY },
       // Solo is only offered while something is focused. On the entry rather than around it: an
       // entry carries a handler, which no value expression can hold — see `hidden` on the menu.
-      { ...menuToggle(SOLO), hidden: { $: '!modules.call.focusedId' } },
+      { ...menuToggle(SOLO), hidden: { $: "surface.tier != 'base' || !modules.call.focusedId" } },
+      {
+        /*
+          Start a second call from inside one — a breakout, a different subject.
+
+          The counterpart of the `+` in the join bar, which only somebody *not* in a call ever sees.
+          In a menu rather than as a button in the row, and spelt out rather than called "New call",
+          because of what it actually does: this agent can be in one call at a time, so `join` tears
+          the current one down before the new one starts — see the store. Everyone else stays where
+          they are; what ends is your part in it.
+
+          `args: ['']` rather than no args: a handler with none forwards the click, and `startCall`
+          takes an optional anchor id, so it would be handed a PointerEvent and the write refused.
+          `''` is how the store already spells "about the space rather than about some node in it".
+        */
+        id: 'start-another',
+        label: 'Leave and start a new call',
+        icon: 'plus',
+        onAction: { $action: 'modules.call.startCall', args: [''] },
+      },
     ],
   },
 };
@@ -1315,7 +1354,7 @@ const bar: SchemaNode = {
               tip: { on: 'Turn camera off', off: 'Turn camera on' },
             }),
             // From here to the divider, everything but the contributed controls folds into `moreMenu`
-            // when the row is compact — see `COMPACT`. The glyph is explained on `SCREEN_SHARE`.
+            // when the row is compact — see `ROOMY`. The glyph is explained on `SCREEN_SHARE`.
             whenRoomy(mediaToggle(SCREEN_SHARE)),
             {
               // Where other modules put their call controls — see `anchors` below. The marker is replaced
@@ -1332,8 +1371,12 @@ const bar: SchemaNode = {
               "recording" button, say) precisely because it has to be seen. So the menu holds only
               what this module owns, and sits where the folded buttons were, so the row reads the
               same in either state: your devices, then the rest.
+
+              Unconditional now, where it was `whenCompact`. It carries one entry that is not a fold
+              — see `moreMenu` — and a control that exists only below 640px is a control most people
+              never find.
             */
-            whenCompact(moreMenu),
+            moreMenu,
             /*
           Show/hide sits with the devices, not with the call.
 

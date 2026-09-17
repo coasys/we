@@ -37,6 +37,7 @@ import type {
 } from '@we/backend-shared';
 
 import { type Ad4mCapability, CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
+import { missingExecutorMethods, onMissingMethod } from './missingMethods';
 import { formatNetworkMetrics } from './networkMetrics';
 import { toPeerRecords } from './peerRecords';
 
@@ -282,6 +283,20 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
    * the list is either empty or somebody else's. They have moved to the node-scoped group below.
    */
   const agentScoped: RuntimeAdminPort = {
+    /*
+      What this executor turned out not to have.
+
+      Here rather than in the node-scoped group, and unconditional, because it is neither a node
+      setting nor a grant: it is a reading of what *this session's* own calls have already been
+      refused, and a guest on somebody else's node needs it at least as much as its operator — a
+      guest is exactly who gets the degraded surface with no way to account for it.
+
+      Answers with the AD4M-specific registry because this is the AD4M adapter; a second backend
+      answers from whatever it learns the same question through, or omits the member entirely.
+    */
+    unsupported: () => missingExecutorMethods().map(({ method, firstSeen }) => ({ name: method, firstSeen })),
+    onUnsupported: (handler) => onMissingMethod(handler),
+
     // ── Consent ───────────────────────────────────────────────────────────────
     /**
      * One executor subscription, demultiplexed into the contract's two request kinds. AD4M raises

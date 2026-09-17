@@ -148,9 +148,25 @@ export function createAd4mTranscriptionPort(
       return {
         async feed(audio: Float32Array): Promise<void> {
           if (!open || audio.length === 0) return;
-          // Rejects when the executor has let the stream go — it reaps one that has not been fed for
-          // thirty seconds, which a caller feeding only utterances hits in any long pause. That is
-          // not a closed stream from the caller's side, so it is not swallowed: the caller reopens.
+          /*
+            Rejects whenever the utterance did not land, and the reasons are not all about the
+            stream: this is an HTTP POST of raw audio, so a node reached over the network refuses one
+            for a dropped connection or a timeout as readily as for a stream it no longer has. None
+            of those is a closed stream from the caller's side, so none is swallowed — the caller
+            holds the utterance and re-establishes the stream.
+
+            **How big an utterance may be is not this executor's answer to give.** It accepts 10 MB;
+            the reverse proxy in front of a hosted node typically accepts 1 MB, and refuses the rest
+            with a 413 that carries no CORS headers — so a browser reports a failed fetch and the
+            status never reaches this code. There is nothing to branch on here, which is why the
+            worklet's utterance cap is the thing that keeps a body under it.
+
+            Note the executor is *supposed* to reap a stream nobody has fed for thirty seconds, and
+            does not: its cleanup task is shut down moments after the node starts, so an abandoned
+            stream lives until the process ends. Worth knowing in both directions — a long pause in a
+            call is not what ends a stream today, and a node that has been up a while is carrying
+            every stream every client ever abandoned.
+          */
           await client.ai.feedTranscriptionStream(streamId, audio);
         },
         async close(): Promise<void> {
