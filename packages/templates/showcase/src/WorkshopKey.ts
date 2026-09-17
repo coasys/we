@@ -156,6 +156,10 @@ export const KIND_DEFAULTS: Record<string, string> = {
   FileBlock: '#d9d3c4',
   LinkBlock: '#a3e4ea',
   EmbedBlock: '#c8d7ec',
+  LocationBlock: '#d4ef9a',
+  CodeBlock: '#cdb89c',
+  TagBlock: '#ff9f8f',
+  CalloutBlock: '#ffc75f',
   // The post-it. A literal rather than a role on purpose: a note is yellow in a dark theme too, and
   // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
   CollectionBlock: '#ffea9f',

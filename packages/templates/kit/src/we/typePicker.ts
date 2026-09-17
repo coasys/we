@@ -43,9 +43,10 @@ export interface TypePickerOptions {
  *
  * ## Cards
  *
- * Icon, name and description, one step off the modal's own ground so a card reads as something to
- * press. Where the caller gives a kind's colour, the card's edge, the ring around the icon and the
- * icon itself take it — the same colour the canvas draws that kind in, so the chooser reads as a key.
+ * Icon, name and description, on a sunken ground so a card stands clearly apart from the modal it
+ * sits in. Where the caller gives a kind's colour, the ring around the icon and the icon itself take
+ * it — the same colour the canvas draws that kind in, so the chooser reads as a key. The card's own
+ * edge stays plain: a grid of coloured outlines was noise around the thing that says the kind.
  *
  * One fragment rather than one per surface, because a canvas's chooser, a record form's type selector
  * and a graph's add button all ask the same question of the same list. The caller says what a pick
@@ -96,8 +97,8 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
       ay: 'start',
       p: '300',
       r: '300',
-      bg: 'surface-raised',
-      border: edge(kind, '1px'),
+      bg: 'surface-sunken',
+      border: '1px solid border',
       hoverProps: { bg: 'surface-hover' },
       label: { $: nameOf(kind) },
       onClick: opts.pick(kind),
@@ -116,7 +117,7 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
               r: 'full',
               ax: 'center',
               ay: 'center',
-              bg: 'surface-sunken',
+              bg: 'surface',
               border: edge(kind, '2px'),
             },
             children: [
