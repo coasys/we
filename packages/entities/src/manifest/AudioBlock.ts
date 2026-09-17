@@ -4,6 +4,7 @@ export const AudioBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A sound or a recording, from a link',
     // A form: filled in where a record is given one inline, and wherever one is made on its own.
     authoring: { fields: ['audioUrl', 'title', 'artist'] },
     flag: { predicate: 'we://flag', value: 'we://audio_block' },

@@ -1288,11 +1288,10 @@ describe('the workshop’s canvas', () => {
     expect(canvas).toContain(
       `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
-    // One list: a note, tasks, events, then the rest in the store's order — pictures and text among
-    // them. A composed kind opens the composer, anything else the form.
-    expect(canvas).toContain(
-      "distinct(['CollectionBlock', 'TaskBlock', 'EventBlock'], recordStore.creatableEntities.map(k, k.value))",
-    );
+    // One searchable grid over the one list — the note, this space's types, then blocks led by tasks
+    // and events (see `typePicker`). A composed kind opens the composer, anything else the form.
+    expect(canvas).toContain('"placeholder":"Search types…"');
+    expect(canvas).toContain("distinct(['TaskBlock', 'EventBlock'], recordStore.creatableEntities");
     expect(canvas).toContain(
       `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
     );

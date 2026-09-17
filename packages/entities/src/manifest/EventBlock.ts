@@ -5,6 +5,7 @@ export const EventBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'Something happening at a time — a meeting, a deadline, a gathering',
     /*
       Where it happens is said here rather than on the relation, because `RelationSchema` carries no
       hint of its own — the executor's prompt has a slot for one, and WE's manifest has nowhere to

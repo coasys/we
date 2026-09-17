@@ -4,6 +4,7 @@ export const FileBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A file to download, from a link',
     // A form: filled in where a record is given one inline, and wherever one is made on its own.
     authoring: { fields: ['url', 'name', 'title'] },
     flag: { predicate: 'we://flag', value: 'we://file_block' },

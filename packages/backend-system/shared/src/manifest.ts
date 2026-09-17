@@ -212,6 +212,16 @@ export interface EntitySchema {
   relations: Record<string, RelationSchema>;
 
   /**
+   * What this kind of thing is, in one line a person reads — "A picture, uploaded".
+   *
+   * Shown wherever a type is chosen or explained: the chooser's card, the key, an inspector's
+   * heading. On the declaration rather than in a table beside the icons, because it is part of what
+   * the type *is*, and a community's own types already carry one from the wizard — one field serves
+   * both. Absent reads as nothing to say, not as an error.
+   */
+  description?: string;
+
+  /**
    * How instances of this entity are told apart from everything else in the same dataset.
    *
    * Backends that store entities in their own container (a SQL table) can ignore it; graph
@@ -419,6 +429,7 @@ const entitySchema = z.object({
   extends: z.string().optional(),
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
+  description: z.string().optional(),
   extractable: z.boolean().optional(),
   blockable: z.boolean().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),

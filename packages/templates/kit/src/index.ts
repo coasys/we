@@ -74,6 +74,8 @@ export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleFilter } from './we/peopleFilter.ts';
 export type { PeopleFilterOptions } from './we/peopleFilter.ts';
 export { peopleRow } from './we/peopleRow.ts';
+export { typePicker, typePickerLists } from './we/typePicker.ts';
+export type { TypePickerOptions } from './we/typePicker.ts';
 export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
 export {
   fillForSemantic,

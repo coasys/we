@@ -4,6 +4,7 @@ export const CalloutBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A highlighted message — a tip, a warning, something to notice',
     authoring: { fields: ['text', 'variant', 'icon'] },
     flag: { predicate: 'we://flag', value: 'we://callout_block' },
     properties: {

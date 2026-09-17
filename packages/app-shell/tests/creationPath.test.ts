@@ -46,4 +46,10 @@ describe('what a person can create', () => {
   it('leaves out a block there is nothing to make of', () => {
     expect(path('DividerBlock')).toBeNull();
   });
+
+  it('says in a line what each creatable block is, for the chooser’s card', () => {
+    for (const [name, entity] of Object.entries(CORE_MANIFEST.entities)) {
+      if (creationPath(entity)) expect(entity.description, name).toBeTruthy();
+    }
+  });
 });

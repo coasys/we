@@ -5,6 +5,7 @@ export const CollectionBlock: CoreEntityDef = {
   methodRelations: ['children', 'arranges'],
   entity: {
     blockable: true,
+    description: 'A document of blocks — a note, a post, a card on a canvas',
     flag: { predicate: 'we://flag', value: 'we://collection_block' },
     /*
       How a collection reads when something shows one — a card on a canvas, an inspector, the

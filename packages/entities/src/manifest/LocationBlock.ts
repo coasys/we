@@ -5,6 +5,7 @@ export const LocationBlock: CoreEntityDef = {
   optional: ['city', 'country', 'countryCode', 'latitude', 'longitude'],
   entity: {
     blockable: true,
+    description: 'A place on the map',
     flag: { predicate: 'we://flag', value: 'we://location_block' },
     interpretationHint:
       'A place something happens — a city, a venue, an address, as it was said. Create one only to attach it to something else that needs a where; a place nobody is meeting at is not worth recording. Give the name as spoken and leave the coordinates alone: they are filled in later by geocoding, and a guessed one puts a pin in the wrong country.',

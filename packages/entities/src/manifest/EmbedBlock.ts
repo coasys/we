@@ -17,6 +17,7 @@ export const EmbedBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A page from the web shown in place, or a card pointing at something in WE',
     // A URL and what to call it. A reference to a record is written by a drop, not typed.
     authoring: { fields: ['url', 'label'] },
     flag: { predicate: 'we://flag', value: 'we://embed_block' },

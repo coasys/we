@@ -22,6 +22,7 @@ export const TextBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A line or paragraph of text, on its own',
     // A form, for a paragraph that stands on its own — a line of text on a canvas. Plain text: marks
     // are written in the composer.
     authoring: { fields: ['text'] },

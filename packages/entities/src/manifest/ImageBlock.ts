@@ -4,6 +4,7 @@ export const ImageBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A picture, uploaded',
     // A form: filled in where a record is given one inline, and wherever one is made on its own.
     authoring: { fields: ['src', 'altText'] },
     flag: { predicate: 'we://flag', value: 'we://image_block' },

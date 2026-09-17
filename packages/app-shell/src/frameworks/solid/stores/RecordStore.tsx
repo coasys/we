@@ -84,6 +84,8 @@ export interface CreatableEntity {
   value: string;
   icon: string;
   group: string;
+  /** What this kind of thing is, in a line — the manifest's `description`, or the shape's. Empty when neither says. */
+  description: string;
   /**
    * How it is made. A surface that can only host a form — the record form's type selector — lists
    * the `form` ones; a surface that can open the composer too (a canvas) lists them all.
@@ -541,9 +543,11 @@ export function RecordStoreProvider(props: ParentProps) {
     Object.entries(CORE_MANIFEST.entities)
       .flatMap(([name, entity]) => {
         const via = creationPath(entity);
-        return via
-          ? [{ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Built in', via }]
-          : [];
+        if (!via) return [];
+        const icon = BLOCK_ICONS[name] ?? 'cube';
+        return [
+          { label: modelLabel(name), value: name, icon, group: 'Built in', description: entity.description ?? '', via },
+        ];
       })
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
@@ -558,6 +562,7 @@ export function RecordStoreProvider(props: ParentProps) {
         value: shape.name,
         icon: shape.icon || 'cube',
         group: 'This space',
+        description: shape.description ?? '',
         via: 'form' as const,
       }))
       .sort((a, b) => a.label.localeCompare(b.label)),
@@ -645,7 +650,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * with its own icon and label, and a display derived from the community's shape is the one that
    * should win.
    */
-  const displayableEntities = createMemo<Omit<CreatableEntity, 'via'>[]>(() => {
+  const displayableEntities = createMemo<Omit<CreatableEntity, 'via' | 'description'>[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
     /*
       Every core block too, including the ones there is no way to make — a divider still appears in a
