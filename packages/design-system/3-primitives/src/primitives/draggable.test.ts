@@ -501,3 +501,32 @@ describe('a zone that says what a drop does', () => {
     expect(zone.shadowRoot!.querySelector('[part="hint"]')).toBeNull();
   });
 });
+
+describe("the browser's own drag", () => {
+  it('is refused inside a draggable, so a press on a picture becomes this drag instead', async () => {
+    const { card } = await makeSource();
+    const picture = document.createElement('img');
+    card.appendChild(picture);
+
+    const native = new Event('dragstart', { bubbles: true, composed: true, cancelable: true });
+    picture.dispatchEvent(native);
+
+    expect(native.defaultPrevented).toBe(true);
+  });
+
+  it('is left alone for a text selection being dragged', async () => {
+    const { card } = await makeSource();
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'Selected words';
+    card.appendChild(paragraph);
+    vi.spyOn(document, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      containsNode: () => true,
+    } as unknown as Selection);
+
+    const native = new Event('dragstart', { bubbles: true, composed: true, cancelable: true });
+    paragraph.dispatchEvent(native);
+
+    expect(native.defaultPrevented).toBe(false);
+  });
+});

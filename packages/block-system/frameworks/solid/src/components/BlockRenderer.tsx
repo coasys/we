@@ -93,12 +93,13 @@ function thumbnailOf(block: ContentBlock): string | undefined {
 /**
  * One block that can be picked up by itself.
  *
- * A grip in the block's left padding, shown on hover and on focus, is the handle a paragraph needs:
- * its words are for selecting. A block with nothing to select — a picture — can be taken by the
- * picture as well, since the whole wrapper is the draggable and only a press on glyphs declines.
+ * The whole block is the handle. A press on its words selects them — `we-draggable` declines presses
+ * on glyphs inside a text region — so a paragraph is taken by its padding or the space beside a short
+ * line, and a picture by the picture.
  *
- * The grip is a focusable span rather than a button: `we-draggable` refuses presses that begin in a
- * button, and the grip is exactly where a press should begin. Space on it picks the block up.
+ * Out of the tab order (`tabindex="-1"` on the wrapper, which the draggable then leaves alone): a
+ * post of twenty blocks as twenty tab stops buries everything after it. The post itself stays
+ * reachable and can be picked up from the keyboard.
  */
 function DraggableBlock(props: { block: ContentBlock; children: JSX.Element }): JSX.Element {
   const source = useContext(BlockDragContext);
@@ -122,10 +123,7 @@ function DraggableBlock(props: { block: ContentBlock; children: JSX.Element }): 
         preview={preview()}
         within={{ entity: 'CollectionBlock', id: source!.within }}
       >
-        <div class="we-block-draggable">
-          <span class="we-block-grip" role="button" tabindex="0" aria-label="Drag this block" data-we-id="grip">
-            <we-icon name="dots-six-vertical" size="12px" />
-          </span>
+        <div class="we-block-draggable" tabindex="-1">
           {props.children}
         </div>
       </we-draggable>

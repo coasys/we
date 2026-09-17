@@ -50,8 +50,8 @@ describe('BlockRenderer — dragging and selecting', () => {
     expect(paragraph.label).toBe('A sentence somebody wants to quote');
     expect(paragraph.within).toEqual({ entity: 'CollectionBlock', id: 'post-1' });
     expect((paragraph.preview as { author?: string }).author).toBe('did:key:anna');
-    // A grip to take a paragraph by, since its words are for selecting.
-    expect(paragraph.querySelector('.we-block-grip')?.getAttribute('tabindex')).toBe('0');
+    // Out of the tab order: a post's blocks are not each a stop on the way through the page.
+    expect(paragraph.querySelector('.we-block-draggable')?.getAttribute('tabindex')).toBe('-1');
     dispose();
   });
 });

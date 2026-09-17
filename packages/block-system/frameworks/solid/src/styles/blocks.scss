@@ -229,36 +229,10 @@
   }
 }
 
-// A block that can be picked up on its own — see `DraggableBlock` in BlockRenderer.tsx.
-.we-block-draggable {
-  position: relative;
-}
-
-// In the block's own left padding, level with its first line, so it takes no room and covers nothing.
-.we-block-grip {
-  position: absolute;
-  top: var(--we-space-300);
-  left: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--we-space-300);
-  height: 1.4em;
-  color: var(--we-role-text-muted);
-  cursor: grab;
-  opacity: 0;
-  border-radius: var(--we-radius-200);
-  transition: opacity var(--we-transition-200);
-
-  .we-block-draggable:hover > &,
-  &:focus-visible {
-    opacity: 1;
-  }
-
-  &:focus-visible {
-    box-shadow: var(--we-focus-outline);
-  }
+// A block that can be picked up on its own — see `DraggableBlock` in BlockRenderer.tsx. Focusable
+// only programmatically (tabindex -1), so a click that focuses it draws no ring.
+.we-block-draggable:focus {
+  outline: none;
 }
 
 // Collection block wrapper — provides CSS custom properties to the nested content and an outline

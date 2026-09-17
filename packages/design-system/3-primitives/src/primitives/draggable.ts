@@ -152,6 +152,7 @@ export default class Draggable extends LayoutElement {
     super.connectedCallback();
     this.addEventListener('pointerdown', this._onPointerDown);
     this.addEventListener('keydown', this._onKeyDown);
+    this.addEventListener('dragstart', this._onNativeDragStart);
   }
 
   firstUpdated() {
@@ -176,6 +177,7 @@ export default class Draggable extends LayoutElement {
     super.disconnectedCallback();
     this.removeEventListener('pointerdown', this._onPointerDown);
     this.removeEventListener('keydown', this._onKeyDown);
+    this.removeEventListener('dragstart', this._onNativeDragStart);
     this._stopWatch?.();
     this._stopWatch = null;
   }
@@ -244,6 +246,26 @@ export default class Draggable extends LayoutElement {
       onEnd: (end) => dragSession.drop({ x: end.clientX, y: end.clientY }),
       onCancel: () => dragSession.cancel(),
     });
+  };
+
+  /**
+   * The browser's own drag, refused — so this one can happen.
+   *
+   * An image and a link are natively draggable. Pressing on a picture inside a card started the
+   * browser's drag, which draws its own ghost of the picture and then cancels the pointer stream this
+   * element's drag runs on: the ghost looked exactly like a drag that was working, and the drop went
+   * nowhere. Refusing the native one leaves the pointer events flowing, and the press becomes this
+   * element's drag like a press anywhere else on the card.
+   *
+   * Except a text selection being dragged, which is the browser's feature and the one thing a press on
+   * the words is left alone for.
+   */
+  private _onNativeDragStart = (e: DragEvent) => {
+    if (!this._ready) return;
+    const selection = document.getSelection();
+    if (selection && !selection.isCollapsed && e.target instanceof Node && selection.containsNode(e.target, true))
+      return;
+    e.preventDefault();
   };
 
   /**
