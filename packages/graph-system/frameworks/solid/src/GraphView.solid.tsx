@@ -37,6 +37,7 @@ import {
   distanceToEdge,
   edgeVisual,
   endOf,
+  FOLD_BUNDLE,
   GraphEngine,
   matches,
   nodeVisual,
@@ -1127,7 +1128,17 @@ export function GraphView(props: GraphViewProps) {
     // second derivation would mean clicking an edge that is not the one under the cursor.
     const geometry = engine.getEdgeGeometry();
     const metrics = engine.getMetrics();
-    return [...engine.store.edges()].flatMap((edge) => {
+    /*
+      The store's lines, plus the ones standing in for what a fold hid.
+
+      The bundles are not in the store, deliberately — they are derived from the fold and would
+      otherwise have to be merged in and taken back out on every fold, refresh and reload, with a
+      seed load clearing them from under the reader. So they are drawn from beside it, styled by the
+      same rules (`{ when: { type: 'fold-bundle' } }` is how a template tells them apart) and routed
+      by the same geometry, which is what makes one fan apart from a real line between the same pair
+      instead of lying under it.
+    */
+    return [...engine.store.edges(), ...engine.foldBundles()].flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
       const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), metrics);
@@ -2109,7 +2120,21 @@ export function GraphView(props: GraphViewProps) {
 
   /** This graph's endpoint grips, at the camera's scale — see `edgeEndAt`. */
   const edgeEndUnder = (at: Point): string | null =>
-    props.onEdgeAnchor ? edgeEndAt(at, edges(), HANDLE_HIT_R / zoom()) : null;
+    /*
+      A bundle has no ends to take hold of.
+
+      It stands for several connections at once, so there is nothing an anchor or a re-attachment
+      could be *about* — and the grips are the one part of the edge chrome that is geometric rather
+      than driven by the selection, so without this a fold's summary line handed out handles that
+      would report a route against an id no record has.
+    */
+    props.onEdgeAnchor
+      ? edgeEndAt(
+          at,
+          edges().filter((entry) => entry.edge.type !== FOLD_BUNDLE),
+          HANDLE_HIT_R / zoom(),
+        )
+      : null;
 
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());

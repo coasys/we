@@ -339,6 +339,42 @@ describe('GraphView folding', () => {
     expect(host.querySelector('.we-graph__fold')).toBeNull();
   });
 
+  it('draws the line a fold leaves behind, and says how many it stands for', async () => {
+    /*
+      A fold that hid a card connected to something still on screen has to say so, or the canvas
+      shows an isolated card where there were related ones. `shared` is what makes the boundary: it
+      is held by `outside`, so the fold has to leave it, and `child`'s connection to it crosses.
+    */
+    const bundled = {
+      literal: true as const,
+      nodes: [card('parent', 0, 0), card('child', 200, 0), card('shared', 400, 0), card('outside', 600, 0)],
+      edges: (
+        [
+          ['parent', 'child'],
+          ['child', 'shared'],
+          ['outside', 'shared'],
+        ] as const
+      ).map(([from, to]) => ({
+        id: `${from}->${to}`,
+        source: entityAddress('ds', 'TaskBlock', from),
+        target: entityAddress('ds', 'TaskBlock', to),
+        type: 'rel',
+      })),
+    };
+    const host = mount({
+      seeds: bundled,
+      layout: { type: 'manual' },
+      folded: ['parent'],
+      edgeStyle: [{ when: { type: 'fold-bundle' }, style: { dashed: true, showLabel: true } }],
+      onNodeFold: () => undefined,
+    });
+    await until(() => labels(host).length === 3);
+
+    // `child` is gone, and its connection to `shared` has come back as one line from the fold.
+    expect(labels(host).sort()).toEqual(['outside', 'parent', 'shared']);
+    expect([...host.querySelectorAll('.we-graph__edge-label')].map((el) => el.textContent?.trim())).toContain('1');
+  });
+
   it('offers no fold control when nothing is listening for one', async () => {
     // The bargain every other gesture here makes: an affordance that could not do anything is worse
     // than none, so binding the handler is what puts the control on the card.
