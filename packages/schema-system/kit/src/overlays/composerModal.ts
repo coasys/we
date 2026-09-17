@@ -32,6 +32,12 @@ import { discardGuard } from './discardGuard.ts';
 
 export interface ComposerModalOptions {
   /**
+   * Where "Back" goes, as actions run after the modal closes — reopening the chooser this was picked
+   * from. Omit for no Back button. Guarded like every other way out: with a draft written, it asks
+   * first, and a discard closes without going back.
+   */
+  back?: SchemaProp[];
+  /**
    * `$localState` boolean controlling visibility, declared on an ancestor of the **button that
    * opens it** — not merely of this modal. Undeclared, `$setLocal` warns and no-ops: the button
    * renders, takes the click, and does nothing.
@@ -84,6 +90,21 @@ export interface ComposerModalOptions {
   collaborate?: SchemaProp;
 }
 
+/** A ghost arrow that goes back to wherever this modal was opened from. */
+export function backButton(onClick: SchemaProp): SchemaNode {
+  return {
+    type: 'we-tooltip',
+    props: { content: 'Back' },
+    children: [
+      {
+        type: 'we-button',
+        props: { variant: 'ghost', size: 'sm', square: true, label: 'Back', onClick },
+        children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
+      },
+    ],
+  };
+}
+
 export function composerModal(opts: ComposerModalOptions): SchemaNode {
   const close: SchemaProp = opts.onClose?.length
     ? [{ $setLocal: opts.openLocal, value: false }, ...opts.onClose]
@@ -122,7 +143,26 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
           }),
         },
         children: [
-          { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
+          opts.back
+            ? {
+                type: 'Row',
+                props: { gap: '200', ay: 'center', width: '100%' },
+                children: [
+                  backButton(
+                    guard
+                      ? {
+                          $if: {
+                            condition: { $: 'local.draftDirty' },
+                            then: guard.close,
+                            else: [...(Array.isArray(close) ? close : [close]), ...opts.back],
+                          },
+                        }
+                      : [...(Array.isArray(close) ? close : [close]), ...opts.back],
+                  ),
+                  { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
+                ],
+              }
+            : { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
           {
             type: 'Column',
             // `pl` clears the composer's own left gutter, where the slash-command affordance sits.

@@ -1,4 +1,4 @@
-import { discardGuard } from '@we/schema-kit';
+import { backButton, discardGuard } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -470,6 +470,12 @@ export interface RecordFormModalOptions {
   onCreated?: SchemaProp[];
   /** Heading text. Defaults to naming the model being created. */
   title?: SchemaProp;
+  /**
+   * Where "Back" goes, as actions run after the form closes — reopening the type chooser it was picked
+   * from. Omit for no Back button. Not offered for a connection being drawn, which was not picked from
+   * anything. With fields filled in it asks first, and a discard closes without going back.
+   */
+  back?: SchemaProp[];
 }
 
 export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
@@ -516,6 +522,23 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
             props: { gap: '300', ay: 'center', width: '100%' },
             slot: 'header',
             children: [
+              ...(opts.back
+                ? [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: '!recordStore.pendingLink' },
+                        then: backButton({
+                          $if: {
+                            condition: { $: 'recordStore.recordDraftDirty' },
+                            then: guard.close,
+                            else: [{ $action: 'recordStore.cancelRecordForm' }, ...opts.back],
+                          },
+                        }),
+                      },
+                    } as SchemaNode,
+                  ]
+                : []),
               { type: 'we-icon', props: { name: { $: 'recordStore.recordDraft.icon' } } },
               {
                 type: 'we-text',

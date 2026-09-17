@@ -82,6 +82,7 @@ import {
 
 import {
   askWhatGoesHere,
+  BACK_TO_CHOOSER,
   CARD_LOCALS,
   editNoteModal,
   fieldEditor,
@@ -3123,7 +3124,8 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
       No `onCreated`. The default's graph bumps a `revision` to force a reload; this canvas watches
       the entity it draws connections from, so a new `Relationship` arrives on its own.
     */
-    recordFormModal(),
+    // Back goes to the chooser a record was picked from; a drawn connection gets no Back button.
+    recordFormModal({ back: BACK_TO_CHOOSER }),
     // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
     newThingChooser(CALL),
     newNoteModal(CALL),

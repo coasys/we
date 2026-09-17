@@ -30,7 +30,7 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { composerModal, typePicker } from '@we/template-kit';
 
-import { kindFill, TYPE_STYLES_QUERY } from './WorkshopKey';
+import { kindFill, TYPE_STYLES_QUERY } from './WorkshopKey.ts';
 
 /** The locals a canvas route declares for these. All ephemeral: nothing here survives a reload. */
 export const CARD_LOCALS = {
@@ -63,11 +63,27 @@ export function askWhatGoesHere(call: { $: string }): SchemaProp {
 }
 
 /**
- * The kinds the chooser's built-in section leads with, in this order: tasks and events are what a
- * meeting mostly produces. Named rather than sorted by a flag because the choice is this canvas's —
- * another picker over the same list has its own reasons.
+ * The order of the chooser's built-in section: tasks and events, which are what a meeting mostly
+ * produces, then media, then the rest. Named rather than sorted by a flag because the choice is this
+ * canvas's — another picker over the same list has its own reasons. A kind not named here follows.
  */
-const LEADING_KINDS = ['TaskBlock', 'EventBlock'];
+const LEADING_KINDS = [
+  'TaskBlock',
+  'EventBlock',
+  'ImageBlock',
+  'AudioBlock',
+  'VideoBlock',
+  'TextBlock',
+  'FileBlock',
+  'LocationBlock',
+  'LinkBlock',
+  'CodeBlock',
+  'TagBlock',
+  'CalloutBlock',
+];
+
+/** Back to the chooser, from whichever form or composer it opened. */
+export const BACK_TO_CHOOSER: SchemaProp[] = [{ $setLocal: 'chooserOpen', value: true }];
 
 /**
  * "What goes here?" — anything this space can make, as `typePicker`'s searchable grid.
@@ -89,7 +105,8 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
       condition: { $: 'local.chooserOpen' },
       then: {
         type: 'we-modal',
-        props: { size: 'md', close },
+        // Wide enough for three columns of cards where the screen has room; it narrows with the screen.
+        props: { size: 'lg', close },
         // The space's colours for its kinds, which the key reads too — see `kindFill`.
         $queries: { typeStyles: TYPE_STYLES_QUERY },
         children: [
@@ -98,7 +115,8 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
             lead: LEADING_KINDS,
             composedLabel: 'Note (block collection)',
             composedIcon: 'note',
-            fill: kindFill,
+            // The key's colour is looked up by the kind's *name*; a picker entry is the whole row.
+            fill: (kind) => kindFill(`${kind}.value`),
             pick: (kind) => [
               close,
               {
@@ -140,6 +158,7 @@ export function newNoteModal(call: SchemaProp): SchemaNode {
       args: [{ $: 'arg' }, { canvas: call, at: { $: 'local.newAt' } }],
     },
     onSaved: [{ $setLocal: 'newAt', value: null }],
+    back: BACK_TO_CHOOSER,
   });
 }
 

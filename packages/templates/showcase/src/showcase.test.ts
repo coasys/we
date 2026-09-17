@@ -30,6 +30,7 @@ import {
   CARD_FILL,
   CARD_KEY,
   KIND_DEFAULTS,
+  kindFill,
   LENS_PARAM,
   LENS_QUERY,
   LINK_ENTITY,
@@ -1291,7 +1292,12 @@ describe('the workshop’s canvas', () => {
     // One searchable grid over the one list — the note, this space's types, then blocks led by tasks
     // and events (see `typePicker`). A composed kind opens the composer, anything else the form.
     expect(canvas).toContain('"placeholder":"Search types…"');
-    expect(canvas).toContain("distinct(['TaskBlock', 'EventBlock'], recordStore.creatableEntities");
+    expect(canvas).toContain(
+      "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities",
+    );
+    // Back from the form or the composer reopens this chooser — and not for a drawn connection.
+    expect(canvas).toContain('"condition":{"$":"!recordStore.pendingLink"}');
+    expect(canvas.split('{"$setLocal":"chooserOpen","value":true}').length - 1).toBeGreaterThanOrEqual(3);
     expect(canvas).toContain(
       `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
     );
@@ -1647,5 +1653,25 @@ describe('the workshop inspector’s people', () => {
   it('sets section names apart from the properties under them, with a picker sized like the header’s', () => {
     expect(inspector).toContain('"uppercase":true');
     expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"sm"');
+  });
+});
+
+describe('the chooser’s colours', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+
+  it('rings a card in its kind’s colour, looked up by the entry’s name — the default, or the space’s', () => {
+    // The picker hands a whole entry; the key looks colours up by name. Passing the entry itself made
+    // every lookup miss, and every ring came out the plain card's colour.
+    const fill = kindFill('kind.value');
+    const kind = { value: 'ImageBlock', label: 'Image' };
+    expect(run(fill, { kind, local: { typeStyles: [] } })).toBe(KIND_DEFAULTS.ImageBlock);
+    expect(run(fill, { kind, local: { typeStyles: [{ nodeType: 'ImageBlock', color: '#123456' }] } })).toBe('#123456');
   });
 });
