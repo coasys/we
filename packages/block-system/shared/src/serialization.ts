@@ -606,6 +606,41 @@ export async function createBlocks(
 }
 
 /**
+ * Write one block as a record of its own — no post around it — optionally anchored to something that
+ * already exists.
+ *
+ * For a block that belongs somewhere a composition does not: a picture dropped onto a canvas is a
+ * node on that canvas, and wrapping it in a post first gave the canvas a card holding one picture.
+ * The block's files arrive as payloads (see `copyableContent`) and the model layer uploads them, the
+ * same path a composition's blocks take. A collection block brings its descendants.
+ *
+ * Mentions are not written: they hang off a post, and there is none.
+ */
+export async function createBlock(
+  perspective: BlockDataset,
+  block: ContentBlock,
+  options: { anchor?: BlockAnchor; batchId?: string } = {},
+): Promise<{ id: string; entity: string } | undefined> {
+  const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
+  if (!registration) return undefined;
+
+  return runEntityTransaction(
+    perspective,
+    async (tx) => {
+      const model = (await registration.model.create(perspective, modelData(registration.entity, block), {
+        batchId: tx.batchId,
+        ...(options.anchor && { parent: { id: options.anchor.id, predicate: options.anchor.predicate } }),
+      })) as BlockRecord;
+      if (isCollectionBlock(block)) {
+        for (const child of block.content ?? []) await persistBlock(perspective, tx.batchId, child, undefined, model);
+      }
+      return { id: model.id, entity: registration.entity };
+    },
+    { batchId: options.batchId },
+  );
+}
+
+/**
  * Create one block's model (and, for a collection, its descendants), link it to its parent, and
  * stamp its id onto the block — both the author's copy and the uploaded one, which share a shape.
  */

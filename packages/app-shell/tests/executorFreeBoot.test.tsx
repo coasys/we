@@ -14,7 +14,7 @@ import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, Space } from '@we/entities';
+import { AgentSettings, CollectionBlock, getEntity, Space } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -697,6 +697,54 @@ describe('bringing a note into a space', () => {
     await vi.waitFor(async () =>
       expect(await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } })).toHaveLength(0),
     );
+  }, 10000);
+
+  it('puts a single block on a canvas as itself, not inside a post', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    registerCoreBlocks();
+    const personal = stores.datasets.personalDataset()!;
+    const note = await createBlocks(
+      personal.handle,
+      [
+        { _type: 'block', text: 'the heading' },
+        { _type: 'block', text: 'just this paragraph' },
+      ],
+      { kind: 'post' },
+    );
+    const [, paragraph] = (await CollectionBlock.findOne(personal.handle as never, { where: { id: note!.id } }))!
+      .children as string[];
+
+    await stores.spaces.createSpace('Workshop', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Workshop')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+    const canvas = await createBlocks(space.handle, [], { kind: 'canvas' });
+
+    await stores.records.dropOnCanvas(canvas!.id, {
+      entity: 'TextBlock',
+      id: paragraph,
+      dataset: `p:${personal.id}`,
+      within: { entity: 'CollectionBlock', id: note!.id },
+      label: 'just this paragraph',
+      x: 40,
+      y: 60,
+    });
+
+    // No post was made to hold it.
+    expect(await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } })).toHaveLength(0);
+    const texts = (await getEntity('TextBlock').findAll(space.handle as never, {})) as unknown as {
+      id: string;
+      text: string;
+    }[];
+    expect(texts.map((t) => t.text)).toEqual(['just this paragraph']);
+    // It is on the canvas, where it landed.
+    const placements = (await getEntity('Placement').findAll(space.handle as never, {})) as unknown as {
+      nodeId?: string;
+      x?: number;
+    }[];
+    expect(placements.some((p) => p.x === 40)).toBe(true);
   }, 10000);
 
   it('leaves alone a post already in the space', async () => {

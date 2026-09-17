@@ -29,6 +29,13 @@
  * what is read — the block is picked out of its composition — and what a quote points at, since a
  * paragraph on its own is not somewhere to go.
  *
+ * ## Alone, where the destination holds blocks
+ *
+ * Asked for `alone`, a dropped *block* is written as itself — a copy of the block, or a lone embed —
+ * rather than inside a new post. A canvas asks for that: a picture on a canvas is a node, and a post
+ * holding one picture was a card around nothing. A whole post stays a post either way. A block alone
+ * has no post to say where it was posted before, so it does not.
+ *
  * Pure over the context it is handed, so the table above is tested without a store or a backend.
  */
 import { datasetKindOf, formatRef, HERE } from '@we/backend-shared';
@@ -63,12 +70,16 @@ export interface BringInContext {
   copyable: (handle: unknown, editorState: unknown, only?: string) => Promise<ContentBlock[] | null>;
   /** Write a new post here. `fields` are set on its root. */
   write: (blocks: ContentBlock[], fields?: Record<string, string>) => Promise<{ id: string } | null>;
+  /** Write one block here, as a record of its own. Needed only for `alone`. */
+  writeBlock?: (block: ContentBlock) => Promise<{ id: string; entity: string } | null>;
 }
 
 /** What a drop became, for the undo and for anybody listening. */
 export interface BroughtIn {
-  /** The new post, in the space dropped into. */
+  /** The new record, in the space dropped into — a post, or a block written alone. */
   id: string;
+  /** What it is: `CollectionBlock` for a post, the block's own entity when written alone. */
+  entity: string;
   mode: 'copy' | 'quote';
   /** The reference it was made from — the post, where a block was dropped. */
   from: string;
@@ -78,7 +89,11 @@ export interface BroughtIn {
  * Bring one dropped thing into the space. `null` when there is nothing to do — it is already here —
  * or nothing could be written.
  */
-export async function bringIn(item: BringInItem, ctx: BringInContext): Promise<BroughtIn | null> {
+export async function bringIn(
+  item: BringInItem,
+  ctx: BringInContext,
+  options: { alone?: boolean } = {},
+): Promise<BroughtIn | null> {
   const key = item.ref.dataset;
   // Unnamed, relative or this space: already here. Dropping a post into its own feed is not a copy.
   if (!key || key === HERE || key === ctx.hereKey) return null;
@@ -87,6 +102,7 @@ export async function bringIn(item: BringInItem, ctx: BringInContext): Promise<B
   const isPost = item.ref.entity === 'CollectionBlock';
   const postId = isPost ? item.ref.id : item.within?.entity === 'CollectionBlock' ? item.within.id : undefined;
   const blockId = isPost ? undefined : item.ref.id;
+  const alone = !!options.alone && !isPost && !!ctx.writeBlock;
   const from = postId
     ? formatRef({ datasetKey: key, entity: 'CollectionBlock', id: postId })
     : formatRef({ datasetKey: key, entity: item.ref.entity, id: item.ref.id });
@@ -98,11 +114,14 @@ export async function bringIn(item: BringInItem, ctx: BringInContext): Promise<B
   const mine = kind === 'personal' || (!!ctx.me && post?.author === ctx.me);
   if (source && post && mine) {
     const blocks = await ctx.copyable(source.handle, post.editorState, blockId);
-    if (blocks?.length) {
+    if (alone && blocks?.length === 1) {
+      const written = await ctx.writeBlock!(blocks[0]);
+      if (written) return { ...written, mode: 'copy', from };
+    } else if (blocks?.length) {
       // Portable sources only: a personal dataset's key names nothing to anybody else.
       const fields = kind === 'neighbourhood' ? { sourceRef: from, sourceName: source.name } : undefined;
       const written = await ctx.write(blocks, fields);
-      if (written) return { id: written.id, mode: 'copy', from };
+      if (written) return { id: written.id, entity: 'CollectionBlock', mode: 'copy', from };
     }
   }
 
@@ -117,6 +136,10 @@ export async function bringIn(item: BringInItem, ctx: BringInContext): Promise<B
     sourceName: source?.name ?? item.preview?.source ?? '',
     displayMode: 'card',
   } as unknown as ContentBlock;
+  if (alone) {
+    const written = await ctx.writeBlock!(embed);
+    return written ? { ...written, mode: 'quote', from } : null;
+  }
   const written = await ctx.write([embed]);
-  return written ? { id: written.id, mode: 'quote', from } : null;
+  return written ? { id: written.id, entity: 'CollectionBlock', mode: 'quote', from } : null;
 }

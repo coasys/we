@@ -47,7 +47,13 @@ vi.mock('@we/entities/manifest', () => ({
 
 import type { ContentBlock } from '../src/content';
 import { type BlockEntityStatic, registerBlock } from '../src/registry';
-import { copyableContent, createBlocks, reconcileBlocks, resolveExpressionAddresses } from '../src/serialization';
+import {
+  copyableContent,
+  createBlock,
+  createBlocks,
+  reconcileBlocks,
+  resolveExpressionAddresses,
+} from '../src/serialization';
 import { decodeEditorState } from '../src/utils';
 
 let idCounter = 0;
@@ -219,5 +225,15 @@ describe('a composition moving between datasets', () => {
     expect(picture![0]._type).toBe('image');
     expect(picture![0]._key).toBeUndefined();
     expect(await copyableContent({}, blob, 'no-such-block')).toBeNull();
+  });
+
+  it('writes one block as a record of its own, with its file as a payload for the model to upload', async () => {
+    const written = await createBlock({}, { _type: 'image', src: 'data:image/png;base64,QUJD', altText: 'alone' });
+
+    const image = byId.get(written!.id) as FakeImage;
+    expect(written!.entity).toBe('ImageBlock');
+    expect(image.altText).toBe('alone');
+    // The model gets the payload; there is no blob to hold an address.
+    expect(image.src).toEqual({ data_base64: 'QUJD', name: 'src', file_type: 'image/png' });
   });
 });

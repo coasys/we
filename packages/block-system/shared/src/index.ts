@@ -63,6 +63,7 @@ export type { BlockAnchor, ContentInput, CreateBlocksOptions } from './serializa
 export {
   childrenToBlocks,
   copyableContent,
+  createBlock,
   createBlocks,
   deleteBlocks,
   encodeEditorState,

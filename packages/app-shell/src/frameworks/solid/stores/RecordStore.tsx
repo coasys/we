@@ -31,7 +31,7 @@ import {
   HERE,
   namePropertyOf,
 } from '@we/backend-shared';
-import { type ContentInput, copyableContent, createBlocks, deleteBlocks } from '@we/block-shared';
+import { type ContentInput, copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
   CollectionBlock,
@@ -1482,9 +1482,16 @@ export function RecordStoreProvider(props: ParentProps) {
         Something from elsewhere becomes a post here first — a copy or a quote, the rule every drop
         into a space follows — and that post is what goes on the canvas. A canvas can only draw this
         space's records, and placing a coordinate for a record in another dataset drew nothing.
+
+        A single block is brought in *alone* — a copy of the picture, or a lone embed — and belongs to
+        the canvas the way a card composed on it does. A post holding one picture was a card around
+        nothing. A whole post or note still arrives as a post.
       */
-      const brought = await bringOne({ ...payload, ref: { entity: payload.entity, id: payload.id, dataset: from } });
-      if (brought) await placeOnCanvas(canvas, brought.id, 'CollectionBlock', payload.x, payload.y);
+      const brought = await bringOne(
+        { ...payload, ref: { entity: payload.entity, id: payload.id, dataset: from } },
+        { canvas },
+      );
+      if (brought) await placeOnCanvas(canvas, brought.id, brought.entity, payload.x, payload.y);
       return;
     }
     if (!schemaFor(payload.entity)) {
@@ -1508,33 +1515,49 @@ export function RecordStoreProvider(props: ParentProps) {
    * datasets it holds, and telling modules, since a note shared by dragging is shared as surely as
    * one shared with the button.
    */
-  async function bringOne(item: BringInItem): Promise<BroughtIn | null> {
+  async function bringOne(item: BringInItem, into: { canvas?: string } = {}): Promise<BroughtIn | null> {
     const here = datasetStore.currentDataset();
     if (!here) return null;
     const hereKey = datasetKey({ cid: here.sharedUri, uuid: here.id });
     try {
-      const result = await decideBringIn(item, {
-        hereKey,
-        me: session.me()?.did,
-        held: (key) => {
-          const ds = heldDataset(key);
-          return ds ? { handle: ds.handle, name: ds.name } : null;
+      const result = await decideBringIn(
+        item,
+        {
+          hereKey,
+          me: session.me()?.did,
+          held: (key) => {
+            const ds = heldDataset(key);
+            return ds ? { handle: ds.handle, name: ds.name } : null;
+          },
+          readPost: async (handle, id) => {
+            const post = await CollectionBlock.findOne(handle as never, { where: { id } });
+            return post ? { author: post.author, editorState: post.editorState } : null;
+          },
+          copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
+          write: async (blocks, fields) => {
+            const root = await createBlocks(here.handle, blocks as ContentInput, { kind: 'post', fields });
+            return root?.id ? { id: root.id } : null;
+          },
+          // Owned by the canvas, as a card composed on it is — deleting the canvas takes it.
+          writeBlock: into.canvas
+            ? async (block) =>
+                (await createBlock(here.handle, block, {
+                  anchor: { id: into.canvas!, predicate: PREDICATES.CHILDREN },
+                })) ?? null
+            : undefined,
         },
-        readPost: async (handle, id) => {
-          const post = await CollectionBlock.findOne(handle as never, { where: { id } });
-          return post ? { author: post.author, editorState: post.editorState } : null;
-        },
-        copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
-        write: async (blocks, fields) => {
-          const root = await createBlocks(here.handle, blocks as ContentInput, { kind: 'post', fields });
-          return root?.id ? { id: root.id } : null;
-        },
-      });
+        { alone: !!into.canvas },
+      );
       if (!result) return null;
 
-      const to = formatRef({ datasetKey: hereKey, entity: 'CollectionBlock', id: result.id });
-      notifyCopiedIn({ from: result.from, to, mode: result.mode, spaceName: here.name });
-      toastService.success(result.mode === 'copy' ? 'Posted here' : 'Quoted here', 8000, {
+      // Posts only: a block written alone is not a post that arrived, and a note's share is the note.
+      if (result.entity === 'CollectionBlock') {
+        const to = formatRef({ datasetKey: hereKey, entity: 'CollectionBlock', id: result.id });
+        notifyCopiedIn({ from: result.from, to, mode: result.mode, spaceName: here.name });
+      }
+      const message =
+        result.mode === 'quote' ? 'Quoted here' : result.entity === 'CollectionBlock' ? 'Posted here' : 'Added here';
+      toastService.success(message, 8000, {
         label: 'Undo',
         run: () => void deleteBlocks(here.handle, result.id).catch(() => toastService.error('Could not undo that.')),
       });
