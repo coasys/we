@@ -4,7 +4,7 @@
  * A dataset is the neutral term for a queryable data container — an AD4M perspective in this
  * backend (a repo/branch or database elsewhere). This store owns the dataset list and ordering,
  * the active dataset (with its registered models and we-space status), the system datasets
- * (root/test/global/marketplace), and the agent's root-dataset settings.
+ * (root/personal/test/global/marketplace), and the agent's root-dataset settings.
  *
  * Dataset lifecycle (list/create/remove/subscribe) runs through the session's
  * `DatasetLifecyclePort`. The coupling that remains is the model layer: schema install and
@@ -21,6 +21,7 @@ import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@s
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
+import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, ExtractionPass, getEntitiesForPerspective } from '@we/entities';
@@ -94,7 +95,16 @@ export interface DatasetStore {
    */
   datasetsLoaded: Accessor<boolean>;
   systemDatasetUuids: Accessor<string[]>;
+  /** The app's configuration — settings, installed templates and themes, per-space preferences. */
   rootDataset: Accessor<AppDataset | null>;
+  /**
+   * The agent's own things — notes, the Pocket — in a dataset with the ordinary space schema.
+   *
+   * Separate from the root so content a person made is never in the blast radius of repairing or
+   * resetting configuration, and so it can be published to follow them between devices without
+   * their per-machine settings. `null` until its schema is installed. See `systemDatasets.ts`.
+   */
+  personalDataset: Accessor<AppDataset | null>;
   testDataset: Accessor<AppDataset | null>;
   globalDataset: Accessor<AppDataset | null>;
   marketplaceDataset: Accessor<AppDataset | null>;
@@ -216,6 +226,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
+  const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
@@ -619,7 +630,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   const systemDatasetUuids = createMemo(() =>
     datasets()
-      .filter((d) => ['we-root', 'we-test'].includes(d.name))
+      .filter((d) => isSystemDataset(d.name))
       .map((d) => d.id),
   );
 
@@ -635,7 +646,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   // Derived: datasets sorted by user-defined order (falls back to load order), system datasets excluded
   const orderedDatasets = createMemo(() => {
-    const all = datasets().filter((d) => !['we-root', 'we-test'].includes(d.name));
+    const all = datasets().filter((d) => !isSystemDataset(d.name));
     const order = getDatasetOrder();
     if (order.length === 0) return all;
     const byUuid = new Map(all.map((d) => [d.id, d]));
@@ -702,7 +713,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         if (datasets().some((d) => d.id === ref.id)) return;
         // Backend bookkeeping datasets never arrive here — the adapter filters its own (see
         // createAd4mDatasetLifecycle). What this store still filters is the HOST's convention:
-        // we-root/we-test, excluded from the sidebar by `orderedDatasets`.
+        // the system datasets, excluded from the sidebar by `orderedDatasets`.
         // Re-check after the async gap: createSpace's eager update may have run while
         // the adapter resolved the handle, which would add a duplicate.
         if (datasets().some((d) => d.id === ref.id)) return;
@@ -735,7 +746,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
       if (!agentSettings()?.datasetOrder) {
-        const systemOrder = ['we-root', 'we-test', 'we-global'];
+        const systemOrder = [...SYSTEM_DATASETS, 'we-global'];
         const initialOrder = [...refs]
           .sort((a, b) => {
             const ai = systemOrder.indexOf(a.name);
@@ -758,63 +769,108 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Find or create the root dataset and all other system datasets.
-   * Also restores global/marketplace datasets if previously joined. */
+  /**
+   * Find or create every system dataset — the root, the personal space, the test sandbox.
+   *
+   * Each in its own `try`. They were one, which was harmless while the root was the only one that
+   * mattered; with a personal space beside it, a failure bringing one schema up to date must not
+   * leave the other unset — no settings because the notes schema failed to refresh is the wrong
+   * way round.
+   */
   async function initSystemDatasets(): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
+    let refs: AppDataset[];
     try {
-      const refs = (await lifecycle.list()).map(toApp);
-      const rootRef = refs.find((d) => d.name === 'we-root');
-
-      if (rootRef) {
-        // Ensure all models are registered (handles new models added after initial creation)
-        const rootSchemas = session.backendPorts()!.schemas;
-        await rootSchemas.installRoot(rootRef.handle, moduleRegistry.agentSchemas(rootSchemas));
-        setRootDataset(rootRef);
-
-        const settings = await AgentSettings.findOne(rootRef.handle);
-        if (settings) setAgentSettings(settings);
-
-        // Find or create we-test system dataset (uses same snapshot)
-        const existingTest = refs.find((d) => d.name === 'we-test');
-        if (existingTest) {
-          setTestDataset(existingTest);
-        } else {
-          setTestDataset(toApp(await lifecycle.create('we-test')));
-        }
-
-        return;
-      }
-
-      // No root dataset exists — create one
-      trace('dataset', 'root:create');
-      const rootCreated = toApp(await lifecycle.create('we-root'));
-      const newRootSchemas = session.backendPorts()!.schemas;
-      await newRootSchemas.installRoot(rootCreated.handle, moduleRegistry.agentSchemas(newRootSchemas));
-
-      const settings = await AgentSettings.create(rootCreated.handle, {
-        currentTemplateId: 'default',
-        currentThemeId: 'dark',
-        defaultThemeId: 'dark',
-      });
-
-      setRootDataset(rootCreated);
-      setAgentSettings(settings);
-
-      trace('dataset', 'root:created', { id: rootCreated.id });
-
-      // Find or create we-test system dataset
-      const allRefs = (await lifecycle.list()).map(toApp);
-      const existingTest = allRefs.find((d) => d.name === 'we-test');
-      if (existingTest) {
-        setTestDataset(existingTest);
-      } else {
-        setTestDataset(toApp(await lifecycle.create('we-test')));
-      }
+      refs = (await lifecycle.list()).map(toApp);
     } catch (error) {
       console.error('DatasetStore: initSystemDatasets error', error);
+      return;
     }
+
+    try {
+      await initRootDataset(refs);
+    } catch (error) {
+      console.error('DatasetStore: root dataset error', error);
+    }
+    try {
+      await initPersonalDataset(refs);
+    } catch (error) {
+      console.error('DatasetStore: personal dataset error', error);
+    }
+    try {
+      const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
+      setTestDataset(existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test)));
+    } catch (error) {
+      console.error('DatasetStore: test dataset error', error);
+    }
+  }
+
+  /**
+   * The root: the app's configuration, and nothing a person made.
+   *
+   * Its schema is reinstalled on every boot so a model added after the dataset was created is there
+   * to query. Module entities no longer install here — an agent-scoped module's records are the
+   * agent's own things, and they live in the personal space. See `systemDatasets.ts`.
+   */
+  async function initRootDataset(refs: AppDataset[]): Promise<void> {
+    const lifecycle = session.lifecycle()!;
+    const schemas = session.backendPorts()!.schemas;
+    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.root);
+
+    if (existing) {
+      await schemas.installRoot(existing.handle);
+      setRootDataset(existing);
+      const settings = await AgentSettings.findOne(existing.handle);
+      if (settings) setAgentSettings(settings);
+      return;
+    }
+
+    trace('dataset', 'root:create');
+    const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
+    await schemas.installRoot(created.handle);
+    const settings = await AgentSettings.create(created.handle, {
+      currentTemplateId: 'default',
+      currentThemeId: 'dark',
+      defaultThemeId: 'dark',
+    });
+    setRootDataset(created);
+    setAgentSettings(settings);
+    trace('dataset', 'root:created', { id: created.id });
+  }
+
+  /**
+   * The personal space: what this agent made or kept, with the ordinary space schema.
+   *
+   * A space's schema rather than the root's, because what lives here is content — a note is a post
+   * nobody else can see — and the composer, the renderer and file storage all assume a space's
+   * models. Every module's entities install here too, the space-scoped ones included: a note can
+   * hold any block a post can, and a block a module contributes is one of those.
+   *
+   * Published only once its schema is in, since the first thing a reader does is query it — the
+   * Pocket's effect fires the moment `personalDataset` is set, and a query ahead of the install
+   * fails with "No SHACL shape" rather than returning nothing.
+   *
+   * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
+   * list that reads `Space` — which is exactly the listing a system dataset stays out of.
+   */
+  async function initPersonalDataset(refs: AppDataset[]): Promise<void> {
+    const lifecycle = session.lifecycle()!;
+    const schemas = session.backendPorts()!.schemas;
+    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
+    const personal = existing ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.personal));
+    const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
+
+    if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
+      await schemas.installSpace(personal.handle, moduleSchemas);
+    } else {
+      // The same two catches a space gets on every switch — see `switchDataset`.
+      await schemas.installModules(personal.handle, moduleSchemas);
+      await schemas.refreshSpace(personal.handle).catch((err) => {
+        console.error('DatasetStore: personal space schema refresh failed', err);
+      });
+    }
+    setPersonalDataset(personal);
   }
 
   /**
@@ -1020,6 +1076,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     datasetsLoaded,
     systemDatasetUuids,
     rootDataset,
+    personalDataset,
     testDataset,
     globalDataset,
     marketplaceDataset,

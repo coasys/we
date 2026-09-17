@@ -75,6 +75,30 @@ export const NO_LENS = `!(${BY_KIND} || ${BY_STATE})`;
 export const LENS_QUERY = `\${routeStore.params.${LENS_PARAM} ? '&${LENS_PARAM}=' + routeStore.params.${LENS_PARAM} : ''}`;
 
 /**
+ * The kinds a reader has put away from the canvas, held in the address beside the lenses — a panel
+ * and a route cannot share a local, and what is shown is view state somebody may want to send.
+ * Comma-separated entity names; absent shows everything.
+ */
+export const HIDE_PARAM = 'hide';
+
+/** The hidden kinds, as a list. */
+export const HIDDEN_KINDS = `split(routeStore.params.${HIDE_PARAM})`;
+
+/** Put one kind away, or bring it back. Showing the last hidden kind writes nothing at all. */
+export function toggleKindShown(kind: string): SchemaProp {
+  const hidden = `(${kind} in ${HIDDEN_KINDS})`;
+  return {
+    $action: 'routeStore.setParam',
+    args: [
+      HIDE_PARAM,
+      {
+        $: `join(${hidden} ? ${HIDDEN_KINDS}.filter(k, k != ${kind}) : distinct(${HIDDEN_KINDS}, [${kind}]), ',')`,
+      },
+    ],
+  };
+}
+
+/**
  * Turn one lens on or off, leaving the other as it is.
  *
  * Writes the parameter rather than a local, for the reason above. The result that equals the default
@@ -144,6 +168,22 @@ export function placementsQuery(call: Record<string, unknown>) {
 export const KIND_DEFAULTS: Record<string, string> = {
   TaskBlock: '#86c2ff',
   EventBlock: '#ff94f7',
+  /*
+    The blocks that stand on a canvas by themselves — dropped from a post or the Pocket, or put down
+    from the chooser. Pale and distinct from the three above, so a picture is not mistaken for a task.
+    A quote (`EmbedBlock`) is somebody else's thing brought in, and reads as its own kind.
+  */
+  TextBlock: '#ffd0a6',
+  ImageBlock: '#a9ecc6',
+  VideoBlock: '#cdbcff',
+  AudioBlock: '#f7b9c4',
+  FileBlock: '#d9d3c4',
+  LinkBlock: '#a3e4ea',
+  EmbedBlock: '#c8d7ec',
+  LocationBlock: '#d4ef9a',
+  CodeBlock: '#cdb89c',
+  TagBlock: '#ff9f8f',
+  CalloutBlock: '#ffc75f',
   // The post-it. A literal rather than a role on purpose: a note is yellow in a dark theme too, and
   // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
   CollectionBlock: '#ffea9f',
@@ -242,12 +282,20 @@ export const LINK_FILL = `(${linkColorChosen} ? ${linkColorChosen} : '${LINK_DEF
 /** The key's rows that are not kinds, for the per-kind rules to skip. */
 const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']`;
 
+/**
+ * `KIND_DEFAULTS` as an object literal the expression grammar can index.
+ *
+ * A lookup rather than a chain of `kind == 'X' ? … :` — the chain nested one level per kind, and the
+ * parser's depth limit refused it once the blocks that stand on a canvas by themselves joined.
+ */
+const KIND_DEFAULTS_LOOKUP = `{ ${Object.entries(KIND_DEFAULTS)
+  .map(([name, color]) => `${name}: '${color}'`)
+  .join(', ')} }`;
+
 /** The default fill for a kind, as an expression over `kind`. */
 export function kindDefaultFill(kind: string): string {
-  return Object.entries(KIND_DEFAULTS).reduceRight(
-    (rest, [name, color]) => `(${kind} == '${name}' ? '${color}' : ${rest})`,
-    CARD_FILL,
-  );
+  const hit = `${KIND_DEFAULTS_LOOKUP}[${kind}]`;
+  return `(${hit} ? ${hit} : ${CARD_FILL})`;
 }
 
 /** The community's colour for a kind, else the template's default. Reads `local.typeStyles`. */
@@ -388,6 +436,11 @@ export interface KeyRowOptions {
   label: string | ExpressionToken;
   /** Shown at the end of the row — the reset, where there is something to reset. */
   trailing?: SchemaNode;
+  /**
+   * An expression that is true while the row's thing is put away from the canvas — its glyph and name
+   * are drawn faint then, as its eye is, so a hidden kind reads as switched off across the whole row.
+   */
+  dimmed?: string;
 }
 
 /**
@@ -398,23 +451,53 @@ export interface KeyRowOptions {
  * below rather than the lists spacing them, so a list is a plain column whatever it is built from.
  */
 export function keyRow(opts: KeyRowOptions): SchemaNode {
-  const glyph: SchemaNode = { type: 'we-icon', props: { size: 'xs', color: 'text-muted', name: opts.icon } };
+  const faint = opts.dimmed;
+  const glyph: SchemaNode = {
+    type: 'we-icon',
+    props: {
+      size: 'xs',
+      color: faint ? { $: `${faint} ? 'text-faint' : 'text-muted'` } : 'text-muted',
+      name: opts.icon,
+    },
+  };
   return {
     type: 'Row',
     props: { gap: '300', ay: 'center', width: '100%', py: '100' },
     children: [
       opts.mark,
-      // A literal glyph is always there; one read from data is drawn only where there is one, since
-      // a model that declares no icon would otherwise leave a gap the size of one in every row.
-      ...(!opts.icon
-        ? []
-        : typeof opts.icon === 'string'
-          ? [glyph]
-          : [{ type: '$if', props: { condition: opts.icon, then: glyph } } as SchemaNode]),
       {
-        type: 'we-text',
-        props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
-        children: [opts.label],
+        /*
+          The glyph and the name, together — so a hidden kind can fade both at once, the same step its
+          eye takes. An icon has no visual layer of its own to fade, so the row around it does.
+        */
+        type: 'Row',
+        props: {
+          gap: '300',
+          ay: 'center',
+          flex: '1',
+          minWidth: '0',
+          ...(faint && { opacity: { $: `${faint} ? 0.5 : 1` } }),
+        },
+        children: [
+          // A literal glyph is always there; one read from data is drawn only where there is one, since
+          // a model that declares no icon would otherwise leave a gap the size of one in every row.
+          ...(!opts.icon
+            ? []
+            : typeof opts.icon === 'string'
+              ? [glyph]
+              : [{ type: '$if', props: { condition: opts.icon, then: glyph } } as SchemaNode]),
+          {
+            type: 'we-text',
+            props: {
+              variant: 'label',
+              truncate: true,
+              flex: '1',
+              minWidth: '0',
+              ...(faint && { color: { $: `${faint} ? 'text-faint' : 'text'` } }),
+            },
+            children: [opts.label],
+          },
+        ],
       },
       ...(opts.trailing ? [opts.trailing] : []),
     ],
@@ -560,14 +643,68 @@ function kindRow(kind: string): SchemaNode {
     ),
     icon: { $: kindIcon(kind) },
     label: { $: kindLabel(kind) },
-    trailing: resetButton(
-      { $: `find(local.typeStyles, { nodeType: ${kind} }).color` },
-      {
-        $action: 'recordStore.setSpaceTypeColor',
-        args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
-      },
-    ),
+    dimmed: `(${kind} in ${HIDDEN_KINDS})`,
+    trailing: {
+      type: 'Row',
+      props: { gap: '100', ay: 'center' },
+      children: [
+        resetButton(
+          /*
+            Only for a kind with a default to go back to. A community's own type has none, so "back to
+            the default" turned its colour off — a reset that removed the thing it was resetting.
+          */
+          { $: `find(local.typeStyles, { nodeType: ${kind} }).color && ${KIND_DEFAULTS_LOOKUP}[${kind}]` },
+          {
+            $action: 'recordStore.setSpaceTypeColor',
+            args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
+          },
+        ),
+        shownToggle(kind),
+      ],
+    },
   });
+}
+
+/**
+ * Show or put away every card of a kind on the canvas — an open eye while shown, a closed one while
+ * hidden. Held in the address (see `HIDE_PARAM`), so it is this reader's view, not the space's.
+ */
+function shownToggle(kind: string): SchemaNode {
+  const hidden = `(${kind} in ${HIDDEN_KINDS})`;
+  return {
+    type: 'we-tooltip',
+    props: { content: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` } },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          variant: 'ghost',
+          square: true,
+          label: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` },
+          // `text-faint` is the faintest text role, and beside `text-muted` it barely showed, so a hidden
+          // kind's eye goes one step further. On the button: an icon has no visual layer to fade.
+          opacity: { $: `${hidden} ? 0.5 : 1` },
+          onClick: toggleKindShown(kind),
+        },
+        /*
+          A step up from the glyph an `xs` button gives (`xxs`), so the state reads at a glance; and set on
+          the icon, which does not take the button's colour. Faint while hidden, so a put-away kind reads
+          as switched off.
+        */
+        children: [
+          {
+            type: 'we-icon',
+            props: {
+              name: { $: `${hidden} ? 'eye-slash' : 'eye'` },
+              size: 'xs',
+              color: { $: `${hidden} ? 'text-faint' : 'text-muted'` },
+            },
+          },
+        ],
+      },
+    ],
+  };
 }
 
 /**

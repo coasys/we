@@ -29,7 +29,9 @@ import {
   CANVAS_KEY,
   CARD_FILL,
   CARD_KEY,
+  HIDDEN_KINDS,
   KIND_DEFAULTS,
+  kindFill,
   LENS_PARAM,
   LENS_QUERY,
   LINK_ENTITY,
@@ -37,6 +39,7 @@ import {
   LINK_KEY,
   NO_LENS,
   PLAIN_FILL,
+  toggleKindShown,
   toggleLens,
 } from './WorkshopKey.ts';
 
@@ -1288,9 +1291,26 @@ describe('the workshop’s canvas', () => {
     expect(canvas).toContain(
       `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
-    // Tasks, then events, then the rest in the store's order — under a heading below the note.
-    expect(canvas).toContain("distinct(['TaskBlock', 'EventBlock'], recordStore.creatableEntities.map(k, k.value))");
-    expect(canvas).toContain('"Block types"');
+    // One searchable grid over the one list — the note, this space's types, then blocks led by tasks
+    // and events (see `typePicker`). A composed kind opens the composer, anything else the form.
+    expect(canvas).toContain('"placeholder":"Search types…"');
+    expect(canvas).toContain(
+      "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities",
+    );
+    // Back from the form or the composer reopens this chooser — and not for a drawn connection. In
+    // the modal's top-left corner, not in the title's line.
+    expect(canvas).toContain('"condition":{"$":"!recordStore.pendingLink"}');
+    expect(canvas).toContain('"slot":"start-button"');
+    // No model picker in the form: the kind was just chosen.
+    expect(canvas).not.toContain('"label":"Entity"');
+    // A pin rather than two number boxes, for anything with a latitude and a longitude.
+    expect(canvas).toContain('"$action":"recordStore.setRecordPlace"');
+    expect(canvas.split('{"$setLocal":"chooserOpen","value":true}').length - 1).toBeGreaterThanOrEqual(3);
+    expect(canvas).toContain(
+      `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
+    );
+    // A collection is called a note here; its description says it is a document of blocks.
+    expect(canvas).toContain("(kind.via == 'composer' ? 'Note' : kind.label)");
     expect(canvas).toContain(
       `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );
@@ -1641,5 +1661,54 @@ describe('the workshop inspector’s people', () => {
   it('sets section names apart from the properties under them, with a picker sized like the header’s', () => {
     expect(inspector).toContain('"uppercase":true');
     expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"sm"');
+  });
+});
+
+describe('the chooser’s colours', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+
+  it('draws a card’s icon in its kind’s colour, looked up by the entry’s name — the default, or the space’s', () => {
+    // The picker hands a whole entry; the key looks colours up by name. Passing the entry itself made
+    // every lookup miss, and every icon came out the plain card's colour.
+    const fill = kindFill('kind.value');
+    const kind = { value: 'ImageBlock', label: 'Image' };
+    expect(run(fill, { kind, local: { typeStyles: [] } })).toBe(KIND_DEFAULTS.ImageBlock);
+    expect(run(fill, { kind, local: { typeStyles: [{ nodeType: 'ImageBlock', color: '#123456' }] } })).toBe('#123456');
+  });
+});
+
+describe('putting a kind away from the canvas', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+  const next = (hide: string, kind: string) => {
+    const action = toggleKindShown('kind') as { args: [string, { $: string }] };
+    return run(action.args[1].$, { kind, routeStore: { params: { hide } } });
+  };
+
+  it('adds a kind to the address, and takes it back out, leaving nothing when none is hidden', () => {
+    expect(next('', 'ImageBlock')).toBe('ImageBlock');
+    expect(next('ImageBlock', 'TextBlock')).toBe('ImageBlock,TextBlock');
+    expect(next('ImageBlock,TextBlock', 'ImageBlock')).toBe('TextBlock');
+    expect(next('TextBlock', 'TextBlock')).toBe('');
+    expect(run(HIDDEN_KINDS, { routeStore: { params: {} } })).toEqual([]);
+  });
+
+  it('hands the hidden kinds to the canvas', () => {
+    const workshop = showcase.workshopTemplate;
+    const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+    expect(canvas).toContain(`"hiddenTypes":{"$":"${HIDDEN_KINDS}"}`);
   });
 });

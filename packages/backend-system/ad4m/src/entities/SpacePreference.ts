@@ -52,9 +52,8 @@ export class SpacePreference extends WeNode {
    * What this agent, in this space, decides about each capability's settings, as JSON.
    *
    * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
-   * declares. One field rather than one per setting: `autoInterpret`, `extractionTargets` and
-   * `shareExtractionDetail` are all here as bespoke columns already, and every capability that
-   * wanted an opinion added another — a core entity accreting a field on behalf of a module is
+   * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
+   * here as bespoke columns already, and every capability that wanted an opinion added another — a core entity accreting a field on behalf of a module is
    * the shape this replaces.
    *
    * **Absent means "no opinion"**, never "off" — the same rule as `enabledModules`. A level says

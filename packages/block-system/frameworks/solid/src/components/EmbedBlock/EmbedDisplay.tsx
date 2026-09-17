@@ -12,6 +12,10 @@ interface EmbedDisplayProps {
   /** How the referenced thing was called when it was embedded — see the model. */
   label?: string;
   thumbnail?: string;
+  /** Who made the thing embedded, as a DID — a quote's attribution. See the model. */
+  sourceAuthor?: string;
+  /** The space it was in, by name. */
+  sourceName?: string;
   /**
    * Go to the thing this points at.
    *
@@ -46,6 +50,15 @@ export function EmbedDisplay(props: EmbedDisplayProps) {
     plain content rather than becoming a control that absorbs a press and goes nowhere.
   */
   const open = () => props.onOpenRef ?? host.openRef;
+  /*
+    What the second line says: whose it is and where it was, for a quote; the kind of thing it is,
+    for a plain embed. A quote without a resolvable name still says where, rather than printing a DID.
+  */
+  const byline = (entity: string) => {
+    const who = props.sourceAuthor ? host.personName?.(props.sourceAuthor) : undefined;
+    const parts = [who && `by ${who}`, props.sourceName && `in ${props.sourceName}`].filter(Boolean);
+    return parts.length ? parts.join(' ') : entity || 'Reference';
+  };
 
   return (
     <div class="we-embed-block">
@@ -59,7 +72,7 @@ export function EmbedDisplay(props: EmbedDisplayProps) {
               <Column gap="100" flex="1" minWidth="0">
                 <we-text truncate>{props.label || ref().entity || 'Something in WE'}</we-text>
                 <we-text variant="footnote" color="text-faint" truncate>
-                  {ref().entity || 'Reference'}
+                  {byline(ref().entity)}
                 </we-text>
               </Column>
               <Show when={open()}>

@@ -81,6 +81,15 @@ export const POCKET_MANIFEST: EntityManifest = {
         entity: { type: 'string', default: '' },
         datasetKey: { type: 'string', default: '' },
         recordId: { type: 'string', default: '' },
+        /**
+         * The record this one sits inside, where it is a block — the post a kept paragraph or picture
+         * came from. Same dataset as `datasetKey`, so only the entity and id.
+         *
+         * Opening a paragraph goes to its post, and a block's own id may not outlive an edit that
+         * splits or merges it; the post is what stays. Empty for anything that is a place of its own.
+         */
+        withinEntity: { type: 'string', default: '' },
+        withinId: { type: 'string', default: '' },
 
         // ── The snapshot: how it looked when it was gathered ──────────────────
         label: { type: 'string', default: '' },

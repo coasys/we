@@ -16,7 +16,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { dockRegistry } from '../src/shared/registries/dockRegistry';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { resolveParts } from '../src/shared/registries/moduleParts';
-import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
+import {
+  isCommunityDecided,
+  moduleRegistry,
+  moduleStores,
+  moduleSurface,
+} from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
 const host = { backend: 'ad4m', framework: 'solid' };
@@ -725,6 +730,8 @@ describe('what a template needs', () => {
       host,
     );
     expect(Object.keys(moduleRegistry.views())).toEqual(['polls']);
+    // And whose each one is, so a space with the module off can leave its section out.
+    expect(moduleRegistry.viewOwners()).toEqual({ polls: 'polls' });
   });
 
   it('refuses a module whose view has no id or the wrong role, with a sentence', () => {
@@ -747,6 +754,39 @@ describe('what a template needs', () => {
     expect(messages).toContain('no id');
     expect(messages).toContain("meta.role: 'view'");
     warn.mockRestore();
+  });
+});
+
+describe('which modules a community decides about', () => {
+  const view = { id: 'polls', type: 'Column', meta: { name: 'Polls', description: '', icon: '', role: 'view' } };
+
+  it('counts a section or a block as part of the space, not as a capability', () => {
+    // Polls has no panel. Classed as a capability it sat outside every per-space switch, so a seed
+    // shipping it `enabled: false` shipped a setting nothing could change.
+    const polls = mod('polls', { contributes: { views: [view] as never } });
+    expect(moduleSurface(polls)).toBe('content');
+    expect(isCommunityDecided(polls)).toBe(true);
+
+    const blockOnly = mod('embeds', { contributes: { blocks: [{ entity: 'Embed', card: 'card' }] } as never });
+    expect(moduleSurface(blockOnly)).toBe('content');
+  });
+
+  it('keeps a panel as chrome, and a bare component as the template’s to decide', () => {
+    expect(moduleSurface(mod('notes', { contributes: { panels: [{ name: 'main', node: {} }] } as never }))).toBe(
+      'chrome',
+    );
+    const globe = mod('globe', { contributes: { components: { CesiumGlobe: () => null } } });
+    expect(moduleSurface(globe)).toBe('capability');
+    expect(isCommunityDecided(globe)).toBe(false);
+  });
+
+  it('leaves an agent-scoped module out, since no space’s decision reaches it', () => {
+    const pocket = mod('pocket', {
+      manifest: { id: 'pocket', name: 'Pocket', scope: 'agent' },
+      contributes: { panels: [{ name: 'main', node: {} }] } as never,
+    });
+    expect(moduleSurface(pocket)).toBe('chrome');
+    expect(isCommunityDecided(pocket)).toBe(false);
   });
 });
 

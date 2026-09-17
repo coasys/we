@@ -32,7 +32,13 @@ import {
 } from '@shared/moduleSettings';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
+import {
+  isCommunityDecided,
+  moduleRegistry,
+  moduleStores,
+  type ModuleSurface,
+  moduleSurface,
+} from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
@@ -43,6 +49,7 @@ import {
   spaceSelfWhere,
   syncSpaceToParent,
 } from '@shared/spaceSync';
+import { isSystemDataset } from '@shared/systemDatasets';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -195,32 +202,40 @@ export interface SpaceListEntry {
   guestLink: string;
 }
 
-/**
- * Which modules a space has on, from its stored value.
- *
- * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back to the
- * registered set is what stops this being a silent regression that strips every existing space of
- * its chrome. A malformed value is a corrupt setting, not a decision to disable everything.
- *
- * A plain function over the stored string rather than a memo over the current space, because the
- * settings page answers this for spaces the agent is not standing in.
- */
 /*
   The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the two
   `*ForCall` resolvers below — lives in `@shared/callExtraction` so it can be tested without
   mounting this provider. See that module for why the per-call level is the part worth guarding.
 */
 
-function resolveEnabledModules(raw: string | undefined): string[] {
+/**
+ * Which modules a layer has on, from its stored value.
+ *
+ * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back is
+ * what stops this being a silent regression that strips every existing space of its chrome. A
+ * malformed value is a corrupt setting, not a decision to disable everything.
+ *
+ * The fallback differs by layer, which is why it is a parameter: a community that has not decided
+ * gets the deployment's default, and an agent who has not decided gets everything registered.
+ *
+ * A plain function over the stored string rather than a memo over the current space, because the
+ * settings page answers this for spaces the agent is not standing in.
+ */
+function resolveEnabledModules(raw: string | undefined, fallback: () => string[] = defaultEnabledModules): string[] {
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
     } catch {
-      console.warn('space.enabledModules is not valid JSON; falling back to the deployment default');
+      console.warn('enabledModules is not valid JSON; falling back to the default');
     }
   }
-  return defaultEnabledModules();
+  return fallback();
+}
+
+/** Every module this build registered. */
+function registeredModules(): string[] {
+  return moduleRegistry.all().map((entry) => entry.definition.manifest.id);
 }
 
 /**
@@ -232,7 +247,7 @@ function resolveEnabledModules(raw: string | undefined): string[] {
  * said otherwise.
  */
 function defaultEnabledModules(): string[] {
-  const registered = moduleRegistry.all().map((entry) => entry.definition.manifest.id);
+  const registered = registeredModules();
   try {
     const shipped = new Set(seedDefaultEnabledModules(getSeed()));
     return registered.filter((id) => shipped.has(id));
@@ -254,10 +269,11 @@ function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, mut
   return (
     moduleRegistry
       .all()
-      // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
-      // renders inside a space — an app switcher is shell-level, and a capability is mounted by
-      // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
-      .filter(({ definition }) => moduleSurface(definition) === 'chrome')
+      // Chrome and content only. A contribution is gated where it renders, and those are the two that
+      // render inside a space — an app switcher is shell-level, a capability is mounted by whatever
+      // template asks for it, and an agent-scoped module is active wherever its agent is. None of
+      // those is a community's decision. See `isCommunityDecided`.
+      .filter(({ definition }) => isCommunityDecided(definition))
       .map(({ definition: { manifest } }) => {
         const enabled = on.has(manifest.id);
         const isInstalled = installed.has(manifest.id);
@@ -786,15 +802,6 @@ export interface SpaceStore {
   setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
-   * Whether extraction passes in this space broadcast their prompt and response to every member.
-   *
-   * A community decision rather than a personal one: "I share and you do not" is an asymmetry with
-   * no use, and the reason to turn it on — this space is working on extraction and wants to see
-   * what it is doing — is about the space. Defaults off; see the model for why.
-   */
-  shareExtractionDetail: Accessor<boolean>;
-  setShareExtractionDetail: (enabled: boolean, spaceUuid?: string) => Promise<void>;
-  /**
    * Which models this community's calls start out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
@@ -1037,9 +1044,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Read from the root dataset, so it is personal — turning one off here changes nothing another
    * member sees. Unset means "not decided" and falls back to everything registered, so an agent who
    * never opens the setting keeps what they had.
+   *
+   * Everything registered, and **not** the seed's default the community layer falls back to. It was
+   * the seed's, which made `enabled: false` mean "off for every agent too" — so a module shipped for
+   * communities to opt into could not be switched on by one until each of its members had separately
+   * installed it. `enabled: false` is a statement about spaces; this layer is about people.
    */
   const installedModules = createMemo<string[]>(() =>
-    resolveEnabledModules(datasetStore.agentSettings()?.installedModules),
+    resolveEnabledModules(datasetStore.agentSettings()?.installedModules, registeredModules),
   );
 
   /** This agent's personal choices per space, from the root dataset. See `SpacePreference`. */
@@ -1211,14 +1223,38 @@ export function SpaceStoreProvider(props: ParentProps) {
    * turned this off" and "you hid this for yourself" are different situations with different
    * remedies, and one boolean cannot tell them apart.
    */
-  const viewSettingsFor = (spaceUuid: string | undefined, raw: string | undefined): ViewSetting[] =>
-    viewSettings({
+  const viewSettingsFor = (
+    spaceUuid: string | undefined,
+    raw: string | undefined,
+    modulesOn: readonly string[],
+  ): ViewSetting[] => {
+    const off = viewsOffFor(modulesOn);
+    return viewSettings({
       enabledRaw: raw,
       hidden: hiddenViewsFor(spaceUuid),
-      available: availableViews(),
+      available: new Map([...availableViews()].filter(([id]) => !off.has(id))),
       fallbackOrder: defaultViewOrder(),
       isBuiltIn: (id) => id in viewRegistry,
     });
+  };
+
+  /**
+   * The sections a space cannot have, because the module that contributes them is off there.
+   *
+   * The community layer only — `enabledModules`, not `activeModules` — for the reason the sections
+   * themselves are not intersected with an install: a section is part of what the space *is*, and one
+   * member not having a module installed must not give them a different set of sections from
+   * everybody else. A community turning a module off is a decision about the space, and takes its
+   * sections with it.
+   */
+  const viewsOffFor = (modulesOn: readonly string[]): Set<string> => {
+    const on = new Set(modulesOn);
+    return new Set(
+      Object.entries(moduleRegistry.viewOwners())
+        .filter(([, owner]) => !on.has(owner))
+        .map(([viewId]) => viewId),
+    );
+  };
 
   /**
    * Turn a stored override into the id that actually applies.
@@ -1299,7 +1335,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
         // Per row rather than a "current space" memo, for the reason this whole page exists: it
         // configures whichever space you clicked, which is usually not the one you are standing in.
-        views: space ? viewSettingsFor(ds.id, space.enabledViews) : [],
+        views: space ? viewSettingsFor(ds.id, space.enabledViews, resolveEnabledModules(space.enabledModules)) : [],
         usesSections: usesSectionsFor(ds.id),
         discovery: space?.discovery ?? 'hidden',
         location: (space?.location as SpaceListEntry['location']) ?? null,
@@ -1458,10 +1494,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** Load the Space model from every candidate dataset. Runs after DatasetStore.loadDatasets. */
   async function loadSpaces(): Promise<void> {
     try {
-      // we-root and we-test are system datasets that never have Space SDNA installed —
-      // calling Space.findOne on them produces an RPC 500 "No SHACL shape" error.
-      const SYSTEM_PERSPECTIVES = ['we-root', 'we-test'];
-      const candidates = datasetStore.datasets().filter((d) => !SYSTEM_PERSPECTIVES.includes(d.name));
+      // System datasets hold no Space record — the root and the sandbox have no Space SDNA at all,
+      // so `Space.findOne` on them is an RPC 500 "No SHACL shape" error — and none is a space.
+      const candidates = datasetStore.datasets().filter((d) => !isSystemDataset(d.name));
       // Any other joined dataset without Space SDNA installed (e.g. a Flux
       // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
       // Promise.all, one rejection would otherwise abort the whole batch and hide every
@@ -2192,12 +2227,16 @@ export function SpaceStoreProvider(props: ParentProps) {
    *   its local id.
    * - **A person** — nothing. An agent has no page yet; a profile route would be a real feature and
    *   is not this one, and navigating somewhere arbitrary would be worse than staying put.
+   * - **A system dataset** — nothing. A note kept in the Pocket names the personal space, which is
+   *   not a space anyone navigates into: it has no `Space` record, no template and no sidebar row, so
+   *   "going there" would land on a shell with nothing in it. The note is already where it is read,
+   *   in the notes panel.
    */
   async function openRecordRef(ref: string): Promise<void> {
     const segs = routeStore.segments();
     const here = segs[0] === 'space' ? (segs[1] ?? '') : '';
     const destination = resolveRecordRef(ref, here);
-    if (!destination) return;
+    if (!destination || datasetStore.systemDatasetUuids().includes(destination.datasetId)) return;
     return navigateToSpace(destination.datasetId, destination.view);
   }
 
@@ -3240,10 +3279,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     `moduleSettings.ts` owns the resolution and the reasoning; this owns only the reading.
 
     A capability could be switched on and off four ways here and could not carry a single *value*,
-    which is why `autoInterpret`, `extractionTargets` and `shareExtractionDetail` are columns on the
-    core `Space` entity. Those three stay where they are — they are extraction's configuration, and
-    where that lands is a question about wires rather than about settings — but nothing new joins
-    them.
+    which is why `autoInterpret` and `extractionTargets` are columns on the core `Space` entity.
+    Those two stay where they are — they are extraction's configuration, and where that lands is a
+    question about wires rather than about settings — but nothing new joins them.
   */
   const settingLevels = createMemo<LevelValues>(() => {
     const uuid = datasetStore.currentDataset()?.id;
@@ -3274,10 +3312,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     ),
   );
 
-  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'space', settingLevels()));
-  const myModuleSettings = createMemo<SettingRow[]>(() =>
-    settingRows(settingGroups(), 'agent-in-space', settingLevels()),
-  );
+  /*
+    The groups that apply here: a community-decided module this space has off asks nothing of it.
+    A poll setting on the settings page of a space with no polls is a control for nothing.
+  */
+  const groupsHere = createMemo(() => {
+    const on = new Set(enabledModules());
+    return settingGroups().filter((group) => {
+      const definition = moduleRegistry.get(group.id)?.definition;
+      return !definition || !isCommunityDecided(definition) || on.has(group.id);
+    });
+  });
+  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'space', settingLevels()));
+  const myModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
   const agentModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'agent', settingLevels()));
 
   /**
@@ -3344,7 +3391,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     decision to spend somebody's LLM budget.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
-  const shareExtractionDetail = createMemo<boolean>(() => currentSpace()?.shareExtractionDetail === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
 
   /*
@@ -3536,9 +3582,20 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const routableViews = createMemo<ResolvedView[]>(() => routableSections(availableViews(), defaultViewOrder()));
 
+  /**
+   * The routable views this space may show — less any whose module the community has off.
+   *
+   * Filtered here rather than in `routableViews`, which the Router is built from and must stay put
+   * when a switch flips. What changes is which sections the nav lists and which route bodies render.
+   */
+  const routableHere = createMemo<ResolvedView[]>(() => {
+    const off = viewsOffFor(enabledModules());
+    return routableViews().filter((view) => !off.has(view.id));
+  });
+
   const spaceViews = createMemo<ResolvedView[]>(() =>
     activeSections({
-      routable: routableViews(),
+      routable: routableHere(),
       enabledRaw: currentSpace()?.enabledViews,
       hidden: hiddenViewsFor(datasetStore.currentDataset()?.id),
       fallbackOrder: defaultViewOrder(),
@@ -3559,7 +3616,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const enabledViewIds = createMemo<string[]>(() =>
     activeSections({
-      routable: routableViews(),
+      routable: routableHere(),
       enabledRaw: currentSpace()?.enabledViews,
       hidden: [],
       fallbackOrder: defaultViewOrder(),
@@ -4312,35 +4369,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Turn extraction diagnostics on or off for the space.
-   *
-   * Same shape and same failure handling as `setAutoInterpret`, which is the setting it sits beside
-   * — a switch that reports success without persisting is worse than one that fails visibly,
-   * because the next member to open the page sees the old decision.
-   */
-  async function setShareExtractionDetail(enabled: boolean, spaceUuid?: string) {
-    const ds = targetDataset(spaceUuid);
-    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
-    if (!ds || !space) return;
-    try {
-      await Space.update(ds.handle, space.id, { shareExtractionDetail: enabled });
-    } catch (error) {
-      console.error('SpaceStore: could not persist shareExtractionDetail', error);
-      toastService.error('Could not save this change for the space.');
-      throw error;
-    }
-    updateSpaceInCache(ds, { shareExtractionDetail: enabled } as never);
-    if (!isCurrent(ds)) return;
-    setCurrentSpace((prev) =>
-      prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
-            shareExtractionDetail: enabled,
-          }) as Space)
-        : prev,
-    );
-  }
-
-  /**
    * Add or remove one model from what this community's calls start out extracting.
    *
    * Writes the resolved list, exactly as `setModuleEnabled` does and for the same two reasons: the
@@ -4862,8 +4890,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     setMyModuleSetting,
     setAgentModuleSetting,
     setAutoInterpret,
-    shareExtractionDetail,
-    setShareExtractionDetail,
     extractionTargets,
     setExtractionTarget,
     setModuleInstalled,

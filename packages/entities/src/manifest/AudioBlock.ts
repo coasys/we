@@ -4,12 +4,9 @@ export const AudioBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
-    /*
-      A form, so a record can be given one inline — a sighting's photo, added where the sighting is
-      written. Not offered in "create something": an image with nothing to belong to is not a thing a
-      person sets out to make, and the composer is where one is put into a document.
-    */
-    authoring: { fields: ['audioUrl', 'title', 'artist'], offered: false },
+    description: 'A sound or a recording, from a link',
+    // A form: filled in where a record is given one inline, and wherever one is made on its own.
+    authoring: { fields: ['audioUrl', 'title', 'artist'] },
     flag: { predicate: 'we://flag', value: 'we://audio_block' },
     properties: {
       title: { type: 'string', predicate: 'we://title', required: true, default: '' },

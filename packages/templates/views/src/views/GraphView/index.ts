@@ -406,7 +406,10 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $: "local.mode != 'canvas' && count(recordStore.creatableEntities)" },
+                    // Form-made content only: this opens the record form, which cannot host a composer.
+                    condition: {
+                      $: "local.mode != 'canvas' && count(recordStore.creatableEntities.filter(k, k.via == 'form'))",
+                    },
                     then: {
                       type: 'we-button',
                       props: {

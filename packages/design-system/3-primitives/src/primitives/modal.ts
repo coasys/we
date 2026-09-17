@@ -194,6 +194,17 @@ const CSS_STYLES = css`
     top: 10px;
     right: 10px;
   }
+
+  /*
+    The close button's mirror: a control that leaves this modal for the one it came from — Back.
+    Top left, at the same inset, so the two ways out sit at the two corners of one line and neither
+    is mistaken for part of the title.
+  */
+  [part='start-button-wrapper'] {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+  }
 `;
 
 @customElement('we-modal')
@@ -286,6 +297,7 @@ export default class Modal extends OverlayElement {
               `
             : null
         }
+        <div part="start-button-wrapper"><slot name="start-button"></slot></div>
         <slot name="header" id="modal-title"></slot>
         <div part="content"><slot></slot></div>
         <slot name="footer"></slot>

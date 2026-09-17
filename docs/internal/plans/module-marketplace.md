@@ -118,8 +118,10 @@ second-runtime hazard the old plan worried about is solved by the injection: a s
 `deps.signal` never imports Solid. The enumeration this section used to call for was done in
 September 2026, and sorted as it predicted:
 
-- **Signals over queries** — the notes module's store was exactly this, and it now has no store:
-  the host owns its panel's openness and the panel is a `$queries` declaration. Data.
+- **Signals over queries** — the notes module's first store was exactly this, and it went: the host
+  owns its panel's openness and the panel is a `$queries` declaration. Data. (Notes has a store again
+  since notes became compositions in the personal space — for writing documents and for sharing one
+  into a space, neither of which is a signal over a query.)
 - **Calls into ports** — became the **kernels** (`records`, `agentData`, `presence`, `ephemeral`,
   `media`, `peerConnection`, `transcription`, `languageModel`, `interpretation`, `secrets`). A
   module declares which it reaches; the registry refuses one naming a kernel the host lacks, hands
@@ -188,6 +190,6 @@ asked for; there is no rung-5 entry.
    rung's trust statement.
 4. **Rung 1 for sections** — a published fragment is a section a template can pull in. Mostly
    already possible; needs a category and a way to reference a published section from a template.
-5. ~~**Rung 4 enumeration**~~ — done (September 2026): the kernels exist, the notes store is gone,
+5. ~~**Rung 4 enumeration**~~ — done (September 2026): the kernels exist, the notes panel store is gone,
    and the residue is named above. The next step on this rung is the worker sandbox, when a module
    from outside the repository needs it.

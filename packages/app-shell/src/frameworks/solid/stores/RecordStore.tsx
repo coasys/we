@@ -22,10 +22,19 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import { datasetKey, type EntitySchema, HERE, namePropertyOf } from '@we/backend-shared';
-import { createBlocks } from '@we/block-shared';
+import {
+  datasetIdOf,
+  datasetKey,
+  datasetKindOf,
+  type EntitySchema,
+  formatRef,
+  HERE,
+  namePropertyOf,
+} from '@we/backend-shared';
+import { type ContentInput, copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
+  CollectionBlock,
   compressImageToFileData,
   dataURIToFileData,
   EdgeRoute,
@@ -40,16 +49,19 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
+import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
 import { hostSlot } from '../../../shared/hostSlot';
+import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
 import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
 import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
   asEntityName,
+  type CreationPath,
+  creationPath,
   emptyRecordDraft,
   entryLabel,
   fieldsFor,
-  offeredForCreation,
   type RecordDraft,
   recordDraftChanged,
   recordDraftErrors,
@@ -59,10 +71,12 @@ import {
   type RelationEntry,
   type RelationTargetAbilities,
   withoutRelationEntry,
+  withPlace,
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
-import { useDatasetStore } from './DatasetStore';
+import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { useSessionStore } from './SessionStore';
 import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
 
 /** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */
@@ -71,6 +85,13 @@ export interface CreatableEntity {
   value: string;
   icon: string;
   group: string;
+  /** What this kind of thing is, in a line — the manifest's `description`, or the shape's. Empty when neither says. */
+  description: string;
+  /**
+   * How it is made. A surface that can only host a form — the record form's type selector — lists
+   * the `form` ones; a surface that can open the composer too (a canvas) lists them all.
+   */
+  via: CreationPath;
 }
 
 /** The two records a connection joins, exactly as the graph's `onEdgeCreate` reports them. */
@@ -88,15 +109,14 @@ export interface PendingLink {
 const RELATIONSHIP = 'Relationship';
 
 /**
- * Models that can be *shown* but never *made from a form* — see {@link displayableEntities}.
+ * Models that can be *shown* but are not content anybody creates from a picker — see
+ * {@link displayableEntities}. Every core block is shown as well, whether or not it can be made.
  *
- * `Relationship` is drawn between two things rather than filled in from a picker. `CollectionBlock`
- * is composed: a note, a post, a call record are documents, and a generated form over their fields
- * would be asking somebody to type a structural `type` and a `kind` label instead of writing
- * anything. Both are read constantly all the same — a line on a canvas is one, a sticky note is the
- * other — and clicking either is exactly the moment somebody wants to read it.
+ * `Relationship` is drawn between two things rather than filled in from a picker, and it is read
+ * constantly all the same: a line on a canvas is one, and clicking it is exactly the moment somebody
+ * wants to read it.
  */
-const DISPLAY_ONLY = [RELATIONSHIP, 'CollectionBlock'] as const;
+const DISPLAY_ONLY = [RELATIONSHIP] as const;
 
 /**
  * Write one placement, node reference included, inside whatever write group the caller is in.
@@ -262,6 +282,11 @@ export interface RecordStore {
    */
   setRecordField: (name: string, value: unknown) => void;
   /**
+   * Pin the draft's place — pass a `we-location-picker`'s `arg.detail`. Writes the latitude, longitude
+   * and address the draft asks for, and a name where nobody typed one.
+   */
+  setRecordPlace: (detail: unknown) => void;
+  /**
    * The record being made inline for a relation field — an image for a sighting's `photo` — or null.
    * Its non-nullness mounts the nested form, over the one it belongs to.
    */
@@ -323,8 +348,25 @@ export interface RecordStore {
    */
   dropOnCanvas: (
     canvas: string,
-    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
+    payload: {
+      entity: string;
+      id: string;
+      dataset?: string;
+      x: number;
+      y: number;
+      label?: string;
+      within?: BringInItem['within'];
+      preview?: BringInItem['preview'];
+    },
   ) => Promise<void>;
+  /**
+   * Take whatever a drop carried into the space on screen, as posts — the `dropped` event's detail
+   * straight from a `we-drop-zone` around a feed.
+   *
+   * A copy for the author's own things, a quote for anybody else's — see `shared/bringIn.ts`, which
+   * holds the table. Things already in this space are left alone. Each new post offers an undo.
+   */
+  bringIn: (payload: { items?: BringInItem[] } | undefined) => Promise<void>;
   /**
    * Change one property of one record, from a control bound to it.
    *
@@ -478,10 +520,21 @@ const RecordStoreContext = createContext<RecordStore>();
 
 export function RecordStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
+  const session = useSessionStore();
   const shapeStore = useShapeStore();
 
   const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
   const [recordErrors, setRecordErrors] = createSignal<string[]>([]);
+  /*
+    Counts writes into a draft's fields, for whatever has to notice them.
+
+    A field is written in place (see `writeFieldValue`) so the control being typed into keeps its row
+    and its focus — which also means the draft signal never changes while somebody types. Anything
+    derived from the draft saw the form as it opened: `recordDraftDirty` stayed false through a whole
+    paragraph, so closing or going Back threw the work away without asking, while a location pin, which
+    replaces the draft, did ask. Reading this beside the draft is what makes the two agree.
+  */
+  const [draftEdits, setDraftEdits] = createSignal(0);
   const [savingRecord, setSavingRecord] = createSignal(false);
   const [lastCreatedId, setLastCreatedId] = createSignal('');
   const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
@@ -494,18 +547,24 @@ export function RecordStoreProvider(props: ParentProps) {
   let entrySeq = 0;
 
   /**
-   * WE's own authorable models, read straight off the core manifest.
+   * WE's own content a person can make, read straight off the core manifest — every block there is a
+   * way to make, and how. See `creationPath`.
    *
-   * Derived rather than listed, so a model that gains an `authoring` declaration appears here with
-   * no second edit in a different package — the failure mode a hardcoded table has is that it is
-   * correct on the day it is written and silently stale afterwards.
+   * Derived rather than listed, so a block that gains a form appears here with no second edit in a
+   * different package — the failure mode a hardcoded table has is that it is correct on the day it is
+   * written and silently stale afterwards. And by declaration rather than by name: nothing that is not
+   * content needs a flag to stay out.
    */
   const coreEntities = createMemo<CreatableEntity[]>(() =>
     Object.entries(CORE_MANIFEST.entities)
-      // By declaration rather than by name — `Relationship` was the one name, and `RelationshipType`
-      // the one it missed. See `authoring.offered`.
-      .filter(([, entity]) => offeredForCreation(entity))
-      .map(([name]) => ({ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Built in' }))
+      .flatMap(([name, entity]) => {
+        const via = creationPath(entity);
+        if (!via) return [];
+        const icon = BLOCK_ICONS[name] ?? 'cube';
+        return [
+          { label: modelLabel(name), value: name, icon, group: 'Built in', description: entity.description ?? '', via },
+        ];
+      })
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
 
@@ -519,6 +578,8 @@ export function RecordStoreProvider(props: ParentProps) {
         value: shape.name,
         icon: shape.icon || 'cube',
         group: 'This space',
+        description: shape.description ?? '',
+        via: 'form' as const,
       }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
@@ -605,14 +666,24 @@ export function RecordStoreProvider(props: ParentProps) {
    * with its own icon and label, and a display derived from the community's shape is the one that
    * should win.
    */
-  const displayableEntities = createMemo<CreatableEntity[]>(() => {
+  const displayableEntities = createMemo<Omit<CreatableEntity, 'via' | 'description'>[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
-    const extra = DISPLAY_ONLY.filter((name) => !named.has(name) && CORE_MANIFEST.entities[name]).map((name) => ({
-      label: modelLabel(name),
-      value: name,
-      icon: BLOCK_ICONS[name] ?? 'cube',
-      group: 'Built in',
-    }));
+    /*
+      Every core block too, including the ones there is no way to make — a divider still appears in a
+      post, and a quote dropped on a canvas is an embed. The key and the inspector read a kind's name
+      and glyph from here.
+    */
+    const blocks = Object.entries(CORE_MANIFEST.entities)
+      .filter(([, entity]) => entity.blockable)
+      .map(([name]) => name);
+    const extra = [...new Set([...DISPLAY_ONLY, ...blocks])]
+      .filter((name) => !named.has(name) && CORE_MANIFEST.entities[name])
+      .map((name) => ({
+        label: modelLabel(name),
+        value: name,
+        icon: BLOCK_ICONS[name] ?? 'cube',
+        group: 'Built in',
+      }));
     return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
   });
 
@@ -662,10 +733,10 @@ export function RecordStoreProvider(props: ParentProps) {
       setKind('');
       setPendingPoint(null);
     });
-    // Opening on the first offered model rather than on an empty picker: in a space with one
+    // Opening on the first model with a form rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
-    // than a form with nothing in it.
-    const target = named || creatableEntities()[0]?.value;
+    // than a form with nothing in it. A composed one has no form to open on.
+    const target = named || creatableEntities().find((entity) => entity.via === 'form')?.value;
     if (target) setRecordEntity(target);
   }
 
@@ -677,11 +748,19 @@ export function RecordStoreProvider(props: ParentProps) {
       toastService.error(`No model named "${entity}" in this space.`);
       return;
     }
+    // A composed kind has no form to open — a note is written in the composer. Every picker that
+    // offers one opens that instead; this is the guard for one that did not.
+    if (!found.authorable && creationPath(found.schema) === 'composer') {
+      toastService.error(`A ${found.label.toLowerCase()} is written in the composer, not a form.`);
+      return;
+    }
     batch(() => {
       setRecordErrors([]);
       setRecordDraft(
         emptyRecordDraft({
           entity,
+          // The model's name as a person reads it — "Location", not `LocationBlock`.
+          label: found.label,
           schema: found.schema,
           authorable: found.authorable,
           icon: found.icon,
@@ -713,6 +792,12 @@ export function RecordStoreProvider(props: ParentProps) {
     writeInto(recordDraft, name, value);
   }
 
+  function setRecordPlace(detail: unknown): void {
+    const current = recordDraft();
+    const next = current ? withPlace(current, detail) : null;
+    if (next) setRecordDraft(next);
+  }
+
   /**
    * Write a control's value into whichever draft it belongs to.
    *
@@ -726,6 +811,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const file = Array.isArray(value) ? value[0] : value;
     if (typeof File === 'undefined' || !(file instanceof File)) {
       writeFieldValue(draft(), name, value === null || value === undefined ? '' : (value as RecordFieldValue));
+      setDraftEdits((n) => n + 1);
       return;
     }
     const opened = draft();
@@ -733,6 +819,7 @@ export function RecordStoreProvider(props: ParentProps) {
       .then((payload) => {
         if (draft() !== opened) return;
         writeFieldValue(opened, name, payload);
+        setDraftEdits((n) => n + 1);
         const named = opened?.fields.find((field) => field.name === 'name' && field.control === 'text');
         if (named && typeof named.value === 'string' && !named.value.trim()) named.value = file.name;
       })
@@ -1040,6 +1127,8 @@ export function RecordStoreProvider(props: ParentProps) {
    */
   const recordDraftDirty = createMemo(() => {
     const draft = recordDraft();
+    // Tracked, not used: a field written in place changes nothing the memo would otherwise see.
+    draftEdits();
     if (!draft) return false;
     /*
       Changed from what it started as — not "holds something".
@@ -1448,7 +1537,20 @@ export function RecordStoreProvider(props: ParentProps) {
     const here = datasetKey({ cid: dataset.sharedUri, uuid: dataset.id });
     const from = payload.dataset ?? '';
     if (from && from !== HERE && from !== here) {
-      toastService.error('Only things from this space can be put on its canvas.');
+      /*
+        Something from elsewhere becomes a post here first — a copy or a quote, the rule every drop
+        into a space follows — and that post is what goes on the canvas. A canvas can only draw this
+        space's records, and placing a coordinate for a record in another dataset drew nothing.
+
+        A single block is brought in *alone* — a copy of the picture, or a lone embed — and belongs to
+        the canvas the way a card composed on it does. A post holding one picture was a card around
+        nothing. A whole post or note still arrives as a post.
+      */
+      const brought = await bringOne(
+        { ...payload, ref: { entity: payload.entity, id: payload.id, dataset: from } },
+        { canvas },
+      );
+      if (brought) await placeOnCanvas(canvas, brought.id, brought.entity, payload.x, payload.y);
       return;
     }
     if (!schemaFor(payload.entity)) {
@@ -1456,6 +1558,80 @@ export function RecordStoreProvider(props: ParentProps) {
       return;
     }
     await placeOnCanvas(canvas, payload.id, payload.entity, payload.x, payload.y);
+  }
+
+  /** The dataset a reference's key names, if this agent holds it. */
+  function heldDataset(key: string): AppDataset | undefined {
+    const id = datasetIdOf(key);
+    if (datasetKindOf(key) === 'personal') return datasetStore.datasets().find((d) => d.id === id);
+    return datasetStore.datasets().find((d) => d.sharedId === id || d.sharedUri === `neighbourhood://${id}`);
+  }
+
+  /**
+   * One dropped thing into the space on screen, with its undo and its announcement.
+   *
+   * The decision is `shared/bringIn.ts`; this is the store's half — reading and writing through the
+   * datasets it holds, and telling modules, since a note shared by dragging is shared as surely as
+   * one shared with the button.
+   */
+  async function bringOne(item: BringInItem, into: { canvas?: string } = {}): Promise<BroughtIn | null> {
+    const here = datasetStore.currentDataset();
+    if (!here) return null;
+    const hereKey = datasetKey({ cid: here.sharedUri, uuid: here.id });
+    try {
+      const result = await decideBringIn(
+        item,
+        {
+          hereKey,
+          me: session.me()?.did,
+          held: (key) => {
+            const ds = heldDataset(key);
+            return ds ? { handle: ds.handle, name: ds.name } : null;
+          },
+          readPost: async (handle, id) => {
+            const post = await CollectionBlock.findOne(handle as never, { where: { id } });
+            return post ? { author: post.author, editorState: post.editorState } : null;
+          },
+          copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
+          write: async (blocks, fields) => {
+            const root = await createBlocks(here.handle, blocks as ContentInput, { kind: 'post', fields });
+            return root?.id ? { id: root.id } : null;
+          },
+          // Owned by the canvas, as a card composed on it is — deleting the canvas takes it.
+          writeBlock: into.canvas
+            ? async (block) =>
+                (await createBlock(here.handle, block, {
+                  anchor: { id: into.canvas!, predicate: PREDICATES.CHILDREN },
+                })) ?? null
+            : undefined,
+        },
+        { alone: !!into.canvas },
+      );
+      if (!result) return null;
+
+      // Posts only: a block written alone is not a post that arrived, and a note's share is the note.
+      if (result.entity === 'CollectionBlock') {
+        const to = formatRef({ datasetKey: hereKey, entity: 'CollectionBlock', id: result.id });
+        notifyCopiedIn({ from: result.from, to, mode: result.mode, spaceName: here.name });
+      }
+      const message =
+        result.mode === 'quote' ? 'Quoted here' : result.entity === 'CollectionBlock' ? 'Posted here' : 'Added here';
+      toastService.success(message, 8000, {
+        label: 'Undo',
+        run: () => void deleteBlocks(here.handle, result.id).catch(() => toastService.error('Could not undo that.')),
+      });
+      return result;
+    } catch (error) {
+      console.error('RecordStore: bringing something into the space failed', error);
+      toastService.error('Could not add that here.');
+      return null;
+    }
+  }
+
+  async function bringIn(payload: { items?: BringInItem[] } | undefined): Promise<void> {
+    for (const item of payload?.items ?? []) {
+      if (item?.ref?.entity && item.ref.id) await bringOne(item);
+    }
   }
 
   async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {
@@ -1660,9 +1836,11 @@ export function RecordStoreProvider(props: ParentProps) {
     setTypeColor,
     setSpaceTypeColor,
     dropOnCanvas,
+    bringIn,
     updateRecordField,
     setRecordEntity,
     setRecordField,
+    setRecordPlace,
     relationDraft,
     relationErrors,
     openRelationForm,

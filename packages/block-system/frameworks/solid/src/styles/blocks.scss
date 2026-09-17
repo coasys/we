@@ -223,9 +223,16 @@
   > h3:hover,
   > blockquote:hover,
   > .we-list-item:hover,
-  > .we-block:hover {
+  > .we-block:hover,
+  > we-draggable > .we-block-draggable:hover > :is(p, h1, h2, h3, blockquote, .we-list-item, .we-block) {
     background-color: var(--we-color-neutral-75);
   }
+}
+
+// A block that can be picked up on its own — see `DraggableBlock` in BlockRenderer.tsx. Focusable
+// only programmatically (tabindex -1), so a click that focuses it draws no ring.
+.we-block-draggable:focus {
+  outline: none;
 }
 
 // Collection block wrapper — provides CSS custom properties to the nested content and an outline

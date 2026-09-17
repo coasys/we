@@ -1,10 +1,12 @@
 /**
- * The notes module — the first module to own durable entities, and now the first with no store.
+ * The notes module — private notes in the personal space, and the first module to own an entity.
  *
- * Chosen as the second module for exactly what the globe couldn't test: a module-declared model, its
- * install path, and the predicate namespace that becomes the convention the moment it ships. Since the
- * host took over panel openness it is also the proof that a module can be *entirely declaration*:
- * entities, a part and a panel, and not a line of code.
+ * Chosen as the second module for what the globe couldn't test: a module-declared model, its install
+ * path, and the predicate namespace that became the convention the moment it shipped. Its content has
+ * since become the shared vocabulary — a note is a post in the personal space — and what it owns is
+ * the record of where a note was shared. These tests hold the host's half: that the entity installs
+ * where an agent-scoped module's entities go, and that the panel and store register the way any
+ * module's do.
  */
 import { createAd4mSchemaPort, getEntity } from '@we/backend-ad4m';
 import { createInMemorySchemaPort } from '@we/backend-inmemory';
@@ -40,35 +42,35 @@ beforeEach(() => {
 describe('notes module — declared coupling', () => {
   it('declares no backend, because it declares its entity rather than writing one', () => {
     expect(notesModule.manifest.requires?.backends).toBeUndefined();
-    expect(notesModule.contributes?.entities?.manifest.entities.Note).toBeDefined();
+    expect(notesModule.contributes?.entities?.manifest.entities.NoteShare).toBeDefined();
     for (const backend of ['ad4m', 'nextgraph', 'inmemory']) {
       expect(checkModuleCompatibility(notesModule, { backend, framework: 'solid' }).compatible).toBe(true);
     }
   });
 
-  it('is framework-agnostic and needs no kernel, because every piece of it is a declaration', () => {
+  it('is framework-agnostic, and asks for the personal space and the space on screen', () => {
     expect(notesModule.manifest.requires?.frameworks).toBeUndefined();
-    expect(notesModule.manifest.requires?.kernels).toBeUndefined();
+    expect(notesModule.manifest.requires?.kernels).toEqual(['agentData', 'records']);
     expect(notesModule.contributes?.components).toBeUndefined();
-    // No store at all: the six members it used to carry existed only to answer the dock's keys.
-    expect(notesModule.createStore).toBeUndefined();
-    expect(checkModuleCompatibility(notesModule, { backend: 'ad4m', framework: 'react', kernels: [] }).compatible).toBe(
-      true,
-    );
+    expect(
+      checkModuleCompatibility(notesModule, { backend: 'ad4m', framework: 'react', kernels: ['records'] }).compatible,
+    ).toBe(false);
   });
 
   it('is described to a person by what it declares, not by a list it wrote', () => {
-    // `dock` and storage in the space — the two things somebody is agreeing to.
-    expect(moduleCapabilities(notesModule)).toEqual(expect.arrayContaining(['storage:space', 'dock']));
+    // Storage of the agent's own, a panel, and the two kernels — what somebody is agreeing to.
+    expect(moduleCapabilities(notesModule)).toEqual(
+      expect.arrayContaining(['storage:agent', 'dock', 'kernel:agentData', 'kernel:records']),
+    );
   });
 });
 
 describe('notes module — contributions', () => {
-  it('registers a panel and a placeable part, and no store', () => {
+  it('registers a panel, a placeable part and a store', () => {
     const result = moduleRegistry.register(notesModule, host, storeDeps);
     expect(result.registered).toBe(true);
 
-    expect(moduleStores.notes).toBeUndefined();
+    expect(moduleStores.notes).toBeDefined();
     // A panel rather than a slot: it makes room in the space instead of covering it.
     expect(dockRegistry.get('notes:main')?.moduleId).toBe('notes');
     expect(slotRegistry.get('dock:notes:main')).toBeDefined();
@@ -106,44 +108,50 @@ describe('notes module — contributions', () => {
     expect(button).toContain('notes:main');
   });
 
-  it('resolves its entity by name once the host compiles it, so record.create can write a note', () => {
+  it('installs its entity with the agent’s, never into a space', () => {
     const schemas = createAd4mSchemaPort({});
     moduleRegistry.register(notesModule, host, storeDeps);
 
-    const payloads = moduleRegistry.moduleSchemas(schemas);
-    expect(payloads).toHaveLength(1);
-    expect(() => getEntity('Note')).not.toThrow();
+    // Where the host sends each list decides whether a record can reach a community: the space list
+    // goes to every space, the agent list only to the personal space.
+    expect(moduleRegistry.moduleSchemas(schemas)).toHaveLength(0);
+    expect(moduleRegistry.agentSchemas(schemas)).toHaveLength(1);
+    expect(() => getEntity('NoteShare')).not.toThrow();
 
     moduleRegistry.unregister('notes');
-    expect(() => getEntity('Note')).toThrow(/not found in registry/);
+    expect(() => getEntity('NoteShare')).toThrow(/not found in registry/);
   });
 
   it('is a working entity on a backend that stores nothing like the first one', async () => {
     const schemas = createInMemorySchemaPort({ selfId: () => 'did:test:author' });
     moduleRegistry.register(notesModule, host, storeDeps);
-    moduleRegistry.moduleSchemas(schemas);
+    moduleRegistry.agentSchemas(schemas);
 
-    const Note = getEntity('Note') as unknown as {
-      create(d: unknown, data: Record<string, unknown>): Promise<{ text: string; author: string }>;
-      findAll(d: unknown, q?: Record<string, unknown>): Promise<{ text: string }[]>;
+    const NoteShare = getEntity('NoteShare') as unknown as {
+      create(d: unknown, data: Record<string, unknown>): Promise<{ noteId: string; author: string }>;
+      findAll(d: unknown, q?: Record<string, unknown>): Promise<{ noteId: string; spaceName: string }[]>;
     };
-    const dataset = { id: 'ds-notes', tables: {} };
+    const dataset = { id: 'ds-personal', tables: {} };
 
-    await Note.create(dataset, { text: 'written without a backend' });
-    const notes = await Note.findAll(dataset, { where: { text: { contains: 'without' } } });
-    expect(notes).toHaveLength(1);
-    expect(notes[0].text).toBe('written without a backend');
+    await NoteShare.create(dataset, { noteId: 'note-1', ref: 'we:n:space/CollectionBlock/post-1', spaceName: 'Here' });
+    await NoteShare.create(dataset, { noteId: 'note-2', ref: 'we:n:space/CollectionBlock/post-2' });
+    const shares = await NoteShare.findAll(dataset, { where: { noteId: 'note-1' } });
+    expect(shares).toHaveLength(1);
+    expect(shares[0].spaceName).toBe('Here');
   });
 
   it('compiles its declaration to the predicates the convention mints', () => {
     const schemas = createAd4mSchemaPort({});
     moduleRegistry.register(notesModule, host, storeDeps);
-    moduleRegistry.moduleSchemas(schemas);
+    moduleRegistry.agentSchemas(schemas);
 
     const shape = (
-      getEntity('Note') as unknown as { generateSHACL(): { shape: { properties: { name?: string; path: string }[] } } }
+      getEntity('NoteShare') as unknown as {
+        generateSHACL(): { shape: { properties: { name?: string; path: string }[] } };
+      }
     ).generateSHACL().shape.properties;
-    expect(shape.find((p) => p.name === 'text')?.path).toBe(NOTE_PREDICATES.text);
+    expect(shape.find((p) => p.name === 'noteId')?.path).toBe(NOTE_PREDICATES.noteId);
+    expect(shape.find((p) => p.name === 'sharedAt')?.path).toBe(NOTE_PREDICATES.sharedAt);
   });
 
   it('withdraws everything on unregister', () => {
@@ -152,7 +160,8 @@ describe('notes module — contributions', () => {
 
     expect(dockRegistry.get('notes:main')).toBeUndefined();
     expect(slotRegistry.get('dock:notes:main')).toBeUndefined();
-    expect(() => getEntity('Note')).toThrow(/not found in registry/);
+    expect(moduleStores.notes).toBeUndefined();
+    expect(() => getEntity('NoteShare')).toThrow(/not found in registry/);
   });
 });
 

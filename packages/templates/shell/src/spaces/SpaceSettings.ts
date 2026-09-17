@@ -1085,48 +1085,6 @@ const extractionTargetsSection: SchemaNode = {
   ],
 };
 
-const shareExtractionDetailSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
-  children: [
-    {
-      type: 'Row',
-      props: { width: '100%', gap: '400', ay: 'center' },
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '100', flex: '1' },
-          children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Share extraction detail'] },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [
-                {
-                  $: "space.canAdminister ? 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.' : 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.'",
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'we-switch',
-          props: {
-            size: 'sm',
-            checked: { $: 'spaceStore.shareExtractionDetail' },
-            disabled: { $: '!space.canAdminister' },
-            // Bare `$event.detail`, for the reason the switch above it gives.
-            onChange: {
-              $action: 'spaceStore.setShareExtractionDetail',
-              args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
-            },
-          },
-        },
-      ],
-    },
-  ],
-};
-
 /**
  * A rule and a label saying who the controls beneath it affect.
  *
@@ -1357,7 +1315,6 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           moduleSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
-                          shareExtractionDetailSection,
                         ],
                         fill,
                       ),

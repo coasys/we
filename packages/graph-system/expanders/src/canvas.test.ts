@@ -583,6 +583,26 @@ describe('the canvas seed — changed and hidden records', () => {
     expect(nodes.map((n) => n.id.split(/[/:]/).pop())).toEqual(['c1']);
     expect(edges).toHaveLength(0);
   });
+
+  it('leaves a whole type off, with the connections that reach it, and reads nothing of it', async () => {
+    const mixed = {
+      ...twoCards,
+      Placement: [...twoCards.Placement, { id: 'p3', node: 'i1', nodeType: 'ImageBlock', x: 400, y: 0 }],
+      ImageBlock: [{ id: 'i1', src: 'x.png' }],
+      Relationship: [
+        ...twoCards.Relationship,
+        { id: 'r2', source: 'c1', sourceType: 'CollectionBlock', target: 'i1', targetType: 'ImageBlock' },
+      ],
+    };
+    const { context: ctx } = context(mixed);
+    const { nodes, edges } = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', hiddenTypes: ['ImageBlock'] },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id.split(/[/:]/).pop()).sort()).toEqual(['c1', 'c2']);
+    expect(edges.map((e) => e.id)).toEqual(['canvas-connection|r1']);
+  });
 });
 
 /**

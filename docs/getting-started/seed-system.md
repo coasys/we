@@ -40,7 +40,11 @@ module nobody listed is not in the build at all. An entry is an id, or an object
   `"@acme/we-module-polls"`. The deployment adds the dependency and rebuilds; the
   registry trusts it the way it trusts a bundled module.
 - `enabled: false` — ship it for communities to opt into rather than switching it on
-  in every space that has not decided. The default is on.
+  in every space that has not decided. The default is on. It is a statement about
+  **spaces**: every agent still has the module installed, so a community can switch it
+  on from the space's settings without each member installing it first. It applies to
+  modules a community decides about — a panel, a section or a block. An agent-scoped
+  module (the Pocket, notes) is the person's to turn off in Settings → Modules.
 
 (Per-agent and per-space choices layer on top: `AgentSettings.installedModules` and
 `Space.enabledModules`.) `pnpm validate:seed` checks the entries.

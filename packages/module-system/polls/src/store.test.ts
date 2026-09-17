@@ -1,56 +1,23 @@
 /**
  * One vote per person per poll, as a query rather than a constraint.
  */
-import type { ModuleStoreDeps, RecordQuery } from '@we/module-shared';
-import { markAction, markState } from '@we/module-shared';
+import { fakeDeps, fakeRecords } from '@we/module-testing';
 import { describe, expect, it } from 'vitest';
 
 import { createPollsStore } from './store';
 
-function fakeRecords() {
-  const rows: Record<string, unknown>[] = [];
-  const writes: string[] = [];
-  let next = 0;
-  return {
-    rows,
-    writes,
-    kernel: {
-      create: async (entity: string, fields: Record<string, unknown>) => {
-        const id = `${entity}-${++next}`;
-        rows.push({ id, author: 'did:me', ...fields });
-        writes.push(`create ${entity} ${fields.option}`);
-        return id;
-      },
-      update: async (_entity: string, id: string, fields: Record<string, unknown>) => {
-        const row = rows.find((r) => r.id === id);
-        if (row) Object.assign(row, fields);
-        writes.push(`update ${id} ${fields.option}`);
-      },
-      link: async () => {},
-      remove: async () => {},
-      find: async (_entity: string, query?: RecordQuery) => {
-        const where = query?.where ?? {};
-        return rows.filter((row) => Object.entries(where).every(([k, v]) => row[k] === v));
-      },
-      subscribe: () => () => {},
-    },
-  };
-}
-
-function deps(records = fakeRecords(), settings: Record<string, boolean> = {}) {
-  const bag: ModuleStoreDeps = {
-    signal: <T>(initial: T): [() => T, (next: T) => void] => {
-      let value = initial;
-      return [() => value, (next: T) => void (value = next)];
-    },
-    state: markState,
-    action: markAction,
+function deps(records = fakeRecords({ author: 'did:me' }), settings: Record<string, boolean> = {}) {
+  const bag = fakeDeps({
     selfId: () => 'did:me',
     settings: () => settings,
     kernels: { records: records.kernel },
-  };
+  });
   return { bag, records };
 }
+
+/** What was written, as a sentence per write — the order is the assertion. */
+const writesOf = (records: ReturnType<typeof fakeRecords>) =>
+  records.writes.map((write) => `${write.op} ${write.entity}${write.op === 'create' ? '' : ` ${write.id}`}`);
 
 describe('voting', () => {
   it('creates a vote the first time, and changes it the second', async () => {
@@ -58,8 +25,10 @@ describe('voting', () => {
     const store = createPollsStore(bag);
     await store.vote('poll-1', 'tea');
     await store.vote('poll-1', 'coffee');
-    expect(records.rows).toEqual([{ id: 'Vote-1', author: 'did:me', pollId: 'poll-1', option: 'coffee' }]);
-    expect(records.writes).toEqual(['create Vote tea', 'update Vote-1 coffee']);
+    expect(records.rows).toEqual([
+      { id: 'Vote-1', author: 'did:me', __entity: 'Vote', pollId: 'poll-1', option: 'coffee' },
+    ]);
+    expect(writesOf(records)).toEqual(['create Vote', 'update Vote Vote-1']);
   });
 
   it('does nothing when the same choice is pressed again', async () => {
@@ -67,7 +36,7 @@ describe('voting', () => {
     const store = createPollsStore(bag);
     await store.vote('poll-1', 'tea');
     await store.vote('poll-1', 'tea');
-    expect(records.writes).toEqual(['create Vote tea']);
+    expect(writesOf(records)).toEqual(['create Vote']);
   });
 
   it('keeps votes on different polls apart', async () => {
@@ -85,7 +54,7 @@ describe('voting', () => {
   });
 
   it('reports a failed write rather than throwing', async () => {
-    const records = fakeRecords();
+    const records = fakeRecords({ author: 'did:me' });
     records.kernel.create = async () => {
       throw new Error('offline');
     };

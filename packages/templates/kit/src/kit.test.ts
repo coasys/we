@@ -12,6 +12,7 @@ import {
   cardShell,
   composerModal,
   confirmModal,
+  discardGuard,
   emptyNote,
   emptyState,
   field,
@@ -26,6 +27,7 @@ import {
   railItem,
   railShell,
   recordCard,
+  recordFormModal,
   sectionCard,
   statChip,
   taskBoard,
@@ -591,5 +593,60 @@ describe('recordCard draws what the source had', () => {
 
     expect(ghost.props.pointerEvents).toBe('none');
     expect(tile.props.pointerEvents).toBeUndefined();
+  });
+});
+
+describe('Back through a discard guard', () => {
+  const back = [{ $setLocal: 'chooserOpen', value: true }];
+
+  it('asks when there is work, remembering it was Back, and goes back at once when there is none', () => {
+    const guard = discardGuard({ dirty: { $: 'local.dirty' }, close: { $setLocal: 'open', value: false }, back });
+    expect(guard.back).toEqual({
+      $if: {
+        condition: { $: 'local.dirty' },
+        then: [
+          { $setLocal: 'discardGoesBack', value: true },
+          { $setLocal: 'confirmDiscardOpen', value: true },
+        ],
+        else: [{ $setLocal: 'open', value: false }, ...back],
+      },
+    });
+    expect(guard.localState).toHaveProperty('discardGoesBack');
+  });
+
+  it('on Discard, finishes going back rather than only closing', () => {
+    const guard = discardGuard({ dirty: { $: 'local.dirty' }, close: { $setLocal: 'open', value: false }, back });
+    const text = JSON.stringify(guard.node);
+    expect(text).toContain(
+      JSON.stringify({
+        $if: {
+          condition: { $: 'local.discardGoesBack' },
+          then: [{ $setLocal: 'open', value: false }, ...back],
+          else: { $setLocal: 'open', value: false },
+        },
+      }),
+    );
+  });
+
+  it('is left out, flag and all, for a guard with nowhere to go back to', () => {
+    const guard = discardGuard({ dirty: { $: 'local.dirty' }, close: { $setLocal: 'open', value: false } });
+    expect(guard.back).toBeUndefined();
+    expect(JSON.stringify(guard)).not.toContain('discardGoesBack');
+  });
+
+  it('nests no handler arrays in a composer or a record form that go back', () => {
+    const nested = (value: unknown): boolean =>
+      Array.isArray(value)
+        ? value.some((item) => Array.isArray(item) || nested(item))
+        : !!value && typeof value === 'object' && Object.values(value as object).some(nested);
+    const composer = composerModal({
+      openLocal: 'noteOpen',
+      title: 'New note',
+      saveAction: { $action: 'x.save', args: [{ $: 'arg' }] },
+      onClose: [{ $action: 'x.clear' }],
+      back,
+    });
+    expect(nested(composer)).toBe(false);
+    expect(nested(recordFormModal({ back }))).toBe(false);
   });
 });

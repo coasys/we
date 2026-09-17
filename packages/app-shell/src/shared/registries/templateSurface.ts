@@ -349,6 +349,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       hold a handle to your private perspective.
     */
     rootDataset: state('agent'),
+    /*
+      The agent's personal space — notes, the Pocket. The same tier as the root and for a stronger
+      reason: the root holds settings, this holds what a person wrote. A space's template with this
+      handle could read every note through `$query`'s `dataset` option, so only chrome and module
+      panels, which render at the chrome tier, have it.
+    */
+    personalDataset: state('agent'),
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
@@ -575,8 +582,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     agentModuleSettings: state('space-settings'),
     extractionTargets: state('space-settings'),
     setExtractionTarget: action('space-settings'),
-    shareExtractionDetail: state('space-settings'),
-    setShareExtractionDetail: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     /*
@@ -746,9 +751,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setTypeColor: action('content'),
     setSpaceTypeColor: action('content'),
     dropOnCanvas: action('content'),
+    // Writes posts into the space on screen and nowhere else; what it reads from elsewhere is only
+    // what this agent already holds. A space's template offering a drop target is the product.
+    bringIn: action('content'),
     updateRecordField: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
+    setRecordPlace: action('content'),
     relationDraft: state('content'),
     relationErrors: state('content'),
     openRelationForm: action('content'),
@@ -1115,9 +1124,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     that group already means, and it rides the same ephemeral transport presence does. None of it
     survives a refresh and none of it is queryable, so classifying it with the durable content a
     template reads would be claiming a permanence it does not have.
-
-    What crosses the wire is governed by `spaceStore.shareExtractionDetail`, which is a
-    space-settings concern and classified there — this store only reports.
   */
   interpretationStore: {
     // Not `presence` like the rest: this is a fact about the node, not about who is doing what on
@@ -1130,7 +1136,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     runningPasses: state('presence'),
     settledPasses: state('presence'),
     settledCount: state('presence'),
-    detailWithheld: state('presence'),
     dismissSettled: action('view-state'),
   },
 

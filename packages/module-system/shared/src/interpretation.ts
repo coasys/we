@@ -95,11 +95,6 @@ export interface InterpretationKernel {
    */
   activity: () => InterpretationActivitySummary[];
   /**
-   * Whether this space shares each pass's model exchange with every member. A space setting,
-   * read-only and reactive — a row's `hasDetail` is not a proxy for it.
-   */
-  detailShared: () => boolean;
-  /**
    * A count that moves whenever the suggestions staged in this space may have changed. Read-only and
    * reactive; it says only *that*, never what. Optional so a host that predates it type-checks.
    */

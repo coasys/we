@@ -174,8 +174,8 @@ The disposition is stored per interface, so switching template is non-destructiv
 improving a layout is not overruled forever by one stray drag.
 
 **The host owns whether a panel is open** unless the module says otherwise. The rail toggles it, a
-template opens it, the titlebar closes it, and the module never sees the flag — which is why the
-notes module has no store. A module claims openness by naming `open`, `show` and `close` keys on
+template opens it, the titlebar closes it, and the module never sees the flag — which is why nothing
+in the notes module's store is about its panel. A module claims openness by naming `open`, `show` and `close` keys on
 the panel, and only when the flag genuinely is its own state: the call's stage is up while there is
 a call to watch, and `join` raises it. Read such an `open` as a **request** — "this surface is
 wanted, somebody pressed record" — rather than as placement. It then belongs to no panel in

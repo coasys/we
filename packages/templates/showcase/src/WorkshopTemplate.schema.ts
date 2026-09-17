@@ -82,6 +82,7 @@ import {
 
 import {
   askWhatGoesHere,
+  BACK_TO_CHOOSER,
   CARD_LOCALS,
   editNoteModal,
   fieldEditor,
@@ -90,7 +91,9 @@ import {
 } from './WorkshopCards.ts';
 import {
   CANVAS_FILL,
+  HIDDEN_KINDS,
   keyPanel,
+  kindFill,
   kindIcon,
   kindLabel,
   LENS_PARAM,
@@ -2484,6 +2487,8 @@ const canvas: SchemaNode = {
         // Put away while the reader hides suggestions — the switch in the key, shared with the board
         // and the calendar through the address. Changed records are never hidden.
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
+        // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
+        hiddenTypes: { $: HIDDEN_KINDS },
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
@@ -3123,7 +3128,10 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
       No `onCreated`. The default's graph bumps a `revision` to force a reload; this canvas watches
       the entity it draws connections from, so a new `Relationship` arrives on its own.
     */
-    recordFormModal(),
+    // Back goes to the chooser a record was picked from; a drawn connection gets no Back button.
+    // No model picker: the kind was just chosen on the screen before. The header's disc takes the
+    // kind's colour, as the chooser's card did — `kindFill` reads the route's `typeStyles`.
+    recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindFill }),
     // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
     newThingChooser(CALL),
     newNoteModal(CALL),

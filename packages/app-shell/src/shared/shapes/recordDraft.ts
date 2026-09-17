@@ -20,7 +20,18 @@ import type { EntityManifest, EntitySchema, PropertySchema } from '@we/backend-s
 
 /** Which control a field is edited with. Resolved once, here, so no consumer re-derives it. */
 export type RecordControl =
-  'text' | 'textarea' | 'url' | 'number' | 'switch' | 'select' | 'date' | 'datetime' | 'color' | 'file' | 'relation';
+  | 'text'
+  | 'textarea'
+  | 'url'
+  | 'number'
+  | 'switch'
+  | 'select'
+  | 'date'
+  | 'datetime'
+  | 'color'
+  | 'icon'
+  | 'file'
+  | 'relation';
 
 /**
  * A chosen file, as the file-storage language takes it — what a `format: 'file'` property is written
@@ -155,17 +166,23 @@ export function controlFor(property: PropertySchema): RecordControl {
   if (property.control === 'date') return 'date';
   if (property.control === 'datetime') return 'datetime';
   if (property.control === 'color') return 'color';
+  if (property.control === 'icon') return 'icon';
   if (property.type === 'boolean') return 'switch';
   if (property.type === 'number') return 'number';
   if (property.type === 'datetime') return 'datetime';
   return 'text';
 }
 
-/** What a field starts as: its declared default, or the empty value for its control. */
+/**
+ * What a field starts as: its declared default, or empty.
+ *
+ * A number with no default starts empty rather than at `0`. `0` is a value — a latitude of 0 is a
+ * place in the Gulf of Guinea, and a location form seeded with it opened its map on the ocean — and
+ * an empty number is simply not written when the form saves. A declared `default: 0` is still `0`.
+ */
 function initialValue(property: PropertySchema, control: RecordControl): string | number | boolean {
   if (property.default !== undefined && property.default !== null) return property.default;
   if (control === 'switch') return false;
-  if (control === 'number') return 0;
   return '';
 }
 
@@ -248,13 +265,24 @@ function relationFieldFrom(
  * different affordance — see the relationship work — and a picker over every instance in a space
  * would be the wrong one anyway.
  */
+/** How a piece of content is made: filling in a form, or writing in the composer. */
+export type CreationPath = 'form' | 'composer';
+
 /**
- * Whether a built-in entity belongs in a "create something" picker: it has a form, and it is not made
- * somewhere more specific — see `authoring.offered` in the manifest. Shapes a community defined are
- * always offered and never ask this.
+ * Whether a built-in entity is content a person can create, and how — or `null` when it is not.
+ *
+ * Content is a **block**, and only one there is a way to make: a form from its `authoring` fields,
+ * or the composer for one that is `composed`. Everything else — a space, a template, a vocabulary
+ * entry, a drawn connection — is made somewhere of its own and never appears in "create something",
+ * without having to say so. A block with nothing to fill in and no composer (a divider) is left out,
+ * since there is nothing to make.
+ *
+ * Shapes a community defined are content by construction, made with a form, and never ask this.
  */
-export function offeredForCreation(schema: EntitySchema): boolean {
-  return Boolean(schema.authoring?.fields.length) && schema.authoring?.offered !== false;
+export function creationPath(schema: EntitySchema): CreationPath | null {
+  if (!schema.blockable) return null;
+  if (schema.composed) return 'composer';
+  return schema.authoring?.fields.length ? 'form' : null;
 }
 
 export function fieldsFor(
@@ -343,6 +371,37 @@ export function schemaFromManifest(manifest: EntityManifest, entity: string): En
 export function writeFieldValue(draft: RecordDraft | null, name: string, value: RecordFieldValue): void {
   const field = draft?.fields.find((row) => row.name === name);
   if (field) field.value = value;
+}
+
+/**
+ * A draft with a place pinned — what a `we-location-picker` reports, written into whichever of
+ * `latitude`, `longitude`, `address`, `city`, `country` and `countryCode` the draft asks for, and into
+ * `name` where nobody typed one.
+ *
+ * A new draft, and new field objects only for the fields that changed. Replacement rather than the
+ * in-place write `writeFieldValue` makes, because these values arrive from a pick rather than from
+ * the control showing them: the name and address boxes have to redraw with what geocoding found, and
+ * `<For>` redraws a row when its object changes. The rows not touched keep their identity, so nothing
+ * being typed into loses focus. `null` when the detail is not a place.
+ */
+export function withPlace(draft: RecordDraft, detail: unknown): RecordDraft | null {
+  if (!detail || typeof detail !== 'object') return null;
+  const picked = detail as Record<string, unknown>;
+  if (typeof picked.latitude !== 'number' || typeof picked.longitude !== 'number') return null;
+
+  const values: Record<string, RecordFieldValue> = {};
+  for (const key of ['latitude', 'longitude', 'address', 'city', 'country', 'countryCode']) {
+    if (picked[key] !== undefined) values[key] = picked[key] as RecordFieldValue;
+  }
+  const name = draft.fields.find((field) => field.name === 'name');
+  if (name && isBlank(name.value)) {
+    const named = picked.city ?? picked.address;
+    if (typeof named === 'string' && named) values.name = named;
+  }
+  return {
+    ...draft,
+    fields: draft.fields.map((field) => (field.name in values ? { ...field, value: values[field.name] } : field)),
+  };
 }
 
 /**

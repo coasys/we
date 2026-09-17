@@ -564,16 +564,8 @@ export const extractionActivity: SchemaNode = {
         width: '100%',
       },
       /*
-        The footnote about unshared prompts went with the settled rows.
-
-        It explained why somebody else's *finished* pass would not open, and `detailWithheld` is
-        computed over settled rows alone — so with none of those here it could only ever have
-        appeared with nothing on screen to explain.
-
-        It had also stopped being true. A pass now writes its prompt and response into the graph,
-        where every member of the space replicates them, so `shareExtractionDetail` governs whether
-        this live readout offers the exchange rather than whether the exchange is shared at all.
-        That is worth revisiting on the setting itself, not restating here — see `ExtractionPass`.
+        No footnote about a peer's row not opening: a peer's exchange is never sent live, and every
+        member reads it from the call's `ExtractionPass` record once the pass settles.
       */
       children: [runningList],
     },

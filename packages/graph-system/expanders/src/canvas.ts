@@ -117,6 +117,11 @@ export interface CanvasSeedOptions {
    * not enough: a card at zero opacity still takes a press and keeps its connections drawn.
    */
   hidden?: string[];
+  /**
+   * Whole types to leave off the canvas — every card of each, and the lines that reach them. A reader
+   * putting a kind away from the key ("no images for now"), where `hidden` would need every id.
+   */
+  hiddenTypes?: string[];
   limit?: number;
 }
 
@@ -266,6 +271,8 @@ export function canvasSeed(): SeedSource {
       const changed = idSet(options.changed);
       /** Left off entirely — see `hidden` in the options. */
       const hidden = idSet(options.hidden);
+      /** Types left off entirely — see `hiddenTypes`. */
+      const hiddenTypes = idSet(options.hiddenTypes);
 
       /*
         Placements *are* the membership: which records are on this canvas, of what type, and where.
@@ -332,7 +339,12 @@ export function canvasSeed(): SeedSource {
       const seen = new Set<string>();
       /** Record ids on this canvas, so a connection can be checked for having both ends here. */
       // Less what is hidden, so a connection to a card nobody can see is not drawn either.
-      const placed = new Set<string>([...placedIds.values()].flat().filter((id) => !hidden.has(id)));
+      const placed = new Set<string>(
+        [...placedIds]
+          .filter(([entity]) => !hiddenTypes.has(entity))
+          .flatMap(([, ids]) => ids)
+          .filter((id) => !hidden.has(id)),
+      );
       /** Record id → its entity name, so a connection's endpoints can be addressed. */
       const typeOf = new Map<string, string>();
       for (const [entity, ids] of placedIds) for (const id of ids) typeOf.set(id, entity);
@@ -365,7 +377,10 @@ export function canvasSeed(): SeedSource {
         each. A canvas holding five kinds of thing was five sequential queries deep before anything
         appeared.
       */
-      const wanted = passes.filter((pass) => pass.entity !== placementEntity && declared(pass.entity));
+      // A hidden type is not asked for at all — nothing of it is drawn, so there is nothing to read.
+      const wanted = passes.filter(
+        (pass) => pass.entity !== placementEntity && declared(pass.entity) && !hiddenTypes.has(pass.entity),
+      );
       const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where)));
 
       /*

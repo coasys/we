@@ -2092,6 +2092,8 @@ export function GraphView(props: GraphViewProps) {
             entity: item.ref.entity,
             id: item.ref.id,
             ...(item.ref.dataset ? { dataset: item.ref.dataset } : {}),
+            ...(item.within ? { within: item.within } : {}),
+            ...(item.preview ? { preview: item.preview } : {}),
             label: item.label,
             x: world.x,
             y: world.y,

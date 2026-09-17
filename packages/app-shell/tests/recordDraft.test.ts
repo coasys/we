@@ -17,6 +17,7 @@ import {
   recordDraftErrors,
   recordDraftFields,
   withoutRelationEntry,
+  withPlace,
   withRelationEntry,
   writeFieldValue,
 } from '@shared/shapes/recordDraft';
@@ -278,5 +279,69 @@ describe('relations and files in a form', () => {
     expect(entryLabel(draft, '', 'Image')).toBe('Image');
     writeFieldValue(draft, 'src', { data_base64: 'x', name: 'wren.jpg', file_type: 'image/jpeg' });
     expect(entryLabel(draft, '', 'Image')).toBe('wren.jpg');
+  });
+});
+
+describe('pinning a place', () => {
+  const place: EntitySchema = {
+    authoring: { fields: ['name', 'latitude', 'longitude', 'address'] },
+    properties: {
+      name: { type: 'string', default: '' },
+      latitude: { type: 'number' },
+      longitude: { type: 'number' },
+      address: { type: 'string', default: '' },
+    },
+    relations: {},
+  };
+
+  it('writes the coordinates and address, and names a place nobody named', () => {
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+    const next = withPlace(draft, { latitude: 51.45, longitude: -2.58, city: 'Bristol', address: 'Bristol, UK' })!;
+
+    expect(recordDraftFields(next)).toMatchObject({
+      name: 'Bristol',
+      latitude: 51.45,
+      longitude: -2.58,
+      address: 'Bristol, UK',
+    });
+  });
+
+  it('keeps a typed name, and the identity of every row it did not change', () => {
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+    writeFieldValue(draft, 'name', 'The workshop');
+    const name = draft.fields.find((field) => field.name === 'name');
+
+    const next = withPlace(draft, { latitude: 1, longitude: 2 })!;
+
+    expect(recordDraftFields(next).name).toBe('The workshop');
+    // Unchanged rows keep their object, so a control being typed into keeps focus.
+    expect(next.fields.find((field) => field.name === 'name')).toBe(name);
+  });
+
+  it('ignores anything that is not a place', () => {
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+    expect(withPlace(draft, { latitude: 'north' })).toBeNull();
+    expect(withPlace(draft, null)).toBeNull();
+  });
+});
+
+describe('starting values and controls', () => {
+  it('leaves a number with no default empty — 0 is a value, and a latitude of 0 is in the ocean', () => {
+    const place: EntitySchema = {
+      authoring: { fields: ['latitude', 'count'] },
+      properties: { latitude: { type: 'number' }, count: { type: 'number', default: 0 } },
+      relations: {},
+    };
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+
+    expect(draft.fields.find((f) => f.name === 'latitude')?.value).toBe('');
+    expect(draft.fields.find((f) => f.name === 'count')?.value).toBe(0);
+    // An empty number is not written.
+    expect(recordDraftFields(draft)).not.toHaveProperty('latitude');
+  });
+
+  it('picks an icon with the icon picker, and a closed vocabulary with a select', () => {
+    expect(controlFor({ type: 'string', control: 'icon' })).toBe('icon');
+    expect(controlFor({ type: 'string', options: ['info', 'warning'] })).toBe('select');
   });
 });

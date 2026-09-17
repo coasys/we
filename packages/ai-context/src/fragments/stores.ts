@@ -194,6 +194,7 @@ export const storeEntries: StoreEntry[] = [
       datasetsLoaded: { type: 'boolean' },
       systemDatasetUuids: { type: 'array' },
       rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      personalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       marketplaceDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalSpaceId: { type: 'string' },
@@ -773,8 +774,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
         datasetsLoaded:
           'boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists',
-        systemDatasetUuids: 'string[] — uuids of the we-root/we-test system datasets',
-        rootDataset: "dataset handle | null — the agent's personal root dataset (we-root models live here)",
+        systemDatasetUuids: 'string[] — uuids of the system datasets (we-root, we-personal, we-test)',
+        rootDataset:
+          "dataset handle | null — the app's configuration (we-root): AgentSettings, templates, themes, per-space preferences. Chrome tier only",
+        personalDataset:
+          "dataset handle | null — the agent's own things (we-personal): notes, the Pocket. Carries the ordinary space schema, so posts, blocks and files work there. Chrome tier only — a space's template cannot reach it. Null until its schema is installed",
         globalDataset: 'dataset handle | null — the seed-configured global discovery space, once joined',
         marketplaceDataset: 'dataset handle | null — the seed-configured marketplace, once joined',
         globalSpaceId:
@@ -1020,8 +1024,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space',
         extractionTargets:
           "string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings",
-        shareExtractionDetail:
-          'boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
         spacePath:
@@ -1082,7 +1084,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
         moduleInstallSettings:
-          "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
+          "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space",
         moduleLaunchers:
           '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
       },
@@ -1107,8 +1109,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it',
         setAgentModuleSetting:
           '(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it',
-        setShareExtractionDetail:
-          '(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen',
         setExtractionTarget:
           "(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call",
         setViewEnabled:
@@ -1133,7 +1133,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         updatePost:
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
         deleteCollection:
-          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them',
+          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a board are the same shape, so this is the one delete for all of them',
         createBoard:
           '(title: string, parentId?: string, options?: { gathers?: string }): makes a board \u2014 a CollectionBlock whose ordered children are its columns, one per state the community uses. Returns its id. Pass parentId to put the board inside another collection (a call\u2019s record), which is where an anchored Boards view lists it. A board made this way shows only what is put on it; openBoardFor makes the ones that gather',
         openBoardFor:
@@ -1226,9 +1226,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
     recordStore: {
       state: {
         creatableEntities:
-          "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest (unless it says `offered: false` — made somewhere specific, like a drawn connection or a vocabulary entry), or by being a shape this community defined",
+          "{ label, value, icon, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'",
         displays:
-          "Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
+          "Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
         recordDraft:
           "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value, accept, target, targetLabel, many, canCreate, canPick, entries }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for. control 'file' is a we-file-upload (accept names the types); control 'relation' points at another record: entries are the chips ({ key, label }), canCreate offers openRelationForm, canPick offers a picker over existing target records, and inline ('location' | 'image' | '') names the in-place control a target is made with instead — see setRelationLocation and addRelationImage; an image entry carries preview, a data URI",
         relationDraft:
@@ -1266,7 +1266,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setTypeColor:
           "(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it",
         dropOnCanvas:
-          "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. Refuses, with a toast, a record from another space (this canvas draws only its own dataset) and anything that is not a record here — an agent, a space",
+          "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space",
+        bringIn:
+          "(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo",
         updateRecordField:
           "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
         setSpaceTypeColor:
@@ -1285,6 +1287,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setRecordField:
           '(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data. A file control passes its File as event.detail',
         openRelationForm: '(field): opens the nested form on a relation field’s target model',
+        setRecordPlace:
+          "(detail): pins the open draft's place — pass a we-location-picker's arg.detail. Writes latitude, longitude and address where the draft has them, and a name where none was typed. recordFormModal draws the picker for any model with both a latitude and a longitude field, in place of the two number boxes",
         setRelationField: '(name, value): sets one field of the nested form, as setRecordField does for the outer one',
         saveRelationForm:
           '(): adds what the nested form holds to its relation field as a chip, and closes it. Nothing is written until the outer form saves',
@@ -1643,7 +1647,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {},
       actions: {
         create:
-          '(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root entities). See "Record mutations via $action" above',
+          "(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
         update:
           '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest',
         delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible',
@@ -1652,7 +1656,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     interpretationStore: {
       state: {
         activity:
-          'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` can carry `prompt`/`response` — the exchange never left the runner’s machine — so gate a details affordance on `hasDetail` and explain the refusal rather than hiding it',
+          'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`',
         runningCount:
           'number — how many passes are still in flight. What a collapsed "N extractions running" summary counts',
         hasActivity:
@@ -1660,8 +1664,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
         runningPasses: 'InterpretationActivityView[] — the passes still in flight, for a readout that lists them',
         settledPasses: 'InterpretationActivityView[] — the passes that have finished, newest first',
         settledCount: 'number — how many have finished. What a collapsed "N extractions processed" line counts',
-        detailWithheld:
-          "boolean — a peer's settled pass is on screen whose exchange this agent cannot open, because the space does not share it. Gate a footnote explaining the absence on this rather than on a row's own hasDetail, which is false for a pass that simply has not reached the model yet",
         capable:
           'boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work',
       },

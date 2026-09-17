@@ -13,8 +13,8 @@ import { POCKET_PREDICATES } from './entities';
  *
  * ## Where its data comes from
  *
- * The root dataset, read straight from the fragments with `dataset: 'datasetStore.rootDataset'` and
- * written with `record.create`'s `perspective` option. That surface already existed; what the module
+ * The agent's personal space, read straight from the fragments with
+ * `dataset: 'datasetStore.personalDataset'` and written with `record.create`'s `perspective` option. That surface already existed; what the module
  * contract was missing was permission for a *module's own* entities to be installed there, which is
  * what `entities: { scope: 'agent' }` adds. Only the parts a template genuinely cannot do — building
  * a reference, asking whether one is already held, going to one, and remembering which folder you
@@ -22,7 +22,7 @@ import { POCKET_PREDICATES } from './entities';
  */
 
 /** The dataset every fragment here reads and writes. Named once so a typo cannot scatter. */
-const ROOT = 'datasetStore.rootDataset';
+const PERSONAL = 'datasetStore.personalDataset';
 
 /**
  * The folder being looked at, straight from the store.
@@ -64,7 +64,13 @@ const dragProps = {
     thumbnail: { $: 'item.thumbnail' },
     author: { $: 'item.sourceAuthor' },
     date: { $: 'item.gatheredAt' },
+    source: { $: 'item.sourceName' },
   },
+  /*
+    The post a kept block came from, so dropping it into a space can read the post and take the block
+    out of it. Empty for anything that is not a block — the draggable ignores a half-empty one.
+  */
+  within: { entity: { $: 'item.withinEntity' }, id: { $: 'item.withinId' } },
   /*
     The row's handle on itself, so a drop on another folder is a *move* rather than a second copy.
 
@@ -105,7 +111,15 @@ const forgetButton = (extra: Record<string, unknown> = {}): SchemaNode => ({
   the answer. A control that cannot work is worse than no control.
 */
 const openable = { $: "item.datasetKey != 'agent'" };
-const openAction = { $action: 'modules.pocket.goTo', args: [{ $: 'item.ref' }] };
+/*
+  A kept block opens its post: a paragraph on its own is not somewhere to go, and its own id may not
+  have survived an edit to the post. The post's reference is spelt out rather than stored, since it is
+  the block's own dataset and a template can join strings.
+*/
+const openAction = {
+  $action: 'modules.pocket.goTo',
+  args: [{ $: "item.withinId ? 'we:' + item.datasetKey + '/' + item.withinEntity + '/' + item.withinId : item.ref" }],
+};
 
 // ─── List mode ───────────────────────────────────────────────────────────────
 
@@ -500,13 +514,13 @@ const folderContents: SchemaNode = {
     folders: {
       entity: 'PocketFolder',
       scope: { anchor: 'PocketFolder', via: 'folders', anchorId: currentFolder },
-      dataset: ROOT,
+      dataset: PERSONAL,
     },
     items: {
       entity: 'PocketItem',
       scope: { anchor: 'PocketFolder', via: 'items', anchorId: currentFolder },
       order: { gatheredAt: 'desc' },
-      dataset: ROOT,
+      dataset: PERSONAL,
     },
   },
   children: [
@@ -748,7 +762,7 @@ const newFolderForm: SchemaNode = {
                   'PocketFolder',
                   { name: { $: 'local.newFolderName' } },
                   {
-                    perspective: ROOT,
+                    perspective: PERSONAL,
                     parent: { id: currentFolder, predicate: POCKET_PREDICATES.folders },
                   },
                 ],
@@ -796,7 +810,7 @@ const panel: SchemaNode = {
   props: {
     // No dataset of your own, nowhere to keep anything. Unlike the notes panel this does **not**
     // check for a current space: the Pocket's whole point is that it outlives the one you are in.
-    condition: { $: 'datasetStore.rootDataset && modules.pocket.open' },
+    condition: { $: 'datasetStore.personalDataset && modules.pocket.open' },
     then: {
       type: 'we-drop-zone',
       props: {

@@ -8,7 +8,7 @@
  * a community, so anything a person wanted to hold across communities had nowhere to be.
  *
  * The Pocket is that place. It holds **references** — a post stays in its space, and this points at
- * it — organised into folders, kept in the agent's own root dataset, and reachable wherever they
+ * it — organised into folders, kept in the agent's own personal space, and reachable wherever they
  * are, including outside a space entirely.
  *
  * ## The first agent-scoped module
@@ -17,7 +17,7 @@
  * is gated on the space having the module on. Neither is right here — a panel that gathers from
  * *across* spaces has no space to be enabled in, and its contents are nobody else's business. So
  * this module declares `manifest.scope: 'agent'` and `entities: { scope: 'agent' }`, and reaches its
- * data through the `agentData` kernel, which is the root dataset and nothing else.
+ * data through the `agentData` kernel, which is the personal space and nothing else.
  *
  * ## Own the container, never the content
  *
@@ -28,7 +28,7 @@
  *
  * ## Private by default
  *
- * The Pocket is the module whose store touches the **agent's private root dataset**, and it was the
+ * The Pocket is the module whose store touches the **agent's private personal space**, and it was the
  * reason the contract grew an opt-out list of members a space template could not reach: before it, a
  * synced template could call `modules.pocket.gather` and file things into a store belonging to no
  * space at all. Members are private unless marked now, so the list is gone: the store marks the four
@@ -61,7 +61,7 @@ export const pocketModule: ModuleDefinition = defineModule({
   },
 
   contributes: {
-    // Declared rather than written against a backend, and installed into the root dataset.
+    // Declared rather than written against a backend, and installed into the personal space.
     entities: { manifest: POCKET_MANIFEST, scope: 'agent' },
 
     parts: { toggleButton },

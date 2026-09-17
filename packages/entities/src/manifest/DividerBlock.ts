@@ -4,6 +4,7 @@ export const DividerBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A line between two parts of a document',
     flag: { predicate: 'we://flag', value: 'we://divider_block' },
     properties: {
       style: { type: 'string', predicate: 'we://style', default: 'solid' },

@@ -12,7 +12,9 @@
  */
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
-import { AgentSettings, Space } from '@we/entities';
+import { createBlocks, registerCoreBlocks } from '@we/block-shared';
+import { toastService } from '@we/components/solid';
+import { AgentSettings, CollectionBlock, getEntity, Space } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -99,7 +101,7 @@ import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStor
 import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
-import { RecordStoreProvider } from '../src/frameworks/solid/stores/RecordStore';
+import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
 import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
@@ -112,6 +114,7 @@ interface Stores {
   session: SessionStore;
   datasets: DatasetStore;
   spaces: SpaceStore;
+  records: RecordStore;
 }
 
 function mountShell(): Stores {
@@ -120,6 +123,7 @@ function mountShell(): Stores {
     out.session = useSessionStore();
     out.datasets = useDatasetStore();
     out.spaces = useSpaceStore();
+    out.records = useRecordStore();
     return null;
   }
   render(() => (
@@ -173,9 +177,9 @@ describe('boot', () => {
     const stores = mountShell();
     await ready(stores);
 
-    // The boot sequence created we-root and we-test through the lifecycle port.
+    // The boot sequence created the system datasets through the lifecycle port.
     const names = (await lifecycle.list()).map((d) => d.name).sort();
-    expect(names).toEqual(['we-root', 'we-test']);
+    expect(names).toEqual(['we-personal', 'we-root', 'we-test']);
     expect(stores.session.me()?.did).toBe('did:test:james');
     expect(navigate).toHaveBeenCalledWith('/');
   });
@@ -240,7 +244,7 @@ describe('first run', () => {
     // ...but the session is fully loaded behind it — same post-unlock load as login.
     expect(stores.session.me()?.did).toBe('did:test:newcomer');
     const names = (await lifecycle.list()).map((d) => d.name).sort();
-    expect(names).toEqual(['we-root', 'we-test']);
+    expect(names).toEqual(['we-personal', 'we-root', 'we-test']);
   }, 10000);
 
   it('does not strand the user on the create screen after the agent exists', async () => {
@@ -610,6 +614,193 @@ describe('what the stores actually wrote', () => {
     expect(publicSpace.url).toBe(shared.sharedId);
     expect(privateSpace.url).toBeFalsy();
     expect(publicSpace.discovery).toBe('listed');
+  }, 10000);
+});
+
+describe('the personal space', () => {
+  it('is made beside the root, and is never listed as a space', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+
+    const personal = stores.datasets.personalDataset()!;
+    const root = stores.datasets.rootDataset()!;
+    expect(personal.name).toBe('we-personal');
+    expect(personal.id).not.toBe(root.id);
+    expect(stores.datasets.systemDatasetUuids()).toEqual(expect.arrayContaining([personal.id, root.id]));
+
+    await stores.spaces.createSpace('Somewhere', 'x', 'personal', 'hidden');
+    expect(stores.datasets.orderedDatasets().map((d) => d.name)).toEqual(['Somewhere']);
+    expect(stores.spaces.mySpaces().map((s) => s.uuid)).not.toContain(personal.id);
+  }, 10000);
+
+  it('holds a composition, written the way a post is — which is what a note is', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    const personal = stores.datasets.personalDataset()!;
+    // The composer registers these when it mounts; this suite mounts no renderer.
+    registerCoreBlocks();
+
+    const root = await createBlocks(personal.handle, [{ _type: 'block', text: 'only mine' }], { kind: 'post' });
+
+    const notes = await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } });
+    expect(notes.map((note) => note.id)).toEqual([root!.id]);
+    expect(notes[0].textContent).toContain('only mine');
+  }, 10000);
+
+  it('does not take a reference into it anywhere, since there is no space there to go to', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    const personal = stores.datasets.personalDataset()!;
+    navigate.mockClear();
+
+    await stores.spaces.openRecordRef(`we:p:${personal.id}/CollectionBlock/some-note`);
+
+    expect(navigate).not.toHaveBeenCalled();
+  }, 10000);
+});
+
+describe('blocks on a canvas', () => {
+  it('are creatable like any content, each saying how it is made, and named and drawn like any kind', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    const creatable = stores.records.creatableEntities();
+    const find = (value: string) => creatable.find((entity) => entity.value === value);
+    expect(find('ImageBlock')).toMatchObject({ label: 'Image', icon: 'image', via: 'form' });
+    expect(find('TextBlock')).toMatchObject({ label: 'Text', icon: 'text-t', via: 'form' });
+    expect(find('CollectionBlock')).toMatchObject({ via: 'composer' });
+    // Not content, so not here — no flag needed to keep them out.
+    expect(find('Relationship')).toBeUndefined();
+    expect(find('RelationshipType')).toBeUndefined();
+
+    // The key reads names and glyphs from `displays` — a quote dropped on a canvas included.
+    const displays = stores.records.displays();
+    expect(displays.ImageBlock).toMatchObject({ label: 'Image', icon: 'image' });
+    expect(displays.TextBlock).toMatchObject({ label: 'Text', icon: 'text-t' });
+    expect(displays.EmbedBlock?.label).toBe('Embed');
+    expect(displays.Relationship).toBeDefined();
+  }, 10000);
+});
+
+describe('a record form with something typed in it', () => {
+  it('knows it has changed as soon as a field is typed into, not only when the draft is replaced', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    stores.records.openRecordForm('TaskBlock');
+    expect(stores.records.recordDraftDirty()).toBe(false);
+
+    // Written in place, so the input keeps its focus — which once left this false for good, and
+    // closing or going Back threw the typing away without asking.
+    stores.records.setRecordField('title', 'Book the room');
+    expect(stores.records.recordDraftDirty()).toBe(true);
+
+    stores.records.setRecordField('title', '');
+    expect(stores.records.recordDraftDirty()).toBe(false);
+  }, 10000);
+});
+
+describe('bringing a note into a space', () => {
+  it('copies it in as a post, with nothing saying where it came from, and undoes', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    registerCoreBlocks();
+    const personal = stores.datasets.personalDataset()!;
+    const note = await createBlocks(personal.handle, [{ _type: 'block', text: 'ready to post' }], { kind: 'post' });
+
+    await stores.spaces.createSpace('Gardeners', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Gardeners')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+
+    toastService.toasts().forEach((toast) => toastService.remove(toast.id));
+    await stores.records.bringIn({
+      items: [
+        { ref: { entity: 'CollectionBlock', id: note!.id, dataset: `p:${personal.id}` }, label: 'ready to post' },
+      ],
+    });
+
+    const posts = await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } });
+    expect(posts).toHaveLength(1);
+    expect(posts[0].textContent).toContain('ready to post');
+    // A note's personal space names nothing to anybody else, so the copy does not name it.
+    expect(posts[0].sourceRef ?? '').toBe('');
+    // The note itself is untouched.
+    expect(await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } })).toHaveLength(1);
+
+    const [toast] = toastService.toasts();
+    expect(toast.action?.label).toBe('Undo');
+    toast.action!.run();
+    await vi.waitFor(async () =>
+      expect(await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } })).toHaveLength(0),
+    );
+  }, 10000);
+
+  it('puts a single block on a canvas as itself, not inside a post', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    registerCoreBlocks();
+    const personal = stores.datasets.personalDataset()!;
+    const note = await createBlocks(
+      personal.handle,
+      [
+        { _type: 'block', text: 'the heading' },
+        { _type: 'block', text: 'just this paragraph' },
+      ],
+      { kind: 'post' },
+    );
+    const [, paragraph] = (await CollectionBlock.findOne(personal.handle as never, { where: { id: note!.id } }))!
+      .children as string[];
+
+    await stores.spaces.createSpace('Workshop', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Workshop')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+    const canvas = await createBlocks(space.handle, [], { kind: 'canvas' });
+
+    await stores.records.dropOnCanvas(canvas!.id, {
+      entity: 'TextBlock',
+      id: paragraph,
+      dataset: `p:${personal.id}`,
+      within: { entity: 'CollectionBlock', id: note!.id },
+      label: 'just this paragraph',
+      x: 40,
+      y: 60,
+    });
+
+    // No post was made to hold it.
+    expect(await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } })).toHaveLength(0);
+    const texts = (await getEntity('TextBlock').findAll(space.handle as never, {})) as unknown as {
+      id: string;
+      text: string;
+    }[];
+    expect(texts.map((t) => t.text)).toEqual(['just this paragraph']);
+    // It is on the canvas, where it landed.
+    const placements = (await getEntity('Placement').findAll(space.handle as never, {})) as unknown as {
+      nodeId?: string;
+      x?: number;
+    }[];
+    expect(placements.some((p) => p.x === 40)).toBe(true);
+  }, 10000);
+
+  it('leaves alone a post already in the space', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    registerCoreBlocks();
+    await stores.spaces.createSpace('Here', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Here')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+    const post = await createBlocks(space.handle, [{ _type: 'block', text: 'already here' }], { kind: 'post' });
+
+    await stores.records.bringIn({ items: [{ ref: { entity: 'CollectionBlock', id: post!.id } }] });
+
+    expect(await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } })).toHaveLength(1);
   }, 10000);
 });
 

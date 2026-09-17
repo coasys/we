@@ -1,4 +1,11 @@
-export type { BlockComposerProps, BlockDataset, BlockRendererProps, EditorStateInput, MentionCandidate } from './types';
+export type {
+  BlockComposerProps,
+  BlockDataset,
+  BlockDragSource,
+  BlockRendererProps,
+  EditorStateInput,
+  MentionCandidate,
+} from './types';
 export type {
   BlockStyle,
   CollectionContentBlock,
@@ -55,6 +62,8 @@ export { isCollectionMode, isReconcilable } from './modes';
 export type { BlockAnchor, ContentInput, CreateBlocksOptions } from './serialization';
 export {
   childrenToBlocks,
+  copyableContent,
+  createBlock,
   createBlocks,
   deleteBlocks,
   encodeEditorState,

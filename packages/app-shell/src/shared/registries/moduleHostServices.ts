@@ -34,8 +34,10 @@ import type {
 } from '@we/backend-shared';
 import type {
   AgentDataKernel,
+  CopiedIn,
   CreateEntityOptions,
   DatasetTarget,
+  DocumentAccess,
   InterpretationActivitySummary,
   KernelName,
   ModuleDatasetAccess,
@@ -103,7 +105,6 @@ export interface ModuleHostServices {
   /** Whether a call is extracted as it happens — its participants' answer, else the space's. */
   autoInterpretEnabled?: (collectionId?: string) => boolean;
   setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
-  interpretationDetailShared?: () => boolean;
   interpretationProposalsRevision?: () => number;
   /** The profile cache, so a module can put a face to an agent id. */
   identities?: ModuleIdentityAccess;
@@ -132,7 +133,9 @@ export interface ModuleHostServices {
     cb: (rows: Record<string, unknown>[]) => void,
     options?: DatasetTarget,
   ) => () => void;
-  /** This agent's own records, in the root dataset. */
+  /** Composed documents in the space on screen — the records kernel's `documents`. */
+  documents?: DocumentAccess;
+  /** This agent's own records, in their personal space. */
   agentData?: AgentDataKernel;
   /** How the current dataset is named in a record reference. */
   datasetRefKey?: () => string;
@@ -162,6 +165,7 @@ export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
   publishedMedia = null;
   mediaListeners.clear();
+  copiedInListeners.clear();
 }
 
 /**
@@ -192,6 +196,41 @@ function targeted(target?: DatasetTarget): DatasetHandle | null {
 let publishedMedia: MediaStream | null = null;
 let publishedBy: string | null = null;
 const mediaListeners = new Set<(stream: MediaStream | null) => void>();
+
+/*
+  Posts written into a space from elsewhere, for the modules that asked to hear. Held here, beside
+  the kernels that hand the subscription out, so the store that writes the post and the module that
+  listens never name each other.
+*/
+const copiedInListeners = new Set<(event: CopiedIn) => void>();
+
+/** Tell listening modules that a post arrived from elsewhere. Each listener in its own `try`. */
+export function notifyCopiedIn(event: CopiedIn): void {
+  for (const listener of copiedInListeners) {
+    try {
+      listener(event);
+    } catch (error) {
+      console.error('module host: a copied-in listener failed', error);
+    }
+  }
+}
+
+/**
+ * A document surface that reads the live one on every call — the same late binding every kernel
+ * here has, because the providers mount after the module stores are built.
+ */
+function forwardDocuments(live: () => DocumentAccess | undefined): DocumentAccess {
+  return {
+    create: async (document, options) => (await live()?.create(document, options)) ?? null,
+    update: async (id, document) => {
+      await live()?.update(id, document);
+    },
+    remove: async (id) => {
+      await live()?.remove(id);
+    },
+    read: async (id) => (await live()?.read(id)) ?? null,
+  };
+}
 
 /** The kernels this host implements — what a manifest's `requires.kernels` is checked against. */
 export const HOST_KERNELS: readonly KernelName[] = [
@@ -238,11 +277,17 @@ export function createModuleStoreDeps(framework: {
       },
       find: async (entity, query, target) => (await services.findEntities?.(entity, query, target)) ?? [],
       subscribe: (entity, query, cb, target) => services.subscribeEntities?.(entity, query, cb, target) ?? (() => {}),
+      documents: forwardDocuments(() => services.documents),
+      onCopiedIn: (cb) => {
+        copiedInListeners.add(cb);
+        return () => copiedInListeners.delete(cb);
+      },
     },
 
-    // Forwarded rather than captured: a module store is built before the root dataset has been found.
+    // Forwarded rather than captured: a module store is built before the personal space has been found.
     agentData: {
       ready: () => services.agentData?.ready() ?? false,
+      refKey: () => services.agentData?.refKey() ?? '',
       create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
       find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
       update: async (entity, id, fields) => {
@@ -251,6 +296,7 @@ export function createModuleStoreDeps(framework: {
       remove: async (entity, id) => {
         await services.agentData?.remove(entity, id);
       },
+      documents: forwardDocuments(() => services.agentData?.documents),
     },
 
     presence: {
@@ -367,7 +413,6 @@ export function createModuleStoreDeps(framework: {
         }
       },
       activity: () => services.interpretationActivity?.() ?? [],
-      detailShared: () => services.interpretationDetailShared?.() ?? false,
       proposalsRevision: () => services.interpretationProposalsRevision?.() ?? 0,
       proposals: async (target, collection) => {
         const dataset = targeted(target);

@@ -399,8 +399,9 @@ export interface ModuleEntities {
   /** Explicit predicate bindings, keyed `"Entity.property"` — for adopting data written under another name. */
   predicates?: Record<string, string>;
   /**
-   * Which dataset these install into. Omit for `'space'`. `'agent'` installs them into the root
-   * dataset — the agent's own, never synced — reached through the `agentData` kernel.
+   * Which dataset these install into. Omit for `'space'`. `'agent'` installs them into the agent's
+   * personal space — theirs alone, never shared with a community — reached through the `agentData`
+   * kernel. Not the root: that is the app's configuration, and the host writes it itself.
    */
   scope?: ModuleScope;
 }
