@@ -14,6 +14,7 @@ import {
   EdgeRoute,
   EmbedBlock,
   EventBlock,
+  ExtractionAmendment,
   ExtractionPass,
   FileBlock,
   ImageBlock,
@@ -593,6 +594,16 @@ export const SPACE_MODELS = [
     differently for every member, and for most of them not at all.
   */
   ExtractionPass,
+  /*
+    A change a pass suggested to a record that already existed, and somebody kept.
+
+    Shared for the same reason the pass is, and one step more so: an amendment is the record of a
+    *decision*, and the decision was taken on everyone's behalf — the value it applied is in the
+    space for every member to read, so the account of where that value came from has to be too.
+    Private, a member would see the record change with no explanation that anybody else could see
+    either.
+  */
+  ExtractionAmendment,
   Template,
   Theme,
   WeNode,

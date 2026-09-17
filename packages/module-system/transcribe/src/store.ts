@@ -408,6 +408,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     typeof records?.link === 'function' ? (...args) => records.link(...args) : undefined;
   const updateEntity: RecordsKernel['update'] | undefined =
     typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
+  const findEntity: RecordsKernel['find'] | undefined =
+    typeof records?.find === 'function' ? (...args) => records.find(...args) : undefined;
   /** What some module is capturing right now, or `null` — the call's microphone, in practice. */
   const audioInput = typeof media?.input === 'function' ? () => media.input() : undefined;
 
@@ -1062,6 +1064,116 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * rendered under is not something the action is told.
    */
   const allProposals = (): ProposalView[] => Object.values(proposalsByCall()).flat();
+
+  /**
+   * The predicate `CollectionBlock.amendments` is written under. See `ExtractionAmendment`.
+   *
+   * Spelled here rather than derived, the same way {@link OVERLAY_KIND_PREDICATE} is in the adapter:
+   * the records kernel parents by predicate, and a module cannot ask the manifest what a relation's
+   * predicate is without importing the entity layer it is deliberately not coupled to.
+   */
+  const AMENDMENT_PREDICATE = 'we://extraction_amendment';
+
+  /**
+   * The record a change is about, as it stands *before* the change is applied.
+   *
+   * Read rather than taken from the card, although the card has it on screen: the panel holds it
+   * only because it happens to be rendering a diff, and the "Accept all" path goes through
+   * `acceptProposal`, which is also how a whole *create* is kept and knows nothing about diffs.
+   * One read here answers for both, and neither action's signature has to grow a parameter whose
+   * correctness depends on a schema passing the right expression.
+   *
+   * Timing is the whole point and there is no second chance at it: `accept` overwrites the value,
+   * so the last moment the old one exists is before the call that discards it. Hence read-then-accept
+   * rather than the other order, and hence this being worth a round trip at all.
+   *
+   * Never throws, and answers `null` for every way of not knowing — no records kernel, an
+   * unclassified proposal, a record that has since been deleted, a failed read. A null means the
+   * amendments simply are not written: losing the log is a smaller harm than a suggestion somebody
+   * pressed accept on not being applied, which is what letting this fail would cost.
+   */
+  async function readBeforeChange(proposal: ProposalView): Promise<Record<string, unknown> | null> {
+    if (!findEntity || !proposal.entity) return null;
+    try {
+      const rows = await findEntity(proposal.entity, { where: { id: proposal.id }, limit: 1 }, callTarget());
+      return (rows?.[0] as Record<string, unknown> | undefined) ?? null;
+    } catch (error) {
+      console.warn('transcribe: could not read the record a change is about —', error);
+      return null;
+    }
+  }
+
+  /**
+   * Write down the changes that were just accepted, one record per property.
+   *
+   * ## Why after the accept rather than as part of it
+   *
+   * The accept is the thing somebody asked for; this is the account of it. Written first, a failed
+   * accept would leave a log claiming a change that never happened — the one error this cannot be
+   * allowed to make, because the log's whole purpose is to be believed about what is in the record.
+   * Written after and failing, the change is applied and unrecorded, which is exactly where this
+   * started and no worse.
+   *
+   * ## Why unchanged values are skipped
+   *
+   * A staged update carries every value the pass proposed, including ones equal to what the record
+   * already held — the panel filters those out of the diff for the same reason. Keeping them would
+   * fill the log with "Fri → Fri" rows and bury the two lines somebody actually decided.
+   *
+   * `before` being null is not the same as a record with no values: the previous values could not be
+   * read at all, so nothing here can honestly say what changed. Nothing is written, rather than a
+   * row per property claiming it came from nothing.
+   */
+  async function recordAmendments(
+    proposal: ProposalView,
+    names: string[],
+    before: Record<string, unknown> | null,
+    /**
+     * What was typed into the card instead of what the pass proposed, where somebody edited it.
+     *
+     * No surface offers this today — the pencil is on a *suggestion*, and this only ever runs for a
+     * change — so it is here to keep the function honest rather than to serve a caller. A log that
+     * records a value nobody chose is the one mistake worth pre-empting in something whose whole job
+     * is to be believed.
+     */
+    edited: Record<string, string> | null = null,
+  ): Promise<void> {
+    const collection = targetCollection();
+    if (!createEntity || !collection || !before) return;
+    for (const name of names) {
+      const field = proposal.fields.find((f) => f.name === name);
+      if (!field) continue;
+      const held = before[name];
+      // Absent and empty are one case here: both read as "nothing there before", which is what a
+      // property being filled in for the first time is, and it is the common amendment.
+      const previousValue = held === undefined || held === null ? '' : String(held);
+      const newValue = edited?.[name] ?? field.value;
+      if (previousValue === newValue) continue;
+      try {
+        await createEntity(
+          'ExtractionAmendment',
+          {
+            property: name,
+            previousValue,
+            newValue,
+            nodeType: proposal.entity,
+            // A to-one relation, written as the single-entry list the model layer takes.
+            node: [proposal.id],
+          },
+          {
+            // Parented on creation, as every other write here is: unparented then linked leaves a
+            // window in which a crash orphans the record into the space.
+            parent: { id: collection, predicate: AMENDMENT_PREDICATE },
+            // The call's space, exactly as the accept just used — a call outlives the space on screen.
+            ...callTarget(),
+          },
+        );
+      } catch (error) {
+        // One property's log, not the accept and not the others. See the docblock.
+        console.warn(`transcribe: applied the change to "${name}" but could not record it —`, error);
+      }
+    }
+  }
 
   /*
     Re-read the staged suggestions whenever a pass settles — anybody's, not just a press of ours.
@@ -2961,9 +3073,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     acceptProposal: action(async (id: string) => {
       if (!interpretation) return;
       const edited = editingProposal() === id ? changedFields(id) : null;
+      /*
+        "Accept all" on a change comes through here too, so the same read has to happen first —
+        and only for a change: a *create* has no previous values, and reading a record that does not
+        exist yet would be a round trip to learn nothing.
+      */
+      const proposal = allProposals().find((p) => p.id === id);
+      const amending = proposal?.kind === 'update' ? proposal : null;
+      const before = amending ? await readBeforeChange(amending) : null;
       await interpretation.accept(id, undefined, callTarget());
-      const entity = allProposals().find((p) => p.id === id)?.entity;
+      const entity = proposal?.entity;
       forgetProposal(id);
+      if (amending) {
+        await recordAmendments(
+          amending,
+          amending.fields.map((f) => f.name),
+          before,
+          edited,
+        );
+      }
       // Only if the draft belonged to *this* card. Keeping one suggestion must not throw away what
       // was typed into another one that happens to be open beside it.
       if (editingProposal() === id) closeProposalEdit();
@@ -2998,8 +3126,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     applyChange: action(async (id: string, field: string) => {
       if (!interpretation) return;
+      // Before the accept, which overwrites the value this is the only remaining copy of.
+      const proposal = allProposals().find((p) => p.id === id);
+      const before = proposal ? await readBeforeChange(proposal) : null;
       await interpretation.accept(id, field, callTarget());
       forgetField(id, field);
+      if (proposal) await recordAmendments(proposal, [field], before);
     }, 'Applies one suggested change to an agreed record.'),
     /** Dismiss one suggested change, leaving the record's value as it was. */
     dismissChange: action(async (id: string, field: string) => {

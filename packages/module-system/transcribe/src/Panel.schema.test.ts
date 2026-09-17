@@ -861,7 +861,10 @@ describe('the extraction panel', () => {
       when they were made rather than by which model they happen to be, and why there is a number to
       put beside the heading at all.
     */
-    expect(json).toContain('"include":{"extracted":{"order":{"createdAt":"desc"}}}');
+    expect(json).toContain('"extracted":{"order":{"createdAt":"desc"}}');
+    // And the amendments in the same include, so "what did this call produce" and "what did it
+    // change" are one answer rather than two that can disagree about whether it has been asked yet.
+    expect(json).toContain('"amendments":{"order":{"createdAt":"desc"}}');
     expect(json).toContain(
       'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
     );

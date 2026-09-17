@@ -1389,6 +1389,7 @@ export const contextData: ContextData = {
           target: 'ExtractionPass',
         },
         { name: 'extracted', kind: 'HasMany', predicate: 'we://extracted' },
+        { name: 'amendments', kind: 'HasMany', predicate: 'we://extraction_amendment', target: 'ExtractionAmendment' },
       ],
     },
     {
@@ -1822,6 +1823,18 @@ export const contextData: ContextData = {
         { name: 'overrides', type: 'string', predicate: 'we://token_overrides', required: false, default: 'null' },
       ],
       relations: [{ name: 'screenshots', kind: 'HasMany', predicate: 'we://screenshot', target: 'ImageBlock' }],
+    },
+    {
+      name: 'ExtractionAmendment',
+      className: 'ExtractionAmendment',
+      extends: 'Ad4mModel',
+      fields: [
+        { name: 'property', type: 'string', predicate: 'we://amended_property', required: false },
+        { name: 'previousValue', type: 'string', predicate: 'we://previous_value', required: false },
+        { name: 'newValue', type: 'string', predicate: 'we://new_value', required: false },
+        { name: 'nodeType', type: 'string', predicate: 'we://node_type', required: false },
+      ],
+      relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://amended_node' }],
     },
     {
       name: 'ExtractionPass',

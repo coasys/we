@@ -2145,6 +2145,7 @@ CollectionBlock extends WeNode:
   - board: HasOne → CollectionBlock [we://board]
   - extractionPasses: HasMany → ExtractionPass [we://extraction_pass_record]
   - extracted: HasMany [we://extracted]
+  - amendments: HasMany → ExtractionAmendment [we://extraction_amendment]
 
 DividerBlock extends WeNode:
   Fields:
@@ -2431,6 +2432,15 @@ Theme extends WeNode:
   - overrides: string = null [we://token_overrides]
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
+
+ExtractionAmendment extends Ad4mModel:
+  Fields:
+  - property: string [we://amended_property]
+  - previousValue: string [we://previous_value]
+  - newValue: string [we://new_value]
+  - nodeType: string [we://node_type]
+  Relations:
+  - node: HasOne [we://amended_node]
 
 ExtractionPass extends Ad4mModel:
   Fields:

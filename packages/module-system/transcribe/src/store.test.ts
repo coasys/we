@@ -1785,6 +1785,130 @@ describe('staged suggestions', () => {
 
     expect(h.store.canEditProposals()).toBe(false);
   });
+
+  /**
+   * Keeping a change, and the account of it.
+   *
+   * A *create* survives being accepted — it is a record, and the call links it as `extracted`. An
+   * *update* did not: it applied its value to a record that was already agreed and resolved its
+   * overlay, and after that nothing anywhere said it had happened. The record held a new value with
+   * no provenance and the reviewer's decision left no mark, so the panel had three of the four
+   * quadrants a review surface has and no way to write the fourth.
+   *
+   * These are about the one fact that cannot be recovered afterwards: what the record held before.
+   */
+  describe('keeping a change writes it down', () => {
+    const change = {
+      id: 'task-1',
+      kind: 'update',
+      entity: 'TaskBlock',
+      values: { status: 'done', title: 'Ship the docs' },
+    };
+    /** The record as it stands before the change — what the store reads, and reads only once. */
+    const held = { id: 'task-1', status: 'todo', title: 'Ship the docs' };
+
+    /** A host whose records kernel can be read as well as written to. */
+    const withRecord = (i: { port: unknown }, rows: Record<string, unknown>[] = [held]) =>
+      harness(inCall, { interpretation: i.port, records: { find: async () => rows } });
+
+    const amendments = (h: ReturnType<typeof harness>) => h.created.filter((c) => c.entity === 'ExtractionAmendment');
+
+    it('records the property, both values and the record it was to', async () => {
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)).toHaveLength(1);
+      expect(amendments(h)[0].fields).toMatchObject({
+        property: 'status',
+        previousValue: 'todo',
+        newValue: 'done',
+        nodeType: 'TaskBlock',
+        // A to-one relation, as the single-entry list the model layer takes.
+        node: ['task-1'],
+      });
+    });
+
+    it('hangs it off the call, so a panel open on one reads it with the same subject', async () => {
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://extraction_amendment' });
+    });
+
+    it('writes nothing for a value equal to what the record already held', async () => {
+      /*
+        A staged update carries every value the pass proposed, including the ones that change
+        nothing — the panel filters those out of its diff for the same reason. Logged, they would
+        bury the one line somebody actually decided under a run of "Ship the docs → Ship the docs".
+      */
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'title');
+
+      expect(amendments(h)).toEqual([]);
+    });
+
+    it('records every changed property when the whole suggestion is kept at once', async () => {
+      // "Accept all" goes through `acceptProposal`, which is also how a create is kept — so the read
+      // has to happen there too, and only for a change.
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.acceptProposal('task-1');
+
+      expect(amendments(h).map((a) => a.fields.property)).toEqual(['status']);
+    });
+
+    it('writes nothing when a create is kept', async () => {
+      // A create has no previous values, so there is no amendment to make and no reason to spend a
+      // read finding that out.
+      const i = interpreterWith([{ id: 'task-2', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.acceptProposal('task-2');
+
+      expect(amendments(h)).toEqual([]);
+    });
+
+    it('still applies the change when the record cannot be read first', async () => {
+      /*
+        The order that matters, and the priority within it. Losing the log is a smaller harm than a
+        change somebody pressed accept on not being applied, so a failed read leaves the accept
+        alone and simply records nothing — rather than a row claiming a value came from nowhere.
+      */
+      const i = interpreterWith([change]);
+      const h = harness(inCall, {
+        interpretation: i.port,
+        records: {
+          find: async () => {
+            throw new Error('nope');
+          },
+        },
+      });
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(i.resolved).toContainEqual({ action: 'accept', id: 'task-1' });
+      expect(amendments(h)).toEqual([]);
+    });
+  });
 });
 
 /**

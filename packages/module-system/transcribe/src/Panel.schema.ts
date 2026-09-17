@@ -136,6 +136,21 @@ const EXTRACTED_ROWS = 'first(local.extractedFrom).extracted.filter(r, !(r.id in
 /** How many of them, for the badge beside the heading. The list is small by construction. */
 const EXTRACTED_COUNT = `count(${EXTRACTED_ROWS})`;
 
+/**
+ * The changes to already-agreed records that somebody kept — the fourth quadrant of this panel.
+ *
+ * Three of the four were always answerable: a suggestion waiting, a change waiting, and a record
+ * kept. The fourth had nothing behind it, because applying a change resolved its overlay and wrote
+ * nothing down — so a task the conversation moved from "todo" to "done" left the panel with no
+ * account of it at all, and the record itself with a new value and no provenance.
+ *
+ * `ExtractionAmendment` is that account, and this is the list of them. No filter, unlike
+ * {@link EXTRACTED_ROWS}: an amendment exists only because somebody accepted one, so there is no
+ * unconfirmed state to take back out.
+ */
+const AMENDMENT_ROWS = 'first(local.extractedFrom).amendments';
+const AMENDMENT_COUNT = `count(${AMENDMENT_ROWS})`;
+
 /** What the store says can be extracted from that call — see `extractionFor` on the store. */
 const forSubject = (field: 'targets' | 'canChoose' | 'canExtract') => ({
   $: `modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].${field}`,
@@ -2273,6 +2288,145 @@ const extractedRows: SchemaNode = {
   children: [extractedCard],
 };
 
+/**
+ * How a card reads an amendment's own record — the shape the settled-change rows are built against.
+ *
+ * The third `CardShape` in this file, and the one whose two halves come from different places: the
+ * *type* is on the amendment (`nodeType`, written when the change was accepted), and everything
+ * drawn from the record is on the record, fetched per row. That split is the point — an amendment
+ * is a fact about a pair, so neither end alone can draw the card.
+ */
+const AMENDMENT_SHAPE: CardShape = {
+  display: 'recordStore.displays[amendment.nodeType]',
+  value: (name) => `first(local.amended)[${name}]`,
+  present: (field) => `first(local.amended)[${field}.name]`,
+};
+
+/**
+ * The property a change was to, in the words the model uses for it.
+ *
+ * Looked up in the declaration rather than stored beside the amendment: `displays` already carries a
+ * label for every declared property, and a copy written at accept time would keep saying "Due date"
+ * after the model renamed it. Falls through to the raw property name where the type is unknown,
+ * which is how everything else in this panel degrades against an executor that cannot classify.
+ */
+const AMENDED_LABEL = `(find(${AMENDMENT_SHAPE.display}.fields, { name: amendment.property }).label ?? amendment.property)`;
+
+/**
+ * One accepted change: what kind of thing it was to, which thing, and what it did.
+ *
+ * Deliberately the same card furniture as the two above it — the kind row, then the record's own
+ * title — so a reader moving down the panel is looking at one family of things and not three. What
+ * differs is the last line, which is the whole content here: the old value and the new one, in the
+ * order they happened.
+ *
+ * The record is fetched per row rather than snapshotted at accept time, so the title is what the
+ * thing is called *now*. A log naming what a record used to be called would be a worse answer than
+ * naming what it is, and this card claims nothing about the rest of the record standing still: it
+ * is about one property, and says so on its own line.
+ */
+const amendmentCard: SchemaNode = {
+  type: 'Column',
+  /*
+    The amended record, for its title. Not asked until the amendment says what type it is — without
+    one there is nothing to query, and the card falls back to naming the property alone.
+  */
+  $queries: {
+    amended: {
+      entity: { $: 'amendment.nodeType' },
+      where: { id: { $: 'amendment.node' } },
+      limit: 1,
+      when: { $: 'amendment.nodeType && amendment.node' },
+    },
+  },
+  props: {
+    bg: 'surface',
+    color: 'text',
+    // Green, as everything settled in this panel is — the same edge the accepted records wear.
+    borderLeft: '3px solid success',
+    r: '300',
+    px: '300',
+    py: '300',
+    gap: '200',
+    width: '100%',
+  },
+  children: [
+    cardKind(AMENDMENT_SHAPE),
+    {
+      /*
+        The record's title, or the property's name where the record could not be read.
+
+        Not `cardTitle`, which also draws a summary line: the interesting second line here is the
+        change itself, and a description under the title would push it out of a 240px card.
+      */
+      type: 'we-text',
+      props: {
+        fontWeight: 'semibold',
+        truncate: true,
+        text: { $: `${AMENDMENT_SHAPE.value(`${AMENDMENT_SHAPE.display}.title`)} ?? ${AMENDED_LABEL}` },
+      },
+    },
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', width: '100%', wrap: true },
+      children: [
+        {
+          type: 'we-text',
+          props: {
+            fontSize: '200',
+            flex: '1 1 auto',
+            minWidth: '0',
+            // The same readable-value rule the pending card uses, so a status reads as the word the
+            // community gave it on both sides of the decision rather than as a slug on one of them.
+            text: {
+              $:
+                '`${' +
+                AMENDED_LABEL +
+                '}: ${' +
+                readableValue('amendment.property', "(amendment.previousValue ? amendment.previousValue : '—')") +
+                '} → ${' +
+                readableValue('amendment.property', 'amendment.newValue') +
+                '}`',
+            },
+          },
+        },
+      ],
+    },
+    {
+      /*
+        Who decided, and when. Absent from the cards above because a record carries its author on its
+        own face; here the author is the *reviewer* rather than whoever wrote the record, and which
+        of the two it is is exactly what somebody reading a change log wants to know.
+      */
+      type: 'Row',
+      props: { gap: '100', ay: 'center', width: '100%' },
+      children: [
+        {
+          type: '$agent',
+          props: { did: { $: 'amendment.author' }, as: 'decider' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', truncate: true },
+              children: [{ $: "`kept by ${decider.did == me.did ? 'you' : decider.name}`" }],
+            },
+          ],
+        },
+        {
+          type: 'we-timestamp',
+          props: { value: { $: 'amendment.createdAt' }, relative: true, fontSize: '100', color: 'text-muted' },
+        },
+      ],
+    },
+  ],
+};
+
+const amendmentRows: SchemaNode = {
+  type: '$each',
+  props: { items: { $: AMENDMENT_ROWS }, as: 'amendment' },
+  children: [amendmentCard],
+};
+
 /*
   What starts a pass automatically, and it is a *call's* decision.
 
@@ -3945,6 +4099,7 @@ export const extractionPanel: SchemaNode = {
                   proposalsOpen: { type: 'boolean', initial: true, persist: 'transcribe.proposalsOpen' },
                   changesListOpen: { type: 'boolean', initial: true, persist: 'transcribe.changesListOpen' },
                   extractedOpen: { type: 'boolean', initial: true, persist: 'transcribe.extractedOpen' },
+                  amendmentsOpen: { type: 'boolean', initial: true, persist: 'transcribe.amendmentsOpen' },
                   /*
                     Closed to start, where the other two open: the readings are a record of how the
                     other sections came to say what they say, wanted when something looks wrong and
@@ -4100,7 +4255,17 @@ export const extractionPanel: SchemaNode = {
                             entity: 'CollectionBlock',
                             where: { id: EXTRACTION_SUBJECT },
                             limit: 1,
-                            include: { extracted: { order: { createdAt: 'desc' } } },
+                            /*
+                              Both relations in one round trip. `amendments` is typed, so it
+                              hydrates into real rows here rather than needing a query of its own —
+                              and the section below reads its count off the same answer the
+                              accepted-records section does, so the two cannot disagree about
+                              whether this call has been asked about yet.
+                            */
+                            include: {
+                              extracted: { order: { createdAt: 'desc' } },
+                              amendments: { order: { createdAt: 'desc' } },
+                            },
                             when: EXTRACTION_SUBJECT,
                           },
                         },
@@ -4145,6 +4310,47 @@ export const extractionPanel: SchemaNode = {
                                     type: 'Grid',
                                     props: { minChildWidth: '240px', gap: '200', width: '100%' },
                                     children: [extractedRows],
+                                  }),
+                                ],
+                              },
+                            },
+                          },
+                          {
+                            /*
+                              What the call changed about things that already existed.
+
+                              Its own section rather than a mark on the accepted records above,
+                              because the two lists are mostly about different records: a change
+                              proposal targets an *already-agreed* record by definition, and the
+                              usual one is something nobody here extracted — a task somebody wrote
+                              down last week that the conversation has now moved on. There is no
+                              card in "Accepted" to put a badge on, so a badge would have reported
+                              the minority case and silently dropped the rest.
+
+                              It also keeps the content. A mark says a record was changed; these
+                              rows say which property and from what, which is the half a reader
+                              came for and the half that cannot be recovered afterwards.
+
+                              Green like the section above and separately foldable, so a long call's
+                              worth of small edits can be put away without hiding what it produced.
+                            */
+                            type: '$if',
+                            props: {
+                              condition: { $: AMENDMENT_COUNT },
+                              then: {
+                                type: 'Column',
+                                props: { gap: '200', width: '100%' },
+                                children: [
+                                  foldingSectionLabel({
+                                    label: 'Accepted changes',
+                                    count: AMENDMENT_COUNT,
+                                    tone: 'success',
+                                    field: 'amendmentsOpen',
+                                  }),
+                                  collapsible('amendmentsOpen', {
+                                    type: 'Grid',
+                                    props: { minChildWidth: '240px', gap: '200', width: '100%' },
+                                    children: [amendmentRows],
                                   }),
                                 ],
                               },

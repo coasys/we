@@ -110,6 +110,19 @@ export interface PassEntry {
   response?: string;
 }
 
+/** One stored `ExtractionAmendment` — a change to an agreed record that somebody kept. */
+export interface AmendmentEntry {
+  createdAt: unknown;
+  /** Who accepted it, which is not who wrote the record. */
+  author?: string;
+  property?: string;
+  previousValue?: string;
+  newValue?: string;
+  nodeType?: string;
+  /** The amended record's id. A to-one relation, so a bare URI. */
+  node?: string;
+}
+
 export interface ExtractionLogInput {
   callId: string;
   callTitle?: string;
@@ -126,6 +139,15 @@ export interface ExtractionLogInput {
   records: unknown[];
   /** Suggestions still staged on this call. */
   proposals: InterpretationProposal[];
+  /**
+   * Changes to already-agreed records that somebody kept.
+   *
+   * Not derivable from anything else in this log, which is why it is carried separately. The
+   * records section shows values as they stand now and says nothing about how they got there; the
+   * pass response holds what was *proposed*, not what was accepted or what it replaced. This is the
+   * only place the previous value appears at all.
+   */
+  amendments: AmendmentEntry[];
   nameFor: (did: string) => string;
 }
 
@@ -163,8 +185,9 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
     'Every extraction pass run over this call, oldest first. Each pass shows what started it, who ran it, ' +
       'how it ended, and the exact prompt the model was given and the response it returned. After the ' +
       'passes: the records extraction wrote against this call as they are stored now (people may have ' +
-      'edited them since), and the suggestions still waiting on a decision. The transcript the passes ' +
-      'read is included once, below the settings.',
+      'edited them since), the changes it suggested to records that already existed and somebody kept, ' +
+      'and the suggestions still waiting on a decision. The transcript the passes read is included ' +
+      'once, below the settings.',
     '',
     '## Settings',
     '',
@@ -228,6 +251,30 @@ export function formatExtractionLog(input: ExtractionLogInput): string {
       ...(typeof fields.author === 'string' ? [`- Author: ${input.nameFor(fields.author)}`] : []),
       '',
       fenced(JSON.stringify(fields, null, 2), 'json'),
+      '',
+    );
+  }
+
+  /*
+    The fourth quadrant, and the one that used to be missing entirely.
+
+    A record extraction *wrote* is above; a suggestion still *waiting* is below. A change that was
+    accepted appears in neither: it is usually to a record no pass here created, so it is not in the
+    records section, and it is settled, so it is not in the waiting one. Until these were stored,
+    the value simply changed and the log said nothing about it.
+  */
+  out.push(`## Accepted changes (${input.amendments.length})`, '');
+  if (!input.amendments.length) out.push('_No suggested change to an existing record has been kept on this call._', '');
+  for (const amendment of input.amendments) {
+    out.push(
+      `### ${amendment.nodeType || 'Record'}${amendment.node ? `: \`${amendment.node}\`` : ''}`,
+      '',
+      `- Property: \`${amendment.property ?? ''}\``,
+      // Quoted, so an empty previous value is visibly empty rather than a gap in the line.
+      `- Was: ${JSON.stringify(amendment.previousValue ?? '')}`,
+      `- Now: ${JSON.stringify(amendment.newValue ?? '')}`,
+      `- Kept by: ${amendment.author ? `${input.nameFor(amendment.author)} (\`${amendment.author}\`)` : 'unknown'}`,
+      `- When: ${isoOf(amendment.createdAt) || 'unknown time'}`,
       '',
     );
   }

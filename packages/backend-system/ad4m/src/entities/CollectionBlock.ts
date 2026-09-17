@@ -7,6 +7,7 @@
 import { Flag, HasMany, HasManyMethods, HasOne, Model, Property } from '@coasys/ad4m';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
+import { ExtractionAmendment } from './ExtractionAmendment';
 import { ExtractionPass } from './ExtractionPass';
 import { WeNode } from './WeNode';
 
@@ -284,6 +285,28 @@ export class CollectionBlock extends WeNode {
    */
   @HasMany({ through: 'we://extracted', polymorphic: true })
   extracted: string[] = [];
+
+  /**
+   * Changes a pass suggested to records that already existed, and somebody kept — see
+   * {@link ExtractionAmendment}.
+   *
+   * The counterpart to {@link extracted} for the other kind of suggestion a pass makes, and it
+   * is a separate relation rather than more entries in that one because the two are about
+   * different things. `extracted` names *records* the call produced; this names *amendments*,
+   * which are their own records and whose subject is usually something the call did not create
+   * — a task somebody had already written down, which the conversation then moved on.
+   *
+   * That difference is also why an amendment could not be reported by marking the extracted
+   * record instead. A change accepted on a record no pass here wrote has nothing in `extracted`
+   * to mark, and that is the ordinary case rather than the edge: a change proposal targets an
+   * already-agreed record by definition.
+   *
+   * Typed, unlike `extracted`, because an amendment is always the same entity — there is no
+   * open vocabulary here, only whatever the amended record happens to be, which the amendment
+   * itself points at.
+   */
+  @HasMany(() => ExtractionAmendment, { through: 'we://extraction_amendment' })
+  amendments: string[] = [];
 }
 
 export interface CollectionBlock extends HasManyMethods<'children' | 'arranges'> {

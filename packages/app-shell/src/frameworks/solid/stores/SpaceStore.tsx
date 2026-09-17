@@ -9,7 +9,13 @@ import {
 } from '@shared/callExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
-import { exportFileName, formatExtractionLog, type PassEntry, transcriptLine } from '@shared/interpretation/callExport';
+import {
+  type AmendmentEntry,
+  exportFileName,
+  formatExtractionLog,
+  type PassEntry,
+  transcriptLine,
+} from '@shared/interpretation/callExport';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import {
@@ -2586,11 +2592,17 @@ export function SpaceStoreProvider(props: ParentProps) {
               target class — a pass writes whatever models the call looks for — and the class this
               store reads through did not carry the flag, so the executor refused to hydrate it.
             */
-            include: { extractionPasses: true, extracted: { polymorphic: true } },
+            include: { extractionPasses: true, extracted: { polymorphic: true }, amendments: true },
           } as never);
-          const row = call as unknown as { title?: string; extractionPasses?: unknown; extracted?: unknown } | null;
+          const row = call as unknown as {
+            title?: string;
+            extractionPasses?: unknown;
+            extracted?: unknown;
+            amendments?: unknown;
+          } | null;
           const passes = (Array.isArray(row?.extractionPasses) ? row.extractionPasses : []) as PassEntry[];
           const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
+          const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
 
           const { turns, predicate } = await callTranscript(p, callId);
@@ -2601,9 +2613,13 @@ export function SpaceStoreProvider(props: ParentProps) {
             port && predicate ? await port.proposals(p, { parent: { id: callId, predicate } }).catch(() => []) : [];
           const authors = records.map((record) => (record as { author?: unknown }).author);
           const nameFor = await labelsFor(
-            [...turns.map((turn) => turn.speaker), ...passes.map((pass) => pass.author), ...authors].filter(
-              (did): did is string => typeof did === 'string' && did !== '',
-            ),
+            [
+              ...turns.map((turn) => turn.speaker),
+              ...passes.map((pass) => pass.author),
+              // Who *kept* a change, which is a different person from whoever wrote the record.
+              ...amendments.map((amendment) => amendment.author),
+              ...authors,
+            ].filter((did): did is string => typeof did === 'string' && did !== ''),
           );
 
           return formatExtractionLog({
@@ -2618,6 +2634,7 @@ export function SpaceStoreProvider(props: ParentProps) {
             passes,
             records,
             proposals,
+            amendments,
             nameFor,
           });
         },
