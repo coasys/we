@@ -1,11 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import {
-  agentByline,
-  commentThread,
-  composerModal,
-  HAS_OFFERED_SIGNAL_TYPES,
-  OFFERED_SIGNAL_TYPES,
-} from '@we/template-kit';
+import { agentByline, discussionSection, signalsSection } from '@we/template-kit';
 
 /**
  * A drawn connection, opened.
@@ -41,37 +35,15 @@ const EDGE_ID = { $: 'local.selectedEdge.recordId' };
 
 const close = { $setLocal: 'selectedEdge', value: null };
 
-/** Rating a connection is rating a WeNode, so it is the same control every other surface uses. */
-const signals: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: HAS_OFFERED_SIGNAL_TYPES },
-    then: {
-      type: 'Row',
-      props: { gap: '600', ay: 'center', minHeight: '40px' },
-      children: [
-        {
-          type: '$each',
-          props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
-          children: [
-            {
-              type: 'SignalControl',
-              props: {
-                signalType: { $: 'sig' },
-                signals: { $: 'filter(link.signals, { signalTypeId: sig.id })' },
-                myDid: { $: 'me.did' },
-                onSignal: {
-                  $action: 'spaceStore.upsertSignal',
-                  args: [{ $: 'link.id' }, { $: 'sig.id' }, { $: 'arg' }],
-                },
-              },
-            },
-          ],
-        },
-      ],
-    },
-  },
-};
+/**
+ * Rating a connection is rating a WeNode, so it is the same control every other surface uses.
+ *
+ * Through the kit rather than written out here. This was the copy that proved the fragment was
+ * needed: it drew every offered type where `signalRow` drew only the used ones, so the two surfaces
+ * disagreed about whether a community's newest reaction existed — and the workshop's inspector,
+ * arriving later, had neither.
+ */
+const signals: SchemaNode = signalsSection({ record: 'link' });
 
 /**
  * The thread.
@@ -79,20 +51,12 @@ const signals: SchemaNode = {
  * Deliberately the same fragment a post's replies use, anchored to the relationship instead. A
  * connection is a `WeNode`, so it is commentable by construction — the point of modelling it that
  * way was that none of this had to be built twice.
+ *
+ * It replaces a hand-written `commentThread` plus a single Reply button, which is the shape every
+ * threaded surface in WE had: replies rendered three deep and only the top one could be answered.
+ * The section owns its own composer, at every level.
  */
-const thread: SchemaNode = commentThread({
-  anchorId: { $: 'link.id' },
-  reply: (as) => [
-    {
-      type: 'Column',
-      props: { gap: '100', width: '100%', py: '200' },
-      children: [
-        agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
-        { type: 'BlockRenderer', props: { editorState: { $: `${as}.editorState` } } },
-      ],
-    },
-  ],
-});
+const thread: SchemaNode = discussionSection({ record: 'link' });
 
 /**
  * The claim itself, editable.
@@ -287,7 +251,6 @@ export const edgeDetailModal: SchemaNode = {
       // Hoisted so the projection and the controls agree about what a slug means — the house rule
       // for signal types, which have no store accessor by design.
       $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
-      $localState: { replyOpen: { type: 'boolean', initial: false } },
       children: [
         {
           type: '$single',
@@ -318,11 +281,11 @@ export const edgeDetailModal: SchemaNode = {
                   type: 'Row',
                   props: { gap: '300', width: '100%' },
                   children: [
-                    {
-                      type: 'we-button',
-                      props: { size: 'sm', variant: 'ghost', onClick: { $setLocal: 'replyOpen', value: true } },
-                      children: [{ type: 'we-icon', props: { name: 'chat-circle' } }, 'Reply'],
-                    },
+                    /*
+                      No Reply button here any more — the thread above owns it, and owns one per
+                      reply besides. Left here it would have been a second way to answer the claim,
+                      sitting under a section whose every row already offers the same thing.
+                    */
                     /*
                       Deleting is offered to everybody, not only the author.
 
@@ -348,21 +311,6 @@ export const edgeDetailModal: SchemaNode = {
                     },
                   ],
                 },
-                /*
-                  A reply is a composed artifact hanging off the connection, which is the same
-                  action a reply to a post uses — `we://comment` rather than `we://children`,
-                  because it answers the claim rather than becoming part of it.
-                */
-                composerModal({
-                  openLocal: 'replyOpen',
-                  title: 'Reply',
-                  saveLabel: 'Reply',
-                  saveAction: {
-                    $action: 'spaceStore.createPost',
-                    // `'$arg'` first: `createPost(json, options)`.
-                    args: [{ $: 'arg' }, { kind: 'reply', parentId: { $: 'link.id' }, predicate: 'we://comment' }],
-                  },
-                }),
               ],
             },
           ],

@@ -62,6 +62,7 @@ import {
   answerButton,
   CHANGED,
   composerModal,
+  discussionSection,
   emptyState,
   field,
   formModal,
@@ -71,6 +72,7 @@ import {
   peopleFilter,
   peopleRow,
   recordFormModal,
+  signalsSection,
   suggestedChanges,
   SUGGESTIONS_HIDDEN,
   suggestionsToggle,
@@ -1777,6 +1779,43 @@ const connectionsSection: SchemaNode = {
 };
 
 /**
+ * What people make of the selected record — its reactions, and the conversation about it.
+ *
+ * ## Why here rather than on the cards
+ *
+ * Because a canvas card is clipped and a board card is dragged. Both are previews the size of a
+ * postcard, and a row of controls on each is furniture competing with the gesture the card exists
+ * for — so the cards carry counts (`activitySummary`) and the panel carries the controls. That split
+ * is the whole reason this panel is worth opening: it already shows every field a record holds, and
+ * what the community *thinks* of the record is the part it was missing.
+ *
+ * ## A line gets both, exactly as a card does
+ *
+ * A `Relationship` is a `WeNode`, so nothing here is written twice: the same section reacts to a
+ * task and to the claim that the task blocks another one. `EdgeDetail` in the views package is the
+ * older surface for that and keeps its own modal; this is the canvas's answer, where opening a line
+ * must not take you off the arrangement it is part of.
+ */
+const reactionsSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', pt: '200', borderTop: '1px solid border', width: '100%' },
+  children: [sectionCaption('Reactions'), signalsSection({ record: 'row' })],
+};
+
+/**
+ * The thread, and the way into it.
+ *
+ * `count(row.comments)` beside the caption without an `include`: `comments` arrives as the relation's
+ * own ids on any record, so the heading can say how many replies there are before a single one has
+ * been fetched — which is what keeps the count honest while the thread below it is still loading.
+ */
+const discussion: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', pt: '200', borderTop: '1px solid border', width: '100%' },
+  children: [sectionCaption('Discussion', 'count(row.comments)'), discussionSection({ record: 'row' })],
+};
+
+/**
  * One card, opened out — its type and its properties, beside the arrangement it is part of.
  *
  * ## Why a panel and not the record page
@@ -1841,6 +1880,16 @@ const inspectorPanel: SchemaNode = {
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
       /*
+        The reactions, hydrated — what `signalsSection` filters by type.
+
+        Safe for a type this template was not written for, which is the question worth asking of an
+        `include` on a query whose entity is an expression: every model a community defines extends
+        `WeNode` (see `shapeDraft`), so `signals` is declared on all of them. A model made before
+        that was true declares no such relation and the query would be refused outright rather than
+        answering without it — it becomes a node again the next time it is edited.
+      */
+      include: { signals: true },
+      /*
         Not until there is an id to ask about — which is what kept the panel showing a record
         nobody had selected.
 
@@ -1903,6 +1952,15 @@ const inspectorPanel: SchemaNode = {
     involvements: { entity: 'Involvement', when: { $: `${CARD_ID} && !(${IS_RELATIONSHIP})` } },
     // The call's own record, for which of its records a model proposed — see `peopleSection`.
     inspectedCall: { entity: 'CollectionBlock', where: { id: CALL }, limit: 1, when: CALL },
+    /*
+      What this community reacts with — one subscription for the panel, read by the controls below
+      and by the counts on every reply in the thread.
+
+      Unconditional, like `relationshipKinds` and for the same reason: a space has a handful of
+      these, and gating it on something about the selection would tear the subscription down and set
+      it up again on every click to save nothing.
+    */
+    signalTypes: { entity: 'SignalType', subscribe: true },
   },
   children: [
     panelHeader({
@@ -2264,6 +2322,11 @@ const inspectorPanel: SchemaNode = {
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
+                    // Last, and in this order: what the record *is* comes first, then who is on it
+                    // and what it is joined to, then what people make of it. The thread is last
+                    // because it is the only section with no ceiling on its height.
+                    reactionsSection,
+                    discussion,
                     /*
                       No "Open full record". There was a ghost button here that navigated to
                       `<space>/record/<type>?id=<id>` — the record page the host appends to every
@@ -3744,6 +3807,9 @@ const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? ${witho
 /** An event a pass made that nobody has kept — drawn provisional, and put away with the board's switch. */
 const UNCONFIRMED_EVENT = (as: string) => `${as}.id in ${UNCONFIRMED}`;
 
+/** The event the inspector is open on — the same address the canvas and the board write. */
+const SELECTED_EVENT = "event.id == routeStore.params.card && routeStore.params.cardType == 'EventBlock'";
+
 /** Faded, for an event nobody chosen is on while the filter dims. */
 const DIMMED = (as: string) => `${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})`;
 
@@ -4064,11 +4130,31 @@ const eventList: SchemaNode = {
                     */
                     bg: 'surface',
                     r: '400',
-                    // A draft looks like one, as on the board: dashed, and a little faded.
-                    border: { $: `(${UNCONFIRMED_EVENT('event')}) ? '1px dashed border-strong' : '1px solid border'` },
+                    /*
+                      A draft looks like one, as on the board: dashed, and a little faded. A selected
+                      event takes the accent and a one-pixel ring outside it — the board card's
+                      treatment, because it is the same act on a different surface.
+                    */
+                    border: {
+                      $: `(${SELECTED_EVENT}) ? '1px solid accent' : (${UNCONFIRMED_EVENT('event')}) ? '1px dashed border-strong' : '1px solid border'`,
+                    },
+                    ring: { $: `(${SELECTED_EVENT}) ? '0 0 0 1px var(--we-role-accent)' : ''` },
                     p: '400',
                     opacity: { $: `(${DIMMED('event')}) ? 0.35 : (${UNCONFIRMED_EVENT('event')}) ? 0.75 : 1` },
                     transition: 'opacity 200 ease-in-out',
+                    /*
+                      Pressing an event opens it in the inspector, exactly as pressing a card on the
+                      canvas or the board does — the same two parameters, so the panel that was
+                      already on screen answers about the event and a link to this page carries the
+                      selection with it.
+
+                      This was the one surface of the four with no selection at all, which is why the
+                      inspector could say nothing about an event: there was no way to tell it about
+                      one. The type first and only then the id, so its query is never asked about an
+                      event under the wrong type for the instant between the two writes.
+                    */
+                    cursor: 'pointer',
+                    onClick: [{ $setLocal: 'pressedCard', value: true }, ...openRecord('event.id', 'EventBlock')],
                   },
                   children: [
                     {
@@ -4246,7 +4332,33 @@ const eventList: SchemaNode = {
 const calendarRoute: RouteSchema = {
   path: '/calendar',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
+  // A press anywhere on the page lets go of the selected event — unless it was a press on one. The
+  // kanban route's pattern, arriving here with the selection it exists to release; see there for why
+  // the card marks its own press rather than this second-guessing the event.
+  $localState: { pressedCard: { type: 'boolean', initial: false } },
+  props: {
+    width: '100%',
+    minHeight: '100%',
+    ax: 'center',
+    px: '400',
+    onClick: [
+      {
+        $if: {
+          condition: { $: 'local.pressedCard' },
+          then: { $setLocal: 'pressedCard', value: false },
+          else: {
+            $if: {
+              condition: { $: 'routeStore.params.card' },
+              then: [
+                { $action: 'routeStore.setParam', args: ['card', null] },
+                { $action: 'routeStore.setParam', args: ['cardType', null] },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  },
   children: [
     {
       type: 'Column',
