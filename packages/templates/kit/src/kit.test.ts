@@ -201,6 +201,11 @@ const weDomain: Record<string, SchemaNode> = {
     empty: { type: 'Column' },
     people: true,
   }),
+  'taskBoard (social)': taskBoard({
+    boardId: { $: 'spaceStore.currentSpace.id' },
+    empty: { type: 'Column' },
+    social: true,
+  }),
   'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
   signalsSection: signalsSection({ record: 'row' }),
   discussionSection: discussionSection({ record: 'row' }),
@@ -382,6 +387,23 @@ describe('contracts call sites depend on', () => {
       }
     });
     expect(recordReply).toBe(true);
+  });
+
+  it('a board drawing counts declares what they need, so it cannot be placed without them', () => {
+    // The failure this guards against is the quiet one: the reads resolve to nothing, every count
+    // reads zero, and the only sign is a line in the console. The board hoists the subscription and
+    // hydrates the relation itself rather than asking the route to remember.
+    const board = weDomain['taskBoard (social)'] as SchemaNode & {
+      $queries?: Record<string, { entity?: string; include?: Record<string, unknown> }>;
+    };
+    expect(board.$queries?.signalTypes?.entity).toBe('SignalType');
+    expect(board.$queries?.pool?.include).toEqual({ signals: true });
+    // And a board that does not draw them pays for neither.
+    const plain = weDomain['taskBoard (people)'] as SchemaNode & {
+      $queries?: Record<string, { include?: unknown }>;
+    };
+    expect(plain.$queries?.signalTypes).toBeUndefined();
+    expect(plain.$queries?.pool?.include).toBeUndefined();
   });
 
   it('activitySummary says nothing about a record nobody has touched', () => {

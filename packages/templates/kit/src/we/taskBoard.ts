@@ -50,6 +50,7 @@ import { field, formModal } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { peopleFilter } from './peopleFilter.ts';
+import { activitySummary } from './signals.ts';
 import {
   answerButton,
   suggestedChanges,
@@ -163,6 +164,18 @@ export interface TaskCardOptions {
    * selectable.
    */
   select?: CardSelection;
+  /**
+   * Show what the card has collected — reactions by type, and the reply count. Off by default.
+   *
+   * Counts, never controls. A board card is dense and draggable, so a row of buttons on each would
+   * compete with the gesture the card exists for; what a card owes the reader is that a conversation
+   * is happening on it, and selecting the card opens that conversation in the inspector. Silent for
+   * a card nobody has touched, so a quiet board gains no furniture at all.
+   *
+   * Needs hydrated `signals` on the row and `local.signalTypes` above it. {@link taskBoard} declares
+   * both when its own `social` is set — this option is for a caller drawing its own cards.
+   */
+  social?: boolean;
 }
 
 /** How a card is selected: which card is, and what pressing one does. */
@@ -404,6 +417,9 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
             // `300` between the controls and the faces: at `100` a stack and a button read as touching.
             props: { ml: 'auto', gap: '300', ay: 'center' },
             children: [
+              // First in the group, so the counts sit left of anything that can be pressed — they are
+              // the one thing here that is a reading rather than a control.
+              ...(opts.social ? [activitySummary({ record: as, as: `${as}Sum` })] : []),
               /*
                 Keep and Discard, on the card, where the work is — the same two the canvas offers and
                 the same actions behind them. Neither asks first: keeping writes what was proposed,
@@ -669,6 +685,14 @@ export interface TaskBoardOptions {
    * bind to. Anything else makes every column a lane — say so with `lanesOnly`.
    */
   entity?: string;
+  /**
+   * Draw what each card has collected — see {@link TaskCardOptions.social}.
+   *
+   * Declares what that needs as well as switching it on: the pool hydrates `signals`, and the board
+   * hoists one `SignalType` subscription for every card on it rather than one per card. A board
+   * supplying its own `card` gets those two and draws the counts itself.
+   */
+  social?: boolean;
   /** Extra conditions on the pool — `{ kind: 'post' }` for a board of composed cards. */
   where?: Record<string, unknown>;
   /**
@@ -832,6 +856,7 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
         dimmed: `card.id in ${VIEW}.dimmed`,
         ...(opts.select ? { select: opts.select } : {}),
         ...(opts.people ? { peopleOf: opts.entity ?? 'TaskBlock' } : {}),
+        ...(opts.social ? { social: true } : {}),
       });
 }
 
@@ -1527,6 +1552,10 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       pool: {
         entity: opts.entity ?? 'TaskBlock',
         ...(opts.where && { where: opts.where }),
+        // Hydrated only where the cards draw them: an include nobody reads is rows of links fetched
+        // for every card on the board. `comments` needs none — a relation's own ids arrive anyway,
+        // which is what lets a reply count cost nothing.
+        ...(opts.social && { include: { signals: true } }),
         scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: ANCHOR } },
         order: { createdAt: 'asc' },
         /*
@@ -1542,6 +1571,12 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
         asked on a board without `people`, which leaves it empty and every card undimmed.
       */
       involvements: { entity: 'Involvement', ...(opts.people ? {} : { when: { $: 'false' } }) },
+      /*
+        What this community reacts with, for the counts on every card — one subscription for the
+        board. Declared here rather than by the route, so a board that draws them cannot be placed
+        without them: the reads resolve to nothing, every count reads zero, and nothing says why.
+      */
+      ...(opts.social ? { signalTypes: { entity: 'SignalType', subscribe: true } } : {}),
     },
     children: [
       addColumnModal(opts),

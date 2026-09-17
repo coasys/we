@@ -58,6 +58,7 @@ import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/sc
 // `field` and `formModal` through the template kit rather than `@we/schema-kit`: this package
 // depends on the former, which re-exports them, and on the latter not at all.
 import {
+  activitySummary,
   anchorScope,
   answerButton,
   CHANGED,
@@ -2767,6 +2768,16 @@ const canvas: SchemaNode = {
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
         // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
         hiddenTypes: { $: HIDDEN_KINDS },
+        /*
+          How many reactions and replies each card has collected, as two numbers on its footer.
+
+          The counts ride in the reads the seed already makes — one projection each, no extra round
+          trip and no subscription per card, which is what a canvas of three hundred things needs.
+          The breakdown by type and the controls are the inspector's, one press away: a card here is
+          a preview inside an arrangement, and what it owes the reader is that there is something to
+          open.
+        */
+        counts: ['signals', 'comments'],
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
@@ -3707,6 +3718,12 @@ const kanbanRoute: RouteSchema = {
                             took on in this call".
                           */
                           people: true,
+                          /*
+                            And what people have made of each card — reactions and replies, as
+                            counts. The inspector is where either is given; a card says only that
+                            there is something to open, which is what a preview owes a reader.
+                          */
+                          social: true,
                           // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
                           suggestions: true,
                           /*
@@ -4268,6 +4285,12 @@ const eventList: SchemaNode = {
                       ],
                     },
                     rsvp,
+                    /*
+                      What people have made of this event — the board card's line, on the surface
+                      that shares its records. Counts only: pressing the row opens the event in the
+                      inspector, which is where a reaction is given and the thread is read.
+                    */
+                    activitySummary({ record: 'event' }),
                     // What a pass suggests changing about an agreed event, as old → new.
                     suggestedChanges({ record: 'event', collapseAfter: 3 }),
                   ],
@@ -4418,8 +4441,12 @@ const calendarRoute: RouteSchema = {
                   scope: anchorScope(CALL),
                   order: { startDate: 'asc' },
                   limit: 200,
-                  include: { location: true },
+                  // The place, and the reactions the row's counts read. `comments` needs no include —
+                  // a relation's own ids arrive anyway, which is what makes a reply count free.
+                  include: { location: true, signals: true },
                 },
+                // What this community reacts with, for those counts — one subscription for the month.
+                signalTypes: { entity: 'SignalType', subscribe: true },
                 // Who said they are coming to what. Space-wide, for the board's reason: an answer is
                 // not a child of anything, and there are as many as people have given.
                 involvements: { entity: 'Involvement' },

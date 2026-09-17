@@ -127,7 +127,17 @@ export function activitySummary(opts: ActivitySummaryOptions): SchemaNode {
   const as = opts.as ?? 'sum';
   const given = `filter(${opts.record}.signals, { signalTypeId: ${as}.id })`;
   const replies = opts.replies !== false;
-  return {
+  /*
+    Absent, not empty, for a record nobody has touched.
+
+    The counts inside are each guarded, so an untouched record draws no glyph — but an empty `Row`
+    is still a flex child, and a parent's `gap` applies between children whether or not they have
+    any height. Every card on a quiet board would have carried one row's worth of space for nothing.
+  */
+  const anything = replies
+    ? `count(${opts.record}.signals) || count(${opts.record}.comments)`
+    : `count(${opts.record}.signals)`;
+  const row: SchemaNode = {
     type: 'Row',
     props: {
       gap: '300',
@@ -186,4 +196,5 @@ export function activitySummary(opts: ActivitySummaryOptions): SchemaNode {
         : []),
     ],
   };
+  return { type: '$if', props: { condition: { $: anything }, then: row } };
 }
