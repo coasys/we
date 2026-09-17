@@ -29,6 +29,7 @@ import {
   CANVAS_KEY,
   CARD_FILL,
   CARD_KEY,
+  HIDDEN_KINDS,
   KIND_DEFAULTS,
   kindFill,
   LENS_PARAM,
@@ -38,6 +39,7 @@ import {
   LINK_KEY,
   NO_LENS,
   PLAIN_FILL,
+  toggleKindShown,
   toggleLens,
 } from './WorkshopKey.ts';
 
@@ -1679,5 +1681,34 @@ describe('the chooser’s colours', () => {
     const kind = { value: 'ImageBlock', label: 'Image' };
     expect(run(fill, { kind, local: { typeStyles: [] } })).toBe(KIND_DEFAULTS.ImageBlock);
     expect(run(fill, { kind, local: { typeStyles: [{ nodeType: 'ImageBlock', color: '#123456' }] } })).toBe('#123456');
+  });
+});
+
+describe('putting a kind away from the canvas', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+  const next = (hide: string, kind: string) => {
+    const action = toggleKindShown('kind') as { args: [string, { $: string }] };
+    return run(action.args[1].$, { kind, routeStore: { params: { hide } } });
+  };
+
+  it('adds a kind to the address, and takes it back out, leaving nothing when none is hidden', () => {
+    expect(next('', 'ImageBlock')).toBe('ImageBlock');
+    expect(next('ImageBlock', 'TextBlock')).toBe('ImageBlock,TextBlock');
+    expect(next('ImageBlock,TextBlock', 'ImageBlock')).toBe('TextBlock');
+    expect(next('TextBlock', 'TextBlock')).toBe('');
+    expect(run(HIDDEN_KINDS, { routeStore: { params: {} } })).toEqual([]);
+  });
+
+  it('hands the hidden kinds to the canvas', () => {
+    const workshop = showcase.workshopTemplate;
+    const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+    expect(canvas).toContain(`"hiddenTypes":{"$":"${HIDDEN_KINDS}"}`);
   });
 });

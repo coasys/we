@@ -197,6 +197,19 @@ defineFunction({
       .join(separator === undefined ? ', ' : asText(separator)),
 });
 
+defineFunction({
+  name: 'split',
+  category: 'list',
+  params: ['text', 'separator?'],
+  doc: "The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.",
+  example: 'split(routeStore.params.hide).filter(k, k != kind)',
+  impl: ([text, separator]) =>
+    asText(text)
+      .split(separator === undefined ? ',' : asText(separator))
+      .map((piece) => piece.trim())
+      .filter(Boolean),
+});
+
 // ── Text ────────────────────────────────────────────────────────────────────
 
 defineFunction({

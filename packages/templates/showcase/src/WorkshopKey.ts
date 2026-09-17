@@ -75,6 +75,30 @@ export const NO_LENS = `!(${BY_KIND} || ${BY_STATE})`;
 export const LENS_QUERY = `\${routeStore.params.${LENS_PARAM} ? '&${LENS_PARAM}=' + routeStore.params.${LENS_PARAM} : ''}`;
 
 /**
+ * The kinds a reader has put away from the canvas, held in the address beside the lenses — a panel
+ * and a route cannot share a local, and what is shown is view state somebody may want to send.
+ * Comma-separated entity names; absent shows everything.
+ */
+export const HIDE_PARAM = 'hide';
+
+/** The hidden kinds, as a list. */
+export const HIDDEN_KINDS = `split(routeStore.params.${HIDE_PARAM})`;
+
+/** Put one kind away, or bring it back. Showing the last hidden kind writes nothing at all. */
+export function toggleKindShown(kind: string): SchemaProp {
+  const hidden = `(${kind} in ${HIDDEN_KINDS})`;
+  return {
+    $action: 'routeStore.setParam',
+    args: [
+      HIDE_PARAM,
+      {
+        $: `join(${hidden} ? ${HIDDEN_KINDS}.filter(k, k != ${kind}) : distinct(${HIDDEN_KINDS}, [${kind}]), ',')`,
+      },
+    ],
+  };
+}
+
+/**
  * Turn one lens on or off, leaving the other as it is.
  *
  * Writes the parameter rather than a local, for the reason above. The result that equals the default
@@ -584,14 +608,51 @@ function kindRow(kind: string): SchemaNode {
     ),
     icon: { $: kindIcon(kind) },
     label: { $: kindLabel(kind) },
-    trailing: resetButton(
-      { $: `find(local.typeStyles, { nodeType: ${kind} }).color` },
-      {
-        $action: 'recordStore.setSpaceTypeColor',
-        args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
-      },
-    ),
+    trailing: {
+      type: 'Row',
+      props: { gap: '100', ay: 'center' },
+      children: [
+        resetButton(
+          /*
+            Only for a kind with a default to go back to. A community's own type has none, so "back to
+            the default" turned its colour off — a reset that removed the thing it was resetting.
+          */
+          { $: `find(local.typeStyles, { nodeType: ${kind} }).color && ${KIND_DEFAULTS_LOOKUP}[${kind}]` },
+          {
+            $action: 'recordStore.setSpaceTypeColor',
+            args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
+          },
+        ),
+        shownToggle(kind),
+      ],
+    },
   });
+}
+
+/**
+ * Show or put away every card of a kind on the canvas — an open eye while shown, a closed one while
+ * hidden. Held in the address (see `HIDE_PARAM`), so it is this reader's view, not the space's.
+ */
+function shownToggle(kind: string): SchemaNode {
+  const hidden = `(${kind} in ${HIDDEN_KINDS})`;
+  return {
+    type: 'we-tooltip',
+    props: { content: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` } },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          variant: 'ghost',
+          square: true,
+          color: { $: `${hidden} ? 'text-faint' : 'text-muted'` },
+          label: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` },
+          onClick: toggleKindShown(kind),
+        },
+        children: [{ type: 'we-icon', props: { name: { $: `${hidden} ? 'eye-slash' : 'eye'` } } }],
+      },
+    ],
+  };
 }
 
 /**

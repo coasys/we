@@ -91,6 +91,7 @@ import {
 } from './WorkshopCards.ts';
 import {
   CANVAS_FILL,
+  HIDDEN_KINDS,
   keyPanel,
   kindFill,
   kindIcon,
@@ -2486,6 +2487,8 @@ const canvas: SchemaNode = {
         // Put away while the reader hides suggestions — the switch in the key, shared with the board
         // and the calendar through the address. Changed records are never hidden.
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
+        // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
+        hiddenTypes: { $: HIDDEN_KINDS },
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.

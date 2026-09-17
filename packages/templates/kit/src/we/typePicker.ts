@@ -182,7 +182,9 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
             },
           },
         },
-        children: [{ type: 'we-icon', slot: 'start', props: { name: 'magnifying-glass', color: 'text-muted' } }],
+        children: [
+          { type: 'we-icon', slot: 'start', props: { name: 'magnifying-glass', color: 'text-muted', mr: '200' } },
+        ],
       },
       section(composed, opts.composedHeading ?? 'Documents'),
       section(own, 'This space'),

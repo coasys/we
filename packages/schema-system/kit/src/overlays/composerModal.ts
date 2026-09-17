@@ -167,7 +167,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'Row',
                 props: { gap: '300', ay: 'center', width: '100%' },
                 children: [
-                  iconDisc({ icon: opts.icon.name, color: opts.icon.color }),
+                  iconDisc({ icon: opts.icon.name, color: opts.icon.color, size: '56px' }),
                   { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
                 ],
               }

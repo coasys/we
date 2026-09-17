@@ -36,7 +36,16 @@ interface ControlSpec {
    */
   valueProp?: string | null;
   props?: Record<string, SchemaProp>;
+  /**
+   * How much of the row the control takes. The full width for text, which fills it; its own width,
+   * at the row's start, for a control whose value is short — a number stretched across the modal and
+   * a select whose three words sat at one end of a bar both read as something that went wrong.
+   */
+  size?: Record<string, SchemaProp>;
 }
+
+/** A short value's control, at the start of its row rather than across it. */
+const COMPACT = { width: '12rem', maxWidth: '100%', alignSelf: 'start' };
 
 /** Passed only to controls that have one — a switch and a colour swatch have nothing to hint at. */
 const PLACEHOLDER = { placeholder: { $: 'field.placeholder' } };
@@ -45,9 +54,9 @@ const CONTROLS: Record<string, ControlSpec> = {
   text: { tag: 'we-input', event: 'onInput', props: PLACEHOLDER },
   url: { tag: 'we-input', event: 'onInput', props: { type: 'url', ...PLACEHOLDER } },
   textarea: { tag: 'we-textarea', event: 'onInput', props: { rows: 3, ...PLACEHOLDER } },
-  number: { tag: 'we-number-input', event: 'onChange', props: PLACEHOLDER },
+  number: { tag: 'we-number-input', event: 'onChange', props: PLACEHOLDER, size: COMPACT },
   switch: { tag: 'we-switch', event: 'onChange', valueProp: 'checked' },
-  select: { tag: 'we-select', event: 'onChange', props: { options: { $: 'field.options' } } },
+  select: { tag: 'we-select', event: 'onChange', props: { options: { $: 'field.options' } }, size: COMPACT },
   date: { tag: 'we-date-picker', event: 'onChange', props: PLACEHOLDER },
   datetime: { tag: 'we-date-picker', event: 'onChange', props: { showTime: true, ...PLACEHOLDER } },
   color: { tag: 'we-color-picker', event: 'onChange' },
@@ -75,7 +84,7 @@ function controlRow(control: string, spec: ControlSpec, setter = 'recordStore.se
             type: spec.tag,
             props: {
               ...(spec.valueProp === null ? {} : { [spec.valueProp ?? 'value']: { $: 'field.value' } }),
-              width: '100%',
+              ...(spec.size ?? { width: '100%' }),
               // One action for every control, taking the field's name — the only shape that works
               // when the fields are data and no handler can be written per field.
               [spec.event]: {
@@ -592,6 +601,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               // The disc the chooser drew this model with, so the form reads as the thing picked.
               iconDisc({
                 icon: { $: 'recordStore.recordDraft.icon' },
+                size: '56px',
                 ...(opts.iconColor && { color: { $: opts.iconColor('recordStore.recordDraft.entity') } }),
               }),
               {

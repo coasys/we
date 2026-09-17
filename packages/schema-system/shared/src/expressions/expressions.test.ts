@@ -112,6 +112,14 @@ describe('evaluation', () => {
     expect(run("count(store.byId['we://a-call'].targets)", roots)).toBe(1);
   });
 
+  it('splits a string into a list and joins it back, with no empty pieces', () => {
+    expect(run("split('ImageBlock, TextBlock')")).toEqual(['ImageBlock', 'TextBlock']);
+    expect(run("split('')")).toEqual([]);
+    expect(run("split('a|b', '|')")).toEqual(['a', 'b']);
+    expect(run("join(split('a,,b'), ',')")).toBe('a,b');
+    expect(run("'b' in split('a,b')")).toBe(true);
+  });
+
   it('is total on bad input', () => {
     expect(run('missing.deep.path')).toBeUndefined();
     expect(run('1 / 0')).toBe(0);
