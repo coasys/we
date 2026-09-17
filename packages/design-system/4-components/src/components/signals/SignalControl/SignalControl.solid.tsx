@@ -3,7 +3,35 @@ export type * from './SignalControl.types';
 import { createSignal, For, Match, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
-import type { SignalControlProps } from './SignalControl.types';
+import type { SignalAggregate, SignalControlProps, SignalTypeData } from './SignalControl.types';
+
+/** The aggregate a mode's control is asking for, where the type names none. */
+const AGGREGATE_FOR_MODE: Record<SignalTypeData['mode'], SignalAggregate> = {
+  toggle: 'count',
+  vote: 'sum',
+  rating: 'mean',
+  slider: 'mean',
+};
+
+/**
+ * How this type's signals are read as one number.
+ *
+ * The type's own choice wins, which is the point — `median` is a real answer to "what do people
+ * think of this", and it was silently drawn as a mean for as long as this component decided by mode
+ * alone. Two exceptions, both the same shape: **an aggregate that cannot express what the control is
+ * drawing is ignored.** A rating drawn as a count is a number of voters where the stars say a score,
+ * and a vote drawn as a count is three people agreeing and three disagreeing reported as six.
+ *
+ * Those two are not hypothetical. `aggregate` defaults to `count` in the manifest and no form has
+ * ever asked for it, so every type a community has made so far carries `count` whatever its mode —
+ * obeying that literally would turn every existing rating into a headcount on upgrade.
+ */
+function aggregateFor(type: SignalTypeData): SignalAggregate {
+  const fallback = AGGREGATE_FOR_MODE[type.mode] ?? 'count';
+  if (!type.aggregate) return fallback;
+  if (type.aggregate === 'count' && type.mode !== 'toggle') return fallback;
+  return type.aggregate;
+}
 
 export function SignalControl(props: SignalControlProps) {
   const [previewValue, setPreviewValue] = createSignal<number | null>(null);
@@ -30,26 +58,33 @@ export function SignalControl(props: SignalControlProps) {
   const isDisabled = () => !props.preview && (props.disabled ?? false);
 
   /**
-   * Aggregate computed from the signals array according to SignalType.aggregate.
-   * - toggle: count of signals with value !== 0
-   * - vote:   net score (sum of all values, +1s and -1s cancel)
-   * - rating/slider: mean value (sum / count)
-   * Falls back to 0 if no signals.
+   * The signals read as one number, by whichever aggregate {@link aggregateFor} settles on.
+   *
+   * - `count`: how many people reacted — a zero is a withdrawn signal, not a reaction.
+   * - `sum`:   the net score, where +1s and -1s cancel.
+   * - `mean` / `median`: the middle of what was given, to one decimal place.
+   *
+   * 0 with nothing to read, which is what an untouched control shows.
    */
   const aggregate = () => {
     if (props.preview) return previewValue() ?? 0;
     const sigs = props.signals ?? [];
     if (sigs.length === 0) return 0;
-    const mode = props.signalType.mode;
-    if (mode === 'toggle') {
-      return sigs.filter((s) => s.value !== 0).length;
+    const values = sigs.map((s) => s.value);
+    const round = (n: number) => Math.round(n * 10) / 10;
+    switch (aggregateFor(props.signalType)) {
+      case 'count':
+        return values.filter((v) => v !== 0).length;
+      case 'sum':
+        return values.reduce((acc, v) => acc + v, 0);
+      case 'median': {
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return round(sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
+      }
+      default:
+        return round(values.reduce((acc, v) => acc + v, 0) / values.length);
     }
-    if (mode === 'vote') {
-      return sigs.reduce((acc, s) => acc + s.value, 0);
-    }
-    // rating / slider: mean rounded to 1 decimal place
-    const sum = sigs.reduce((acc, s) => acc + s.value, 0);
-    return Math.round((sum / sigs.length) * 10) / 10;
   };
 
   return (

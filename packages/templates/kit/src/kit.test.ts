@@ -5,6 +5,7 @@ import { buildValidationContext, type SchemaNode, validateSemantic } from '@we/s
 import { describe, expect, it } from 'vitest';
 
 import {
+  activitySummary,
   adminSection,
   agentByline,
   attributeRow,
@@ -29,6 +30,7 @@ import {
   recordCard,
   recordFormModal,
   sectionCard,
+  signalsSection,
   statChip,
   taskBoard,
 } from './index.ts';
@@ -199,6 +201,9 @@ const weDomain: Record<string, SchemaNode> = {
     people: true,
   }),
   'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
+  signalsSection: signalsSection({ record: 'row' }),
+  activitySummary: activitySummary({ record: 'card' }),
+  'activitySummary (no replies)': activitySummary({ record: 'card', replies: false }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
   marketplaceList: marketplaceList({
     entity: 'Template',
@@ -236,6 +241,9 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => void): v
  */
 const withAmbientScope = (node: SchemaNode): SchemaNode => ({
   type: 'Column',
+  // The signal fragments' half of that contract: one hoisted subscription, declared by whatever
+  // renders the list rather than by the fragment, so a panel of thirty cards opens one and not thirty.
+  $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
   $localState: {
     displayMode: { type: 'string', initial: 'expanded' },
     formOpen: { type: 'boolean', initial: false },
@@ -255,6 +263,9 @@ describe('every expansion is a valid schema fragment', () => {
     'composerModal',
     'composerModal (unguarded)',
     'peopleFilter',
+    'signalsSection',
+    'activitySummary',
+    'activitySummary (no replies)',
   ]);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
@@ -308,6 +319,40 @@ describe('contracts call sites depend on', () => {
     expect(eventOf(portable.field, 'we-input')).toHaveProperty('onInput');
     expect(eventOf(portable['field (select)'], 'we-select')).toHaveProperty('onChange');
     expect(eventOf(portable['field (textarea)'], 'we-textarea')).toHaveProperty('onInput');
+  });
+
+  it('signalsSection offers every type, so the first reaction in a space can be given', () => {
+    // The bug this fragment exists for: a feed row draws a control only where somebody has already
+    // reacted, so a type a community just defined is unreachable from every surface at once. A
+    // detail panel has the room, and must not inherit that rule — no count guard between the
+    // `$each` over the offered types and the control it draws.
+    const conditions: string[] = [];
+    walk(weDomain.signalsSection, (n) => {
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (condition) conditions.push(condition);
+    });
+    expect(conditions).toContain('count(filter(local.signalTypes, { retired: { not: true } }))');
+    expect(conditions.filter((c) => c.includes('row.signals'))).toEqual([]);
+  });
+
+  it('activitySummary says nothing about a record nobody has touched', () => {
+    // A column of zeroes down a board asserts nothing and costs a line on every card, so every
+    // count it draws sits behind a guard on that same count.
+    const conditions: string[] = [];
+    walk(weDomain.activitySummary, (n) => {
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (condition) conditions.push(condition);
+    });
+    expect(conditions).toContain('count(card.comments)');
+    expect(conditions.some((c) => c.startsWith('count(filter(card.signals'))).toBe(true);
+  });
+
+  it('activitySummary leaves the reply count out where the thread is on screen anyway', () => {
+    let mentionsComments = false;
+    walk(weDomain['activitySummary (no replies)'], (n) => {
+      if (JSON.stringify(n.props ?? {}).includes('comments')) mentionsComments = true;
+    });
+    expect(mentionsComments).toBe(false);
   });
 
   it('confirmModal clears its flag from every exit: close, cancel, and success', () => {

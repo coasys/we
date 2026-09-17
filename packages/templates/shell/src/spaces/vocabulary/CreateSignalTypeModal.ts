@@ -23,7 +23,6 @@ export const createSignalTypeModal = formModal({
     icon: { type: 'string', initial: '❤️' },
     iconSecondary: { type: 'string', initial: '' },
     mode: { type: 'string', initial: 'toggle' },
-    aggregate: { type: 'string', initial: 'count' },
     rangeMin: { type: 'number', initial: 0 },
     rangeMax: { type: 'number', initial: 1 },
     step: { type: 'number', initial: 1 },
@@ -173,8 +172,8 @@ export const createSignalTypeModal = formModal({
   ],
   // The slug derives from the name when left blank, so a name is the whole precondition.
   disabled: { $: '!local.name' },
-  // The typed fields only. `mode`, `aggregate` and the range have defaults and pickers, so they
-  // are set from the first frame and would make the guard fire on an untouched form.
+  // The typed fields only. `mode` and the range have defaults and pickers, so they are set from the
+  // first frame and would make the guard fire on an untouched form.
   discardWhen: { $: 'local.name || local.slug || local.description' },
   submitLabel: 'Create',
   submit: {
@@ -186,8 +185,14 @@ export const createSignalTypeModal = formModal({
         description: { $: 'local.description' },
         icon: { $: 'local.icon' },
         iconSecondary: { $: 'local.iconSecondary' },
+        /*
+          No `aggregate`. The form never asked for one — it carried a hidden local pinned at `count`
+          and posted it with every type, so a rating's own record said it should be read as a
+          headcount. The store derives it from the mode instead, which is the only answer this form
+          has the information to give; a community that wants a median has a field nobody has built a
+          picker for yet, and an unauthored value is worse than an absent one.
+        */
         mode: { $: 'local.mode' },
-        aggregate: { $: 'local.aggregate' },
         rangeMin: { $: 'local.rangeMin' },
         rangeMax: { $: 'local.rangeMax' },
         step: { $: 'local.step' },

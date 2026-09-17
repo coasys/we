@@ -2382,6 +2382,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * How a mode's signals are read as one number, where the caller names nothing.
+   *
+   * The manifest's default is `count`, which is right for exactly one of the four modes and silently
+   * wrong for the rest: a rating aggregated by count is a number of voters where the stars say a
+   * score, and a vote by count is three for and three against reported as six. Nothing has ever
+   * asked a person for this field, so every type made so far carries that default — which is why
+   * `SignalControl` ignores an aggregate its mode cannot express, and why a type made from here now
+   * carries one that matches what its control actually draws.
+   */
+  const AGGREGATE_FOR_MODE: Record<string, SignalType['aggregate']> = {
+    toggle: 'count',
+    vote: 'sum',
+    rating: 'mean',
+    slider: 'mean',
+  };
+
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
@@ -2392,7 +2409,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     };
     const slugFromName = config.name ? deriveSlug(config.name) : '';
     const effectiveSlug = config.slug ? config.slug : slugFromName;
-    const withSlug = { ...config, slug: effectiveSlug };
+    const withSlug = {
+      ...config,
+      slug: effectiveSlug,
+      ...(config.aggregate || !config.mode ? {} : { aggregate: AGGREGATE_FOR_MODE[config.mode] }),
+    };
     const normalised =
       withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
     await SignalType.create(p, normalised);
@@ -2466,7 +2487,26 @@ export function SpaceStoreProvider(props: ParentProps) {
       where: { signalTypeId, author: myDid },
     });
 
-    if (existing) await existing.delete();
+    /*
+      Changing a reaction edits the record; withdrawing one removes it.
+
+      It used to delete and re-create in every case, which is two writes where one will do and is
+      visible while they land: a rating dragged from 3 to 4 passed through "nobody has rated this"
+      for a round trip, so the mean under it dipped and came back. It also minted a new record id and
+      a new `createdAt` for what is the same person's same reaction, differently weighted.
+
+      Zero is still a delete rather than a stored 0, which is what makes a withdrawn reaction absent
+      everywhere rather than a row every count has to remember to exclude.
+    */
+    if (existing) {
+      if (value === 0) {
+        await existing.delete();
+        return;
+      }
+      existing.value = value;
+      await existing.save();
+      return;
+    }
     if (value === 0) return;
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
