@@ -1622,3 +1622,179 @@ describe('restarting the same graph keeps the arrangement', () => {
     expect(engine.isPinned('seed-0')).toBe(false);
   });
 });
+
+/**
+ * Folding, at the engine level.
+ *
+ * The unit tests in `fold.test.ts` decide *what* a fold hides; these decide what the scene does about
+ * it — that hidden means unplaced, unrouted and unhittable all at once, that unfolding puts a card
+ * back where it was rather than wherever a layout would now put it, and that a live canvas cannot
+ * leak a fold's contents back onto the screen the next time its data changes.
+ */
+describe('GraphEngine folding', () => {
+  /** `chain` → `branch` → `leaf`, plus a `loose` card connected to nothing. */
+  function chainSeed(): SeedSource {
+    const ids = ['chain', 'branch', 'leaf', 'loose'];
+    return {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: ids.map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+          edges: [
+            { id: 'chain->branch', source: 'chain', target: 'branch', type: 'rel' },
+            { id: 'branch->leaf', source: 'branch', target: 'leaf', type: 'rel' },
+          ],
+        };
+      },
+    };
+  }
+
+  async function folded() {
+    const registry = new PluginRegistry({ seeds: [chainSeed()], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    return engine;
+  }
+
+  it('takes the position off everything under the fold, and leaves the card itself placed', async () => {
+    const engine = await folded();
+
+    // Instantly: an animated fold is tested below, and every other case here is about the state it
+    // settles in rather than the travel.
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.getPositions().has('chain')).toBe(true);
+    expect(engine.getPositions().has('branch')).toBe(false);
+    expect(engine.getPositions().has('leaf')).toBe(false);
+    expect(engine.getPositions().has('loose')).toBe(true);
+  });
+
+  it('leaves the cards in the store, so nothing has to be re-queried to unfold', async () => {
+    const engine = await folded();
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.store.hasNode('branch')).toBe(true);
+  });
+
+  it('drops the lines that reached what it hid', async () => {
+    const engine = await folded();
+    expect(engine.getEdgeGeometry().has('chain->branch')).toBe(true);
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.getEdgeGeometry().has('chain->branch')).toBe(false);
+    expect(engine.getEdgeGeometry().has('branch->leaf')).toBe(false);
+  });
+
+  it('stops a hidden card being picked', async () => {
+    const engine = await folded();
+    const at = engine.getPositions().get('branch')!;
+    expect(engine.index.hitTest({ x: at.x, y: at.y })).toContain('branch');
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.index.hitTest({ x: at.x, y: at.y })).not.toContain('branch');
+  });
+
+  it('clears a selection nobody can see any more', async () => {
+    const engine = await folded();
+    engine.select(['branch']);
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.getSelection()).not.toContain('branch');
+  });
+
+  it('puts a card back exactly where it was', async () => {
+    const engine = await folded();
+    const before = engine.getPositions().get('branch')!;
+
+    engine.setFolded(['chain'], 0);
+    engine.setFolded([], 0);
+
+    expect(engine.getPositions().get('branch')).toEqual(before);
+    expect(engine.getEdgeGeometry().has('chain->branch')).toBe(true);
+  });
+
+  it('holds the fold across a refresh', async () => {
+    const engine = await folded();
+    engine.setFolded(['chain'], 0);
+
+    // The case a live canvas makes constantly: new data arrives and the graph is re-read.
+    await engine.refresh();
+
+    expect(engine.getPositions().has('branch')).toBe(false);
+    expect(engine.foldedCount('chain')).toBe(2);
+  });
+
+  it('counts what it is holding', async () => {
+    const engine = await folded();
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.foldedCount('chain')).toBe(2);
+    expect(engine.isFolded('chain')).toBe(true);
+    expect(engine.foldedCount('loose')).toBe(0);
+  });
+
+  it('offers a fold where one would do something, and not on a leaf', async () => {
+    const engine = await folded();
+
+    expect(engine.canFold('chain')).toBe(true);
+    expect(engine.canFold('leaf')).toBe(false);
+    expect(engine.canFold('loose')).toBe(false);
+  });
+
+  it('keeps offering it on the folded card, which is what unfolds it', async () => {
+    const engine = await folded();
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.canFold('chain')).toBe(true);
+  });
+
+  it('carries what it is holding when the fold is dragged', async () => {
+    const engine = await folded();
+    const branch = engine.getPositions().get('branch')!;
+    engine.setFolded(['chain'], 0);
+
+    const carried = engine.foldedUnder('chain', 50, -20);
+
+    expect(carried).toHaveLength(2);
+    expect(carried.find((row) => row.id === 'branch')).toEqual({
+      id: 'branch',
+      x: branch.x + 50,
+      y: branch.y - 20,
+    });
+    // A second drag is measured from where the first one left it, not from where the card started.
+    expect(engine.foldedUnder('chain', 50, 0).find((row) => row.id === 'branch')?.x).toBe(branch.x + 100);
+  });
+
+  it('travels, and is gone once it arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = await folded();
+      const chain = engine.getPositions().get('chain')!;
+
+      engine.setFolded(['chain'], 200);
+
+      // Still drawn, at full size, exactly where it was: the first frame of a fold has to leave
+      // everything alone, or the card jumps before it travels.
+      expect(engine.getPositions().has('branch')).toBe(true);
+      expect(engine.foldScale('branch')).toBe(1);
+
+      vi.advanceTimersByTime(100);
+      expect(engine.foldScale('branch')).toBeLessThan(1);
+      const midway = engine.getPositions().get('branch')!;
+      // Travelling towards the card that swallowed it.
+      expect(Math.abs(midway.x - chain.x)).toBeLessThan(Math.abs(engine.getPositions().get('loose')!.x - chain.x));
+
+      vi.advanceTimersByTime(200);
+      expect(engine.getPositions().has('branch')).toBe(false);
+      expect(engine.foldScale('branch')).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

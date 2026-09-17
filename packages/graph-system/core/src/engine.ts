@@ -29,6 +29,7 @@ import { addressKind } from '@we/graph-protocol';
 
 import { connectionTarget } from './connect';
 import { ExpansionState, SEED_OPENER } from './expansion';
+import { FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult } from './fold';
 import type { EdgeClearance } from './geometry';
 import {
   anchorsOf,
@@ -56,6 +57,19 @@ import { boundsOf, Viewport } from './viewport';
  * accidentally claim a line that stands for nothing yet.
  */
 const PENDING_EDGE_ID = '__pending__';
+
+/**
+ * How long a fold takes, and the tick it advances on.
+ *
+ * Short enough to read as one movement rather than as a wait — a fold is punctuation between two
+ * things somebody is doing, not an event — and long enough for the eye to follow where the cards
+ * went, which is the whole reason they travel instead of blinking out. The tick matches the layout's.
+ */
+const FOLD_MS = 200;
+const FOLD_TICK = 16;
+
+/** Nothing folded: the shape {@link GraphEngine.setFolded} starts from and returns to. */
+const NO_FOLD: FoldResult = { hidden: new Set(), counts: new Map(), owners: new Map(), bundles: [] };
 
 export interface EngineOptions {
   spec: GraphSpec;
@@ -252,6 +266,31 @@ export class GraphEngine {
   private edgeBoxes = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
   /** The connect gesture in progress — see {@link getPendingConnection}. */
   private pendingConnection: { from: string; to: Point } | null = null;
+  /** Cards the reader has folded, by node id — see {@link setFolded}. */
+  private foldedIds = new Set<string>();
+  /** What that fold works out to: what is hidden, how much under each, and the lines standing in. */
+  private fold: FoldResult = NO_FOLD;
+  /**
+   * Which cards are worth offering a fold on, worked out on demand and kept until the graph moves.
+   *
+   * Lazily, because the answer is exact — folding a card whose only child a second parent is holding
+   * would take nothing away, and a control that promises to fold and then does nothing is worse than
+   * no control — and exact means a recomputation per candidate. Nobody pays for it unless something
+   * is selected, since the fold control is drawn on the selection.
+   */
+  private foldableIds?: Set<string>;
+  /**
+   * Where a hidden card was standing when it went.
+   *
+   * Kept because a fold is a thing you tidy *with*: fold a cluster, move it into a corner, unfold it
+   * there. Without the last known position there is nothing to offset, and unfolding after a drag
+   * scatters the contents back to where they were before — see {@link foldedUnder}.
+   */
+  private foldedAt = new Map<string, Point>();
+  /** Cards travelling between the two states, and how far along each is. See {@link stepFold}. */
+  private foldAnim = new Map<string, { from: Point; to: Point; started: number; at: number; out: boolean }>();
+  private foldTimer?: ReturnType<typeof setTimeout>;
+  private foldDuration = FOLD_MS;
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -450,6 +489,16 @@ export class GraphEngine {
       // A different graph cannot inherit holds on nodes it does not contain.
       this.pinnedIds.clear();
       this.selected.clear();
+      /*
+        A fold in mid-travel is abandoned, and the fold *set* is not.
+
+        The animation belongs to the graph that is going away — carrying it over would tween a card
+        towards a fold that is no longer on screen. The set belongs to the reader, who has not
+        changed their mind; on a canvas it lives in the address, so it outlives the graph by
+        construction and is simply re-derived against whatever arrives.
+      */
+      this.foldAnim.clear();
+      this.foldedAt.clear();
       this.status = { ...this.status, budgetReached: false };
       this.layoutWarnings = [];
 
@@ -680,6 +729,7 @@ export class GraphEngine {
     this.disposed = true;
     if (this.layoutTimer) clearTimeout(this.layoutTimer);
     if (this.watchTimer) clearTimeout(this.watchTimer);
+    if (this.foldTimer) clearTimeout(this.foldTimer);
     // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
     // from a backend subscription, which is the shape of leak that only shows up as a slow app.
     for (const stop of this.watchers.values()) stop();
@@ -803,6 +853,232 @@ export class GraphEngine {
     else void this.expand(id, direction);
   }
 
+  // ─── Folding ─────────────────────────────────────────────────────────────────
+
+  /**
+   * The cards the reader has folded — everything under them goes away.
+   *
+   * The scene-layer sibling of {@link collapse}, and deliberately not the same thing. Collapsing is
+   * about *resolution*: an explorer drops what it fetched, and the nodes are gone from the store.
+   * Folding is about *reading*: everything stays loaded and the reader is hiding part of it, so
+   * nothing is re-queried, nothing is re-laid-out, and unfolding puts every card back exactly where
+   * it was rather than wherever a layout would now put it. Which is also why this is a setter over a
+   * whole set rather than a fold/unfold pair: the set is view state somebody else owns — on WE's
+   * canvas it rides in the address — and an engine that kept its own copy would be a second answer to
+   * the same question, out of step the moment a link was pasted.
+   *
+   * Hidden is spelled *no position*, which the three things downstream of a position already read as
+   * absent: {@link reindex} gives it no hit area, {@link routeEdges} drops the lines that reached it,
+   * and the renderer draws only what is placed. One fact, three consequences, no flag to keep in step.
+   *
+   * `durationMs` is the travel — cards slide into the fold rather than blinking out, so it is legible
+   * where they went. Zero is instant, which is what a caller passes under `prefers-reduced-motion`;
+   * the engine cannot ask the browser that question and should not try.
+   */
+  setFolded(ids: readonly string[], durationMs = FOLD_MS): void {
+    const next = new Set(ids.filter((id) => typeof id === 'string' && id));
+    const same = next.size === this.foldedIds.size && [...next].every((id) => this.foldedIds.has(id));
+    if (same) return;
+
+    /*
+      Where everything was standing before the fold set changed — the start of every card's travel,
+      and the only moment it is knowable. A card about to be hidden loses its position in the
+      relayout below, and by then "where did it come from" is gone.
+    */
+    const before = new Map(this.positions);
+    const wasHidden = this.fold.hidden;
+    const wasOwners = this.fold.owners;
+
+    this.foldedIds = next;
+    this.foldDuration = Math.max(0, durationMs);
+    this.recomputeFold();
+
+    // A selection nobody can see is a ring on a card that is not on screen — and an inspector
+    // beside the canvas reading from it would be describing something invisible.
+    for (const id of this.fold.hidden) this.selected.delete(id);
+
+    if (this.foldDuration > 0) {
+      const now = Date.now();
+      for (const id of this.fold.hidden) {
+        if (wasHidden.has(id) || this.foldAnim.has(id)) continue;
+        const from = before.get(id);
+        const to = before.get(this.fold.owners.get(id) ?? '');
+        if (!from || !to) continue;
+        this.foldAnim.set(id, { from, to, started: now, at: 0, out: true });
+      }
+      /*
+        The way back in: a card returns *from* the fold it was in rather than fading up where it
+        belongs, so unfolding reads as the same movement run backwards. Its destination is whatever
+        the relayout below hands back, which for a canvas is the position on its placement — the
+        card's real home, not somewhere a layout invented for it.
+      */
+      for (const id of wasHidden) {
+        if (this.fold.hidden.has(id)) continue;
+        const from = before.get(wasOwners.get(id) ?? '');
+        if (from) this.foldAnim.set(id, { from, to: from, started: now, at: 0, out: false });
+      }
+    } else {
+      this.foldAnim.clear();
+    }
+
+    /*
+      Re-laid-out rather than patched, because unfolding has to put cards back and only the layout
+      knows where they go. For the canvas this is exact and cheap: `manual` reads each card's stored
+      coordinates, so it answers with the arrangement somebody made, unchanged.
+    */
+    this.relayout();
+
+    // The arriving cards' real destinations, now that the layout has answered. Registered above with
+    // a placeholder so a single pass over `wasHidden` could do both halves.
+    for (const [id, anim] of this.foldAnim) {
+      if (anim.out) continue;
+      const home = this.positions.get(id);
+      if (home) anim.to = { x: home.x, y: home.y };
+      else this.foldAnim.delete(id);
+    }
+
+    for (const id of this.fold.hidden) {
+      const at = before.get(id);
+      if (at) this.foldedAt.set(id, { x: at.x, y: at.y });
+    }
+
+    if (this.foldAnim.size) this.stepFold();
+    else this.notify('graph');
+  }
+
+  /** The cards the reader has folded, as given. */
+  foldedNodes(): string[] {
+    return [...this.foldedIds];
+  }
+
+  isFolded(id: string): boolean {
+    return this.foldedIds.has(id);
+  }
+
+  /** How many cards went away under this fold — the count a folded card wears. */
+  foldedCount(id: string): number {
+    return this.fold.counts.get(id) ?? 0;
+  }
+
+  /** How many connections the fold is standing in for, so it can say so as well as count cards. */
+  foldedLinks(id: string): number {
+    let weight = 0;
+    for (const bundle of this.fold.bundles) {
+      if (bundle.source === id || bundle.target === id) weight += bundle.weight ?? 1;
+    }
+    return weight;
+  }
+
+  /** Whether folding this card would take anything away — see {@link foldableIds}. */
+  canFold(id: string): boolean {
+    if (this.foldedIds.has(id)) return true;
+    this.foldableIds ??= foldableIn(this.foldedIds, this.store);
+    return this.foldableIds.has(id);
+  }
+
+  /** The lines standing in for connections that crossed a fold's boundary. */
+  foldBundles(): readonly GraphEdge[] {
+    return this.fold.bundles;
+  }
+
+  /**
+   * How much of a card is left, while it travels — 1 at full size, 0 folded away.
+   *
+   * Read by the renderer to scale and fade the card, and by {@link clearanceFor} so the line to it
+   * keeps meeting its edge as it shrinks. Without the second one the line stops where the card used
+   * to be and the last frames read as a card detaching from its own connection.
+   */
+  foldScale(id: string): number {
+    const anim = this.foldAnim.get(id);
+    if (!anim) return 1;
+    return anim.out ? 1 - anim.at : anim.at;
+  }
+
+  /**
+   * What is hidden under a fold and where it was standing, so a drag can carry it.
+   *
+   * Offsets rather than positions, because the caller is writing to a data layer and has to say
+   * *where* each card now is: a fold dragged across the canvas and then unfolded must find its
+   * contents around it, not back where they were. Cards with no remembered position are left out —
+   * nothing useful can be said about where they should land.
+   */
+  foldedUnder(id: string, dx: number, dy: number): { id: string; x: number; y: number }[] {
+    const carried: { id: string; x: number; y: number }[] = [];
+    for (const [nodeId, owner] of this.fold.owners) {
+      if (owner !== id) continue;
+      const at = this.foldedAt.get(nodeId);
+      if (!at) continue;
+      const moved = { x: at.x + dx, y: at.y + dy };
+      // Remembered as moved, so a second drag is measured from where the first one left it.
+      this.foldedAt.set(nodeId, moved);
+      carried.push({ id: nodeId, ...moved });
+    }
+    return carried;
+  }
+
+  /**
+   * Work the fold out again, and forget what was derived from the last one.
+   *
+   * Called wherever the *graph* changes as well as when the fold set does — a refresh that brings a
+   * card back would otherwise show it despite its parent being folded, since nothing about the fold
+   * is stored on a node.
+   */
+  private recomputeFold(): void {
+    this.fold = this.foldedIds.size ? foldGraph(this.foldedIds, this.store) : NO_FOLD;
+    this.foldableIds = undefined;
+    for (const id of this.foldedAt.keys()) if (!this.fold.hidden.has(id)) this.foldedAt.delete(id);
+  }
+
+  /**
+   * One frame of the travel: move what is moving, and drop what has arrived.
+   *
+   * Eased out rather than linear — a card leaves briskly and settles — and driven by a timer rather
+   * than by the layout's tick, because a canvas's layout does not tick at all: `manual` computes once
+   * and reports nothing running, so there would be no frames to ride on.
+   */
+  private stepFold(): void {
+    if (this.foldTimer) {
+      clearTimeout(this.foldTimer);
+      this.foldTimer = undefined;
+    }
+    const now = Date.now();
+    let running = false;
+
+    for (const [id, anim] of this.foldAnim) {
+      const elapsed = now - anim.started;
+      const t = this.foldDuration > 0 ? Math.min(1, elapsed / this.foldDuration) : 1;
+      // Cubic ease-out: most of the distance early, so the eye catches the direction of travel.
+      const eased = 1 - (1 - t) ** 3;
+      anim.at = eased;
+      /*
+        One interpolation for both directions. A fold travels from where the card stood to the card
+        that swallowed it, and an unfold travels from that card to where this one belongs — the same
+        line, walked the other way, which is what makes the two read as one movement and its reverse.
+        Only the size differs, and that is {@link foldScale}'s business rather than this one's.
+      */
+      const x = anim.from.x + (anim.to.x - anim.from.x) * eased;
+      const y = anim.from.y + (anim.to.y - anim.from.y) * eased;
+      if (t >= 1) {
+        this.foldAnim.delete(id);
+        // Gone for good: no position is what makes it undrawn, unroutable and unhittable. A card that
+        // has arrived keeps whatever else its placement said — pinned, most of all.
+        if (anim.out) this.positions.delete(id);
+        else this.positions.set(id, { ...this.positions.get(id), x: anim.to.x, y: anim.to.y });
+        continue;
+      }
+      running = true;
+      this.positions.set(id, { ...this.positions.get(id), x, y });
+    }
+
+    this.reindex();
+    this.routeEdges();
+    this.notify('positions');
+    if (running) this.foldTimer = setTimeout(() => this.stepFold(), FOLD_TICK);
+    // The last frame changed what the graph *holds*, not only where it is — a fold that has finished
+    // has cards and lines that are no longer there, which is a different kind of news.
+    else this.notify('graph');
+  }
+
   /**
    * Open what the depth and the auto rules ask for.
    *
@@ -907,6 +1183,17 @@ export class GraphEngine {
       this.layoutKey = key;
     }
 
+    /*
+      The fold, worked out again before anything is placed.
+
+      Every path that changes the graph ends here — a seed load, a refresh arriving from a
+      subscription, an expansion — and nothing about a fold is stored on a node, so this is the one
+      choke point where a card that has just arrived under a folded parent can be caught. Without it
+      a live canvas leaks its contents back onto the screen a few seconds after being folded, which
+      reads as the fold not having worked.
+    */
+    this.recomputeFold();
+
     const { width, height } = this.viewport.get();
     const result = this.layout.init({
       nodes: [...this.store.nodes()],
@@ -989,6 +1276,16 @@ export class GraphEngine {
       const at = positions.get(id);
       if (at && !at.fixed) positions.set(id, { ...at, fixed: true });
     }
+    /*
+      Folded-away cards lose the position the layout just gave them — see {@link setFolded}.
+
+      Here rather than by asking the layout for less, because a layout is handed the whole graph on
+      purpose: `manual` has to know what is on the canvas to park a new card clear of it, and a card
+      that is merely hidden still occupies the space it will come back to. One left in mid-travel
+      keeps the position {@link stepFold} is writing, or a fold would snap the moment anything else
+      moved.
+    */
+    for (const id of this.fold.hidden) if (!this.foldAnim.has(id)) positions.delete(id);
     this.positions = positions;
     this.reindex();
     this.routeEdges();
@@ -1014,7 +1311,11 @@ export class GraphEngine {
     this.index.rebuild(
       [...this.store.nodes()].flatMap((node) => {
         const position = this.positions.get(node.id);
-        return position ? [{ id: node.id, x: position.x, y: position.y, ...this.hitArea(node) }] : [];
+        // A card in mid-fold is drawn and not picked. It is moving, it is on its way out or in, and a
+        // press landing on it would grab a card that is not going to be there — or, worse, drag one
+        // out of a fold it is halfway into.
+        if (!position || this.foldAnim.has(node.id)) return [];
+        return [{ id: node.id, x: position.x, y: position.y, ...this.hitArea(node) }];
       }),
     );
   }
@@ -1153,10 +1454,23 @@ export class GraphEngine {
   private clearanceFor(node: GraphNode | undefined, gap = 6): number | EdgeClearance {
     if (!node) return 14 + gap;
     const area = this.hitArea(node);
-    if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius + gap;
+    /*
+      Shrunk with a card that is folding away, so the line keeps meeting its edge all the way in.
+
+      Held at full size the line stops where the card *used* to reach and the last frames read as a
+      connection detaching from the thing it connects — the one part of the movement that would look
+      broken rather than quick.
+    */
+    const scale = this.foldScale(node.id);
+    if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius * scale + gap;
     // The standoff travels with the box rather than inside it: a shape cannot be inflated by adding
     // to its half-extents, since that moves its sides and its corners by different amounts.
-    return { halfWidth: area.halfWidth, halfHeight: area.halfHeight, shape: area.shape, gap };
+    return {
+      halfWidth: area.halfWidth * scale,
+      halfHeight: area.halfHeight * scale,
+      shape: area.shape,
+      gap,
+    };
   }
 
   /**
@@ -1169,7 +1483,14 @@ export class GraphEngine {
     this.edgeGeometry = new Map();
     this.edgeBoxes = new Map();
 
-    for (const group of groupByEndpoints([...this.store.edges()]).values()) {
+    /*
+      The real lines, plus the ones standing in for what a fold hid.
+
+      Routed together so a bundle fans apart from a real line between the same pair exactly as two
+      real lines do, and stops short of a card the same way. Grouped with them rather than drawn on
+      top, because a summary line that overlapped a claim would be indistinguishable from it.
+    */
+    for (const group of groupByEndpoints([...this.store.edges(), ...this.fold.bundles]).values()) {
       const offsets = bowOffsets(group.length);
       group.forEach((edge, index) => {
         const patch = this.edgeOverlay.get(edge.id);
@@ -1239,7 +1560,15 @@ export class GraphEngine {
           waypointsOf({ ...edge.data, ...patch }).map((point) => waypointToWorld(point, from, to)),
         );
         this.edgeGeometry.set(edge.id, geometry);
-        this.edgeBoxes.set(edge.id, edgeBounds(geometry));
+        /*
+          A bundle is drawn and not picked.
+
+          It stands for several connections at once, so there is nothing for a click to open: picking
+          one would have to answer "which claim is this?" with one of them, which is a lie an
+          interface would then act on. No bounds means no hit, and the cards at either end are still
+          there to be clicked.
+        */
+        if (edge.type !== FOLD_BUNDLE) this.edgeBoxes.set(edge.id, edgeBounds(geometry));
       });
     }
   }
