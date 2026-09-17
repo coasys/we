@@ -116,7 +116,7 @@ export interface PropertySchema {
    * Presentation, not storage — `format` is the storage counterpart and stays about where bytes
    * live. Absent means "whatever the type implies", which is right for most properties.
    */
-  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url';
+  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url' | 'icon';
 }
 
 /**
@@ -412,7 +412,7 @@ const propertySchema = z.object({
   interpretationHint: z.string().optional(),
   identity: z.boolean().optional(),
   options: z.array(z.union([z.string(), z.number()])).optional(),
-  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url']).optional(),
+  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url', 'icon']).optional(),
 });
 const relationSchema = z.object({
   target: z.string(),

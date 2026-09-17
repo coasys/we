@@ -9,8 +9,10 @@ export const LocationBlock: CoreEntityDef = {
     flag: { predicate: 'we://flag', value: 'we://location_block' },
     interpretationHint:
       'A place something happens — a city, a venue, an address, as it was said. Create one only to attach it to something else that needs a where; a place nobody is meeting at is not worth recording. Give the name as spoken and leave the coordinates alone: they are filled in later by geocoding, and a guessed one puts a pin in the wrong country.',
-    // `city`/`country`/`countryCode` are filled in by reverse geocoding, not typed.
-    authoring: { fields: ['name', 'latitude', 'longitude', 'address'] },
+    // The pin fills the coordinates, and reverse geocoding the address, city and country — all of
+    // which stay editable, since a geocoder's answer for a field or a hillside is often not the name
+    // anybody uses.
+    authoring: { fields: ['name', 'latitude', 'longitude', 'address', 'city', 'country', 'countryCode'] },
     properties: {
       /**
        * What the place is called, and what makes two mentions of it the same place.

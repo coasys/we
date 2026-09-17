@@ -10,7 +10,7 @@ export interface IconDiscOptions {
    * ground takes `surface-raised`, a modal's header on `surface` takes `surface-sunken`.
    */
   bg?: string;
-  /** Diameter. Defaults to 36px — large enough to read a coloured glyph at, small beside a heading. */
+  /** Diameter. Defaults to 48px: room around a glyph at its ordinary size, so it reads as a mark. */
   size?: string;
 }
 
@@ -21,7 +21,7 @@ export interface IconDiscOptions {
  * seeing the same disc on both sides of the click is what says "this is the thing you picked".
  */
 export function iconDisc(opts: IconDiscOptions): SchemaNode {
-  const size = opts.size ?? '36px';
+  const size = opts.size ?? '48px';
   return {
     type: 'Column',
     props: {

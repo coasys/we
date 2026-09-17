@@ -749,6 +749,8 @@ export function RecordStoreProvider(props: ParentProps) {
       setRecordDraft(
         emptyRecordDraft({
           entity,
+          // The model's name as a person reads it — "Location", not `LocationBlock`.
+          label: found.label,
           schema: found.schema,
           authorable: found.authorable,
           icon: found.icon,

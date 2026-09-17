@@ -20,7 +20,18 @@ import type { EntityManifest, EntitySchema, PropertySchema } from '@we/backend-s
 
 /** Which control a field is edited with. Resolved once, here, so no consumer re-derives it. */
 export type RecordControl =
-  'text' | 'textarea' | 'url' | 'number' | 'switch' | 'select' | 'date' | 'datetime' | 'color' | 'file' | 'relation';
+  | 'text'
+  | 'textarea'
+  | 'url'
+  | 'number'
+  | 'switch'
+  | 'select'
+  | 'date'
+  | 'datetime'
+  | 'color'
+  | 'icon'
+  | 'file'
+  | 'relation';
 
 /**
  * A chosen file, as the file-storage language takes it — what a `format: 'file'` property is written
@@ -155,17 +166,23 @@ export function controlFor(property: PropertySchema): RecordControl {
   if (property.control === 'date') return 'date';
   if (property.control === 'datetime') return 'datetime';
   if (property.control === 'color') return 'color';
+  if (property.control === 'icon') return 'icon';
   if (property.type === 'boolean') return 'switch';
   if (property.type === 'number') return 'number';
   if (property.type === 'datetime') return 'datetime';
   return 'text';
 }
 
-/** What a field starts as: its declared default, or the empty value for its control. */
+/**
+ * What a field starts as: its declared default, or empty.
+ *
+ * A number with no default starts empty rather than at `0`. `0` is a value — a latitude of 0 is a
+ * place in the Gulf of Guinea, and a location form seeded with it opened its map on the ocean — and
+ * an empty number is simply not written when the form saves. A declared `default: 0` is still `0`.
+ */
 function initialValue(property: PropertySchema, control: RecordControl): string | number | boolean {
   if (property.default !== undefined && property.default !== null) return property.default;
   if (control === 'switch') return false;
-  if (control === 'number') return 0;
   return '';
 }
 
@@ -358,7 +375,8 @@ export function writeFieldValue(draft: RecordDraft | null, name: string, value: 
 
 /**
  * A draft with a place pinned — what a `we-location-picker` reports, written into whichever of
- * `latitude`, `longitude` and `address` the draft asks for, and into `name` where nobody typed one.
+ * `latitude`, `longitude`, `address`, `city`, `country` and `countryCode` the draft asks for, and into
+ * `name` where nobody typed one.
  *
  * A new draft, and new field objects only for the fields that changed. Replacement rather than the
  * in-place write `writeFieldValue` makes, because these values arrive from a pick rather than from
@@ -372,7 +390,7 @@ export function withPlace(draft: RecordDraft, detail: unknown): RecordDraft | nu
   if (typeof picked.latitude !== 'number' || typeof picked.longitude !== 'number') return null;
 
   const values: Record<string, RecordFieldValue> = {};
-  for (const key of ['latitude', 'longitude', 'address']) {
+  for (const key of ['latitude', 'longitude', 'address', 'city', 'country', 'countryCode']) {
     if (picked[key] !== undefined) values[key] = picked[key] as RecordFieldValue;
   }
   const name = draft.fields.find((field) => field.name === 'name');

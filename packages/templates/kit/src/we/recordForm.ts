@@ -51,6 +51,7 @@ const CONTROLS: Record<string, ControlSpec> = {
   date: { tag: 'we-date-picker', event: 'onChange', props: PLACEHOLDER },
   datetime: { tag: 'we-date-picker', event: 'onChange', props: { showTime: true, ...PLACEHOLDER } },
   color: { tag: 'we-color-picker', event: 'onChange' },
+  icon: { tag: 'we-icon-picker', event: 'onChange' },
   // A file is read into the draft when it is chosen, and uploaded only when the form saves.
   file: { tag: 'we-file-upload', event: 'onChange', valueProp: null, props: { accept: { $: 'field.accept' } } },
 };
@@ -510,8 +511,14 @@ const placePicker: SchemaNode = {
           type: 'we-location-picker',
           props: {
             width: '100%',
-            latitude: { $: "find(recordStore.recordDraft.fields, { name: 'latitude' }).value" },
-            longitude: { $: "find(recordStore.recordDraft.fields, { name: 'longitude' }).value" },
+            // Nothing until a pin is placed — an empty field is not a coordinate, and the map opening
+            // on 0, 0 put everybody in the ocean.
+            latitude: {
+              $: "find(recordStore.recordDraft.fields, { name: 'latitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'latitude' }).value",
+            },
+            longitude: {
+              $: "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value",
+            },
             placeholder: 'Pin it on the map…',
             onChange: { $action: 'recordStore.setRecordPlace', args: [{ $: 'arg.detail' }] },
           },

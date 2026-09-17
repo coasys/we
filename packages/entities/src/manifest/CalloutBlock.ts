@@ -9,8 +9,15 @@ export const CalloutBlock: CoreEntityDef = {
     flag: { predicate: 'we://flag', value: 'we://callout_block' },
     properties: {
       text: { type: 'string', predicate: 'we://text', default: '' },
-      variant: { type: 'string', predicate: 'we://variant', default: 'info' },
-      icon: { type: 'string', predicate: 'we://icon', default: '' },
+      /** Which kind of callout — the colour and default glyph `CalloutDisplay` draws. */
+      variant: {
+        type: 'string',
+        predicate: 'we://variant',
+        default: 'info',
+        options: ['info', 'warning', 'error', 'success'],
+      },
+      /** A glyph of its own, instead of the variant's. */
+      icon: { type: 'string', predicate: 'we://icon', default: '', control: 'icon' },
       version: { type: 'number', predicate: 'we://version', default: 0 },
     },
     relations: {},
