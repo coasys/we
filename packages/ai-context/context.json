@@ -5975,9 +5975,6 @@
         "creatableEntities": {
           "type": "array"
         },
-        "placeableEntities": {
-          "type": "array"
-        },
         "recordDraft": {
           "type": "object"
         },

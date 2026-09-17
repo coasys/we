@@ -663,23 +663,25 @@ describe('the personal space', () => {
 });
 
 describe('blocks on a canvas', () => {
-  it('can be put down there, and are named and drawn like any kind — without joining general pickers', async () => {
+  it('are creatable like any content, each saying how it is made, and named and drawn like any kind', async () => {
     const stores = mountShell();
     await ready(stores);
 
-    const placeable = stores.records.placeableEntities();
-    const creatable = stores.records.creatableEntities().map((entity) => entity.value);
-    expect(placeable.find((entity) => entity.value === 'ImageBlock')).toMatchObject({ label: 'Image', icon: 'image' });
-    expect(placeable.find((entity) => entity.value === 'TextBlock')).toMatchObject({ label: 'Text', icon: 'text-t' });
-    // "Create something" elsewhere still leaves them out.
-    expect(creatable).not.toContain('ImageBlock');
-    expect(creatable).not.toContain('TextBlock');
+    const creatable = stores.records.creatableEntities();
+    const find = (value: string) => creatable.find((entity) => entity.value === value);
+    expect(find('ImageBlock')).toMatchObject({ label: 'Image', icon: 'image', via: 'form' });
+    expect(find('TextBlock')).toMatchObject({ label: 'Text', icon: 'text-t', via: 'form' });
+    expect(find('CollectionBlock')).toMatchObject({ via: 'composer' });
+    // Not content, so not here — no flag needed to keep them out.
+    expect(find('Relationship')).toBeUndefined();
+    expect(find('RelationshipType')).toBeUndefined();
 
     // The key reads names and glyphs from `displays` — a quote dropped on a canvas included.
     const displays = stores.records.displays();
     expect(displays.ImageBlock).toMatchObject({ label: 'Image', icon: 'image' });
     expect(displays.TextBlock).toMatchObject({ label: 'Text', icon: 'text-t' });
     expect(displays.EmbedBlock?.label).toBe('Embed');
+    expect(displays.Relationship).toBeDefined();
   }, 10000);
 });
 

@@ -32,6 +32,8 @@ export const CollectionBlock: CoreEntityDef = {
       shows neither and is not asked for either.
     */
     display: { title: 'title', summary: 'description' },
+    // Made in the composer — see `composed` on the manifest type.
+    composed: true,
     properties: {
       editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
       /**

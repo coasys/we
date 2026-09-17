@@ -57,10 +57,11 @@ import { dropAllPending, dropPending, holdPending, type PendingWrites } from '..
 import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
   asEntityName,
+  type CreationPath,
+  creationPath,
   emptyRecordDraft,
   entryLabel,
   fieldsFor,
-  offeredForCreation,
   type RecordDraft,
   recordDraftChanged,
   recordDraftErrors,
@@ -83,6 +84,11 @@ export interface CreatableEntity {
   value: string;
   icon: string;
   group: string;
+  /**
+   * How it is made. A surface that can only host a form — the record form's type selector — lists
+   * the `form` ones; a surface that can open the composer too (a canvas) lists them all.
+   */
+  via: CreationPath;
 }
 
 /** The two records a connection joins, exactly as the graph's `onEdgeCreate` reports them. */
@@ -100,17 +106,14 @@ export interface PendingLink {
 const RELATIONSHIP = 'Relationship';
 
 /**
- * Models that can be *shown* but never *made from a form* — see {@link displayableEntities}. Every
- * core block is shown as well, whether or not it has a form: any of them can be a node on a canvas.
+ * Models that can be *shown* but are not content anybody creates from a picker — see
+ * {@link displayableEntities}. Every core block is shown as well, whether or not it can be made.
  *
- *
- * `Relationship` is drawn between two things rather than filled in from a picker. `CollectionBlock`
- * is composed: a note, a post, a call record are documents, and a generated form over their fields
- * would be asking somebody to type a structural `type` and a `kind` label instead of writing
- * anything. Both are read constantly all the same — a line on a canvas is one, a sticky note is the
- * other — and clicking either is exactly the moment somebody wants to read it.
+ * `Relationship` is drawn between two things rather than filled in from a picker, and it is read
+ * constantly all the same: a line on a canvas is one, and clicking it is exactly the moment somebody
+ * wants to read it.
  */
-const DISPLAY_ONLY = [RELATIONSHIP, 'CollectionBlock'] as const;
+const DISPLAY_ONLY = [RELATIONSHIP] as const;
 
 /**
  * Write one placement, node reference included, inside whatever write group the caller is in.
@@ -177,16 +180,6 @@ export interface RecordStore {
    * defined three models should see three more entries than one that has defined none.
    */
   creatableEntities: Accessor<CreatableEntity[]>;
-  /**
-   * What can be put down somewhere that holds blocks on their own — a canvas: `creatableEntities`,
-   * then WE's own blocks that have a form but are not offered in general pickers (a picture, a line of
-   * text, a video, a file).
-   *
-   * Two lists because "create something" and "put something here" are different questions. A picture
-   * with nothing to belong to is not a thing anybody sets out to make in a space, which is why those
-   * blocks say `offered: false`. On a canvas it is exactly the thing — a node, where it lands.
-   */
-  placeableEntities: Accessor<CreatableEntity[]>;
   /**
    * The open form's draft, or null while closed — its non-nullness is what mounts the modal, the
    * same shape `shapeStore.shapeDraft` uses.
@@ -536,18 +529,22 @@ export function RecordStoreProvider(props: ParentProps) {
   let entrySeq = 0;
 
   /**
-   * WE's own authorable models, read straight off the core manifest.
+   * WE's own content a person can make, read straight off the core manifest — every block there is a
+   * way to make, and how. See `creationPath`.
    *
-   * Derived rather than listed, so a model that gains an `authoring` declaration appears here with
-   * no second edit in a different package — the failure mode a hardcoded table has is that it is
-   * correct on the day it is written and silently stale afterwards.
+   * Derived rather than listed, so a block that gains a form appears here with no second edit in a
+   * different package — the failure mode a hardcoded table has is that it is correct on the day it is
+   * written and silently stale afterwards. And by declaration rather than by name: nothing that is not
+   * content needs a flag to stay out.
    */
   const coreEntities = createMemo<CreatableEntity[]>(() =>
     Object.entries(CORE_MANIFEST.entities)
-      // By declaration rather than by name — `Relationship` was the one name, and `RelationshipType`
-      // the one it missed. See `authoring.offered`.
-      .filter(([, entity]) => offeredForCreation(entity))
-      .map(([name]) => ({ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Built in' }))
+      .flatMap(([name, entity]) => {
+        const via = creationPath(entity);
+        return via
+          ? [{ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Built in', via }]
+          : [];
+      })
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
 
@@ -561,6 +558,7 @@ export function RecordStoreProvider(props: ParentProps) {
         value: shape.name,
         icon: shape.icon || 'cube',
         group: 'This space',
+        via: 'form' as const,
       }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
@@ -568,19 +566,6 @@ export function RecordStoreProvider(props: ParentProps) {
   // This space's own first: a community that has modelled its vocabulary means those models, and
   // WE's built-ins are the fallback rather than the headline.
   const creatableEntities = createMemo<CreatableEntity[]>(() => [...shapeEntities(), ...coreEntities()]);
-
-  /** WE's blocks with a form that general pickers leave out — see `placeableEntities`. */
-  const placeableBlocks = createMemo<CreatableEntity[]>(() =>
-    Object.entries(CORE_MANIFEST.entities)
-      .filter(([, entity]) => entity.blockable && entity.authoring?.fields.length && !offeredForCreation(entity))
-      .map(([name]) => ({ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Blocks' }))
-      .sort((a, b) => a.label.localeCompare(b.label)),
-  );
-
-  const placeableEntities = createMemo<CreatableEntity[]>(() => {
-    const named = new Set(creatableEntities().map((entity) => entity.value));
-    return [...creatableEntities(), ...placeableBlocks().filter((block) => !named.has(block.value))];
-  });
 
   /**
    * The schema behind a name, and whether every property of it belongs to the author.
@@ -660,12 +645,12 @@ export function RecordStoreProvider(props: ParentProps) {
    * with its own icon and label, and a display derived from the community's shape is the one that
    * should win.
    */
-  const displayableEntities = createMemo<CreatableEntity[]>(() => {
+  const displayableEntities = createMemo<Omit<CreatableEntity, 'via'>[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
     /*
-      Every core block too. A picture or a line of text dropped on a canvas is a node there, and the
-      key and the inspector read its name and glyph from here — without one, the key said
-      `ImageBlock` with no icon beside a `Task` that had both.
+      Every core block too, including the ones there is no way to make — a divider still appears in a
+      post, and a quote dropped on a canvas is an embed. The key and the inspector read a kind's name
+      and glyph from here.
     */
     const blocks = Object.entries(CORE_MANIFEST.entities)
       .filter(([, entity]) => entity.blockable)
@@ -727,10 +712,10 @@ export function RecordStoreProvider(props: ParentProps) {
       setKind('');
       setPendingPoint(null);
     });
-    // Opening on the first offered model rather than on an empty picker: in a space with one
+    // Opening on the first model with a form rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
-    // than a form with nothing in it.
-    const target = named || creatableEntities()[0]?.value;
+    // than a form with nothing in it. A composed one has no form to open on.
+    const target = named || creatableEntities().find((entity) => entity.via === 'form')?.value;
     if (target) setRecordEntity(target);
   }
 
@@ -740,6 +725,12 @@ export function RecordStoreProvider(props: ParentProps) {
       // Nothing here can render a form for a model this space does not have, and a modal that opens
       // empty is worse than one that says why.
       toastService.error(`No model named "${entity}" in this space.`);
+      return;
+    }
+    // A composed kind has no form to open — a note is written in the composer. Every picker that
+    // offers one opens that instead; this is the guard for one that did not.
+    if (!found.authorable && creationPath(found.schema) === 'composer') {
+      toastService.error(`A ${found.label.toLowerCase()} is written in the composer, not a form.`);
       return;
     }
     batch(() => {
@@ -1786,7 +1777,6 @@ export function RecordStoreProvider(props: ParentProps) {
 
   const store: RecordStore = {
     creatableEntities,
-    placeableEntities,
     recordDraft,
     recordDraftDirty,
     displays,

@@ -334,17 +334,27 @@ export interface EntitySchema {
    * every property of a shape somebody wrote is theirs by construction, so those need no
    * declaration and never carry one.
    *
-   * ## `offered`: having a form is not the same as belonging in a picker
+   * ## A form is not a place in "create something"
    *
-   * A surface asking "what would you like to create?" lists every authorable entity — a canvas's
-   * double-click, a graph's add button, the record form's type selector. Some entities have a form
-   * and are still made somewhere specific, where a generic picker would make them wrong:
-   * `Relationship` is drawn between two records and a picker would offer it with no endpoints;
-   * `RelationshipType` is the community's vocabulary, named in space settings, where a slug is
-   * derived that a generic form does not write. `offered: false` keeps the form and leaves the
-   * entity out of those lists. Absent means offered, which is what an authorable content type wants.
+   * What a person can create as content is every **block** there is a way to make (see `blockable`
+   * and `composed`), and a community's own shapes. `Relationship` and `RelationshipType` have forms
+   * and are not blocks: one is drawn between two records, the other named in space settings, and a
+   * generic picker would make either wrong. Being content is what puts an entity in a picker, not
+   * having a form — so no flag is needed to keep those two out.
+   *
+   * There was one, `offered`, and it had been asked to carry a second judgement as well: that a
+   * picture or a file with nothing to belong to is not a thing anybody sets out to make. That did not
+   * hold — a picture is as much a thing as a link — and it is gone with the flag.
    */
-  authoring?: { fields: string[]; offered?: boolean };
+  authoring?: { fields: string[] };
+
+  /**
+   * Made by composing a document rather than by filling in fields — a post, a note, a board's card.
+   * The composer is its authoring surface, so a surface offering "create something" opens that for
+   * it instead of a form. Separate from `authoring`, which is a field list and would give a
+   * container's display a list of fields it has nothing to say in.
+   */
+  composed?: boolean;
 
   /**
    * How an instance of this entity is shown when nothing was written to show it — the read-side
@@ -411,7 +421,8 @@ const entitySchema = z.object({
   interpretationHint: z.string().optional(),
   extractable: z.boolean().optional(),
   blockable: z.boolean().optional(),
-  authoring: z.object({ fields: z.array(z.string()), offered: z.boolean().optional() }).optional(),
+  authoring: z.object({ fields: z.array(z.string()) }).optional(),
+  composed: z.boolean().optional(),
   display: z
     .object({
       title: z.string().optional(),

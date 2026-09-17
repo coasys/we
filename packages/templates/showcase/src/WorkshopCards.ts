@@ -28,7 +28,7 @@
  * are — see `fieldEditor`.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { composerModal, sectionLabel } from '@we/template-kit';
+import { composerModal } from '@we/template-kit';
 
 /** The locals a canvas route declares for these. All ephemeral: nothing here survives a reload. */
 export const CARD_LOCALS = {
@@ -63,22 +63,28 @@ export function askWhatGoesHere(call: { $: string }): SchemaProp {
 /**
  * The kinds of thing the chooser leads with, in this order, ahead of everything else it offers.
  *
- * Tasks and events are what a meeting mostly produces, so they are the ones reached for; the rest
- * keep the order `creatableEntities` gives them. Named rather than sorted by a flag because the
- * choice is this canvas's — another picker over the same list has its own reasons.
+ * A note first — what most canvases are mostly made of — then tasks and events, which are what a
+ * meeting mostly produces; the rest keep the order `creatableEntities` gives them. Named rather than
+ * sorted by a flag because the choice is this canvas's — another picker over the same list has its
+ * own reasons.
  */
-const LEADING_KINDS = ['TaskBlock', 'EventBlock'];
+const LEADING_KINDS = ['CollectionBlock', 'TaskBlock', 'EventBlock'];
 
 /**
- * `placeableEntities` — everything creatable, and the blocks a canvas holds on their own (a picture,
- * a line of text) — the leading kinds first. The names are merged with `distinct`, dropped where
+ * `creatableEntities`, the leading kinds first. The names are merged with `distinct`, dropped where
  * the space does not offer them, and looked back up — so a leading kind a space cannot make is left
  * out rather than listed.
+ *
+ * All of them, whichever way each is made: a canvas can open the composer as well as a form, which is
+ * what `via` says. One list, where there used to be a note written in by hand above a second list.
  */
 const CHOOSER_KINDS =
-  `distinct([${LEADING_KINDS.map((kind) => `'${kind}'`).join(', ')}], recordStore.placeableEntities.map(k, k.value))` +
-  '.filter(n, recordStore.placeableEntities.exists(k, k.value == n))' +
-  '.map(n, find(recordStore.placeableEntities, { value: n }))';
+  `distinct([${LEADING_KINDS.map((kind) => `'${kind}'`).join(', ')}], recordStore.creatableEntities.map(k, k.value))` +
+  '.filter(n, recordStore.creatableEntities.exists(k, k.value == n))' +
+  '.map(n, find(recordStore.creatableEntities, { value: n }))';
+
+/** Whether the kind in hand is written in the composer rather than filled in. */
+const COMPOSED = "kind.via == 'composer'";
 
 /** One choice in the chooser: an icon and a name, the full width, opening to the left. */
 function choice(icon: string | { $: string }, label: string | { $: string }, onClick: SchemaProp): SchemaNode {
@@ -93,14 +99,17 @@ function choice(icon: string | { $: string }, label: string | { $: string }, onC
 }
 
 /**
- * "What goes here?" — a note, or a record of any model this space can make.
+ * "What goes here?" — anything this space can make.
  *
- * Note first, because it is the thing most canvases are mostly made of. Then, under a heading,
- * `recordStore.creatableEntities` led by tasks and events (see `LEADING_KINDS`), each with the icon
- * its declaration carries. Picking a record opens the generic form through `createOnCanvas`,
- * which remembers the canvas and the point, and then switches the form to the chosen model — two
- * actions, because the first opens on whatever model is offered first and the second is the one
- * that says which. Nothing is written until the form is submitted.
+ * `recordStore.creatableEntities`, led by a note, tasks and events (see `LEADING_KINDS`), each with
+ * the icon its declaration carries. A composed kind — a collection, which on a canvas is a note —
+ * opens the composer. Anything else opens the generic form through `createOnCanvas`, which remembers
+ * the canvas and the point, and then switches the form to the chosen model — two actions, because
+ * the first opens on whatever model comes first and the second is the one that says which. Nothing
+ * is written until the form or the composer is saved.
+ *
+ * The note is named "(block collection)" because Text is in the same list: a note is a document of
+ * several blocks, where Text is one paragraph on its own.
  */
 export function newThingChooser(call: SchemaProp): SchemaNode {
   const close: SchemaProp = { $setLocal: 'chooserOpen', value: false };
@@ -117,34 +126,30 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
             type: 'Column',
             props: { gap: '100', width: '100%' },
             children: [
-              /*
-                "(block collection)" beside it, because Text is in the list below: a note is a document
-                of several blocks, where Text is one paragraph on its own.
-              */
-              choice('note', 'Note (block collection)', [close, { $setLocal: 'newNoteOpen', value: true }]),
-              {
-                type: '$if',
-                props: {
-                  condition: { $: 'count(recordStore.placeableEntities)' },
-                  then: {
-                    type: 'Column',
-                    props: { gap: '200', width: '100%', pt: '100' },
-                    children: [{ type: 'we-divider' }, sectionLabel({ label: 'Block types' })],
-                  },
-                },
-              },
               {
                 type: '$each',
                 props: { items: { $: CHOOSER_KINDS }, as: 'kind' },
                 children: [
-                  choice({ $: "kind.icon ? kind.icon : 'cube'" }, { $: 'kind.label' }, [
-                    close,
-                    {
-                      $action: 'recordStore.createOnCanvas',
-                      args: [call, { $: 'local.newAt.x' }, { $: 'local.newAt.y' }],
-                    },
-                    { $action: 'recordStore.setRecordEntity', args: [{ $: 'kind.value' }] },
-                  ]),
+                  choice(
+                    { $: `${COMPOSED} ? 'note' : kind.icon ? kind.icon : 'cube'` },
+                    { $: `${COMPOSED} ? 'Note (block collection)' : kind.label` },
+                    [
+                      close,
+                      {
+                        $if: {
+                          condition: { $: COMPOSED },
+                          then: { $setLocal: 'newNoteOpen', value: true },
+                          else: [
+                            {
+                              $action: 'recordStore.createOnCanvas',
+                              args: [call, { $: 'local.newAt.x' }, { $: 'local.newAt.y' }],
+                            },
+                            { $action: 'recordStore.setRecordEntity', args: [{ $: 'kind.value' }] },
+                          ],
+                        },
+                      },
+                    ],
+                  ),
                 ],
               },
             ],

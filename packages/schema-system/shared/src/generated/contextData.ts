@@ -2286,7 +2286,6 @@ export const contextData: ContextData = {
       name: 'recordStore',
       state: {
         creatableEntities: { type: 'array' },
-        placeableEntities: { type: 'array' },
         recordDraft: { type: 'object' },
         recordDraftDirty: { type: 'boolean' },
         displays: { type: 'object' },

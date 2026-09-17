@@ -248,13 +248,24 @@ function relationFieldFrom(
  * different affordance — see the relationship work — and a picker over every instance in a space
  * would be the wrong one anyway.
  */
+/** How a piece of content is made: filling in a form, or writing in the composer. */
+export type CreationPath = 'form' | 'composer';
+
 /**
- * Whether a built-in entity belongs in a "create something" picker: it has a form, and it is not made
- * somewhere more specific — see `authoring.offered` in the manifest. Shapes a community defined are
- * always offered and never ask this.
+ * Whether a built-in entity is content a person can create, and how — or `null` when it is not.
+ *
+ * Content is a **block**, and only one there is a way to make: a form from its `authoring` fields,
+ * or the composer for one that is `composed`. Everything else — a space, a template, a vocabulary
+ * entry, a drawn connection — is made somewhere of its own and never appears in "create something",
+ * without having to say so. A block with nothing to fill in and no composer (a divider) is left out,
+ * since there is nothing to make.
+ *
+ * Shapes a community defined are content by construction, made with a form, and never ask this.
  */
-export function offeredForCreation(schema: EntitySchema): boolean {
-  return Boolean(schema.authoring?.fields.length) && schema.authoring?.offered !== false;
+export function creationPath(schema: EntitySchema): CreationPath | null {
+  if (!schema.blockable) return null;
+  if (schema.composed) return 'composer';
+  return schema.authoring?.fields.length ? 'form' : null;
 }
 
 export function fieldsFor(

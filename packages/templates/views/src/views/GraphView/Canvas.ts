@@ -325,7 +325,8 @@ export const canvasBar: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'count(recordStore.creatableEntities)' },
+                // Form-made content only: this opens the record form. Notes have their own button.
+                condition: { $: "count(recordStore.creatableEntities.filter(k, k.via == 'form'))" },
                 then: {
                   type: 'we-button',
                   props: {

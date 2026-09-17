@@ -662,7 +662,10 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: { $: '!recordStore.pendingLink && count(recordStore.creatableEntities) > 1' },
+              // The form-made ones: a note or a post is written in the composer, not picked here.
+              condition: {
+                $: "!recordStore.pendingLink && count(recordStore.creatableEntities.filter(k, k.via == 'form')) > 1",
+              },
               then: {
                 type: 'we-form-field',
                 props: { label: 'Entity', width: '100%' },
@@ -671,7 +674,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                     type: 'we-select',
                     props: {
                       width: '100%',
-                      options: { $: 'recordStore.creatableEntities' },
+                      options: { $: "recordStore.creatableEntities.filter(k, k.via == 'form')" },
                       value: { $: 'recordStore.recordDraft.entity' },
                       onChange: { $action: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
                     },

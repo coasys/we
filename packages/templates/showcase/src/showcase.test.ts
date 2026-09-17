@@ -1288,12 +1288,16 @@ describe('the workshop’s canvas', () => {
     expect(canvas).toContain(
       `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
-    // Tasks, then events, then the rest in the store's order — under a heading below the note. From
-    // the placeable list, so a picture and a line of text can be put down too.
-    expect(canvas).toContain("distinct(['TaskBlock', 'EventBlock'], recordStore.placeableEntities.map(k, k.value))");
+    // One list: a note, tasks, events, then the rest in the store's order — pictures and text among
+    // them. A composed kind opens the composer, anything else the form.
+    expect(canvas).toContain(
+      "distinct(['CollectionBlock', 'TaskBlock', 'EventBlock'], recordStore.creatableEntities.map(k, k.value))",
+    );
+    expect(canvas).toContain(
+      `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
+    );
     // Named apart from Text, which is one paragraph where a note is several blocks.
-    expect(canvas).toContain('"Note (block collection)"');
-    expect(canvas).toContain('"Block types"');
+    expect(canvas).toContain("'Note (block collection)'");
     expect(canvas).toContain(
       `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );
