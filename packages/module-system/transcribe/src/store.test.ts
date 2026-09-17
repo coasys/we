@@ -2644,6 +2644,55 @@ describe('a stream that went away', () => {
     expect(h.store.status()).toBe('listening');
   });
 
+  /**
+   * The failure this was all found through: an utterance larger than the proxy in front of a hosted
+   * node would carry, refused with a 413 the browser reports as a failed fetch. Resending it was the
+   * whole recovery, so it failed identically and the session stopped — for the rest of the call, on
+   * the first long thing anybody said. One utterance is the correct price.
+   */
+  it('drops an utterance the far end keeps refusing, and keeps transcribing', async () => {
+    const fed: number[] = [];
+    let opens = 0;
+    const transcription = {
+      available: () => true,
+      models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+      // Opening always works: the node is reachable, which is what makes the utterance the suspect.
+      open: async () => {
+        opens += 1;
+        return {
+          feed: async (audio: Float32Array) => {
+            // Stands in for the proxy's body limit: anything long is refused, however often it is sent.
+            if (audio.length > 100_000) throw new Error('Failed to fetch');
+            fed.push(audio.length);
+          },
+          close: async () => {},
+        };
+      },
+    };
+
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription });
+    await settle();
+
+    // Larger than the proxy in front of a hosted node will carry, and refused identically every time.
+    nodes[0].port.onmessage?.({ data: { kind: 'utterance', audio: new Float32Array(480_000) } });
+    // Real timers: the second attempt is a second away, and this test shares a file with one that
+    // runs the clock forward a minute. Long enough for the two refusals that settle it.
+    await new Promise((resolve) => setTimeout(resolve, 1_400));
+
+    // Dropped rather than retried for ever, and the session is still recording.
+    expect(h.store.status()).toBe('listening');
+    expect(h.store.reconnecting()).toBe(false);
+    expect(h.store.error()).toBe('');
+
+    // And the next thing said still lands.
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    await settle();
+    expect(fed).toEqual([1600]);
+    // The one it started with, and the ones that proved the node was answering.
+    expect(opens).toBeLessThanOrEqual(3);
+  });
+
   it('keeps trying, and stops only once a minute of attempts has failed', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

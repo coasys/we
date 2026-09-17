@@ -59,6 +59,19 @@ const RECONNECT_DELAYS_MS = [0, 1_000, 3_000, 8_000, 15_000, 30_000];
  */
 const MAX_HELD_SAMPLES = 16_000 * 60;
 
+/**
+ * How many freshly-opened streams may refuse the same utterance before it is dropped.
+ *
+ * Not every failure is about the stream. An utterance too large for whatever proxy fronts the node
+ * is refused on its own merits, and resending it is what the first version of this did — for ever,
+ * until it gave up and stopped the session. One bad utterance must cost one utterance.
+ *
+ * Counted only against a stream that was *just opened successfully*, so this cannot fire while the
+ * node is simply unreachable: an open that fails never reaches the send, and the count never moves.
+ * Two, because one refusal is not evidence and the second one is.
+ */
+const REFUSALS_BEFORE_DROPPING = 2;
+
 /** A download size as a person reads it — "970 MB", "1.5 GB". */
 function formatBytes(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -1525,19 +1538,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // current.
       const session = {
         stream: newStream,
-        /** Utterances with nowhere to go yet, oldest first — see {@link MAX_HELD_SAMPLES}. */
-        held: [] as Float32Array[],
+        /**
+         * Utterances with nowhere to go yet, oldest first — see {@link MAX_HELD_SAMPLES}. Each
+         * counts the streams that have refused it, so one the far end will never accept is dropped
+         * rather than retried into the ground; see {@link REFUSALS_BEFORE_DROPPING}.
+         */
+        held: [] as { audio: Float32Array; refusals: number }[],
         /** The reconnection in progress, so every utterance that fails joins the same one. */
         reconnecting: null as Promise<void> | null,
       };
 
       /** Keep an utterance until there is a stream to send it to, dropping the oldest past the cap. */
       const hold = (audio: Float32Array): void => {
-        session.held.push(audio);
-        let total = session.held.reduce((sum, one) => sum + one.length, 0);
+        session.held.push({ audio, refusals: 0 });
+        let total = session.held.reduce((sum, one) => sum + one.audio.length, 0);
         // Never empties: the utterance just held is the one worth keeping if it alone is over the cap.
         while (total > MAX_HELD_SAMPLES && session.held.length > 1) {
-          total -= (session.held.shift() as Float32Array).length;
+          total -= (session.held.shift() as { audio: Float32Array }).audio.length;
         }
       };
 
@@ -1545,9 +1562,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         Open a new stream in place of one that is gone, and send what was said meanwhile.
 
         A feed fails for reasons that have nothing to do with this session being over: the node was
-        unreachable for a moment, a request timed out, the executor let the stream go. None of them
-        is a reason to stop recording, and stopping is what used to happen — one failed retry ended
-        transcription for the rest of the call, with no way back but a press nobody knew to make.
+        unreachable for a moment, a request timed out, the executor let the stream go, or the
+        utterance itself was refused by something between here and the node. None of them is a reason
+        to stop recording, and stopping is what used to happen — one failed retry ended transcription
+        for the rest of the call, with no way back but a press nobody knew to make.
+
+        The last of those is worth naming, because it is the one that was actually happening and the
+        one a retry cannot fix: a proxy refusing an utterance too large for it, the same way every
+        time. Resending it is what turned a refused utterance into a dead session. The drain below
+        drops one the far end will not take, so it costs an utterance rather than the call.
 
         So it keeps trying, on a backoff, while the microphone stays open and what is said is held.
         Only when a minute of attempts has failed does it call it an outage, say so and stop: by then
@@ -1579,8 +1602,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
               // One at a time, each removed only once it has landed — so a stream that dies again
               // part way through a drain loses nothing, and the next attempt carries on from there.
               while (session.held.length > 0) {
-                await session.stream.feed(session.held[0]);
-                session.held.shift();
+                const next = session.held[0];
+                try {
+                  await session.stream.feed(next.audio);
+                  session.held.shift();
+                } catch (refused) {
+                  next.refusals += 1;
+                  if (next.refusals < REFUSALS_BEFORE_DROPPING) throw refused;
+                  /*
+                    A stream that had just opened would not take it twice, so it is the utterance
+                    that is being refused rather than the connection that is failing — most likely
+                    it is larger than something between here and the node will carry.
+
+                    Dropped, and the rest of the queue goes on. The same call as a failed block
+                    write: losing one utterance is better than losing the transcript, and this is
+                    the retry that used to end the session instead.
+                  */
+                  console.warn('transcribe: this utterance was refused twice and has been dropped', refused);
+                  session.held.shift();
+                }
               }
               setReconnecting(false);
               return;
