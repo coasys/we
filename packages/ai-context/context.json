@@ -6080,6 +6080,10 @@
         "canConfigureExecutor": {
           "type": "boolean"
         },
+        "unsupportedCapabilities": {
+          "type": "array",
+          "properties": ["name", "firstSeen"]
+        },
         "aiModels": {
           "type": "array",
           "properties": [

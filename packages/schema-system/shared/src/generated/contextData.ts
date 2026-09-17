@@ -2347,6 +2347,7 @@ export const contextData: ContextData = {
         canManageAi: { type: 'boolean' },
         canConfigureAi: { type: 'boolean' },
         canConfigureExecutor: { type: 'boolean' },
+        unsupportedCapabilities: { type: 'array', properties: ['name', 'firstSeen'] },
         aiModels: {
           type: 'array',
           properties: [

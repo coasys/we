@@ -174,6 +174,7 @@ export type {
   PeerRecords,
   RuntimeAdminPort,
   TokenizerSource,
+  UnsupportedCapability,
 } from './runtimeAdmin';
 export type {
   IncludeExtras,

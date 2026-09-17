@@ -35,6 +35,14 @@ export {
   registerEntity,
   unregisterEntity,
 } from '@we/entities';
+export {
+  clearMissingMethodListeners,
+  type MissingExecutorMethod,
+  missingExecutorMethods,
+  onMissingMethod,
+  recordMissingMethod,
+  resetMissingExecutorMethods,
+} from './missingMethods';
 export { type NeutralManifestResult, toNeutralManifest } from './neutralManifest';
 export * from './interpretationHints';
 export * from './perspectiveHelpers';

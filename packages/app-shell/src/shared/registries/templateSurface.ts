@@ -243,6 +243,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     canManageAi: state('runtime-admin'),
     canConfigureAi: state('runtime-admin'),
     canConfigureExecutor: state('runtime-admin'),
+    unsupportedCapabilities: state('runtime-admin'),
     aiModels: state('runtime-admin'),
     aiTasks: state('runtime-admin'),
     aiForm: state('runtime-admin'),
