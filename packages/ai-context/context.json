@@ -525,6 +525,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "hint",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },

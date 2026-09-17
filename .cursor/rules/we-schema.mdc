@@ -1209,7 +1209,7 @@ DOM. See `_zone` for what happened when they did.
 
 Give every nested zone `noArm`, so picking something up speaks once about the container rather
 than once about every row inside it.
-  Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false
+  Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)

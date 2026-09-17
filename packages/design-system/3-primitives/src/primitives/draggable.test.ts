@@ -477,3 +477,27 @@ describe('text inside a draggable', () => {
     expect(dropped[0].detail.items[0].ref).toEqual({ entity: 'ImageBlock', id: 'img-1' });
   });
 });
+
+describe('a zone that says what a drop does', () => {
+  it('shows its hint only while a drag it would take is running', async () => {
+    const { el: zone } = await makeZone();
+    (zone as DropZoneEl & { hint: string }).hint = 'Drop to post it here';
+    await zone.updateComplete;
+    const { el, card } = await makeSource();
+    const hint = zone.shadowRoot!.querySelector('[part="hint"]')!;
+    expect(hint.textContent).toBe('Drop to post it here');
+    expect(zone.hasAttribute('data-we-drop-armed')).toBe(false);
+
+    const base = { bubbles: true, composed: true, button: 0, pointerId: 1, pointerType: 'mouse' };
+    card.dispatchEvent(new PointerEvent('pointerdown', { ...base, clientX: 500, clientY: 500 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { ...base, clientX: 520, clientY: 520 }));
+    // Armed is what the stylesheet reveals the hint on.
+    expect(zone.hasAttribute('data-we-drop-armed')).toBe(true);
+    el.dispatchEvent(new PointerEvent('pointerup', { ...base, clientX: 520, clientY: 520 }));
+  });
+
+  it('renders nothing extra without one', async () => {
+    const { el: zone } = await makeZone();
+    expect(zone.shadowRoot!.querySelector('[part="hint"]')).toBeNull();
+  });
+});

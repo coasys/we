@@ -95,8 +95,48 @@ const CSS_STYLES = css`
     background: color-mix(in srgb, var(--we-role-accent, #93c5fd) 14%, transparent);
   }
 
+  /*
+    The hint: what a drop here will do, in words, while there is something to drop.
+
+    A ring says where, and says it about a rectangle. Around a feed holding one post the rectangle is
+    that post, so the ring read as "drop onto this post" — the one thing it did not mean. Words fix
+    what geometry cannot.
+
+    A zero-height sticky anchor after the content, so it takes no room in the layout, sits at the
+    bottom of whatever part of a tall zone is on screen, and settles at the zone's end when that end
+    is in view. The pill hangs above the anchor.
+  */
+  [part='hint-anchor'] {
+    position: sticky;
+    bottom: var(--we-space-400, 16px);
+    height: 0;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  [part='hint'] {
+    transform: translateY(calc(-100% - var(--we-space-200, 8px)));
+    padding: var(--we-space-200, 8px) var(--we-space-400, 16px);
+    border-radius: var(--we-radius-full, 999px);
+    background: var(--we-role-accent, #3b82f6);
+    color: var(--we-role-on-accent, #fff);
+    font-size: var(--we-font-size-200, 14px);
+    font-weight: var(--we-font-weight-medium, 500);
+    white-space: nowrap;
+    box-shadow: var(--we-shadow-300, 0 4px 12px rgb(0 0 0 / 20%));
+    opacity: 0;
+    transition: opacity var(--we-animation-transition-200, 150ms) ease;
+  }
+
+  :host([data-we-drop-armed]) [part='hint'],
+  :host([data-we-drop-target]) [part='hint'] {
+    opacity: 1;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    :host::after {
+    :host::after,
+    [part='hint'] {
       transition: none;
     }
   }
@@ -173,6 +213,15 @@ export default class DropZone extends LayoutElement {
    * back constantly, and that is a move rather than a second copy.
    */
   @property({ type: Boolean }) noSelf = false;
+
+  /**
+   * What dropping here does, in words — "Drop to post it here". Shown only while a drag this zone
+   * would take is running, pinned to the bottom of the part of the zone on screen.
+   *
+   * For a zone whose shape does not explain itself: a feed with one post in it is, to the eye, that
+   * post. Leave it empty for a zone that is obviously a container, like a panel.
+   */
+  @property({ type: String }) hint = '';
 
   @state() private _armed = false;
 
@@ -265,6 +314,9 @@ export default class DropZone extends LayoutElement {
   };
 
   render() {
-    return html`<div part="base"><slot></slot></div>`;
+    return html`<div part="base">
+      <slot></slot>
+      ${this.hint ? html`<div part="hint-anchor" aria-hidden="true"><span part="hint">${this.hint}</span></div>` : null}
+    </div>`;
   }
 }
