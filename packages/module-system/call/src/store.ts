@@ -35,9 +35,10 @@ import { activitiesOfType } from '@we/module-shared';
 import { planEphemeral } from '@we/module-shared';
 
 import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPeerCount } from './devPeers';
+import { parseIceServers } from './iceServers';
 import { createMediaController, type MediaController } from './media';
-import { type CallMesh, createCallMesh, DEFAULT_ICE_SERVERS } from './mesh';
-import { CALL_KIND, CALL_PREDICATE, recordCallId } from './protocol';
+import { type CallMesh, createCallMesh, DEFAULT_ICE_SERVERS, type RecoveryRung } from './mesh';
+import { CALL_KIND, CALL_PREDICATE, CALL_PROTOCOL_VERSION, recordCallId } from './protocol';
 import { solveStrip } from './strip';
 
 /**
@@ -101,6 +102,22 @@ export interface CallTileState {
    * spinning at them forever would be a lie about a state that is never going to change.
    */
   connecting: boolean;
+  /**
+   * Something is being done about it right now — the mesh is on a rung of its recovery ladder.
+   *
+   * Distinct from {@link connecting}, which only says a picture is expected. The difference is the
+   * one a person actually wants: a spinner that has been turning for thirty seconds says nothing
+   * about whether anything is happening, and "Reconnecting…" says the app has noticed and is not
+   * waiting for you to. It is also what stops the reconnect button reading as the only hope.
+   */
+  retrying: boolean;
+  /** How many repairs this pair has had, so a tile can stop promising after several. */
+  attempts: number;
+  /**
+   * How this peer's media is reaching us — `host` on a LAN, `srflx` through NAT, `relay` through
+   * TURN — or `''` before the connection settles. Diagnostic; shown on the connection badge.
+   */
+  transport: string;
   /** The connection gave up. Not something waiting will fix, so it must not read as progress. */
   failed: boolean;
 }
@@ -165,8 +182,20 @@ function hasLiveVideo(stream: MediaStream | null): boolean {
 }
 
 export function createCallStore(deps: ModuleStoreDeps) {
-  const { signal, effect, dataset, datasetUri, selfId, identities, datasets, onDispose, callOnScreen, state, action } =
-    deps;
+  const {
+    signal,
+    effect,
+    dataset,
+    datasetUri,
+    selfId,
+    identities,
+    datasets,
+    onDispose,
+    callOnScreen,
+    settings,
+    state,
+    action,
+  } = deps;
   /*
     Only the kernels the manifest names are on the bag, and every one is optional at the type level:
     registration refuses a host that implements none of them, but a module must still degrade rather
@@ -319,6 +348,41 @@ export function createCallStore(deps: ModuleStoreDeps) {
   let controller: MediaController | null = null;
   let remoteStreams = new Map<string, MediaStream>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
+  /**
+   * Which peers the mesh is currently repairing, and how many times it has tried.
+   *
+   * Held here rather than read off the mesh because it is *display* state with a life of its own: a
+   * repair is an event, and a tile has to keep saying "Reconnecting…" for a moment after it rather
+   * than flashing once per attempt. Cleared when the connection reaches `connected`, which is the
+   * only thing that makes the word untrue.
+   */
+  const recovering = new Map<string, { rung: RecoveryRung; attempts: number }>();
+  /**
+   * How each peer's media is actually reaching us — `host`, `srflx`, `relay`.
+   *
+   * Refreshed when a connection settles rather than polled. The one fact that distinguishes "this
+   * pair needs a relay" from "this pair's handshake was lost", which are otherwise the same spinner.
+   */
+  const transports = new Map<string, string>();
+
+  /** Signalling channels whose first-send cost has already been paid — see the note in `join`. */
+  const warmed = new WeakSet<object>();
+
+  /**
+   * The ICE servers this call should use, resolved where the agent is standing.
+   *
+   * Read at join rather than held, because settings resolve per space and a call started in one
+   * community should use that community's relay. An unparseable value answers with the module's
+   * defaults, which is the behaviour of an empty field — see `iceServers.ts` for why a mistake here
+   * must never be able to stop a call.
+   */
+  function iceServers(): RTCIceServer[] {
+    const { servers, problems } = parseIceServers(settings?.().iceServers);
+    if (problems.length) {
+      console.warn(`call: ignoring ICE server settings that could not be read — ${problems.join(', ')}`);
+    }
+    return servers.length ? servers : DEFAULT_ICE_SERVERS;
+  }
 
   /**
    * The previous tile object per participant, reused when nothing about them changed.
@@ -406,6 +470,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // Your own tile waits on the device rather than on a peer: `join` announces before it calls
         // `getUserMedia`, so this covers the seconds a permission prompt is on screen.
         connecting: ownWantsPicture && !ownPicture,
+        // There is no connection to yourself to repair or to describe.
+        retrying: false,
+        attempts: 0,
+        transport: '',
         failed: false,
       });
     }
@@ -416,6 +484,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       const stream = remoteStreams.get(peer.agentId) ?? null;
       next.push(stabilise({ id: peer.agentId, did: peer.agentId, stream, isSelf: false }));
       const connection = peerStates.get(peer.agentId);
+      const repair = recovering.get(peer.agentId);
       const wantsPicture = (settings?.videoEnabled ?? true) || (settings?.screenShareEnabled ?? false);
       const picture = wantsPicture && hasLiveVideo(stream);
       states.push({
@@ -430,6 +499,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // Expected and not yet arrived. Keyed on the track rather than on `peerStates`, which holds
         // nothing until the first negotiation — exactly the window that showed nothing at all.
         connecting: wantsPicture && !picture && connection !== 'failed',
+        // A repair is only worth announcing while the connection has not come back. Reading the
+        // connection rather than clearing the map on every state change keeps the two in step
+        // without a second source of truth.
+        retrying: !!repair && connection !== 'connected',
+        attempts: repair?.attempts ?? 0,
+        transport: transports.get(peer.agentId) ?? '',
         failed: connection === 'failed',
       });
     }
@@ -452,6 +527,11 @@ export function createCallStore(deps: ModuleStoreDeps) {
         connection: 'connected',
         hasPicture: peer.stream !== null,
         connecting: false,
+        retrying: false,
+        attempts: 0,
+        // A synthetic participant has no connection, so it has no transport to describe. Left empty
+        // rather than faked: this exists to make a layout testable, not to make a diagnostic lie.
+        transport: '',
         failed: false,
       });
     }
@@ -578,6 +658,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     setLocalAudio(null);
     remoteStreams = new Map();
     peerStates = new Map();
+    recovering.clear();
+    transports.clear();
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
     anchor = undefined;
@@ -845,18 +927,61 @@ export function createCallStore(deps: ModuleStoreDeps) {
     // never connects.
     const channel = scope.channel('rtc', { coalesce: false });
 
+    /*
+      Spend the transport's first-send cost on something that does not matter.
+
+      The AD4M adapter documents it: the *first* `sendBroadcastU` on a freshly joined neighbourhood
+      has been measured at eighteen seconds, and every send after it at tens of milliseconds — the
+      signature of two conductors discovering each other, paid once per channel. Until now the
+      message that paid it was the first SDP offer, so the opening handshake of a call could sit
+      unsent for the better part of twenty seconds while both peers waited on each other. That is the
+      single best explanation for why the *start* of a call is the frustrating part and why several
+      rounds of leaving and rejoining make it behave.
+
+      So a throwaway goes first. It parses to nothing on every peer — `parseCallMessage` rejects a
+      missing `kind` — which is the entire design: it has to be a real publish to be worth anything,
+      and it must mean nothing to anybody who receives it.
+
+      Once per channel, not once per join. The cost being dodged is paid by a channel's first send
+      and never again, and `scope.channel` returns the same object for a tag, so a second call in the
+      same space would be sending a message with nothing left to buy. A `WeakSet` rather than a flag
+      because the channels belong to scopes that come and go with the spaces they serve.
+    */
+    if (!warmed.has(channel)) {
+      warmed.add(channel);
+      channel.publish({ v: CALL_PROTOCOL_VERSION, call: id, warm: true });
+    }
+
     mesh = createCallMesh({
       callId: id,
       selfId: me,
       channel,
+      // The deployment's, a community's, or this agent's — and the module's own where nobody said.
+      // See the `iceServers` setting in `index.ts` for why this is reachable at all.
+      iceServers: iceServers(),
       // The host lends the constructor; the ICE opinion stays the mesh's — see `DEFAULT_ICE_SERVERS`.
-      createPeerConnection: () => connections.create({ iceServers: DEFAULT_ICE_SERVERS }),
+      createPeerConnection: (configuration) => connections.create(configuration),
       onRemoteStreamsChanged: (streams) => {
         remoteStreams = streams;
         rebuildTiles();
       },
       onPeerStateChanged: (peerId, state) => {
         peerStates.set(peerId, state);
+        if (state === 'connected') {
+          recovering.delete(peerId);
+          // Asked once per settled connection rather than polled: the answer only changes when ICE
+          // re-selects a pair, which is exactly what reaching `connected` means.
+          void mesh?.transportOf(peerId).then((kind) => {
+            if (!kind) return;
+            transports.set(peerId, kind);
+            rebuildTiles();
+          });
+        }
+        if (state === 'closed') transports.delete(peerId);
+        rebuildTiles();
+      },
+      onPeerRecovery: (peerId, attempt) => {
+        recovering.set(peerId, attempt);
         rebuildTiles();
       },
       onError: (context, error) => console.error(`call: ${context}`, error),
@@ -1194,7 +1319,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     ),
     tileStates: state(
       tileStates,
-      "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture — looked up with find() so a tile never remounts.",
+      "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.",
     ),
     focusedId: state(focusedId, 'Whose tile the stage is giving most of its room to, or null for an even grid.'),
     media: state(
@@ -1742,5 +1867,31 @@ export function createCallStore(deps: ModuleStoreDeps) {
     }, 'Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.'),
 
     dismissProblem: action(() => setProblem(null), 'Dismiss the problem message.'),
+
+    /**
+     * Build this one peer's connection again, and tell them to do the same.
+     *
+     * The manual rung of the mesh's recovery ladder, for a button on the tile that is broken.
+     *
+     * Its existence is an admission as much as a feature: everything above it is the app repairing
+     * itself, and this is what is left when that has not worked. The alternative people were left
+     * with was leaving the call and rejoining, which takes everyone's picture down to fix one
+     * pair — and, because a call's roster is presence, briefly tells the whole room you left.
+     *
+     * Deliberately not gated on the pair looking broken. Whether a connection is "bad enough" is a
+     * judgement the person watching it makes better than `connectionState` does: a pair can be
+     * `connected` and useless, and refusing them the button in that state would be the app insisting
+     * that what they are looking at is fine.
+     */
+    reconnectPeer: action((id: string) => {
+      if (!id || !mesh) return;
+      // Your own tile is not a connection, and a synthetic one is not a peer. Both would be no-ops
+      // in the mesh; refusing here keeps `retrying` from lighting up on a tile nothing will repair.
+      if (id === (selfId?.() ?? null)) return;
+      recovering.set(id, { rung: 'rebuild', attempts: 0 });
+      transports.delete(id);
+      mesh.reconnect(id);
+      rebuildTiles();
+    }, "Build one peer's connection again from scratch, without leaving the call."),
   };
 }
