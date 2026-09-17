@@ -20,6 +20,8 @@
 import type { Activity, Peer } from '@we/backend-shared';
 import type {
   AgentDataKernel,
+  ComposedDocument,
+  DocumentAccess,
   ModuleDefinition,
   ModuleStoreDeps,
   PresenceKernel,
@@ -90,12 +92,52 @@ function select(rows: FakeRow[], query: RecordQuery | undefined): FakeRow[] {
   return out;
 }
 
+/** A document the fake holds: what was written, the kind it was written as, and a reference. */
+export interface FakeDocument {
+  id: string;
+  kind: string;
+  document: ComposedDocument;
+  ref: string;
+}
+
+/**
+ * Composed documents as a map. `read` hands back exactly what was written, which is the whole of what
+ * a module can observe — resolving files and dropping keys is the host's, and is tested there.
+ */
+export function fakeDocuments(options: { datasetKey?: string } = {}) {
+  const key = options.datasetKey ?? 'p:test';
+  const documents = new Map<string, FakeDocument>();
+  const writes: { op: 'create' | 'update' | 'remove'; id: string }[] = [];
+  let next = 0;
+  const access: DocumentAccess = {
+    create: async (document, opts) => {
+      const id = `doc-${++next}`;
+      const ref = `we:${key}/CollectionBlock/${id}`;
+      documents.set(id, { id, kind: opts?.kind ?? 'post', document, ref });
+      writes.push({ op: 'create', id });
+      return { id, ref };
+    },
+    update: async (id, document) => {
+      const existing = documents.get(id);
+      if (existing) documents.set(id, { ...existing, document });
+      writes.push({ op: 'update', id });
+    },
+    remove: async (id) => {
+      documents.delete(id);
+      writes.push({ op: 'remove', id });
+    },
+    read: async (id) => documents.get(id)?.document ?? null,
+  };
+  return { documents, writes, access };
+}
+
 /**
  * An in-memory records kernel: an array per entity, `where` by equality, `order` by one key,
  * `limit`/`offset`, and live `subscribe` that fires again after every write. Records the target each
- * write named, so a test can assert a module wrote where it meant to.
+ * write named, so a test can assert a module wrote where it meant to. `documents` is a
+ * {@link fakeDocuments} with a neighbourhood's key.
  */
-export function fakeRecords(options: { author?: string } = {}) {
+export function fakeRecords(options: { author?: string; datasetKey?: string } = {}) {
   const author = options.author ?? 'did:test:me';
   const rows: FakeRow[] = [];
   const writes: { op: 'create' | 'update' | 'remove' | 'link'; entity: string; id?: string; dataset?: string }[] = [];
@@ -104,6 +146,7 @@ export function fakeRecords(options: { author?: string } = {}) {
   const notify = () => {
     for (const fire of subscriptions) fire();
   };
+  const documents = fakeDocuments({ datasetKey: options.datasetKey ?? 'n:test-space' });
 
   const kernel: RecordsKernel = {
     create: async (entity, fields, options) => {
@@ -148,6 +191,7 @@ export function fakeRecords(options: { author?: string } = {}) {
       fire();
       return () => subscriptions.delete(fire);
     },
+    documents: documents.access,
   };
 
   return {
@@ -155,6 +199,8 @@ export function fakeRecords(options: { author?: string } = {}) {
     rows,
     /** Every write, in order, with the dataset it named. */
     writes,
+    /** Every composed document written through `kernel.documents`, by id. */
+    documents: documents.documents,
     kernel,
     /** Seed a row without recording a write. */
     seed: (entity: string, fields: Record<string, unknown>, rowAuthor = author): FakeRow => {
@@ -170,17 +216,21 @@ export function fakeRecords(options: { author?: string } = {}) {
   };
 }
 
-/** The agent's own dataset, as an array. The same fake with the `AgentDataKernel` shape. */
+/**
+ * The agent's personal space, as an array. The same fake with the `AgentDataKernel` shape; its
+ * documents carry a personal key, as the real ones do.
+ */
 export function fakeAgentData(options: { author?: string; ready?: boolean } = {}) {
-  const inner = fakeRecords(options);
+  const inner = fakeRecords({ ...options, datasetKey: 'p:personal' });
   const kernel: AgentDataKernel = {
     ready: () => options.ready ?? true,
     create: (entity, fields, opts) => inner.kernel.create(entity, fields, opts),
     find: (entity, query) => inner.kernel.find(entity, query),
     update: (entity, id, fields) => inner.kernel.update(entity, id, fields),
     remove: (entity, id) => inner.kernel.remove(entity, id),
+    documents: inner.kernel.documents,
   };
-  return { rows: inner.rows, writes: inner.writes, seed: inner.seed, kernel };
+  return { rows: inner.rows, writes: inner.writes, documents: inner.documents, seed: inner.seed, kernel };
 }
 
 /**

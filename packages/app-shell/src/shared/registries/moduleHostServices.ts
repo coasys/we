@@ -36,6 +36,7 @@ import type {
   AgentDataKernel,
   CreateEntityOptions,
   DatasetTarget,
+  DocumentAccess,
   InterpretationActivitySummary,
   KernelName,
   ModuleDatasetAccess,
@@ -132,7 +133,9 @@ export interface ModuleHostServices {
     cb: (rows: Record<string, unknown>[]) => void,
     options?: DatasetTarget,
   ) => () => void;
-  /** This agent's own records, in the root dataset. */
+  /** Composed documents in the space on screen — the records kernel's `documents`. */
+  documents?: DocumentAccess;
+  /** This agent's own records, in their personal space. */
   agentData?: AgentDataKernel;
   /** How the current dataset is named in a record reference. */
   datasetRefKey?: () => string;
@@ -193,6 +196,23 @@ let publishedMedia: MediaStream | null = null;
 let publishedBy: string | null = null;
 const mediaListeners = new Set<(stream: MediaStream | null) => void>();
 
+/**
+ * A document surface that reads the live one on every call — the same late binding every kernel
+ * here has, because the providers mount after the module stores are built.
+ */
+function forwardDocuments(live: () => DocumentAccess | undefined): DocumentAccess {
+  return {
+    create: async (document, options) => (await live()?.create(document, options)) ?? null,
+    update: async (id, document) => {
+      await live()?.update(id, document);
+    },
+    remove: async (id) => {
+      await live()?.remove(id);
+    },
+    read: async (id) => (await live()?.read(id)) ?? null,
+  };
+}
+
 /** The kernels this host implements — what a manifest's `requires.kernels` is checked against. */
 export const HOST_KERNELS: readonly KernelName[] = [
   'records',
@@ -238,9 +258,10 @@ export function createModuleStoreDeps(framework: {
       },
       find: async (entity, query, target) => (await services.findEntities?.(entity, query, target)) ?? [],
       subscribe: (entity, query, cb, target) => services.subscribeEntities?.(entity, query, cb, target) ?? (() => {}),
+      documents: forwardDocuments(() => services.documents),
     },
 
-    // Forwarded rather than captured: a module store is built before the root dataset has been found.
+    // Forwarded rather than captured: a module store is built before the personal space has been found.
     agentData: {
       ready: () => services.agentData?.ready() ?? false,
       create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
@@ -251,6 +272,7 @@ export function createModuleStoreDeps(framework: {
       remove: async (entity, id) => {
         await services.agentData?.remove(entity, id);
       },
+      documents: forwardDocuments(() => services.agentData?.documents),
     },
 
     presence: {

@@ -55,6 +55,7 @@ export { isCollectionMode, isReconcilable } from './modes';
 export type { BlockAnchor, ContentInput, CreateBlocksOptions } from './serialization';
 export {
   childrenToBlocks,
+  copyableContent,
   createBlocks,
   deleteBlocks,
   encodeEditorState,

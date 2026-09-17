@@ -16,6 +16,8 @@ export { lintModule } from './lint';
 export type { ModuleLint } from './lint';
 export type {
   AgentDataKernel,
+  ComposedDocument,
+  DocumentAccess,
   KernelName,
   LanguageModelKernel,
   MediaKernel,
@@ -26,6 +28,7 @@ export type {
   RecordsKernel,
   SecretsKernel,
   TranscriptionKernel,
+  WrittenDocument,
 } from './kernels';
 export {
   checkModuleCompatibility,

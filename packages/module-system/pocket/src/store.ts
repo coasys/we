@@ -145,8 +145,8 @@ function thumbnailFrom(content: string | undefined): string {
  *    fallback between a CID and a local uuid, which is a decision. `@we/schema-kit`'s card
  *    fragments name no store by construction, so the source carries `{ entity, id }` and this
  *    stamps the rest.
- * 2. **Reading across the boundary.** The panel's rows live in the root dataset and a template can
- *    read those with `dataset: 'datasetStore.rootDataset'` — but "have I already gathered this"
+ * 2. **Reading across the boundary.** The panel's rows live in the personal space and a template can
+ *    read those with `dataset: 'datasetStore.personalDataset'` — but "have I already gathered this"
  *    has to be answerable from a *card*, inside whatever space it is in, which is a second dataset
  *    in the same expression. `$query`'s `dataset` is a store path, not something a row can name.
  * 3. **Opening one.** Going to a gathered thing means joining the space first when it is not
@@ -155,7 +155,7 @@ function thumbnailFrom(content: string | undefined): string {
  *    reason every docked module has a store at all.
  *
  * Folder creation, deletion and the listing itself stay in the fragments, through `record.create`
- * and `$query`. This module ships no CRUD wrapper for them, for the reason notes ships none.
+ * and `$query`. This module ships no CRUD wrapper for them: those two already are one.
  */
 export function createPocketStore(deps: ModuleStoreDeps) {
   const { signal, effect } = deps;
@@ -193,9 +193,8 @@ export function createPocketStore(deps: ModuleStoreDeps) {
   /**
    * The root folder's id, creating it on first use.
    *
-   * Resolved every time rather than held, for the reason the notes module resolves its collection
-   * every time: a cached id is a value that has to be invalidated, and the failure mode of getting
-   * that wrong is writing into the wrong container.
+   * Resolved every time rather than held: a cached id is a value that has to be invalidated, and the
+   * failure mode of getting that wrong is writing into the wrong container.
    */
   async function rootFolder(): Promise<PocketFolderRow | null> {
     const data = agentData();
@@ -218,7 +217,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     and gathering it again was the obvious thing to do. The panel is not what the answer depends on;
     the agent's dataset is.
 
-    An effect rather than a call at construction, because the root dataset arrives well after the
+    An effect rather than a call at construction, because the personal space arrives well after the
     module store is built — `agentData.ready()` is false for the first frames of every boot, which
     is exactly why the read has to be able to re-run.
   */

@@ -77,6 +77,59 @@ export interface RecordQuery {
 }
 
 /**
+ * A composition — what `BlockComposer` hands its `onSave`, and what a post is written from.
+ *
+ * Opaque to a module on purpose. Its shape (blocks, marks, the base keys an edit reconciles against)
+ * belongs to the block system and is changing — the content-layer work moves it to one document
+ * with standoff marks — and a module that looked inside would break with it. A module carries one
+ * from the composer to a kernel, or from one kernel to another, and that is all it needs to do.
+ */
+export type ComposedDocument = unknown;
+
+/** What a written document is called afterwards. */
+export interface WrittenDocument {
+  /** The collection's id, in the dataset it was written to. */
+  id: string;
+  /**
+   * The same record as a reference — `we:<datasetKey>/CollectionBlock/<id>` — for somewhere that is
+   * not that dataset to hold. See `formatRef` in `@we/backend-shared`.
+   */
+  ref: string;
+}
+
+/**
+ * Composed documents in one dataset: posts, notes, anything the composer writes.
+ *
+ * ## Why this is not `create` with a different entity
+ *
+ * A document is not a record. It is a collection, a record per block under it, a stored copy of the
+ * whole composition for cheap rendering, its text for search, the mentions it makes, and its files —
+ * uploaded to the dataset's own storage first, so every record and the stored copy agree about
+ * every address. Only the host can write all of that in one transaction, and a module assembling it
+ * from `create` calls would be a second, drifting copy of the block system's persistence.
+ *
+ * ## `read` resolves files, so a document can move
+ *
+ * A file inside a document is stored as an address in *that* dataset's file storage, which nobody
+ * outside it can fetch. `read` hands back the payloads instead, so writing the result somewhere else
+ * uploads them again there. That is what makes "share this note into a space" a copy that works
+ * for everyone who opens it, rather than a post with broken pictures for everybody but its author.
+ */
+export interface DocumentAccess {
+  /** Write a new document. `kind` defaults to `'post'`. `null` if there was nowhere to write it. */
+  create: (document: ComposedDocument, options?: { kind?: string }) => Promise<WrittenDocument | null>;
+  /**
+   * Save an edit to one. Refused for a collection whose `mode` is not a single author's
+   * (`document`) — reconciling a feed would delete every child the editor never loaded.
+   */
+  update: (id: string, document: ComposedDocument) => Promise<void>;
+  /** Delete one and every block under it. Irreversible. */
+  remove: (id: string) => Promise<void>;
+  /** Read one back, file payloads resolved — ready to `create` somewhere else. `null` if it is not there. */
+  read: (id: string) => Promise<ComposedDocument | null>;
+}
+
+/**
  * Records in the space — the write surface every module had, and the read surface none did.
  *
  * ## Why a module needs to read
@@ -128,16 +181,26 @@ export interface RecordsKernel {
     cb: (rows: Record<string, unknown>[]) => void,
     target?: DatasetTarget,
   ) => () => void;
+  /**
+   * Composed documents in the space on screen — a post, written or read the way the composer's own
+   * save writes one. Always the space on screen: a document is written because somebody composed
+   * it here, and there is no module whose work outlives the view that also writes whole posts.
+   */
+  documents: DocumentAccess;
 }
 
 /**
- * This agent's **own** records, in the root dataset — for a module that declared
+ * This agent's **own** records, in their personal space — for a module that declared
  * `entities: { scope: 'agent' }`.
  *
- * Separate from {@link RecordsKernel} rather than a target on it, because the root dataset is where
- * a module keeps what it knows about *you*, and a module that had it as one more dataset name could
- * reach it by accident. Nothing here reaches a space. Absent where the host has no agent dataset —
- * a presentation-only host, or the frames before boot finishes; `ready()` says.
+ * Separate from {@link RecordsKernel} rather than a target on it, because the personal space holds
+ * what a person made and kept, and a module that had it as one more dataset name could reach it by
+ * accident — or write a space's record into it. Nothing here reaches a space. Absent where the host
+ * has no agent dataset — a presentation-only host, or the frames before boot finishes; `ready()`
+ * says.
+ *
+ * The personal space, not the root: the root is the app's configuration, and the host writes that
+ * itself. What a module keeps for somebody is theirs, and belongs beside their notes.
  */
 export interface AgentDataKernel {
   /** Whether the agent's dataset is reachable yet. False during boot. */
@@ -150,6 +213,12 @@ export interface AgentDataKernel {
   update: (entity: string, id: string, fields: Record<string, unknown>) => Promise<void>;
   /** Delete one record. Irreversible, and only ever this agent's own. */
   remove: (entity: string, id: string) => Promise<void>;
+  /**
+   * Composed documents of this agent's own — a note is a post in the personal space. `ref` in what
+   * `create` returns names the personal space, which means something only on this agent's machine:
+   * fine to keep, never to hand to anybody else.
+   */
+  documents: DocumentAccess;
 }
 
 /**

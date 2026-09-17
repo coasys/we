@@ -4,7 +4,7 @@
  *
  *   pnpm create-module <id> "<Name>" [--icon <phosphor-icon>]
  *
- * Writes `packages/module-system/<id>/` in the shape of the notes module — a manifest, a declared
+ * Writes `packages/module-system/<id>/` in the smallest honest shape — a manifest, a declared
  * entity, a panel the host owns the openness of, a part a template can place, and a test that lints
  * the definition — then says what to add to the seed and the shell's dependencies. Nothing is
  * registered by this script: the seed is the list, and adding to it is a decision.

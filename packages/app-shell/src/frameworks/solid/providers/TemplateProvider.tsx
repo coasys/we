@@ -34,12 +34,14 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
-import { manifestEntries } from '@we/backend-shared';
+import { datasetKey, formatRef, manifestEntries } from '@we/backend-shared';
+import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { getEntity } from '@we/entities';
+import { CollectionBlock, getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { DocumentAccess } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
 import { expandViewRoutes, hasViewsMarker, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
@@ -104,8 +106,11 @@ export default function TemplateProvider() {
    *
    * A literal in three call sites would be three chances to write a space's path by mistake, and the
    * consequence of getting it wrong is one person's private collection synced to a community.
+   *
+   * The personal space rather than the root: what a module keeps for somebody is theirs, and the
+   * root is the app's configuration. See `systemDatasets.ts`.
    */
-  const ROOT_PERSPECTIVE = 'datasetStore.rootDataset';
+  const PERSONAL_PERSPECTIVE = 'datasetStore.personalDataset';
 
   // Record mutations — one instance of an entity, written through the entity's registered class
   // with the perspective injected. Pass `{ perspective: 'store.path' }` in options to target a
@@ -157,6 +162,47 @@ export default function TemplateProvider() {
     return getEntity(entity).create(perspective, fields, Object.keys(rest).length ? rest : undefined);
   }
 
+  /**
+   * Composed documents in one dataset — what the records kernel and the agent-data kernel lend as
+   * `documents`, each pinned to its own dataset.
+   *
+   * The same writes the composer's own save makes (`SpaceStore.createPost` / `updatePost`), against
+   * whichever dataset the accessor names, which is the one thing those two cannot do: they are
+   * pinned to the space on screen, and a note lives in the personal space.
+   */
+  function documentAccess(
+    target: () => { id: string; sharedUri?: string | null; handle: DatasetProxy } | null,
+  ): DocumentAccess {
+    const collection = async (handle: DatasetProxy, id: string) => CollectionBlock.findOne(handle, { where: { id } });
+    return {
+      create: async (document, options) => {
+        const ds = target();
+        if (!ds) return null;
+        const root = await createBlocks(ds.handle, document as ContentInput, { kind: options?.kind ?? 'post' });
+        if (!root?.id) return null;
+        const key = datasetKey({ cid: ds.sharedUri, uuid: ds.id });
+        return { id: root.id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id: root.id }) };
+      },
+      update: async (id, document) => {
+        const ds = target();
+        const existing = ds && (await collection(ds.handle, id));
+        if (!ds || !existing) return;
+        await reconcileBlocks(ds.handle, existing, document as ContentInput);
+      },
+      remove: async (id) => {
+        const ds = target();
+        if (ds) await deleteBlocks(ds.handle, id);
+      },
+      read: async (id) => {
+        const ds = target();
+        const existing = ds && (await collection(ds.handle, id));
+        // Payloads rather than addresses, and no keys: a fresh composition, ready to be written into a
+        // dataset whose file storage and records have never seen it. See `copyableContent`.
+        return ds && existing ? copyableContent(ds.handle, existing.editorState) : null;
+      },
+    };
+  }
+
   /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
   function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, perspective: DatasetProxy) {
     return getEntity(entity).update(perspective, id, fields);
@@ -189,37 +235,42 @@ export default function TemplateProvider() {
         return created?.id ?? null;
       },
 
-      /*
-        This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
+      // A post, from a module: always the space on screen. See `RecordsKernel.documents`.
+      documents: documentAccess(() => datasetStore.currentDataset()),
 
-        Everything goes through `recordActions` with the root perspective named, so there is one place
-        that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
-        by accident: the path is fixed here rather than passed in.
+      /*
+        This agent's own records, in their personal space — the write half of
+        `entities: { scope: 'agent' }`.
+
+        Everything goes through `recordActions` with the personal perspective named, so there is one
+        place that knows how a perspective path is resolved and an agent-scoped module cannot reach a
+        space by accident: the path is fixed here rather than passed in.
       */
       agentData: {
-        ready: () => !!datasetStore.rootDataset(),
+        ready: () => !!datasetStore.personalDataset(),
         create: async (entity, fields, options) => {
-          if (!datasetStore.rootDataset()) return null;
+          if (!datasetStore.personalDataset()) return null;
           const created = (await recordActions.create(entity, fields, {
             ...options,
-            perspective: ROOT_PERSPECTIVE,
+            perspective: PERSONAL_PERSPECTIVE,
           })) as { id?: string } | undefined;
           return created?.id ?? null;
         },
         find: async (entity, query) => {
-          if (!datasetStore.rootDataset()) return [];
-          const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
+          if (!datasetStore.personalDataset()) return [];
+          const [Model, p] = resolve(entity, { perspective: PERSONAL_PERSPECTIVE });
           const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
           return rows ?? [];
         },
         update: async (entity, id, fields) => {
-          if (!datasetStore.rootDataset()) return;
-          await recordActions.update(entity, id, fields, { perspective: ROOT_PERSPECTIVE });
+          if (!datasetStore.personalDataset()) return;
+          await recordActions.update(entity, id, fields, { perspective: PERSONAL_PERSPECTIVE });
         },
         remove: async (entity, id) => {
-          if (!datasetStore.rootDataset()) return;
-          await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
+          if (!datasetStore.personalDataset()) return;
+          await recordActions.delete(entity, id, { perspective: PERSONAL_PERSPECTIVE });
         },
+        documents: documentAccess(() => datasetStore.personalDataset()),
       },
 
       // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
@@ -523,7 +574,7 @@ export default function TemplateProvider() {
    * closure's own lookup — a filtered bag around an unfiltered walk.
    *
    * The fix is not a better walk. The option means *which dataset*, and the datasets are a closed
-   * set of four accessors the host itself names; there is no template for which the answer is "some
+   * set of five accessors the host itself names; there is no template for which the answer is "some
    * arbitrary path". So this is the whole vocabulary, and anything else resolves to null — which
    * falls through to the current dataset, exactly as an omitted option does.
    *
@@ -534,6 +585,7 @@ export default function TemplateProvider() {
   const PERSPECTIVE_PATHS = new Set([
     'datasetStore.currentDataset',
     'datasetStore.rootDataset',
+    'datasetStore.personalDataset',
     'datasetStore.globalDataset',
     'datasetStore.marketplaceDataset',
   ]);

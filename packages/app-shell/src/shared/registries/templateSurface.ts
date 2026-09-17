@@ -349,6 +349,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       hold a handle to your private perspective.
     */
     rootDataset: state('agent'),
+    /*
+      The agent's personal space — notes, the Pocket. The same tier as the root and for a stronger
+      reason: the root holds settings, this holds what a person wrote. A space's template with this
+      handle could read every note through `$query`'s `dataset` option, so only chrome and module
+      panels, which render at the chrome tier, have it.
+    */
+    personalDataset: state('agent'),
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this

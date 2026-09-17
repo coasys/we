@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createPocketStore } from './store';
 
-/** A stand-in root dataset: an array per entity, and a record of what was asked of it. */
+/** A stand-in personal space: an array per entity, and a record of what was asked of it. */
 function fakeAgentData() {
   const rows: Record<string, Record<string, unknown>[]> = { PocketFolder: [], PocketItem: [] };
   const parents: Record<string, string> = {};

@@ -128,7 +128,8 @@ To target a non-current perspective: { "$action": "record.update", "args": ["Ent
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from

@@ -12,7 +12,8 @@
  */
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
-import { AgentSettings, Space } from '@we/entities';
+import { createBlocks, registerCoreBlocks } from '@we/block-shared';
+import { AgentSettings, CollectionBlock, Space } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -173,9 +174,9 @@ describe('boot', () => {
     const stores = mountShell();
     await ready(stores);
 
-    // The boot sequence created we-root and we-test through the lifecycle port.
+    // The boot sequence created the system datasets through the lifecycle port.
     const names = (await lifecycle.list()).map((d) => d.name).sort();
-    expect(names).toEqual(['we-root', 'we-test']);
+    expect(names).toEqual(['we-personal', 'we-root', 'we-test']);
     expect(stores.session.me()?.did).toBe('did:test:james');
     expect(navigate).toHaveBeenCalledWith('/');
   });
@@ -240,7 +241,7 @@ describe('first run', () => {
     // ...but the session is fully loaded behind it — same post-unlock load as login.
     expect(stores.session.me()?.did).toBe('did:test:newcomer');
     const names = (await lifecycle.list()).map((d) => d.name).sort();
-    expect(names).toEqual(['we-root', 'we-test']);
+    expect(names).toEqual(['we-personal', 'we-root', 'we-test']);
   }, 10000);
 
   it('does not strand the user on the create screen after the agent exists', async () => {
@@ -610,6 +611,51 @@ describe('what the stores actually wrote', () => {
     expect(publicSpace.url).toBe(shared.sharedId);
     expect(privateSpace.url).toBeFalsy();
     expect(publicSpace.discovery).toBe('listed');
+  }, 10000);
+});
+
+describe('the personal space', () => {
+  it('is made beside the root, and is never listed as a space', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+
+    const personal = stores.datasets.personalDataset()!;
+    const root = stores.datasets.rootDataset()!;
+    expect(personal.name).toBe('we-personal');
+    expect(personal.id).not.toBe(root.id);
+    expect(stores.datasets.systemDatasetUuids()).toEqual(expect.arrayContaining([personal.id, root.id]));
+
+    await stores.spaces.createSpace('Somewhere', 'x', 'personal', 'hidden');
+    expect(stores.datasets.orderedDatasets().map((d) => d.name)).toEqual(['Somewhere']);
+    expect(stores.spaces.mySpaces().map((s) => s.uuid)).not.toContain(personal.id);
+  }, 10000);
+
+  it('holds a composition, written the way a post is — which is what a note is', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    const personal = stores.datasets.personalDataset()!;
+    // The composer registers these when it mounts; this suite mounts no renderer.
+    registerCoreBlocks();
+
+    const root = await createBlocks(personal.handle, [{ _type: 'block', text: 'only mine' }], { kind: 'post' });
+
+    const notes = await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } });
+    expect(notes.map((note) => note.id)).toEqual([root!.id]);
+    expect(notes[0].textContent).toContain('only mine');
+  }, 10000);
+
+  it('does not take a reference into it anywhere, since there is no space there to go to', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    const personal = stores.datasets.personalDataset()!;
+    navigate.mockClear();
+
+    await stores.spaces.openRecordRef(`we:p:${personal.id}/CollectionBlock/some-note`);
+
+    expect(navigate).not.toHaveBeenCalled();
   }, 10000);
 });
 

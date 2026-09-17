@@ -16,7 +16,7 @@ import { mentionedDids, parseMarks, serializeMarks } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
 import { getBlockRegistration, getRegisteredBlockEntities } from './registry';
-import { encodeBase64Utf8 } from './utils';
+import { decodeEditorState, encodeBase64Utf8 } from './utils';
 
 /**
  * The dataset a block tree persists into — whatever handle the connected backend takes. This
@@ -390,6 +390,36 @@ export async function resolveExpressionAddresses(
     out.push(patched);
   }
   return out;
+}
+
+/**
+ * A stored composition, as something another dataset can be written from.
+ *
+ * Two things stop a composition moving as it is stored:
+ *
+ * - **Its files are addresses in this dataset's storage.** Nobody outside the dataset can fetch
+ *   them, so a copy that kept them would draw a broken picture for everybody but its author. They
+ *   are resolved to payloads here, and `createBlocks` in the destination uploads them again — under
+ *   their original names, which `resolveExpressionAddresses` carries forward.
+ * - **Its keys are record ids in this dataset.** In another they name nothing, so they come off.
+ *
+ * `null` for a value that is not a composition — a record written by something else, or nothing.
+ */
+export async function copyableContent(perspective: BlockDataset, editorState: unknown): Promise<ContentBlock[] | null> {
+  const blocks = decodeEditorState(editorState);
+  if (!blocks) return null;
+  return withoutKeys(await resolveExpressionAddresses(perspective, blocks));
+}
+
+function withoutKeys(blocks: readonly ContentBlock[]): ContentBlock[] {
+  return blocks.map((block) => {
+    const { _key: _dropped, ...rest } = block;
+    return (
+      isCollectionBlock(block)
+        ? { ...rest, content: withoutKeys((block as CollectionContentBlock).content ?? []) }
+        : rest
+    ) as ContentBlock;
+  });
 }
 
 // ── Mentions ─────────────────────────────────────────────────────────────────

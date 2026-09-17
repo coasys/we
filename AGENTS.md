@@ -52,7 +52,8 @@ without knowing what holds the data.
 Glossary (these terms pervade stores, models, and `$query`/`perspective` in schemas):
 - **Agent / DID** — a user identity; addressed by a DID (`sessionStore.me.did`).
 - **Perspective** — a local knowledge graph (links/triples). Each Space is backed by one;
-  `datasetStore.currentDataset` is the active one, `rootPerspective` holds we-root models.
+  `datasetStore.currentDataset` is the active one, `datasetStore.rootDataset` holds we-root (the app's
+  configuration), and `datasetStore.personalDataset` holds we-personal (the agent's notes and Pocket).
 - **Neighbourhood** — a *shared* perspective, synced peer-to-peer. A shared Space is a neighbourhood.
 - **SDNA (Social DNA)** — SHACL schemas installed into a perspective that define its data model.
   WE's models are SDNA-typed; `initializeAsWeSpace` installs WE's Space SDNA into a foreign perspective.
@@ -397,7 +398,8 @@ To target a non-current perspective: { "$action": "record.update", "args": ["Ent
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from
@@ -2498,8 +2500,9 @@ DatasetStore:
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
   - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
-  - systemDatasetUuids: string[] — uuids of the we-root/we-test system datasets
-  - rootDataset: dataset handle | null — the agent's personal root dataset (we-root models live here)
+  - systemDatasetUuids: string[] — uuids of the system datasets (we-root, we-personal, we-test)
+  - rootDataset: dataset handle | null — the app's configuration (we-root): AgentSettings, templates, themes, per-space preferences. Chrome tier only
+  - personalDataset: dataset handle | null — the agent's own things (we-personal): notes, the Pocket. Carries the ordinary space schema, so posts, blocks and files work there. Chrome tier only — a space's template cannot reach it. Null until its schema is installed
   - globalDataset: dataset handle | null — the seed-configured global discovery space, once joined
   - marketplaceDataset: dataset handle | null — the seed-configured marketplace, once joined
   - globalSpaceConfigured: boolean — the seed declares a global space
@@ -2938,7 +2941,7 @@ SpaceStore:
   - requiredModules: string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
-  - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
+  - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space
   - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
   - spaceViews: ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
@@ -2979,7 +2982,7 @@ SpaceStore:
   - setAgentMuted(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass `event.detail` bare
   - markRead(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error
   - uploadFile(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload
-  - deleteCollection(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them
+  - deleteCollection(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a board are the same shape, so this is the one delete for all of them
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image
   - updateSpaceMeta(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
@@ -3113,7 +3116,7 @@ ThemeStore:
 Record:
 - State:
 - Actions:
-  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities). See "Record mutations via $action" above
+  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
   - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest
   - delete(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible
 
@@ -3264,13 +3267,14 @@ Needs: kernels agentData.
   - PocketFolder: name: string, icon: string, color: string, root: boolean, createdOrder: number; relations folders: HasMany → PocketFolder, items: HasMany → PocketItem
   - PocketItem: ref: string (required), entity: string, datasetKey: string, recordId: string, label: string, icon: string, thumbnail: string, sourceName: string, sourceAuthor: string, gatheredAt: string, note: string
 
-### Notes (`notes`)
-A per-space scratchpad in a docked panel.
+### Notes (`notes`) — the agent’s, not a space’s
+Private notes that follow you between spaces. Share one into a space as a post.
+Needs: kernels agentData, records.
 - No store: everything this module does is declared.
 - Parts: `notes.toggleButton`
 - Panels (`meta.panels[].dock`): `main` "Notes"
 - Entities (queryable with $query):
-  - Note: text: string
+  - NoteShare: noteId: string (required), ref: string (required), spaceName: string, sharedAt: string
 
 ### Globe (`globe`)
 3D globe with a modular layer system — locations, country outlines, H3 hexagons.

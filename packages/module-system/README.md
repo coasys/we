@@ -14,7 +14,7 @@ ships is the seed's `modules` list; which a space enables and which an agent ins
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@we/module-shared`     | The contract: `ModuleDefinition` (`manifest`, `contributes`, `createStore`), the kernels, the store markers, `lintModule`                   |
 | `@we/module-testing`    | Test a module without a host: `fakeDeps`, `fakeRecords`, `fakeAgentData`, `fakePresence`, `buildStore`                                      |
-| `@we/module-notes`      | A per-space scratchpad — **declaration only**, no store; the shape to copy first                                                            |
+| `@we/module-notes`      | Private notes in the personal space, shared into a space as a post — writes compositions through the `documents` kernels                    |
 | `@we/module-pocket`     | Gather things from any space into a panel that is yours — the agent-scoped module                                                           |
 | `@we/module-polls`      | Ask the space a question — the module that uses every contribution: entities, a block, a view, parts, a function, a setting, a store        |
 | `@we/module-call`       | WebRTC calls: the module built on kernels (`presence`, `ephemeral`, `media`, `peerConnection`)                                              |

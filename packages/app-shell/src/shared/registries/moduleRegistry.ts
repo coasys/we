@@ -58,25 +58,45 @@ import { slotRegistry } from './slotRegistry';
 /**
  * What a module puts in front of the user — which decides *where* it can be turned off.
  *
- * | surface      | contributes           | renders                       | agent | space |
- * |--------------|-----------------------|-------------------------------|-------|-------|
- * | `chrome`     | panels, slots, rail   | inside a space                | yes   | yes   |
- * | `app`        | an embed              | in the shell                  | yes   | no    |
- * | `capability` | components only       | wherever a template mounts it | yes   | no    |
+ * | surface      | contributes              | renders                       | agent | space |
+ * |--------------|--------------------------|-------------------------------|-------|-------|
+ * | `chrome`     | panels, slots, rail      | inside a space                | yes   | yes   |
+ * | `content`    | sections, blocks         | in a space's content          | yes   | yes   |
+ * | `app`        | an embed                 | in the shell                  | yes   | no    |
+ * | `capability` | components, parts, funcs | wherever a template mounts it | yes   | no    |
  *
- * Chrome is the only surface a community decides about, because it is the only one that appears
- * inside their space. An **app** sits in the shell's switcher and its iframe outlives navigation. A
- * **capability** is mounted by whichever template asks for it, and the honest effect of a space
- * switching it "off" would be to break the template's route — so the template decides.
+ * Chrome and content are what a community decides about, because they are what appears inside their
+ * space. `content` is its own row because polls fell between the other three: a section and a block
+ * are as much part of a space as a panel is, and classing the module as a capability put it outside
+ * every per-space switch — so a deployment shipping it "off until a community opts in" had shipped a
+ * setting nothing could change. An **app** sits in the shell's switcher and its iframe outlives
+ * navigation. A **capability** is mounted by whichever template asks for it, and the honest effect of
+ * a space switching it "off" would be to break the template's route — so the template decides.
+ *
+ * A module with both a panel and a section is chrome; the row that matters is the same either way.
  */
-export type ModuleSurface = 'chrome' | 'app' | 'capability';
+export type ModuleSurface = 'chrome' | 'content' | 'app' | 'capability';
 
 /** Derived rather than declared, so a module author cannot get it wrong. */
 export function moduleSurface(definition: ModuleDefinition): ModuleSurface {
   const c = definition.contributes;
   if (c?.embed) return 'app';
   if (c?.panels?.length || c?.slots?.length || c?.launchers?.length) return 'chrome';
+  if (c?.views?.length || c?.blocks?.length) return 'content';
   return 'capability';
+}
+
+/**
+ * Whether a community decides if this module runs in their space.
+ *
+ * Chrome or content, and not agent-scoped: a module declaring `scope: 'agent'` is active wherever its
+ * agent is (see `SpaceStore.activeModules`), so a per-space switch for it would be a control that
+ * does nothing.
+ */
+export function isCommunityDecided(definition: ModuleDefinition): boolean {
+  if (definition.manifest.scope === 'agent') return false;
+  const surface = moduleSurface(definition);
+  return surface === 'chrome' || surface === 'content';
 }
 
 /**
@@ -705,6 +725,18 @@ export const moduleRegistry = {
     const out: Record<string, TemplateSchema> = {};
     for (const { definition } of modules.values()) {
       for (const view of definition.contributes?.views ?? []) out[view.id!] = view;
+    }
+    return out;
+  },
+
+  /**
+   * Which module contributed each view, by view id — so a space that has a module off can leave its
+   * section out, where `views()` alone could not say whose a section was.
+   */
+  viewOwners(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const { definition } of modules.values()) {
+      for (const view of definition.contributes?.views ?? []) out[view.id!] = definition.manifest.id;
     }
     return out;
   },

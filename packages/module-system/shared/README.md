@@ -5,16 +5,16 @@ The feature-module contract, and the package a module author installs.
 ```ts
 import { defineModule, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
-export const notesModule = defineModule({
-  manifest: { id: 'notes', name: 'Notes', icon: 'note' },
+export const bookmarksModule = defineModule({
+  manifest: { id: 'bookmarks', name: 'Bookmarks', icon: 'bookmark' },
   contributes: {
-    entities: { manifest: NOTE_MANIFEST },
+    entities: { manifest: BOOKMARKS_MANIFEST },
     parts: { toggleButton },
-    panels: [{ name: 'main', title: 'Notes', icon: 'note', node: panel, bid: { edge: 'right', size: 'md' } }],
+    panels: [{ name: 'main', title: 'Bookmarks', icon: 'bookmark', node: panel, bid: { edge: 'right', size: 'md' } }],
   },
 });
 
-export const createModule = (_host: ModuleHost) => notesModule;
+export const createModule = (_host: ModuleHost) => bookmarksModule;
 ```
 
 ## What belongs here

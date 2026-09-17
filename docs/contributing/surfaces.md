@@ -315,8 +315,8 @@ the globe, the graph. A module is three things — a **manifest** (who it is, wh
 already has and decides where everything renders. A module never imports the shell; the shell's
 registry is generated from the seed, so it never names a module by hand either.
 
-**Declare what you can, write only what a declaration cannot say.** The notes module has no store
-at all. A store is built from injected reactivity and only the **kernels** its manifest names
+**Declare what you can, write only what a declaration cannot say.** What `pnpm create-module`
+scaffolds has no store at all. A store is built from injected reactivity and only the **kernels** its manifest names
 (`records`, `presence`, `media`, …), and its members are private until `deps.state` / `deps.action`
 publish one with a sentence. A module with no framework imports cannot suffer the second-runtime
 problem — a bundle carrying its own copy of a reactive framework gets a second one, and reactivity
@@ -324,7 +324,7 @@ silently stops crossing the boundary, with no error.
 
 - **Lives in** `packages/module-system/<id>/` — or any package exporting `createModule(host)`
 - **Conventions** [`docs/guides/writing-a-module.md`](../guides/writing-a-module.md), then the contract — `packages/module-system/shared/src/module.ts` and `kernels.ts`
-- **Copy** `pnpm create-module <id> "<Name>"` scaffolds one in the shape of **notes** (declaration only); **polls** uses every kind of contribution; **call** is the one built on kernels
+- **Copy** `pnpm create-module <id> "<Name>"` scaffolds one that is declaration only; **pocket** and **notes** keep the agent's own things in their personal space; **polls** uses every kind of contribution; **call** is the one built on kernels
 - **Register** `we-seed.json`'s `modules` (an id, or `{ "id", "package"?, "enabled"? }`), the package in `@we/app-shell`'s and `@we/ai-context`'s dependencies, then `pnpm --filter @we/app-shell generate-modules`
 - **Verify** `pnpm --filter @we/module-<id> test` with `lintModule` from `@we/module-testing`, `pnpm validate:schemas` (it covers `module-system/`, and knows the module's members once `generate-context` has run)
 

@@ -194,6 +194,7 @@ export const storeEntries: StoreEntry[] = [
       datasetsLoaded: { type: 'boolean' },
       systemDatasetUuids: { type: 'array' },
       rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      personalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       marketplaceDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalSpaceId: { type: 'string' },
@@ -773,8 +774,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
         datasetsLoaded:
           'boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists',
-        systemDatasetUuids: 'string[] — uuids of the we-root/we-test system datasets',
-        rootDataset: "dataset handle | null — the agent's personal root dataset (we-root models live here)",
+        systemDatasetUuids: 'string[] — uuids of the system datasets (we-root, we-personal, we-test)',
+        rootDataset:
+          "dataset handle | null — the app's configuration (we-root): AgentSettings, templates, themes, per-space preferences. Chrome tier only",
+        personalDataset:
+          "dataset handle | null — the agent's own things (we-personal): notes, the Pocket. Carries the ordinary space schema, so posts, blocks and files work there. Chrome tier only — a space's template cannot reach it. Null until its schema is installed",
         globalDataset: 'dataset handle | null — the seed-configured global discovery space, once joined',
         marketplaceDataset: 'dataset handle | null — the seed-configured marketplace, once joined',
         globalSpaceId:
@@ -1082,7 +1086,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
         moduleInstallSettings:
-          "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
+          "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space",
         moduleLaunchers:
           '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
       },
@@ -1133,7 +1137,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         updatePost:
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
         deleteCollection:
-          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them',
+          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a board are the same shape, so this is the one delete for all of them',
         createBoard:
           '(title: string, parentId?: string, options?: { gathers?: string }): makes a board \u2014 a CollectionBlock whose ordered children are its columns, one per state the community uses. Returns its id. Pass parentId to put the board inside another collection (a call\u2019s record), which is where an anchored Boards view lists it. A board made this way shows only what is put on it; openBoardFor makes the ones that gather',
         openBoardFor:
@@ -1643,7 +1647,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {},
       actions: {
         create:
-          '(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root entities). See "Record mutations via $action" above',
+          "(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
         update:
           '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest',
         delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible',

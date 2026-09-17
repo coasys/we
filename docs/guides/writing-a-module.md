@@ -38,7 +38,7 @@ export const createModule = (_host: ModuleHost) => pollsModule;
 Three things, named as three. The **manifest** is who the module is and what it needs — shown at
 install, compared at registration. **Contributions** are what it puts in front of a person — data the
 host fans out to its registries. **`createStore`** is the one piece that is code, and it is optional.
-The notes module has none.
+What `pnpm create-module` scaffolds has none.
 
 Every module package exports `createModule(host)`. That one shape is what lets the deployment's
 registry be generated from the seed: `pnpm --filter @we/app-shell generate-modules` reads
@@ -50,10 +50,11 @@ registry be generated from the seed: `pnpm --filter @we/app-shell generate-modul
 pnpm create-module bookmarks "Bookmarks" --icon bookmark
 ```
 
-That writes `packages/module-system/bookmarks/` in the shape of the notes module and prints the five
-steps that follow. Or copy a bundled module: **notes** for a module that is entirely declaration,
-**pocket** for one with a store over the agent's own data, **polls** for one that uses every kind of
-contribution, **call** for one built on kernels.
+That writes `packages/module-system/bookmarks/` — a manifest, an entity, a panel the host opens and
+closes, a part, and a lint test, with no store — and prints the five steps that follow. Or copy a
+bundled module: **pocket** for one with a store over the agent's own data, **notes** for one that
+writes compositions through the `documents` kernels and copies one into a space, **polls** for one that
+uses every kind of contribution, **call** for one built on kernels.
 
 ## Declare what you can, write only what a declaration cannot say
 
@@ -104,12 +105,14 @@ by name** — a property called `name` binds to `we://name`, and generic UI that
 on your entity for free. What you may not do is mint a new flat `we://<word>`; the registry refuses
 it, because a predicate mistake orphans data rather than failing.
 
-`entities: { scope: 'agent' }` installs into the agent's own root dataset instead of the space — for
-what a module knows about _you_. Pair it with `manifest.scope: 'agent'` (the pocket).
+`entities: { scope: 'agent' }` installs into the agent's personal space instead of the community's —
+for what a person made or kept. Pair it with `manifest.scope: 'agent'` (the pocket, notes). The
+personal space carries the ordinary space schema, so its records can be core content too: a note is a
+post there, written through `agentData.documents`.
 
-**Own the container, never the content.** A note is a core `TextBlock` in a collection the module
-owns, not a `Note`. A vote names its poll by id and is read back by a query. Two nouns for one thing
-means records that can never meet.
+**Own the container, never the content.** A note is a core composition — a post nobody else can see —
+and what the notes module owns is only where one was shared. A vote names its poll by id and is read
+back by a query. Two nouns for one thing means records that can never meet.
 
 ## Panels
 
@@ -123,8 +126,8 @@ some other way. `bid` is how it would like to open, and the host resolves it aga
 and remembers wherever somebody drags it.
 
 **The host owns whether a panel is open.** The rail toggles it, a template opens it, the titlebar
-closes it, and your module never sees the flag. This is the right owner for nearly every panel, and it
-is why the notes module has no store at all. If openness genuinely _is_ your module's own state — the
+closes it, and your module never sees the flag. This is the right owner for nearly every panel, and
+none of the notes module's store is about its panel. If openness genuinely _is_ your module's own state — the
 call's stage is up while there is a call to watch, the pocket resolves its root folder on opening —
 name `open` (a boolean state key), `show` and `close` (action keys) on the panel, and the host reads
 through. A `bid` may also be a store key, for a panel whose shape is state (a stage that wants `'full'`

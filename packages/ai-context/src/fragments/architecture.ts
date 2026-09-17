@@ -54,7 +54,8 @@ without knowing what holds the data.
 Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in schemas):
 - **Agent / DID** — a user identity; addressed by a DID (\`sessionStore.me.did\`).
 - **Perspective** — a local knowledge graph (links/triples). Each Space is backed by one;
-  \`datasetStore.currentDataset\` is the active one, \`rootPerspective\` holds we-root models.
+  \`datasetStore.currentDataset\` is the active one, \`datasetStore.rootDataset\` holds we-root (the app's
+  configuration), and \`datasetStore.personalDataset\` holds we-personal (the agent's notes and Pocket).
 - **Neighbourhood** — a *shared* perspective, synced peer-to-peer. A shared Space is a neighbourhood.
 - **SDNA (Social DNA)** — SHACL schemas installed into a perspective that define its data model.
   WE's models are SDNA-typed; \`initializeAsWeSpace\` installs WE's Space SDNA into a foreign perspective.

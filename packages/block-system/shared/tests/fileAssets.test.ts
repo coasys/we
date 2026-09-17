@@ -10,6 +10,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const stored: Array<{ name: string; file_type: string; data_base64: string }> = [];
+/** The dataset each upload went to, in step with `stored`. */
+const storedIn: unknown[] = [];
 
 vi.mock('@we/entities', () => ({
   asFileField: (fileData: unknown) => fileData,
@@ -20,8 +22,9 @@ vi.mock('@we/entities', () => ({
   }),
   runEntityTransaction: (_dataset: unknown, fn: (tx: { batchId: string }) => unknown) => fn({ batchId: 'batch-1' }),
   getFileStore: () => ({
-    store: async (_dataset: unknown, file: { name: string; file_type: string; data_base64: string }) => {
+    store: async (dataset: unknown, file: { name: string; file_type: string; data_base64: string }) => {
       stored.push(file);
+      storedIn.push(dataset);
       return `qm://${file.name}@${file.data_base64.length}`;
     },
     fetch: async (_dataset: unknown, address: string) => {
@@ -44,7 +47,7 @@ vi.mock('@we/entities/manifest', () => ({
 
 import type { ContentBlock } from '../src/content';
 import { type BlockEntityStatic, registerBlock } from '../src/registry';
-import { createBlocks, reconcileBlocks, resolveExpressionAddresses } from '../src/serialization';
+import { copyableContent, createBlocks, reconcileBlocks, resolveExpressionAddresses } from '../src/serialization';
 import { decodeEditorState } from '../src/utils';
 
 let idCounter = 0;
@@ -99,6 +102,7 @@ beforeEach(() => {
   idCounter = 0;
   byId.clear();
   stored.length = 0;
+  storedIn.length = 0;
 });
 
 describe('file-backed fields', () => {
@@ -155,5 +159,45 @@ describe('file-backed fields', () => {
     });
 
     expect(image.src).toEqual(replacement);
+  });
+});
+
+describe('a composition moving between datasets', () => {
+  it('carries its files as payloads, so the destination uploads them into its own storage', async () => {
+    const personal = { name: 'personal' };
+    const space = { name: 'space' };
+    const root = (await createBlocks(
+      personal,
+      [
+        { _type: 'block', text: 'a note with a picture' },
+        { _type: 'image', src: fileData, altText: 'a' },
+      ],
+      { kind: 'post' },
+    )) as FakeCollection;
+    expect(storedIn).toEqual([personal]);
+
+    const copy = await copyableContent(
+      personal,
+      `data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`,
+    );
+
+    // No keys: they are record ids in the dataset it was read from, and name nothing elsewhere.
+    expect(copy!.every((block) => block._key === undefined)).toBe(true);
+    // A payload, not the personal space's address.
+    expect(copy![1].src).toBe('data:image/png;base64,QUJD');
+
+    stored.length = 0;
+    storedIn.length = 0;
+    const post = (await createBlocks(space, copy!, { kind: 'post' })) as FakeCollection;
+
+    expect(post.id).not.toBe(root.id);
+    expect(storedIn).toEqual([space]);
+    // Under the name it was first uploaded with — content addressing lands on the same expression.
+    expect(stored.map((file) => file.name)).toEqual(['image-block']);
+  });
+
+  it('is nothing for a value that is not a composition', async () => {
+    expect(await copyableContent({}, undefined)).toBeNull();
+    expect(await copyableContent({}, 'not a document')).toBeNull();
   });
 });

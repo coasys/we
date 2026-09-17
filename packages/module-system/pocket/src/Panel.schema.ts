@@ -13,8 +13,8 @@ import { POCKET_PREDICATES } from './entities';
  *
  * ## Where its data comes from
  *
- * The root dataset, read straight from the fragments with `dataset: 'datasetStore.rootDataset'` and
- * written with `record.create`'s `perspective` option. That surface already existed; what the module
+ * The agent's personal space, read straight from the fragments with
+ * `dataset: 'datasetStore.personalDataset'` and written with `record.create`'s `perspective` option. That surface already existed; what the module
  * contract was missing was permission for a *module's own* entities to be installed there, which is
  * what `entities: { scope: 'agent' }` adds. Only the parts a template genuinely cannot do — building
  * a reference, asking whether one is already held, going to one, and remembering which folder you
@@ -22,7 +22,7 @@ import { POCKET_PREDICATES } from './entities';
  */
 
 /** The dataset every fragment here reads and writes. Named once so a typo cannot scatter. */
-const ROOT = 'datasetStore.rootDataset';
+const PERSONAL = 'datasetStore.personalDataset';
 
 /**
  * The folder being looked at, straight from the store.
@@ -500,13 +500,13 @@ const folderContents: SchemaNode = {
     folders: {
       entity: 'PocketFolder',
       scope: { anchor: 'PocketFolder', via: 'folders', anchorId: currentFolder },
-      dataset: ROOT,
+      dataset: PERSONAL,
     },
     items: {
       entity: 'PocketItem',
       scope: { anchor: 'PocketFolder', via: 'items', anchorId: currentFolder },
       order: { gatheredAt: 'desc' },
-      dataset: ROOT,
+      dataset: PERSONAL,
     },
   },
   children: [
@@ -748,7 +748,7 @@ const newFolderForm: SchemaNode = {
                   'PocketFolder',
                   { name: { $: 'local.newFolderName' } },
                   {
-                    perspective: ROOT,
+                    perspective: PERSONAL,
                     parent: { id: currentFolder, predicate: POCKET_PREDICATES.folders },
                   },
                 ],
@@ -796,7 +796,7 @@ const panel: SchemaNode = {
   props: {
     // No dataset of your own, nowhere to keep anything. Unlike the notes panel this does **not**
     // check for a current space: the Pocket's whole point is that it outlives the one you are in.
-    condition: { $: 'datasetStore.rootDataset && modules.pocket.open' },
+    condition: { $: 'datasetStore.personalDataset && modules.pocket.open' },
     then: {
       type: 'we-drop-zone',
       props: {

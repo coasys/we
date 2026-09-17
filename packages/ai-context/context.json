@@ -5667,6 +5667,10 @@
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
+        "personalDataset": {
+          "type": "object",
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
+        },
         "globalDataset": {
           "type": "object",
           "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
@@ -7859,11 +7863,13 @@
     {
       "id": "notes",
       "name": "Notes",
-      "description": "A per-space scratchpad in a docked panel.",
+      "description": "Private notes that follow you between spaces. Share one into a space as a post.",
       "icon": "note",
-      "scope": "space",
-      "requires": {},
-      "capabilities": ["storage:space", "dock"],
+      "scope": "agent",
+      "requires": {
+        "kernels": ["agentData", "records"]
+      },
+      "capabilities": ["kernel:agentData", "kernel:records", "storage:agent", "dock"],
       "members": [],
       "parts": [
         {
@@ -7887,13 +7893,31 @@
       "blocks": [],
       "entities": [
         {
-          "name": "Note",
-          "className": "Note",
+          "name": "NoteShare",
+          "className": "NoteShare",
           "fields": [
             {
-              "name": "text",
+              "name": "noteId",
               "type": "string",
-              "predicate": "we://module/notes/text",
+              "predicate": "we://module/notes/noteId",
+              "required": true
+            },
+            {
+              "name": "ref",
+              "type": "string",
+              "predicate": "we://module/notes/ref",
+              "required": true
+            },
+            {
+              "name": "spaceName",
+              "type": "string",
+              "predicate": "we://module/notes/spaceName",
+              "required": false
+            },
+            {
+              "name": "sharedAt",
+              "type": "string",
+              "predicate": "we://module/notes/sharedAt",
               "required": false
             }
           ],
