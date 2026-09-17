@@ -49,6 +49,15 @@ export interface ComposerModalOptions {
    * renders, takes the click, and does nothing.
    */
   openLocal: string;
+  /**
+   * What closing writes back to `openLocal`. Defaults to `false`.
+   *
+   * For a composer whose open flag is not a flag but an **answer**: a thread holds the id of the
+   * reply being answered, so one modal serves every level of it — `''` closes it, and any id opens
+   * it on that reply. Written as `false` into a string local, the modal would close and the field
+   * would hold a boolean, which the next read has to be careful about for no reason.
+   */
+  clearTo?: SchemaProp;
   /** Modal heading — "New post", "Edit post", "Reply". */
   title: string;
   /**
@@ -112,9 +121,10 @@ export function backButton(onClick: SchemaProp): SchemaNode {
 }
 
 export function composerModal(opts: ComposerModalOptions): SchemaNode {
+  const clearTo = opts.clearTo ?? false;
   const close: SchemaProp = opts.onClose?.length
-    ? [{ $setLocal: opts.openLocal, value: false }, ...opts.onClose]
-    : { $setLocal: opts.openLocal, value: false };
+    ? [{ $setLocal: opts.openLocal, value: clearTo }, ...opts.onClose]
+    : { $setLocal: opts.openLocal, value: clearTo };
   /*
     `draftDirty` is written by the composer, not by the schema. It is the one piece of modal state
     in the kit whose source is a component rather than a control, because the editor's document is not
@@ -192,7 +202,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                       // The close first, so anything the caller adds runs against a modal that has
                       // already gone — a refresh it triggers repaints what is behind, not under it.
                       onSuccess: [
-                        { $setLocal: opts.openLocal, value: false },
+                        { $setLocal: opts.openLocal, value: clearTo },
                         ...(opts.onClose ?? []),
                         ...(opts.onSaved ?? []),
                       ],

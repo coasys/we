@@ -79,6 +79,8 @@ export type { TypePickerOptions } from './we/typePicker.ts';
 export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
 export { activitySummary, signalsSection } from './we/signals.ts';
 export type { ActivitySummaryOptions, SignalsSectionOptions } from './we/signals.ts';
+export { discussionSection } from './we/discussion.ts';
+export type { DiscussionSectionOptions } from './we/discussion.ts';
 export {
   fillForSemantic,
   iconForSemantic,

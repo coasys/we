@@ -1,0 +1,260 @@
+/**
+ * The conversation about one record — read, replied to, at any depth.
+ *
+ * ## What was missing, and what was already there
+ *
+ * Almost all of this existed. `WeNode.comments` (`we://comment`) hangs a reply off *anything* — a
+ * post, an image inside it, a task, a drawn connection, another reply — and `commentThread` has
+ * drawn those nested for as long as it has existed. What was missing was the other half: **there was
+ * no way to write one below the top.** Every surface offered a single "Reply" button against the
+ * record, so a thread could be rendered three levels deep and never reach two. Nested threads were a
+ * rendering of data nothing could produce.
+ *
+ * The reason is a real constraint rather than an oversight: `$localState` names are fixed when a
+ * template is written and the replies come from a query, so "is the composer open on *this* reply"
+ * has no name to be stored under. The way round it is to store the **answer** instead of a flag —
+ * one local holding the id of whatever is being replied to, one composer reading it. That is what
+ * `composerModal`'s `clearTo` exists for.
+ *
+ * ## Depth is bounded, and the conversation is not
+ *
+ * `commentThread` expands into nested copies of itself at authoring time, because a schema is a
+ * finite tree and cannot recurse at render time. Three levels is the practical limit — a panel is
+ * 320px wide and the indent budget runs out long before a conversation does.
+ *
+ * So the limit re-roots rather than stopping: the deepest row carries "N more in this thread", and
+ * pressing it makes that reply the thread's root. Reddit does the same, and it is what makes a
+ * bounded expansion answer an unbounded conversation. Going back is one press, and the reply the
+ * thread is rooted at is drawn above it so the context is not lost.
+ *
+ * ## Fractal or flat, as a reading rather than a shape
+ *
+ * `mode` decides whether a *reply* may be replied to. It does not decide how replies are **stored**,
+ * which is always a tree: a space that switches to flat still shows the nesting it already has,
+ * rather than a hierarchy silently reading as a list, and a space that switches back loses nothing.
+ * Flat is a policy about what may be added — the GitHub-issue reading of a discussion — and it is an
+ * expression, so a community can hold the answer where communities hold their other decisions.
+ *
+ * What it is *not* is a flattening. Drawing a stored tree as one list, Slack-style with "replying to
+ * @x", needs a walk to any depth, and the query language has one hop; it is not expressible and is
+ * not worth the entity it would take.
+ *
+ * ## Ambient scope — what this reads from the tree
+ *
+ * - **`local.signalTypes`**, for the counts on each reply. See `signals.ts`, which documents why the
+ *   subscription belongs to the surface rather than to the fragment.
+ * - Its own locals are declared here, prefixed `discussion*`, so a panel holding one needs to
+ *   declare nothing. Two discussions in one tree would share them — put the second one behind a
+ *   route or a modal, which is where a second conversation belongs anyway.
+ */
+import { composerModal, emptyNote } from '@we/schema-kit';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+
+import { commentThread } from '../lists/commentThread.ts';
+import { agentByline } from './agentByline.ts';
+import { activitySummary } from './signals.ts';
+
+/** The reply the composer is open on, or empty. Holds the answer rather than a flag — see above. */
+const REPLY_TO = 'discussionReplyTo';
+/** The reply the thread is currently rooted at, or empty for the record itself. */
+const ROOT = 'discussionRoot';
+
+export interface DiscussionSectionOptions {
+  /** Context key of the record being discussed — `'row'`, `'link'`, `'card'`. */
+  record: string;
+  /** Whether a reply may itself be replied to, as an expression. Defaults to always. */
+  fractal?: string;
+  /** Levels drawn before the thread offers to re-root. Defaults to 3, as `commentThread` does. */
+  depth?: number;
+  /** What the composer's heading says. Defaults to "Reply". */
+  title?: string;
+}
+
+/** The button that opens the composer on one reply — the thing flat mode withholds. */
+function replyButton(as: string): SchemaNode {
+  return {
+    type: 'we-button',
+    props: {
+      variant: 'ghost',
+      size: 'xs',
+      ml: 'auto',
+      onClick: { $setLocal: REPLY_TO, value: { $: `${as}.id` } },
+    },
+    children: [{ type: 'we-icon', props: { name: 'arrow-bend-up-left' } }, 'Reply'],
+  };
+}
+
+/** One reply, as it is drawn wherever it appears — in the thread, and above it once re-rooted. */
+function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
+  const fractal = opts.fractal;
+  return [
+    agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
+    { type: 'BlockRenderer', props: { editorState: { $: `${as}.editorState` } } },
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', width: '100%' },
+      children: [
+        /*
+          What this reply has collected, read-only.
+
+          Counts rather than the controls the record itself gets: a thread is a column of replies and
+          a row of buttons under each one is more furniture than conversation. Reacting to a reply is
+          a gap and is named as one in the PR — it wants a control that appears on attention, which
+          is the same thing `signalRow` is waiting on.
+        */
+        activitySummary({ record: as, replies: false, as: `${as}Sum` }),
+        // Whether this reply may be answered. Unconditional where the caller named no rule, rather
+        // than gated on a literal `true`: a bare boolean in an expression is a *name* to the parser,
+        // and the node this would wrap is cheaper to leave out than to guard.
+        ...(fractal
+          ? [
+              {
+                type: '$if',
+                props: {
+                  condition: { $: fractal },
+                  then: replyButton(as),
+                },
+              } as SchemaNode,
+            ]
+          : [replyButton(as)]),
+      ],
+    },
+  ];
+}
+
+export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
+  /** What the thread hangs off: the reply it has been re-rooted at, or the record. */
+  const anchor = `local.${ROOT} ? local.${ROOT} : ${opts.record}.id`;
+
+  return {
+    type: 'Column',
+    props: { gap: '300', width: '100%' },
+    $localState: {
+      [REPLY_TO]: { type: 'string', initial: '' },
+      [ROOT]: { type: 'string', initial: '' },
+    },
+    $queries: {
+      /*
+        The reply the thread has been re-rooted at, so it can be shown above its own replies.
+
+        Only while re-rooted — `when` rather than a `where` the pruner would drop, which would widen
+        this to every reply in the space and draw whichever came back first. Its own query because it
+        is not in the thread below it: the thread asks for that reply's *children*.
+      */
+      discussionFocus: {
+        entity: 'CollectionBlock',
+        where: { id: { $: `local.${ROOT}` } },
+        when: { $: `local.${ROOT}` },
+        include: { signals: true },
+        limit: 1,
+      },
+    },
+    children: [
+      // Where you are, and the way back — only while the thread is rooted somewhere other than the
+      // record. The record's own thread is the top, and a "back" there would point at nothing.
+      {
+        type: '$if',
+        props: {
+          condition: { $: `local.${ROOT}` },
+          then: {
+            type: 'Column',
+            props: { gap: '200', width: '100%' },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  variant: 'ghost',
+                  size: 'sm',
+                  ax: 'start',
+                  onClick: { $setLocal: ROOT, value: '' },
+                },
+                children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back to the whole thread'],
+              },
+              {
+                type: '$each',
+                props: { items: { $: 'local.discussionFocus' }, as: 'focused' },
+                children: [
+                  {
+                    // The reply being continued, drawn as itself and marked as the context it is:
+                    // a rule down its left edge, which is what the indent says one level in.
+                    type: 'Column',
+                    props: { gap: '100', width: '100%', pl: '400', borderLeft: '2px solid border-strong' },
+                    children: replyBody('focused', opts),
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      commentThread({
+        anchorId: { $: anchor },
+        ...(opts.depth !== undefined && { depth: opts.depth }),
+        reply: (as) => [
+          {
+            type: 'Column',
+            props: { gap: '100', width: '100%', py: '200' },
+            children: replyBody(as, opts),
+          },
+        ],
+        // The limit, made a door — see the docblock. The count is the same one the default sentence
+        // shows; what changes is that pressing it goes there.
+        more: (as) => ({
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            ax: 'start',
+            onClick: { $setLocal: ROOT, value: { $: `${as}.id` } },
+          },
+          children: [
+            { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
+            ' more in this thread',
+            { type: 'we-icon', props: { name: 'arrow-right', size: 'xs' } },
+          ],
+        }),
+        empty: emptyNote('No replies yet.'),
+      }),
+      /*
+        Replying to what the thread is rooted at — the record, or the reply being continued.
+
+        The same anchor the thread reads, so "Reply" always means "reply to the thing above these
+        replies" wherever the reader has got to. Below the thread rather than above it, where the
+        conversation ends and a new line goes.
+      */
+      {
+        type: 'Row',
+        props: { gap: '300', width: '100%' },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              variant: 'ghost',
+              size: 'sm',
+              onClick: { $setLocal: REPLY_TO, value: { $: anchor } },
+            },
+            children: [{ type: 'we-icon', props: { name: 'chat-circle' } }, 'Reply'],
+          },
+        ],
+      },
+      composerModal({
+        openLocal: REPLY_TO,
+        // The id is the open state, so closing clears it rather than writing a boolean into a field
+        // every other read treats as an id.
+        clearTo: '',
+        title: opts.title ?? 'Reply',
+        saveLabel: 'Reply',
+        saveAction: {
+          $action: 'spaceStore.createPost',
+          // The tree first: `createPost(json, options)`. `we://comment` rather than `we://children`
+          // — a reply answers the thing rather than becoming part of it, which is what lets a reply
+          // be a full composition with children of its own.
+          args: [
+            { $: 'arg' },
+            { kind: 'reply', parentId: { $: `local.${REPLY_TO}` }, predicate: 'we://comment' } as SchemaProp,
+          ],
+        },
+      }),
+    ],
+  };
+}

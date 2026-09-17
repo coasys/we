@@ -14,6 +14,7 @@ import {
   composerModal,
   confirmModal,
   discardGuard,
+  discussionSection,
   emptyNote,
   emptyState,
   field,
@@ -202,6 +203,8 @@ const weDomain: Record<string, SchemaNode> = {
   }),
   'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
   signalsSection: signalsSection({ record: 'row' }),
+  discussionSection: discussionSection({ record: 'row' }),
+  'discussionSection (flat)': discussionSection({ record: 'row', fractal: "routeStore.params.threads != 'flat'" }),
   activitySummary: activitySummary({ record: 'card' }),
   'activitySummary (no replies)': activitySummary({ record: 'card', replies: false }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
@@ -264,6 +267,8 @@ describe('every expansion is a valid schema fragment', () => {
     'composerModal (unguarded)',
     'peopleFilter',
     'signalsSection',
+    'discussionSection',
+    'discussionSection (flat)',
     'activitySummary',
     'activitySummary (no replies)',
   ]);
@@ -333,6 +338,50 @@ describe('contracts call sites depend on', () => {
     });
     expect(conditions).toContain('count(filter(local.signalTypes, { retired: { not: true } }))');
     expect(conditions.filter((c) => c.includes('row.signals'))).toEqual([]);
+  });
+
+  it('discussionSection can reply at every level it draws, not just the top', () => {
+    // The bug the fragment was born from: threads rendered three deep and every surface offered one
+    // Reply button, against the record — so nesting was a rendering of data nothing could produce.
+    // Each level's button names that level's own reply, which is what makes the tree reachable.
+    const targets = new Set<string>();
+    walk(weDomain.discussionSection, (n) => {
+      const value = (n as { $setLocal?: string; value?: { $?: string } }).value;
+      if ((n as { $setLocal?: string }).$setLocal === 'discussionReplyTo' && value?.$) targets.add(value.$);
+    });
+    expect(targets).toContain('reply.id');
+    expect(targets).toContain('reply2.id');
+    expect(targets).toContain('reply3.id');
+  });
+
+  it('discussionSection turns the depth limit into a door rather than a wall', () => {
+    // A schema cannot recurse at render time, so the expansion is finite; re-rooting is what keeps
+    // the conversation it draws from being.
+    let reroots = false;
+    walk(weDomain.discussionSection, (n) => {
+      const value = (n as { $setLocal?: string; value?: { $?: string } }).value;
+      if ((n as { $setLocal?: string }).$setLocal === 'discussionRoot' && value?.$?.endsWith('.id')) reroots = true;
+    });
+    expect(reroots).toBe(true);
+  });
+
+  it('discussionSection in flat mode withholds the reply button from replies, not from the record', () => {
+    // Flat is a policy about what may be *added*. The record keeps its Reply — a discussion with no
+    // way in is not a flat discussion, it is a closed one — and stored nesting still renders.
+    const conditions: string[] = [];
+    walk(weDomain['discussionSection (flat)'], (n) => {
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (condition) conditions.push(condition);
+    });
+    expect(conditions).toContain("routeStore.params.threads != 'flat'");
+    let recordReply = false;
+    walk(weDomain['discussionSection (flat)'], (n) => {
+      const value = (n as { $setLocal?: string; value?: { $?: string } }).value;
+      if ((n as { $setLocal?: string }).$setLocal === 'discussionReplyTo' && value?.$?.includes('row.id')) {
+        recordReply = true;
+      }
+    });
+    expect(recordReply).toBe(true);
   });
 
   it('activitySummary says nothing about a record nobody has touched', () => {

@@ -37,6 +37,19 @@ export interface CommentThreadOptions {
   depth?: number;
   /** Shown when a thread has no replies. Defaults to nothing — an empty thread should be silent. */
   empty?: SchemaNode;
+  /**
+   * What to draw at the depth limit, in place of the default "N more in this thread". Receives the
+   * context key of the deepest reply drawn, whose own replies are the ones not being shown.
+   *
+   * The default is a sentence, because a fragment on its own has nowhere to send anybody: the count
+   * says the conversation continues and stops there. A caller that *can* go there — one holding a
+   * local for which reply the thread is rooted at — passes a control instead, and the limit stops
+   * being a wall. See `discussionSection`, which is that caller.
+   *
+   * Rendered inside the same `count(<reply>.comments)` guard as the default, so a thread that simply
+   * ends still ends: this replaces what is said, never whether anything is.
+   */
+  more?: (as: string) => SchemaNode;
   /** Indent per level, as a space token. Defaults to `'400'`. */
   indent?: string;
   /** Internal: the current level, counted down. */
@@ -59,14 +72,16 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
           type: '$if',
           props: {
             condition: { $: `count(${as}.comments)` },
-            then: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [
-                { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
-                ' more in this thread',
-              ],
-            },
+            then: opts.more
+              ? opts.more(as)
+              : {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [
+                    { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
+                    ' more in this thread',
+                  ],
+                },
           },
         },
   ];
