@@ -802,15 +802,6 @@ export interface SpaceStore {
   setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
-   * Whether extraction passes in this space broadcast their prompt and response to every member.
-   *
-   * A community decision rather than a personal one: "I share and you do not" is an asymmetry with
-   * no use, and the reason to turn it on — this space is working on extraction and wants to see
-   * what it is doing — is about the space. Defaults off; see the model for why.
-   */
-  shareExtractionDetail: Accessor<boolean>;
-  setShareExtractionDetail: (enabled: boolean, spaceUuid?: string) => Promise<void>;
-  /**
    * Which models this community's calls start out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
@@ -3288,10 +3279,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     `moduleSettings.ts` owns the resolution and the reasoning; this owns only the reading.
 
     A capability could be switched on and off four ways here and could not carry a single *value*,
-    which is why `autoInterpret`, `extractionTargets` and `shareExtractionDetail` are columns on the
-    core `Space` entity. Those three stay where they are — they are extraction's configuration, and
-    where that lands is a question about wires rather than about settings — but nothing new joins
-    them.
+    which is why `autoInterpret` and `extractionTargets` are columns on the core `Space` entity.
+    Those two stay where they are — they are extraction's configuration, and where that lands is a
+    question about wires rather than about settings — but nothing new joins them.
   */
   const settingLevels = createMemo<LevelValues>(() => {
     const uuid = datasetStore.currentDataset()?.id;
@@ -3401,7 +3391,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     decision to spend somebody's LLM budget.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
-  const shareExtractionDetail = createMemo<boolean>(() => currentSpace()?.shareExtractionDetail === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
 
   /*
@@ -4380,35 +4369,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Turn extraction diagnostics on or off for the space.
-   *
-   * Same shape and same failure handling as `setAutoInterpret`, which is the setting it sits beside
-   * — a switch that reports success without persisting is worse than one that fails visibly,
-   * because the next member to open the page sees the old decision.
-   */
-  async function setShareExtractionDetail(enabled: boolean, spaceUuid?: string) {
-    const ds = targetDataset(spaceUuid);
-    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
-    if (!ds || !space) return;
-    try {
-      await Space.update(ds.handle, space.id, { shareExtractionDetail: enabled });
-    } catch (error) {
-      console.error('SpaceStore: could not persist shareExtractionDetail', error);
-      toastService.error('Could not save this change for the space.');
-      throw error;
-    }
-    updateSpaceInCache(ds, { shareExtractionDetail: enabled } as never);
-    if (!isCurrent(ds)) return;
-    setCurrentSpace((prev) =>
-      prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
-            shareExtractionDetail: enabled,
-          }) as Space)
-        : prev,
-    );
-  }
-
-  /**
    * Add or remove one model from what this community's calls start out extracting.
    *
    * Writes the resolved list, exactly as `setModuleEnabled` does and for the same two reasons: the
@@ -4930,8 +4890,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     setMyModuleSetting,
     setAgentModuleSetting,
     setAutoInterpret,
-    shareExtractionDetail,
-    setShareExtractionDetail,
     extractionTargets,
     setExtractionTarget,
     setModuleInstalled,

@@ -1,8 +1,8 @@
 /**
  * Which watched passes get written down, and as what.
  *
- * The rule lives beside `detailWithheld` for the same reason that one does: it is a sentence about
- * rows, and every way of getting it wrong produces a *quiet* wrong answer — a duplicate line in a
+ * The rule lives in `activityView.ts` rather than the store because it is a sentence about rows,
+ * and every way of getting it wrong produces a *quiet* wrong answer — a duplicate line in a
  * log nobody counts, a history of who was watching rather than of what was read, or an entry whose
  * prompt is blank because it was read off the wrong event.
  *

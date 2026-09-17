@@ -4694,13 +4694,6 @@
           "type": "string",
           "predicate": "we://module_settings",
           "required": false
-        },
-        {
-          "name": "shareExtractionDetail",
-          "type": "boolean",
-          "predicate": "we://share_extraction_detail",
-          "required": false,
-          "default": "false"
         }
       ],
       "relations": [
@@ -5903,9 +5896,6 @@
         "settledCount": {
           "type": "number"
         },
-        "detailWithheld": {
-          "type": "boolean"
-        },
         "capable": {
           "type": "boolean"
         }
@@ -6751,9 +6741,6 @@
         "autoInterpret": {
           "type": "boolean"
         },
-        "shareExtractionDetail": {
-          "type": "boolean"
-        },
         "extractionTargets": {
           "type": "array"
         },
@@ -6794,7 +6781,6 @@
         "autoInterpretForCall",
         "setAutoInterpretForCall",
         "setAutoInterpret",
-        "setShareExtractionDetail",
         "setExtractionTarget",
         "setModuleInstalled",
         "setModuleVisible",

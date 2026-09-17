@@ -105,7 +105,6 @@ export interface ModuleHostServices {
   /** Whether a call is extracted as it happens — its participants' answer, else the space's. */
   autoInterpretEnabled?: (collectionId?: string) => boolean;
   setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
-  interpretationDetailShared?: () => boolean;
   interpretationProposalsRevision?: () => number;
   /** The profile cache, so a module can put a face to an agent id. */
   identities?: ModuleIdentityAccess;
@@ -414,7 +413,6 @@ export function createModuleStoreDeps(framework: {
         }
       },
       activity: () => services.interpretationActivity?.() ?? [],
-      detailShared: () => services.interpretationDetailShared?.() ?? false,
       proposalsRevision: () => services.interpretationProposalsRevision?.() ?? 0,
       proposals: async (target, collection) => {
         const dataset = targeted(target);

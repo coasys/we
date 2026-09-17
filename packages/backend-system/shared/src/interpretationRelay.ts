@@ -22,14 +22,11 @@
  *
  * ## What crosses, and what does not
  *
- * Phase, runner and elapsed always. The model exchange only when the host asks for it via
- * {@link RelayOptions.shareDetail}, because it is tens of KB per pass and every peer would receive
- * every byte of it on every pass forever.
- *
- * That is a bandwidth decision, not a privacy one, and the distinction matters for how the knob
- * should be set: in a call the prompt is built from the transcript every participant already holds,
- * so sharing it leaks nothing. Turning it on for a space that is actively debugging extraction is
- * entirely reasonable. Leaving it on by default for every space forever is not.
+ * Phase, runner, elapsed, the ids written and the one-line detail. Never the model exchange: the
+ * prompt is built from the whole transcript, so it is as long as the call, and every peer would
+ * receive it once per phase. Nobody needs it live either — a finished pass writes its prompt and
+ * response into the graph as an `ExtractionPass`, where every member reads it a moment later. So
+ * a peer's row carries no `llm`, and only the runner's own row can open its exchange while it runs.
  *
  * ## Trust
  *
@@ -62,8 +59,6 @@ interface ActivityMessage {
   phase: InterpretationPhase;
   ids?: string[];
   detail?: string;
-  prompt?: string;
-  response?: string;
 }
 
 function isActivityMessage(payload: unknown): payload is ActivityMessage {
@@ -73,16 +68,6 @@ function isActivityMessage(payload: unknown): payload is ActivityMessage {
 }
 
 export interface RelayOptions {
-  /**
-   * Include the raw prompt and response in what is broadcast. Default `false` — see the module
-   * docs on why this is a bandwidth switch rather than a privacy one.
-   *
-   * Accepts a function so a host can bind it to a live setting. Read per publish rather than at
-   * construction, because the alternative is tearing down and rebuilding the relay when somebody
-   * flips a switch — which would drop every row it is holding, including the pass they turned the
-   * switch on to look at.
-   */
-  shareDetail?: boolean | (() => boolean);
   /** Injectable for tests. */
   now?: () => number;
   /** How long a peer's unsettled row is believed. Defaults to
@@ -99,18 +84,6 @@ export interface InterpretationRelay {
   /** Every pass this peer knows about — its own and its neighbours' — freshest first is the
    *  consumer's business; this returns them keyed. */
   rows(): InterpretationActivity[];
-  /**
-   * Re-broadcast this peer's own rows.
-   *
-   * For the moment `shareDetail` is turned on. The flag is read per publish, and a finished pass
-   * publishes nothing further — so without this, enabling sharing reaches only passes that have not
-   * happened yet. Which is precisely backwards: the switch is offered while somebody is looking at a
-   * prompt, and the pass they are looking at is the one it would fail to share.
-   *
-   * Only rows this peer runs. A relayed row's payload never left the machine that produced it, so
-   * re-broadcasting somebody else's would send a copy of nothing while claiming their work as ours.
-   */
-  resend(): void;
   /** Called whenever `rows()` would return something different. */
   onChange(cb: (rows: InterpretationActivity[]) => void): () => void;
   /** Drop the subscription. Does not clear rows — a host disposing a relay is usually tearing down
@@ -126,33 +99,9 @@ export interface InterpretationRelay {
  * against the same code path AD4M runs in production — the reason the ephemeral port has a
  * reference implementation at all.
  */
-/**
- * How much of one side of the exchange goes on the wire.
- *
- * The doc above calls the detail "tens of KB per pass" and that was the *typical* case, not a
- * bound: the prompt is built from a transcript, so an hour-long call's prompt is as long as the
- * hour-long call, and both halves went out uncapped to every peer in the space, once per phase.
- * A single meeting could therefore push megabytes of ephemeral traffic at everybody present — and
- * a peer sending an oversized payload has the same effect on every receiver whether or not it meant
- * to.
- *
- * 64KB is roughly the largest thing worth reading in a debug panel, which is what this is for. The
- * marker says the text was cut rather than letting a truncated JSON blob read as a malformed one.
- */
-const MAX_DETAIL_CHARS = 64_000;
-const TRUNCATION_MARKER = '\n… (truncated for sharing)';
-
-function clampDetail(text: string | undefined): string | undefined {
-  if (text === undefined) return undefined;
-  if (text.length <= MAX_DETAIL_CHARS) return text;
-  return text.slice(0, MAX_DETAIL_CHARS) + TRUNCATION_MARKER;
-}
-
 export function createInterpretationRelay(channel: EphemeralChannel, options: RelayOptions = {}): InterpretationRelay {
   const now = options.now ?? (() => Date.now());
   const ttlMs = options.ttlMs ?? INTERPRETATION_ACTIVITY_TTL_MS;
-  const sharingDetail = () =>
-    typeof options.shareDetail === 'function' ? options.shareDetail() : (options.shareDetail ?? false);
   const rows = new Map<string, InterpretationActivity>();
   const watchers = new Set<(rows: InterpretationActivity[]) => void>();
 
@@ -173,13 +122,7 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
     watchers.forEach((cb) => cb(snapshot));
   }
 
-  /**
-   * Put one row on the wire.
-   *
-   * Shared by `publish` and `resend` so the two cannot disagree about what a peer receives — and
-   * `sharingDetail()` is read here, at send time, which is what makes the switch take effect on the
-   * next thing sent rather than on the next relay built.
-   */
+  /** Put one row on the wire — without its model exchange, which the module docs explain. */
   function broadcast(activity: InterpretationActivity): void {
     const message: ActivityMessage = {
       k: 'activity',
@@ -188,9 +131,6 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
       phase: activity.phase,
       ids: activity.ids,
       detail: activity.detail,
-      ...(sharingDetail()
-        ? { prompt: clampDetail(activity.llm?.prompt), response: clampDetail(activity.llm?.response) }
-        : {}),
     };
     // Fire and forget, matching the channel's own contract. A dropped update costs one frame of
     // staleness on a peer's bar and is corrected by the next phase; awaiting it here would make
@@ -230,16 +170,6 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
       at: now(),
       ids: payload.ids,
       detail: payload.detail,
-      /*
-        Clamped on the way in as well as on the way out. What this peer sends is under its own
-        control; what arrives is not, and a peer that sends an unbounded prompt is holding that
-        much of every receiver's memory for the row's whole ten-minute lifetime — once per pass,
-        for as long as it cares to keep sending. A cap on the sender alone is a request.
-      */
-      llm:
-        payload.prompt || payload.response
-          ? { prompt: clampDetail(payload.prompt), response: clampDetail(payload.response) }
-          : undefined,
     });
     notify();
   });
@@ -249,7 +179,7 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
       mergeActivity(rows, activity);
       notify();
       /*
-        Only this peer's own passes go on the wire — the same rule `resend` applies.
+        Only this peer's own passes go on the wire.
 
         A host feeds this everything its backend reports, and on a hosted executor that includes
         passes run for *other* users of the same node, delivered with `mine: false` over the
@@ -262,10 +192,6 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
     },
 
     rows: current,
-
-    resend() {
-      for (const row of current()) if (row.mine) broadcast(row);
-    },
 
     onChange(cb) {
       watchers.add(cb);

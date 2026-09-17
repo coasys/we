@@ -121,9 +121,8 @@ export class Space extends WeNode {
    * What this community decides about each capability's settings, as JSON.
    *
    * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
-   * declares. One field rather than one per setting: `autoInterpret`, `extractionTargets` and
-   * `shareExtractionDetail` are all here as bespoke columns already, and every capability that
-   * wanted an opinion added another — a core entity accreting a field on behalf of a module is
+   * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
+   * here as bespoke columns already, and every capability that wanted an opinion added another — a core entity accreting a field on behalf of a module is
    * the shape this replaces.
    *
    * **Absent means "no opinion"**, never "off" — the same rule as `enabledModules`. A level says
@@ -131,21 +130,15 @@ export class Space extends WeNode {
    * has an opinion. See `moduleSettings.ts` in the app shell for the order and for how a
    * `restrict` setting differs.
    *
-   * ## Two of those three columns are staying, and this is not an oversight
+   * ## Those two columns are staying, and this is not an oversight
    *
-   * This field replaced the *shape*, not the three instances of it — and only one of them could
-   * move anyway. This resolver answers along one axis, **who is asking**: deployment → agent
+   * This field replaced the *shape*, not the instances of it. This resolver answers along one axis, **who is asking**: deployment → agent
    * everywhere → community here → agent here, most specific wins. `autoInterpret` and
    * `extractionTargets` carry a second axis it has no concept of, **which call** — a per-call
    * decision belonging to that call's participants rather than to the space's administrator,
    * held in `CallExtraction` and read through `spaceStore.autoInterpretForCall(collectionId)`,
    * which is a function rather than a value for exactly that reason. Migrating them here as-is
    * would typecheck, pass, and silently drop the layer where participants overrule the space.
-   *
-   * `shareExtractionDetail` has no such axis and could move. There is no reason to: it is a
-   * stored predicate with data behind it, and absent-means-no-opinion makes the move a
-   * read-fallback preserving a three-way distinction rather than a rename — against the gain of
-   * one fewer column.
    *
    * What was worth fixing is fixed: a capability that wants a setting today declares a
    * `ModuleSetting` and gets a resolved value and a rendered control, so there is no fourth
@@ -154,24 +147,6 @@ export class Space extends WeNode {
    */
   @Property({ through: 'we://module_settings' })
   moduleSettings: string = '';
-
-  /**
-   * Whether extraction passes broadcast their prompt and response to the rest of the space.
-   *
-   * A property of the space for the same reason `autoInterpret` is, though a different one than
-   * might be assumed. It is not about secrecy: in a call the prompt is built from a transcript
-   * every participant already holds, so a member sharing theirs reveals nothing the others lack.
-   *
-   * It is about the state being *collective*. "I share and you do not" is an asymmetry with no
-   * use — the reason to turn this on is that a space is working on extraction and wants to see
-   * what it is doing, which is a decision about the space rather than about one member.
-   *
-   * Defaults off because the payload is tens of KB per pass and rides the ephemeral signalling
-   * transport, which exists for small last-write-wins messages. That is a poor default to impose
-   * on every space forever, and a very reasonable thing to switch on for an afternoon.
-   */
-  @Property({ through: 'we://share_extraction_detail' })
-  shareExtractionDetail: boolean = false;
 
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
