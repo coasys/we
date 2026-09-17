@@ -33,6 +33,32 @@ const MODEL_POLL_MS = 3_000;
  */
 const TRANSCRIBING_GRACE_MS = 5_000;
 
+/**
+ * How long to wait before each attempt to re-establish a dropped stream.
+ *
+ * A single retry was the whole recovery once, and it is not enough against a node reached over the
+ * network: every utterance is an HTTP request carrying up to a minute of audio, so a dropped
+ * connection, a proxy hiccup or a node with its hands full is ordinary rather than exceptional. One
+ * of those ended recording for the rest of the call, and the person it happened to had no way to
+ * know except to notice the transcript had stopped — the panel is rarely on screen, and the record
+ * button stayed lit.
+ *
+ * Six attempts across roughly a minute, starting immediately because the common case is a blip that
+ * is already over. The backoff is what keeps a node that is genuinely struggling from being asked
+ * once a second by every member of the call at once.
+ */
+const RECONNECT_DELAYS_MS = [0, 1_000, 3_000, 8_000, 15_000, 30_000];
+
+/**
+ * How much unsent speech is kept while the stream is down — 60 s, at the 16 kHz the worklet sends.
+ *
+ * Somebody talking through a reconnection is the case this exists for: their words are held and land
+ * in the transcript once it is back, in the order they were said. Bounded because a reconnection
+ * that never succeeds must not grow without limit, and the *oldest* is dropped first — the longer an
+ * outage runs, the more the recent speech is the part still worth having.
+ */
+const MAX_HELD_SAMPLES = 16_000 * 60;
+
 /** A download size as a person reads it — "970 MB", "1.5 GB". */
 function formatBytes(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -560,6 +586,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * has. Approximate by necessity — see {@link TRANSCRIBING_GRACE_MS}.
    */
   const [inFlight, setInFlight] = signal(0);
+  /**
+   * The stream is gone and a new one is being opened in its place.
+   *
+   * Public, and said out loud in the panel, because this is the one state where the microphone is
+   * live and the words are going nowhere yet. Silence here is what made a dropped stream read as a
+   * working session that had stopped hearing anything.
+   */
+  const [reconnecting, setReconnecting] = signal(false);
   let inFlightTimer: ReturnType<typeof setTimeout> | null = null;
   let inFlightDeadline = 0;
   let modelPoll: ReturnType<typeof setTimeout> | null = null;
@@ -1489,57 +1523,102 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // Closes over this run's session rather than the module's fields, so an utterance in flight
       // during a teardown feeds the stream it was captured for instead of whatever happens to be
       // current.
-      const session = { stream: newStream, reopening: null as Promise<NonNullable<typeof stream>> | null };
+      const session = {
+        stream: newStream,
+        /** Utterances with nowhere to go yet, oldest first — see {@link MAX_HELD_SAMPLES}. */
+        held: [] as Float32Array[],
+        /** The reconnection in progress, so every utterance that fails joins the same one. */
+        reconnecting: null as Promise<void> | null,
+      };
+
+      /** Keep an utterance until there is a stream to send it to, dropping the oldest past the cap. */
+      const hold = (audio: Float32Array): void => {
+        session.held.push(audio);
+        let total = session.held.reduce((sum, one) => sum + one.length, 0);
+        // Never empties: the utterance just held is the one worth keeping if it alone is over the cap.
+        while (total > MAX_HELD_SAMPLES && session.held.length > 1) {
+          total -= (session.held.shift() as Float32Array).length;
+        }
+      };
 
       /*
-        Feed one utterance, reopening the stream once if the backend has let it go.
+        Open a new stream in place of one that is gone, and send what was said meanwhile.
 
-        The executor reaps a stream nobody has fed for thirty seconds, and this module feeds only
-        when somebody speaks — so any pause that long in a call killed transcription for the rest of
-        it. The feed rejected, the rejection went nowhere, and the panel went on saying it was
-        listening while every later word was dropped.
+        A feed fails for reasons that have nothing to do with this session being over: the node was
+        unreachable for a moment, a request timed out, the executor let the stream go. None of them
+        is a reason to stop recording, and stopping is what used to happen — one failed retry ended
+        transcription for the rest of the call, with no way back but a press nobody knew to make.
 
-        Reopened on the same model and the same utterance resent, so the sentence that found the
-        stream gone is not the one lost. Utterances failing together share one reopen. If the reopen
-        fails too, the session stops and says so: an error is a thing somebody can act on, and a
-        lit record button over silence is not.
+        So it keeps trying, on a backoff, while the microphone stays open and what is said is held.
+        Only when a minute of attempts has failed does it call it an outage, say so and stop: by then
+        something is wrong that this cannot fix, and a lit record button over silence is worse than
+        an error somebody can act on.
+
+        Utterances that fail together share one reconnection rather than starting one each.
       */
-      const feed = async (audio: Float32Array): Promise<void> => {
-        const tried = session.stream;
-        try {
-          noteFed(audio.length);
-          await tried.feed(audio);
-          return;
-        } catch (cause) {
-          if (mine !== generation) return;
-          console.info('[transcribe] the stream was dropped; reopening', cause);
-        }
-        try {
-          if (session.stream === tried) {
-            session.reopening ??= transcription.open(model.id, onText, TUNING);
-            const fresh = await session.reopening;
-            session.reopening = null;
-            if (mine !== generation) {
-              await fresh.close().catch(() => {});
-              return;
-            }
-            if (session.stream === tried) {
+      const reconnect = (cause: unknown): void => {
+        if (session.reconnecting) return;
+        console.info('[transcribe] the stream was dropped; re-establishing it', cause);
+        setReconnecting(true);
+        let last = cause;
+        session.reconnecting = (async () => {
+          for (const delay of RECONNECT_DELAYS_MS) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            if (mine !== generation) return;
+            try {
+              const fresh = await transcription.open(model.id, onText, TUNING);
+              if (mine !== generation) {
+                await fresh.close().catch(() => {});
+                return;
+              }
+              const previous = session.stream;
               session.stream = fresh;
               stream = fresh;
-              // Closed for tidiness; the backend has already forgotten it, so this usually fails.
-              void tried.close().catch(() => {});
+              // Closed for tidiness; whatever dropped it has usually forgotten it already.
+              void previous.close().catch(() => {});
+              // One at a time, each removed only once it has landed — so a stream that dies again
+              // part way through a drain loses nothing, and the next attempt carries on from there.
+              while (session.held.length > 0) {
+                await session.stream.feed(session.held[0]);
+                session.held.shift();
+              }
+              setReconnecting(false);
+              return;
+            } catch (again) {
+              if (mine !== generation) return;
+              last = again;
+              console.info('[transcribe] could not re-establish the stream; trying again', again);
             }
           }
-          await session.stream.feed(audio);
-        } catch (cause) {
-          session.reopening = null;
-          if (mine !== generation) return;
-          console.error('transcribe: could not reopen the transcription stream', cause);
+          console.error('transcribe: gave up re-establishing the transcription stream', last);
+          setReconnecting(false);
           setStatus('error');
           setError(
-            `Transcription stopped: the speech model could not be reached again (${cause instanceof Error ? cause.message : String(cause)}).`,
+            `Transcription stopped: the speech model could not be reached again (${last instanceof Error ? last.message : String(last)}).`,
           );
           void stop();
+        })().finally(() => {
+          session.reconnecting = null;
+        });
+      };
+
+      /** Feed one utterance, or hold it and start putting the stream back. */
+      const feed = async (audio: Float32Array): Promise<void> => {
+        noteFed(audio.length);
+        // Held rather than raced: while a reconnection is running there is nothing to feed it to,
+        // and sending into the old stream would only fail again and say so a second time.
+        if (session.reconnecting) {
+          hold(audio);
+          return;
+        }
+        const tried = session.stream;
+        try {
+          await tried.feed(audio);
+        } catch (cause) {
+          if (mine !== generation) return;
+          // Held too, so the sentence that discovered the problem is not the one lost.
+          hold(audio);
+          reconnect(cause);
         }
       };
 
@@ -1599,6 +1678,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setSpeaking(false);
     // Whatever was in flight answers into a closed stream now, so nothing is still being transcribed.
     clearInFlight();
+    // A reconnection in progress belongs to the session being torn down: the generation bump above
+    // is what ends it, and nothing should still be claiming the words are on their way.
+    setReconnecting(false);
 
     closing.node?.port.close();
     closing.node?.disconnect();
@@ -2160,6 +2242,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       'What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.',
     ),
     error: state(error, 'Why the session stopped, when status is error; empty otherwise.'),
+    /**
+     * The stream dropped and is being put back, with the microphone still open.
+     *
+     * Its own member rather than a status, because `status` says what the *session* is doing and the
+     * session is still listening: the record button stays lit, the meter keeps moving, and what is
+     * said is held rather than lost. What a reader needs to know is that the words are waiting.
+     */
+    reconnecting: state(
+      reconnecting,
+      'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
+    ),
     /**
      * What has been heard and is not yet a row in the transcript — buffering, or being written.
      *

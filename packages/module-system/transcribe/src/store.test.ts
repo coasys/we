@@ -2488,14 +2488,17 @@ describe('transcribing', () => {
 });
 
 /**
- * A stream the backend let go of.
+ * A stream that went away mid-call.
  *
- * AD4M reaps a stream nobody has fed for thirty seconds, and this module feeds only when somebody
- * speaks — so any long pause killed transcription for the rest of the call, with the panel still
- * saying it was listening. Driven through a stand-in audio graph, since this is the listening half
- * the rest of the file deliberately avoids.
+ * An utterance is an HTTP request to a node that may be on the other side of the internet, so one
+ * failing says nothing about whether the session is over: the connection dropped, the request timed
+ * out, the node let the stream go. Recording used to end on the first of those it could not undo in
+ * one attempt, which is how transcription stopped at a different moment for each member of a call.
+ *
+ * Driven through a stand-in audio graph, since this is the listening half the rest of the file
+ * deliberately avoids.
  */
-describe('a stream the backend dropped', () => {
+describe('a stream that went away', () => {
   /** The worklet node the store builds, kept so a test can post an utterance through its port. */
   let nodes: { port: { onmessage: ((event: { data: unknown }) => void) | null } }[];
 
@@ -2531,6 +2534,10 @@ describe('a stream the backend dropped', () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   const utterance = () => ({ data: { kind: 'utterance', audio: new Float32Array(1600) } });
 
+  /**
+   * A backend whose nth stream behaves as the nth entry says — the last entry describing every
+   * attempt after it, so `['fails', 'fails']` is a node that stays unreachable.
+   */
   function streams(behaviour: ('fails' | 'works')[]) {
     const fed: number[] = [];
     let opens = 0;
@@ -2542,7 +2549,7 @@ describe('a stream the backend dropped', () => {
         models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
         open: async () => {
           const index = opens++;
-          const how = behaviour[index] ?? 'works';
+          const how = behaviour[index] ?? behaviour[behaviour.length - 1] ?? 'works';
           if (how === 'fails' && index > 0) throw new Error('model gone');
           return {
             feed: async () => {
@@ -2556,27 +2563,30 @@ describe('a stream the backend dropped', () => {
     };
   }
 
-  it('reopens the stream and resends the utterance that found it gone', async () => {
+  it('opens another stream and resends the utterance that found the first gone', async () => {
     const s = streams(['fails', 'works']);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
     await settle();
     expect(h.store.status()).toBe('listening');
 
     nodes[0].port.onmessage?.(utterance());
+    await settle();
     await settle();
 
     expect(s.opens()).toBe(2);
     expect(s.fed).toEqual([1]);
     expect(h.store.status()).toBe('listening');
+    expect(h.store.reconnecting()).toBe(false);
   });
 
-  it('shares one reopen between utterances that fail together', async () => {
+  it('shares one reconnection between utterances that fail together', async () => {
     const s = streams(['fails', 'works']);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
     await settle();
 
     nodes[0].port.onmessage?.(utterance());
     nodes[0].port.onmessage?.(utterance());
+    await settle();
     await settle();
 
     expect(s.opens()).toBe(2);
@@ -2584,17 +2594,80 @@ describe('a stream the backend dropped', () => {
     expect(h.store.status()).toBe('listening');
   });
 
-  it('stops and says so when the stream cannot be reopened', async () => {
-    const s = streams(['fails', 'fails']);
-    const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+  /**
+   * The case the hold exists for: somebody carries on talking while the stream is being put back.
+   * Their words are sent once it is, in the order they were said, rather than falling in the gap.
+   */
+  it('holds what is said while reconnecting, and sends it when the stream is back', async () => {
+    let releaseOpen = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    const fed: number[] = [];
+    let opens = 0;
+    const transcription = {
+      available: () => true,
+      models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+      open: async () => {
+        const index = opens++;
+        // The second open is kept in flight, so the utterances below arrive mid-reconnection.
+        if (index === 1) await held;
+        return {
+          feed: async () => {
+            if (index === 0) throw new Error('stream not found');
+            fed.push(index);
+          },
+          close: async () => {},
+        };
+      },
+    };
+
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription });
     await settle();
 
     nodes[0].port.onmessage?.(utterance());
     await settle();
+    expect(h.store.reconnecting()).toBe(true);
+
+    nodes[0].port.onmessage?.(utterance());
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    expect(fed).toEqual([]);
+
+    releaseOpen();
+    await settle();
     await settle();
 
-    expect(h.store.status()).toBe('error');
-    expect(h.store.error()).toContain('could not be reached again');
-    expect(h.store.listening()).toBe(false);
+    // All three: the one that found the stream gone, and the two said while it was being replaced.
+    expect(fed).toEqual([1, 1, 1]);
+    expect(h.store.reconnecting()).toBe(false);
+    expect(h.store.status()).toBe('listening');
+  });
+
+  it('keeps trying, and stops only once a minute of attempts has failed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const s = streams(['fails', 'fails']);
+      const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+      await settle();
+
+      nodes[0].port.onmessage?.(utterance());
+      await settle();
+
+      // Still recording, and saying why nothing is arriving, rather than over.
+      expect(h.store.reconnecting()).toBe(true);
+      expect(h.store.status()).toBe('listening');
+      expect(h.store.listening()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(s.opens()).toBeGreaterThan(2);
+      expect(h.store.status()).toBe('error');
+      expect(h.store.error()).toContain('could not be reached again');
+      expect(h.store.reconnecting()).toBe(false);
+      expect(h.store.listening()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -3329,6 +3329,11 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'Suggestions staged on one conversation, by record id — read as proposalsFor[id].',
         },
+        {
+          name: 'reconnecting',
+          kind: 'state',
+          doc: 'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
+        },
         { name: 'refreshProposals', kind: 'action', doc: 'Re-reads what is staged on a call, or on the live one.' },
         { name: 'rejectProposal', kind: 'action', doc: 'Drops a suggestion.' },
         { name: 'setProposalField', kind: 'action', doc: 'Sets one field of the open draft, by property name.' },

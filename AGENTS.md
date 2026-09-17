@@ -3233,6 +3233,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposalDraft — What has been typed into the open suggestion, keyed by property name.
   - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
+  - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.

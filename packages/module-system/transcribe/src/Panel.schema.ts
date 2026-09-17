@@ -3511,6 +3511,25 @@ export const captureStatus: SchemaNode = {
         },
       },
     },
+    /*
+      A dropped stream, while it is being put back.
+
+      Not a `note`, which keys on `status` — the session is still listening here, and that is the
+      point: the microphone is open and the meter is moving, so without a line saying otherwise this
+      looks exactly like a working panel that has gone quiet. It says where the words went, because
+      they are held rather than lost, and it clears itself when the stream comes back.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.reconnecting' },
+        then: {
+          type: 'we-alert',
+          props: { variant: 'warning' },
+          children: ['Reconnecting to the speech model. What is said now is held, and written once it is back.'],
+        },
+      },
+    },
     {
       type: '$if',
       props: {
