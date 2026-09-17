@@ -248,6 +248,10 @@ export default function TemplateProvider() {
       */
       agentData: {
         ready: () => !!datasetStore.personalDataset(),
+        refKey: () => {
+          const personal = datasetStore.personalDataset();
+          return personal ? datasetKey({ uuid: personal.id }) : '';
+        },
         create: async (entity, fields, options) => {
           if (!datasetStore.personalDataset()) return null;
           const created = (await recordActions.create(entity, fields, {
@@ -1145,6 +1149,13 @@ export default function TemplateProvider() {
       // for the same reason the dataset is: a block cannot know where a record's page lives, and
       // threading a handler from every call site is the `perspective` string all over again.
       openRef={(ref) => void spaceStore.openRecordRef(ref)}
+      // A quote names whose words it holds. A person not yet cached is fetched, and the name arrives
+      // through the same reactive cache a byline reads.
+      personName={(did) => {
+        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        if (!profile) void profileStore.fetchProfile(did);
+        return profile?.name || undefined;
+      }}
     >
       <BlockDisplayOverrides overrides={moduleBlockDisplays()}>
         <VisualEditorProvider value={visualEditorCtx}>

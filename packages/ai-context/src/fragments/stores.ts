@@ -1270,7 +1270,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setTypeColor:
           "(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it",
         dropOnCanvas:
-          "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. Refuses, with a toast, a record from another space (this canvas draws only its own dataset) and anything that is not a record here — an agent, a space",
+          "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset first becomes a post here (the bringIn rule) and that post is placed. Refuses, with a toast, anything that is not a record — an agent, a space",
+        bringIn:
+          "(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo",
         updateRecordField:
           "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
         setSpaceTypeColor:

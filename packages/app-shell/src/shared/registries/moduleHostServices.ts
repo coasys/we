@@ -34,6 +34,7 @@ import type {
 } from '@we/backend-shared';
 import type {
   AgentDataKernel,
+  CopiedIn,
   CreateEntityOptions,
   DatasetTarget,
   DocumentAccess,
@@ -165,6 +166,7 @@ export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
   publishedMedia = null;
   mediaListeners.clear();
+  copiedInListeners.clear();
 }
 
 /**
@@ -195,6 +197,24 @@ function targeted(target?: DatasetTarget): DatasetHandle | null {
 let publishedMedia: MediaStream | null = null;
 let publishedBy: string | null = null;
 const mediaListeners = new Set<(stream: MediaStream | null) => void>();
+
+/*
+  Posts written into a space from elsewhere, for the modules that asked to hear. Held here, beside
+  the kernels that hand the subscription out, so the store that writes the post and the module that
+  listens never name each other.
+*/
+const copiedInListeners = new Set<(event: CopiedIn) => void>();
+
+/** Tell listening modules that a post arrived from elsewhere. Each listener in its own `try`. */
+export function notifyCopiedIn(event: CopiedIn): void {
+  for (const listener of copiedInListeners) {
+    try {
+      listener(event);
+    } catch (error) {
+      console.error('module host: a copied-in listener failed', error);
+    }
+  }
+}
 
 /**
  * A document surface that reads the live one on every call — the same late binding every kernel
@@ -259,11 +279,16 @@ export function createModuleStoreDeps(framework: {
       find: async (entity, query, target) => (await services.findEntities?.(entity, query, target)) ?? [],
       subscribe: (entity, query, cb, target) => services.subscribeEntities?.(entity, query, cb, target) ?? (() => {}),
       documents: forwardDocuments(() => services.documents),
+      onCopiedIn: (cb) => {
+        copiedInListeners.add(cb);
+        return () => copiedInListeners.delete(cb);
+      },
     },
 
     // Forwarded rather than captured: a module store is built before the personal space has been found.
     agentData: {
       ready: () => services.agentData?.ready() ?? false,
+      refKey: () => services.agentData?.refKey() ?? '',
       create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
       find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
       update: async (entity, id, fields) => {

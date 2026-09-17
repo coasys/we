@@ -1,4 +1,11 @@
-export type { BlockComposerProps, BlockDataset, BlockRendererProps, EditorStateInput, MentionCandidate } from './types';
+export type {
+  BlockComposerProps,
+  BlockDataset,
+  BlockDragSource,
+  BlockRendererProps,
+  EditorStateInput,
+  MentionCandidate,
+} from './types';
 export type {
   BlockStyle,
   CollectionContentBlock,

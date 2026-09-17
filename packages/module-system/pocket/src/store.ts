@@ -17,6 +17,8 @@ export interface PocketRow {
   /** The DID of whoever made the thing, taken from the source's card. Empty where it had none. */
   sourceAuthor: string;
   gatheredAt: string;
+  withinEntity?: string;
+  withinId?: string;
 }
 
 export interface PocketFolderRow {
@@ -43,6 +45,8 @@ export interface GatherInput {
   preview?: DragPreviewLike;
   /** Set only when the drag began on a row already in the Pocket — see {@link PocketOrigin}. */
   origin?: PocketOrigin;
+  /** The post a block sits in. See `PocketItem.withinEntity`. */
+  within?: { entity?: string; id?: string };
 }
 
 /**
@@ -77,6 +81,8 @@ interface DragPreviewLike {
   content?: string;
   author?: string;
   date?: string;
+  /** The space it was in, by name, where the source knew. */
+  source?: string;
 }
 
 /** What a `we-drop-zone` hands over. Narrowed here so the module needs no dependency on @we/drag. */
@@ -87,6 +93,7 @@ interface DroppedPayload {
     icon?: string;
     preview?: DragPreviewLike;
     origin?: PocketOrigin;
+    within?: { entity?: string; id?: string };
   }[];
 }
 
@@ -350,6 +357,8 @@ export function createPocketStore(deps: ModuleStoreDeps) {
         sourceAuthor: row.sourceAuthor,
         sourceName: row.sourceName,
         gatheredAt: row.gatheredAt,
+        withinEntity: row.withinEntity ?? '',
+        withinId: row.withinId ?? '',
       },
       { parent: { id: target, predicate: POCKET_PREDICATES.items } },
     );
@@ -384,7 +393,11 @@ export function createPocketStore(deps: ModuleStoreDeps) {
         // An explicit picture wins; a post has none, so one is taken out of the document it carried.
         thumbnail: input.preview?.thumbnail || thumbnailFrom(input.preview?.content),
         sourceAuthor: input.preview?.author ?? '',
-        sourceName: sourceName(),
+        // Where the source says it was, when it was not the space on screen — a block out of a note is
+        // from the personal space, which has no name worth showing; one out of a feed is from here.
+        sourceName: input.preview?.source ?? (input.datasetKey ? '' : sourceName()),
+        withinEntity: input.within?.entity ?? '',
+        withinId: input.within?.id ?? '',
         // Stamped here rather than left to the backend's createdAt: this is when *you* kept it,
         // which is not when the thing was made and not when the record happened to sync.
         gatheredAt: new Date().toISOString(),
@@ -446,6 +459,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
             datasetKey: item.ref?.dataset,
             preview: item.preview,
             origin: item.origin,
+            within: item.within,
           }))
         : [payload as GatherInput];
 

@@ -17,6 +17,7 @@ export type { ModuleLint } from './lint';
 export type {
   AgentDataKernel,
   ComposedDocument,
+  CopiedIn,
   DocumentAccess,
   KernelName,
   LanguageModelKernel,

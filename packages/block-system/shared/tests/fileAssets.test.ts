@@ -200,4 +200,24 @@ describe('a composition moving between datasets', () => {
     expect(await copyableContent({}, undefined)).toBeNull();
     expect(await copyableContent({}, 'not a document')).toBeNull();
   });
+
+  it('takes one block out of a composition by its key, wherever it sits', async () => {
+    const root = (await createBlocks(
+      {},
+      [
+        { _type: 'block', text: 'the words around it' },
+        { _type: 'image', src: fileData, altText: 'the picture' },
+      ],
+      { kind: 'post' },
+    )) as FakeCollection;
+    const imageKey = root.children[1];
+    const blob = `data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`;
+
+    const picture = await copyableContent({}, blob, imageKey);
+
+    expect(picture).toHaveLength(1);
+    expect(picture![0]._type).toBe('image');
+    expect(picture![0]._key).toBeUndefined();
+    expect(await copyableContent({}, blob, 'no-such-block')).toBeNull();
+  });
 });

@@ -103,6 +103,8 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   description: string;
   version: number;
   textContent: string;
+  sourceRef: string;
+  sourceName: string;
   children: string[];
   arranges: string[];
   gathers?: string;
@@ -136,6 +138,8 @@ export interface EmbedBlockRecord extends WeNodeRecord {
   targetType: string;
   label: string;
   thumbnail: string;
+  sourceAuthor: string;
+  sourceName: string;
   displayMode: string;
   version: number;
 }

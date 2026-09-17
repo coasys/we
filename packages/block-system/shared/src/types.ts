@@ -52,7 +52,31 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
   collaborate?: string;
 };
 
+/**
+ * Where the blocks a renderer draws came from, so each can be picked up on its own.
+ *
+ * Only what a template already has on the row: the post's id, who wrote it, and — for a composition
+ * that is not in the space on screen — its dataset's key. A block is carried as its own record with
+ * the post it sits in beside it, because a paragraph on its own is not somewhere to go back to.
+ */
+export interface BlockDragSource {
+  /** The id of the collection the blocks belong to — the post. */
+  within: string;
+  /** The post's author, as a DID, so a receiver can tell whose words these are. */
+  author?: string;
+  /** The dataset key, only when the composition is not in the space on screen (a note). */
+  datasetKey?: string;
+  /** Where it was, by name, for a receiver that cannot look the dataset up. */
+  source?: string;
+}
+
 export type BlockRendererProps = Omit<DesignSystemProps, 'direction'> & {
   editorState?: EditorStateInput;
   perspective?: BlockDataset | null;
+  /**
+   * Let every block be picked up on its own — a picture out of a post, a paragraph by the grip that
+   * appears beside it. Absent, only whatever wraps the renderer can be dragged. The words stay
+   * selectable either way: the renderer marks itself as a text region (see `we-draggable`).
+   */
+  blockDrag?: BlockDragSource;
 };

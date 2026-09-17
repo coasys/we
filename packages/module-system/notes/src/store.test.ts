@@ -97,4 +97,34 @@ describe('notes store', () => {
   it('publishes nothing to a space’s template — every member is private', () => {
     expect(storeSurface(buildStore(notesModule))).toEqual({});
   });
+
+  it('records a share when a note is dragged into a space, and ignores what was not a note', async () => {
+    const { personal, space, store } = setup();
+    const id = await store.create(doc('dragged in'));
+
+    space.copyIn({
+      from: `we:p:personal/CollectionBlock/${id}`,
+      to: 'we:n:here/CollectionBlock/post-9',
+      mode: 'copy',
+      spaceName: 'Here',
+    });
+    space.copyIn({
+      from: 'we:n:elsewhere/CollectionBlock/post-3',
+      to: 'we:n:here/CollectionBlock/post-10',
+      mode: 'copy',
+      spaceName: 'Here',
+    });
+    space.copyIn({
+      from: `we:p:personal/CollectionBlock/${id}`,
+      to: 'we:n:here/CollectionBlock/post-11',
+      mode: 'quote',
+      spaceName: 'Here',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const shares = personal.rows.filter((row) => row.__entity === 'NoteShare');
+    expect(shares).toEqual([
+      expect.objectContaining({ noteId: id, ref: 'we:n:here/CollectionBlock/post-9', spaceName: 'Here' }),
+    ]);
+  });
 });

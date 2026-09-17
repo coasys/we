@@ -64,7 +64,13 @@ const dragProps = {
     thumbnail: { $: 'item.thumbnail' },
     author: { $: 'item.sourceAuthor' },
     date: { $: 'item.gatheredAt' },
+    source: { $: 'item.sourceName' },
   },
+  /*
+    The post a kept block came from, so dropping it into a space can read the post and take the block
+    out of it. Empty for anything that is not a block — the draggable ignores a half-empty one.
+  */
+  within: { entity: { $: 'item.withinEntity' }, id: { $: 'item.withinId' } },
   /*
     The row's handle on itself, so a drop on another folder is a *move* rather than a second copy.
 
@@ -105,7 +111,15 @@ const forgetButton = (extra: Record<string, unknown> = {}): SchemaNode => ({
   the answer. A control that cannot work is worse than no control.
 */
 const openable = { $: "item.datasetKey != 'agent'" };
-const openAction = { $action: 'modules.pocket.goTo', args: [{ $: 'item.ref' }] };
+/*
+  A kept block opens its post: a paragraph on its own is not somewhere to go, and its own id may not
+  have survived an edit to the post. The post's reference is spelt out rather than stored, since it is
+  the block's own dataset and a template can join strings.
+*/
+const openAction = {
+  $action: 'modules.pocket.goTo',
+  args: [{ $: "item.withinId ? 'we:' + item.datasetKey + '/' + item.withinEntity + '/' + item.withinId : item.ref" }],
+};
 
 // ─── List mode ───────────────────────────────────────────────────────────────
 

@@ -1156,13 +1156,24 @@ deliberately left empty here: a card fragment cannot name its own dataset withou
 store, and portable fragments name no store by construction. The receiver stamps it, from
 whichever dataset was current when the drop happened.
 
+#### Text inside it stays selectable
+
+A press on the words of a rendered composition — anything inside a `data-we-text` region — selects
+them rather than picking the card up. The rest of the card, including the space around those
+words, still drags. See `shared/textHit.ts`.
+
+#### Nesting
+
+A draggable inside a draggable is how a picture is taken out of a post rather than the whole post:
+the innermost one under the press claims it, and the outer one sees the claim and stands aside.
+
 #### `display: contents`
 
 The wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a
 real element in between would take the track and leave the card laid out against the wrapper
 instead of the grid. What is dragged is therefore the *child*, which is also what the ghost and
 the geometry are measured from.
-  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: { thumbnail?: string; content?: string; author?: string; date?: string } | undefined, origin?: unknown | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
+  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: { thumbnail?: string; content?: string; author?: string; date?: string } | undefined, origin?: unknown | undefined, within?: DragWithin | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, label: string = '', close: () => void
 - we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.
@@ -1407,13 +1418,13 @@ when `relative` is enabled.
 - BlockComposer (DesignSystemElement)
   Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, rootClass?: string
+  Props: editorState?: EditorStateInput, perspective?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined
 - CodeDisplay
   Props: code: string | undefined, language: string | undefined, title: string | undefined
 - EmbedDisplay
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, onOpenRef?: ((ref: string) => void)
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, sourceAuthor?: string, sourceName?: string, onOpenRef?: ((ref: string) => void)
 - EventDisplay
   Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined
 - FileDisplay
@@ -1478,7 +1489,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -2124,6 +2135,8 @@ CollectionBlock extends WeNode:
   - description: string [we://description]
   - version: number [we://version]
   - textContent: string [we://text_content]
+  - sourceRef: string [we://source_ref]
+  - sourceName: string [we://source_name]
   Relations:
   - children: HasMany [we://children]
   - arranges: HasMany [we://arranges]
@@ -2152,6 +2165,8 @@ EmbedBlock extends WeNode:
   - targetType: string [we://target_type]
   - label: string [we://title]
   - thumbnail: string [we://thumbnail]
+  - sourceAuthor: string [we://source_author]
+  - sourceName: string [we://source_name]
   - displayMode: string = 'card' [we://display_mode]
   - version: number [we://version]
 
@@ -2658,7 +2673,8 @@ RecordStore:
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
   - placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Pair with the graph’s onNodeDragEnd
-  - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. Refuses, with a toast, a record from another space (this canvas draws only its own dataset) and anything that is not a record here — an agent, a space
+  - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset first becomes a post here (the bringIn rule) and that post is placed. Refuses, with a toast, anything that is not a record — an agent, a space
+  - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
   - removeFromCanvas(canvas: string, nodeId: string): takes a record off a canvas, leaving the record itself alone. A card the canvas owns survives as an unplaced one in the tray
   - resizeOnCanvas(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected
@@ -3265,7 +3281,7 @@ Needs: kernels agentData.
 - Panels (`meta.panels[].dock`): `main` "Pocket" (module-owned openness)
 - Entities (queryable with $query):
   - PocketFolder: name: string, icon: string, color: string, root: boolean, createdOrder: number; relations folders: HasMany → PocketFolder, items: HasMany → PocketItem
-  - PocketItem: ref: string (required), entity: string, datasetKey: string, recordId: string, label: string, icon: string, thumbnail: string, sourceName: string, sourceAuthor: string, gatheredAt: string, note: string
+  - PocketItem: ref: string (required), entity: string, datasetKey: string, recordId: string, withinEntity: string, withinId: string, label: string, icon: string, thumbnail: string, sourceName: string, sourceAuthor: string, gatheredAt: string, note: string
 
 ### Notes (`notes`) — the agent’s, not a space’s
 Private notes that follow you between spaces. Share one into a space as a post.

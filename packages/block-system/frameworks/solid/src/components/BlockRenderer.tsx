@@ -1,4 +1,4 @@
-import type { BlockRendererProps, ContentBlock, TextContentBlock } from '@we/block-shared';
+import type { BlockDragSource, BlockRendererProps, ContentBlock, TextContentBlock } from '@we/block-shared';
 import {
   decodeEditorState,
   getBlockRegistration,
@@ -11,7 +11,7 @@ import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
 import { DOMSerializer } from 'prosemirror-model';
 import type { JSX } from 'solid-js';
-import { createMemo, createResource, For, Match, Switch } from 'solid-js';
+import { createContext, createMemo, createResource, For, Match, Show, Switch, useContext } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 
 import { registerCoreBlockComponents } from '../core-block-components';
@@ -47,6 +47,92 @@ function TextBlockElement(props: { block: TextContentBlock }): JSX.Element {
   return <>{element()}</>;
 }
 
+/** Whether, and as what, the blocks being walked can be picked up. Absent: they cannot. */
+const BlockDragContext = createContext<BlockDragSource | undefined>(undefined);
+
+/** A block's entity — the record a drag names. */
+function entityOf(block: ContentBlock): string | undefined {
+  return isTextBlock(block) ? 'TextBlock' : getBlockRegistration(block._type)?.entity;
+}
+
+/** What the ghost says, and what the Pocket writes down: the words, or whatever names the thing. */
+function labelOf(block: ContentBlock): string {
+  if (isTextBlock(block)) {
+    const text = (block.text ?? '').trim();
+    return text.length > 80 ? `${text.slice(0, 79)}…` : text || 'Text';
+  }
+  const fields = block as unknown as Record<string, unknown>;
+  for (const key of ['title', 'label', 'name', 'altText', 'url']) {
+    if (typeof fields[key] === 'string' && fields[key]) return fields[key] as string;
+  }
+  return entityOf(block) ?? block._type;
+}
+
+const ICONS: Record<string, string> = {
+  block: 'text-align-left',
+  image: 'image',
+  video: 'video',
+  audio: 'speaker-high',
+  file: 'file',
+  link: 'link',
+  embed: 'bookmark-simple',
+  task: 'check-square',
+  event: 'calendar',
+  location: 'map-pin',
+  code: 'code',
+  callout: 'info',
+};
+
+/** A picture standing for the block, where it has one. Already resolved to a data URI by the renderer. */
+function thumbnailOf(block: ContentBlock): string | undefined {
+  const fields = block as unknown as Record<string, unknown>;
+  const picture = block._type === 'image' ? fields.src : fields.thumbnail;
+  return typeof picture === 'string' && picture ? picture : undefined;
+}
+
+/**
+ * One block that can be picked up by itself.
+ *
+ * A grip in the block's left padding, shown on hover and on focus, is the handle a paragraph needs:
+ * its words are for selecting. A block with nothing to select — a picture — can be taken by the
+ * picture as well, since the whole wrapper is the draggable and only a press on glyphs declines.
+ *
+ * The grip is a focusable span rather than a button: `we-draggable` refuses presses that begin in a
+ * button, and the grip is exactly where a press should begin. Space on it picks the block up.
+ */
+function DraggableBlock(props: { block: ContentBlock; children: JSX.Element }): JSX.Element {
+  const source = useContext(BlockDragContext);
+  const entity = () => entityOf(props.block);
+  const preview = () => ({
+    thumbnail: thumbnailOf(props.block),
+    author: source?.author,
+    source: source?.source,
+  });
+  return (
+    <Show when={source && props.block._key && entity()} fallback={props.children}>
+      {/* `prop:` for the camel-cased members: without it Solid writes an attribute, and a lower-cased
+          `recordid` attribute is not the property the element reads. Objects are set as properties
+          already. The test in blockRendererDrag.test.tsx holds this. */}
+      <we-draggable
+        entity={entity()!}
+        prop:recordId={props.block._key!}
+        prop:datasetKey={source!.datasetKey ?? ''}
+        label={labelOf(props.block)}
+        icon={ICONS[props.block._type] ?? 'square'}
+        preview={preview()}
+        within={{ entity: 'CollectionBlock', id: source!.within }}
+      >
+        <div class="we-block-draggable">
+          <span class="we-block-grip" role="button" tabindex="0" aria-label="Drag this block" data-we-id="grip">
+            <we-icon name="dots-six-vertical" size="12px" />
+          </span>
+          {props.children}
+        </div>
+      </we-draggable>
+    </Show>
+  );
+}
+
 function CustomBlockElement(props: { block: ContentBlock }): JSX.Element {
   const Override = useDisplayOverride(props.block._type);
   const Display = () =>
@@ -73,8 +159,20 @@ export function Blocks(props: { blocks: readonly ContentBlock[] }): JSX.Element 
   return (
     <For each={props.blocks}>
       {(block) => (
-        <Switch fallback={<CustomBlockElement block={block} />}>
-          <Match when={isTextBlock(block) ? block : null}>{(b) => <TextBlockElement block={b()} />}</Match>
+        <Switch
+          fallback={
+            <DraggableBlock block={block}>
+              <CustomBlockElement block={block} />
+            </DraggableBlock>
+          }
+        >
+          <Match when={isTextBlock(block) ? block : null}>
+            {(b) => (
+              <DraggableBlock block={b()}>
+                <TextBlockElement block={b()} />
+              </DraggableBlock>
+            )}
+          </Match>
           <Match when={isCollectionBlock(block) ? block : null}>
             {(b) => (
               <CollectionDisplay
@@ -138,12 +236,18 @@ export function BlockRenderer(props: Props) {
 
   return (
     <Column class="we-block-renderer-wrapper" width={width} ax={props.ax} ay={props.ay}>
-      <div class={themeRoot}>
-        <Switch fallback={<Blocks blocks={blocks() ?? []} />}>
-          <Match when={blocks() === null}>
-            <div class="we-unreadable-content">This was written in a format this version of WE cannot read.</div>
-          </Match>
-        </Switch>
+      {/*
+        `data-we-text`: a press on these words selects them. A card that can be dragged around a
+        composition used to pick the whole post up the moment somebody tried to highlight a sentence.
+      */}
+      <div class={themeRoot} data-we-text="">
+        <BlockDragContext.Provider value={props.blockDrag?.within ? props.blockDrag : undefined}>
+          <Switch fallback={<Blocks blocks={blocks() ?? []} />}>
+            <Match when={blocks() === null}>
+              <div class="we-unreadable-content">This was written in a format this version of WE cannot read.</div>
+            </Match>
+          </Switch>
+        </BlockDragContext.Provider>
       </div>
     </Column>
   );

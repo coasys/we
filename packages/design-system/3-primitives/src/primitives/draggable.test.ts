@@ -406,3 +406,74 @@ describe('a zone that refuses its own', () => {
     expect(dropped).toHaveLength(1);
   });
 });
+
+describe('text inside a draggable', () => {
+  /** A card holding a text region, with the browser's caret lookup stubbed to land on its words. */
+  async function textCard(onGlyph: boolean) {
+    const { el, card } = await makeSource();
+    const region = document.createElement('div');
+    region.setAttribute('data-we-text', '');
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'Something worth quoting';
+    region.appendChild(paragraph);
+    card.appendChild(region);
+    const text = paragraph.firstChild!;
+
+    // The test DOM does no layout, so the two lookups a browser answers are stood in for: the caret
+    // under the press is inside the words, and the character there is either under the press or
+    // well away from it.
+    (document as unknown as { caretRangeFromPoint: () => unknown }).caretRangeFromPoint = () => ({
+      startContainer: text,
+      startOffset: 3,
+    });
+    const box = onGlyph ? { left: 490, right: 510, top: 490, bottom: 510 } : { left: 0, right: 10, top: 0, bottom: 10 };
+    vi.spyOn(document, 'createRange').mockReturnValue({
+      setStart: () => {},
+      setEnd: () => {},
+      getClientRects: () => [box],
+    } as unknown as Range);
+    return { el, paragraph, region };
+  }
+
+  it('selects rather than drags when the press lands on the words', async () => {
+    const { el, paragraph } = await textCard(true);
+    const { dropped } = await makeZone();
+    drag(el, paragraph, { x: 100, y: 100 });
+    expect(dropped).toHaveLength(0);
+  });
+
+  it('still drags from the space around the words', async () => {
+    const { el, region } = await textCard(false);
+    const { dropped } = await makeZone();
+    drag(el, region, { x: 100, y: 100 });
+    expect(dropped).toHaveLength(1);
+  });
+
+  it('carries what a block sits inside, so a receiver can find the post', async () => {
+    const { el, card } = await makeSource({ entity: 'ImageBlock', id: 'img-1' });
+    (el as DraggableEl & { within?: unknown }).within = { entity: 'CollectionBlock', id: 'post-1' };
+    await el.updateComplete;
+    const { dropped } = await makeZone();
+    drag(el, card, { x: 100, y: 100 });
+    expect(dropped[0].detail.items[0].within).toEqual({ entity: 'CollectionBlock', id: 'post-1' });
+  });
+
+  it('lets the innermost draggable take the press, and the outer one stand aside', async () => {
+    const outer = await makeSource({ entity: 'CollectionBlock', id: 'post-1' });
+    const inner = document.createElement('we-draggable') as DraggableEl;
+    inner.entity = 'ImageBlock';
+    inner.recordId = 'img-1';
+    inner.label = 'A picture';
+    const picture = document.createElement('div');
+    inner.appendChild(picture);
+    outer.card.appendChild(inner);
+    await inner.updateComplete;
+    inner.setPointerCapture = () => {};
+    const { dropped } = await makeZone();
+
+    drag(inner, picture, { x: 100, y: 100 });
+
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0].detail.items[0].ref).toEqual({ entity: 'ImageBlock', id: 'img-1' });
+  });
+});

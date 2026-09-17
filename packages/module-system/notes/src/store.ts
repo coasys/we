@@ -21,6 +21,7 @@
  * personal space, and a template synced in from a community must not be able to file a note for
  * them — or copy one out.
  */
+import { parseRef } from '@we/backend-shared';
 import type { ComposedDocument, ModuleStoreDeps } from '@we/module-shared';
 
 import { NOTE_KIND } from './entities';
@@ -152,6 +153,30 @@ export function createNotesStore(deps: ModuleStoreDeps) {
     if (post) deps.notify?.('success', spaceName ? `Shared in ${spaceName}` : 'Shared');
     return post?.id ?? '';
   }
+
+  /*
+    A note dragged into a space is shared as surely as one shared with the button, and should say so
+    on its card. The host writes the post — every drop target does it the same way — and announces
+    it; this writes it down when what arrived was one of this agent's notes.
+
+    A copy only: the personal space holds nothing but the agent's own things, so a note is always
+    copied, never quoted.
+  */
+  const stopListening = deps.kernels.records?.onCopiedIn((event) => {
+    const data = personal();
+    if (event.mode !== 'copy' || !data?.ready()) return;
+    const from = parseRef(event.from);
+    if (!from || from.entity !== 'CollectionBlock' || from.datasetKey !== data.refKey()) return;
+    void data
+      .create('NoteShare', {
+        noteId: from.id,
+        ref: event.to,
+        spaceName: event.spaceName,
+        sharedAt: new Date().toISOString(),
+      })
+      .catch((error: unknown) => console.error('notes: could not record where a note was shared', error));
+  });
+  if (stopListening) deps.onDispose?.(stopListening);
 
   return {
     saving,

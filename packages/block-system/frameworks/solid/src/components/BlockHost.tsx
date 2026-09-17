@@ -61,6 +61,12 @@ export interface BlockHostValue {
    * control that absorbs a press. See `EmbedDisplay`.
    */
   openRef?: (ref: string) => void;
+  /**
+   * A person's name, from whatever profiles the host has — for a quote saying whose words it holds.
+   * Reactive where the host's cache is; asking for somebody not yet cached may start a fetch.
+   * Absent, or `undefined` for an unknown person, and the block says nothing rather than a DID.
+   */
+  personName?: (did: string) => string | undefined;
 }
 
 const NONE: BlockHostValue = {
@@ -78,6 +84,7 @@ export function BlockHostProvider(props: {
   collab?: (nodeId: string) => CollabSession | null;
   collabUser?: () => CollabUser;
   openRef?: (ref: string) => void;
+  personName?: (did: string) => string | undefined;
   children: JSX.Element;
 }) {
   const parent = useContext(BlockHostContext);
@@ -87,6 +94,7 @@ export function BlockHostProvider(props: {
     collab: (nodeId) => (props.collab ? props.collab(nodeId) : parent.collab(nodeId)),
     collabUser: () => (props.collabUser ? props.collabUser() : parent.collabUser()),
     openRef: props.openRef ?? parent.openRef,
+    personName: props.personName ?? parent.personName,
   };
   return <BlockHostContext.Provider value={value}>{props.children}</BlockHostContext.Provider>;
 }

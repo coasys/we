@@ -182,11 +182,33 @@ export interface RecordsKernel {
     target?: DatasetTarget,
   ) => () => void;
   /**
+   * Hear about a post written into the space on screen from somewhere else — something dragged in
+   * and copied or quoted. Returns the unsubscribe.
+   *
+   * The host does the writing, because every drop target does it the same way; a module that cares
+   * where a thing went listens here rather than being named by the drop. The notes module is the
+   * case: a note dragged into a space is shared as surely as one shared with its button, and only
+   * the notes module knows to write that down.
+   */
+  onCopiedIn: (cb: (event: CopiedIn) => void) => () => void;
+  /**
    * Composed documents in the space on screen — a post, written or read the way the composer's own
    * save writes one. Always the space on screen: a document is written because somebody composed
    * it here, and there is no module whose work outlives the view that also writes whole posts.
    */
   documents: DocumentAccess;
+}
+
+/** A post that arrived in a space from somewhere else. */
+export interface CopiedIn {
+  /** What it was made from — `we:<datasetKey>/CollectionBlock/<id>` for a post, or a block's post. */
+  from: string;
+  /** The new post. */
+  to: string;
+  /** A copy of the author's own thing, or a quote of somebody else's. */
+  mode: 'copy' | 'quote';
+  /** The space it arrived in, by name. */
+  spaceName: string;
 }
 
 /**
@@ -205,6 +227,11 @@ export interface RecordsKernel {
 export interface AgentDataKernel {
   /** Whether the agent's dataset is reachable yet. False during boot. */
   ready: () => boolean;
+  /**
+   * How the personal space is named inside a reference (`p:<uuid>`), so a module can tell a
+   * reference to one of its own records from anything else. Empty until `ready()`.
+   */
+  refKey: () => string;
   /** Create a record. Returns its id, or `null` if there was nowhere to write it. */
   create: (entity: string, fields: Record<string, unknown>, options?: CreateEntityOptions) => Promise<string | null>;
   /** Read records back. */

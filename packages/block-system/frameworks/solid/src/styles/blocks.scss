@@ -223,8 +223,41 @@
   > h3:hover,
   > blockquote:hover,
   > .we-list-item:hover,
-  > .we-block:hover {
+  > .we-block:hover,
+  > we-draggable > .we-block-draggable:hover > :is(p, h1, h2, h3, blockquote, .we-list-item, .we-block) {
     background-color: var(--we-color-neutral-75);
+  }
+}
+
+// A block that can be picked up on its own — see `DraggableBlock` in BlockRenderer.tsx.
+.we-block-draggable {
+  position: relative;
+}
+
+// In the block's own left padding, level with its first line, so it takes no room and covers nothing.
+.we-block-grip {
+  position: absolute;
+  top: var(--we-space-300);
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--we-space-300);
+  height: 1.4em;
+  color: var(--we-role-text-muted);
+  cursor: grab;
+  opacity: 0;
+  border-radius: var(--we-radius-200);
+  transition: opacity var(--we-transition-200);
+
+  .we-block-draggable:hover > &,
+  &:focus-visible {
+    opacity: 1;
+  }
+
+  &:focus-visible {
+    box-shadow: var(--we-focus-outline);
   }
 }
 

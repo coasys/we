@@ -1,9 +1,10 @@
-import { type DragItem, type DragPreview, dragSession, watchPointerDrag } from '@we/drag';
+import { type DragItem, type DragPreview, dragSession, type DragWithin, watchPointerDrag } from '@we/drag';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import { warnAboutBoxlessLayoutProps } from '../shared/boxless';
 import { LayoutElement } from '../shared/design-system-element';
+import { pressIsOnText } from '../shared/textHit';
 
 const CSS_STYLES = css`
   :host {
@@ -58,6 +59,17 @@ const CSS_STYLES = css`
  * deliberately left empty here: a card fragment cannot name its own dataset without reading a
  * store, and portable fragments name no store by construction. The receiver stamps it, from
  * whichever dataset was current when the drop happened.
+ *
+ * ## Text inside it stays selectable
+ *
+ * A press on the words of a rendered composition — anything inside a `data-we-text` region — selects
+ * them rather than picking the card up. The rest of the card, including the space around those
+ * words, still drags. See `shared/textHit.ts`.
+ *
+ * ## Nesting
+ *
+ * A draggable inside a draggable is how a picture is taken out of a post rather than the whole post:
+ * the innermost one under the press claims it, and the outer one sees the claim and stands aside.
  *
  * ## `display: contents`
  *
@@ -120,6 +132,12 @@ export default class Draggable extends LayoutElement {
   @property({ attribute: false }) origin?: unknown;
 
   /**
+   * The record this one sits inside — the post a paragraph belongs to — as `{ entity, id }`. See
+   * `DragItem.within`. `attribute: false`, as an object.
+   */
+  @property({ attribute: false }) within?: DragWithin;
+
+  /**
    * What the drop means to *this* end. `copy` (the default) is what gathering is: the thing stays
    * where it was.
    */
@@ -174,6 +192,7 @@ export default class Draggable extends LayoutElement {
       ...(this.icon && { icon: this.icon }),
       ...(this._preview() && { preview: this._preview() }),
       ...(this.origin !== undefined && { origin: this.origin }),
+      ...(this.within?.entity && this.within.id && { within: this.within }),
     };
   }
 
@@ -195,12 +214,18 @@ export default class Draggable extends LayoutElement {
     // select the text of a card's title would pick the card up, and a card holding a button could
     // not be clicked without a steady hand.
     if (e.composedPath().some((node) => this._isInteractive(node))) return;
+    // A press on words is the start of a selection. Checked before the claim, so an outer draggable
+    // sees the same answer rather than taking a press this one declined.
+    if (pressIsOnText(e.composedPath(), { x: e.clientX, y: e.clientY })) return;
     if (dragSession.isClaimed(e)) return;
     dragSession.claimPress(e);
 
     this._stopWatch = watchPointerDrag(e, {
       capture: this,
       onStart: (start) => {
+        // A press off the glyphs can still have begun a selection across the gap it started in; the
+        // drag is what it turned out to be, so the half-made selection goes.
+        document.getSelection()?.removeAllRanges();
         dragSession.begin({
           payload: { items: [this._item()], effect: this.effect },
           pointer: { x: start.clientX, y: start.clientY },

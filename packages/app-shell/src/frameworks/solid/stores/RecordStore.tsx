@@ -22,10 +22,19 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import { datasetKey, type EntitySchema, HERE, namePropertyOf } from '@we/backend-shared';
-import { createBlocks } from '@we/block-shared';
+import {
+  datasetIdOf,
+  datasetKey,
+  datasetKindOf,
+  type EntitySchema,
+  formatRef,
+  HERE,
+  namePropertyOf,
+} from '@we/backend-shared';
+import { type ContentInput, copyableContent, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
+  CollectionBlock,
   compressImageToFileData,
   dataURIToFileData,
   EdgeRoute,
@@ -40,8 +49,10 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
+import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
 import { hostSlot } from '../../../shared/hostSlot';
+import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
 import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
 import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
@@ -62,7 +73,8 @@ import {
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
-import { useDatasetStore } from './DatasetStore';
+import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { useSessionStore } from './SessionStore';
 import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
 
 /** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */
@@ -323,8 +335,25 @@ export interface RecordStore {
    */
   dropOnCanvas: (
     canvas: string,
-    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
+    payload: {
+      entity: string;
+      id: string;
+      dataset?: string;
+      x: number;
+      y: number;
+      label?: string;
+      within?: BringInItem['within'];
+      preview?: BringInItem['preview'];
+    },
   ) => Promise<void>;
+  /**
+   * Take whatever a drop carried into the space on screen, as posts — the `dropped` event's detail
+   * straight from a `we-drop-zone` around a feed.
+   *
+   * A copy for the author's own things, a quote for anybody else's — see `shared/bringIn.ts`, which
+   * holds the table. Things already in this space are left alone. Each new post offers an undo.
+   */
+  bringIn: (payload: { items?: BringInItem[] } | undefined) => Promise<void>;
   /**
    * Change one property of one record, from a control bound to it.
    *
@@ -478,6 +507,7 @@ const RecordStoreContext = createContext<RecordStore>();
 
 export function RecordStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
+  const session = useSessionStore();
   const shapeStore = useShapeStore();
 
   const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
@@ -1448,7 +1478,13 @@ export function RecordStoreProvider(props: ParentProps) {
     const here = datasetKey({ cid: dataset.sharedUri, uuid: dataset.id });
     const from = payload.dataset ?? '';
     if (from && from !== HERE && from !== here) {
-      toastService.error('Only things from this space can be put on its canvas.');
+      /*
+        Something from elsewhere becomes a post here first — a copy or a quote, the rule every drop
+        into a space follows — and that post is what goes on the canvas. A canvas can only draw this
+        space's records, and placing a coordinate for a record in another dataset drew nothing.
+      */
+      const brought = await bringOne({ ...payload, ref: { entity: payload.entity, id: payload.id, dataset: from } });
+      if (brought) await placeOnCanvas(canvas, brought.id, 'CollectionBlock', payload.x, payload.y);
       return;
     }
     if (!schemaFor(payload.entity)) {
@@ -1456,6 +1492,64 @@ export function RecordStoreProvider(props: ParentProps) {
       return;
     }
     await placeOnCanvas(canvas, payload.id, payload.entity, payload.x, payload.y);
+  }
+
+  /** The dataset a reference's key names, if this agent holds it. */
+  function heldDataset(key: string): AppDataset | undefined {
+    const id = datasetIdOf(key);
+    if (datasetKindOf(key) === 'personal') return datasetStore.datasets().find((d) => d.id === id);
+    return datasetStore.datasets().find((d) => d.sharedId === id || d.sharedUri === `neighbourhood://${id}`);
+  }
+
+  /**
+   * One dropped thing into the space on screen, with its undo and its announcement.
+   *
+   * The decision is `shared/bringIn.ts`; this is the store's half — reading and writing through the
+   * datasets it holds, and telling modules, since a note shared by dragging is shared as surely as
+   * one shared with the button.
+   */
+  async function bringOne(item: BringInItem): Promise<BroughtIn | null> {
+    const here = datasetStore.currentDataset();
+    if (!here) return null;
+    const hereKey = datasetKey({ cid: here.sharedUri, uuid: here.id });
+    try {
+      const result = await decideBringIn(item, {
+        hereKey,
+        me: session.me()?.did,
+        held: (key) => {
+          const ds = heldDataset(key);
+          return ds ? { handle: ds.handle, name: ds.name } : null;
+        },
+        readPost: async (handle, id) => {
+          const post = await CollectionBlock.findOne(handle as never, { where: { id } });
+          return post ? { author: post.author, editorState: post.editorState } : null;
+        },
+        copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
+        write: async (blocks, fields) => {
+          const root = await createBlocks(here.handle, blocks as ContentInput, { kind: 'post', fields });
+          return root?.id ? { id: root.id } : null;
+        },
+      });
+      if (!result) return null;
+
+      const to = formatRef({ datasetKey: hereKey, entity: 'CollectionBlock', id: result.id });
+      notifyCopiedIn({ from: result.from, to, mode: result.mode, spaceName: here.name });
+      toastService.success(result.mode === 'copy' ? 'Posted here' : 'Quoted here', 8000, {
+        label: 'Undo',
+        run: () => void deleteBlocks(here.handle, result.id).catch(() => toastService.error('Could not undo that.')),
+      });
+      return result;
+    } catch (error) {
+      console.error('RecordStore: bringing something into the space failed', error);
+      toastService.error('Could not add that here.');
+      return null;
+    }
+  }
+
+  async function bringIn(payload: { items?: BringInItem[] } | undefined): Promise<void> {
+    for (const item of payload?.items ?? []) {
+      if (item?.ref?.entity && item.ref.id) await bringOne(item);
+    }
   }
 
   async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {
@@ -1660,6 +1754,7 @@ export function RecordStoreProvider(props: ParentProps) {
     setTypeColor,
     setSpaceTypeColor,
     dropOnCanvas,
+    bringIn,
     updateRecordField,
     setRecordEntity,
     setRecordField,

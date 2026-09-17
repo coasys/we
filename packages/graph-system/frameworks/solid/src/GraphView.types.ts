@@ -328,7 +328,18 @@ export interface GraphViewProps {
    * `dataset` is the record's home as the drag spelt it, absent for one picked up in the dataset on
    * screen. A receiver that can only draw its own dataset's records should test it.
    */
-  onDrop?: (payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number }) => void;
+  onDrop?: (payload: {
+    entity: string;
+    id: string;
+    dataset?: string;
+    label: string;
+    x: number;
+    y: number;
+    /** The post a dropped block sits in — see `DragItem.within`. */
+    within?: { entity: string; id: string };
+    /** What the source drew it with, for a receiver that cannot read the source. */
+    preview?: { thumbnail?: string; author?: string; source?: string };
+  }) => void;
 
   /**
    * Small controls that appear above a node while it is selected — a tick, a cross, a bin.

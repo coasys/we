@@ -753,6 +753,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setTypeColor: action('content'),
     setSpaceTypeColor: action('content'),
     dropOnCanvas: action('content'),
+    // Writes posts into the space on screen and nowhere else; what it reads from elsewhere is only
+    // what this agent already holds. A space's template offering a drop target is the product.
+    bringIn: action('content'),
     updateRecordField: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),

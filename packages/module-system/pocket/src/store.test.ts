@@ -114,6 +114,25 @@ describe('what gets written down', () => {
     expect(data.rows.PocketItem[0].ref).toBe('we:n:QmElsewhere/TextBlock/ad4m://obj/xyz');
   });
 
+  it('keeps the post a block came from, and where the source says it was', async () => {
+    // A paragraph out of a note: opening it goes to the note, and it names the place it was read in
+    // rather than whichever space happened to be on screen.
+    const { deps: d, data } = deps();
+    await createPocketStore(d).gather({
+      items: [
+        {
+          ref: { entity: 'TextBlock', id: 'para-1', dataset: 'p:personal' },
+          within: { entity: 'CollectionBlock', id: 'note-1' },
+          label: 'A sentence',
+          preview: { source: 'Notes' },
+        },
+      ],
+    });
+
+    const [item] = data.rows.PocketItem;
+    expect(item).toMatchObject({ withinEntity: 'CollectionBlock', withinId: 'note-1', sourceName: 'Notes' });
+  });
+
   it('gives a person their own form, since an agent is in no dataset', async () => {
     const { deps: d, data } = deps();
     await createPocketStore(d).gather(drop({ entity: 'Agent', id: 'did:key:z6Mkabc' }, 'Anna'));

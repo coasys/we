@@ -13,6 +13,7 @@
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
+import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, Space } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -100,7 +101,7 @@ import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStor
 import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
-import { RecordStoreProvider } from '../src/frameworks/solid/stores/RecordStore';
+import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
 import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
@@ -113,6 +114,7 @@ interface Stores {
   session: SessionStore;
   datasets: DatasetStore;
   spaces: SpaceStore;
+  records: RecordStore;
 }
 
 function mountShell(): Stores {
@@ -121,6 +123,7 @@ function mountShell(): Stores {
     out.session = useSessionStore();
     out.datasets = useDatasetStore();
     out.spaces = useSpaceStore();
+    out.records = useRecordStore();
     return null;
   }
   render(() => (
@@ -656,6 +659,59 @@ describe('the personal space', () => {
     await stores.spaces.openRecordRef(`we:p:${personal.id}/CollectionBlock/some-note`);
 
     expect(navigate).not.toHaveBeenCalled();
+  }, 10000);
+});
+
+describe('bringing a note into a space', () => {
+  it('copies it in as a post, with nothing saying where it came from, and undoes', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
+    registerCoreBlocks();
+    const personal = stores.datasets.personalDataset()!;
+    const note = await createBlocks(personal.handle, [{ _type: 'block', text: 'ready to post' }], { kind: 'post' });
+
+    await stores.spaces.createSpace('Gardeners', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Gardeners')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+
+    toastService.toasts().forEach((toast) => toastService.remove(toast.id));
+    await stores.records.bringIn({
+      items: [
+        { ref: { entity: 'CollectionBlock', id: note!.id, dataset: `p:${personal.id}` }, label: 'ready to post' },
+      ],
+    });
+
+    const posts = await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } });
+    expect(posts).toHaveLength(1);
+    expect(posts[0].textContent).toContain('ready to post');
+    // A note's personal space names nothing to anybody else, so the copy does not name it.
+    expect(posts[0].sourceRef ?? '').toBe('');
+    // The note itself is untouched.
+    expect(await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } })).toHaveLength(1);
+
+    const [toast] = toastService.toasts();
+    expect(toast.action?.label).toBe('Undo');
+    toast.action!.run();
+    await vi.waitFor(async () =>
+      expect(await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } })).toHaveLength(0),
+    );
+  }, 10000);
+
+  it('leaves alone a post already in the space', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    registerCoreBlocks();
+    await stores.spaces.createSpace('Here', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Here')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+    const post = await createBlocks(space.handle, [{ _type: 'block', text: 'already here' }], { kind: 'post' });
+
+    await stores.records.bringIn({ items: [{ ref: { entity: 'CollectionBlock', id: post!.id } }] });
+
+    expect(await CollectionBlock.findAll(space.handle as never, { where: { kind: 'post' } })).toHaveLength(1);
   }, 10000);
 });
 

@@ -197,7 +197,12 @@ const noteCard: SchemaNode = {
             }),
             else: {
               type: 'BlockRenderer',
-              props: { editorState: { $: 'note.editorState' }, perspective: personalHandle },
+              props: {
+                editorState: { $: 'note.editorState' },
+                perspective: personalHandle,
+                // A picture or a paragraph out of a note, into the Pocket or a space, on its own.
+                blockDrag: { within: { $: 'note.id' }, datasetKey: personalKey },
+              },
             },
           },
         },

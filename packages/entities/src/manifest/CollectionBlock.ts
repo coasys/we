@@ -136,6 +136,23 @@ export const CollectionBlock: CoreEntityDef = {
       description: { type: 'string', predicate: 'we://description', default: '' },
       version: { type: 'number', predicate: 'we://version', default: 0 },
       textContent: { type: 'string', predicate: 'we://text_content', default: '' },
+      /**
+       * Where this was posted before it was posted here — a reference to the original, and its space
+       * by name.
+       *
+       * Written only when an author brings their own post from one shared space into another, and
+       * only as a **portable** reference (`we:n:<cid>/…`): a reference into a personal dataset names
+       * nothing to anybody else, and would say that a private note exists. So a note shared into a
+       * space carries neither, and reads as what it is — a post, written here.
+       *
+       * Somebody else's post is never copied, so it never gets these: bringing one in makes a post
+       * that *quotes* it, through an `EmbedBlock` carrying its author. See `bringIn` in the shell.
+       *
+       * `sourceName` is a snapshot, for the reason the Pocket keeps one: a card must be able to say
+       * "also posted in Gardeners" without resolving a dataset its reader may not have joined.
+       */
+      sourceRef: { type: 'string', predicate: 'we://source_ref', default: '' },
+      sourceName: { type: 'string', predicate: 'we://source_name', default: '' },
     },
     relations: {
       /**

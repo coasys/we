@@ -29,7 +29,15 @@ export function encodeBase64Utf8(text: string): string {
  * form. Returns null only for something that is none of those.
  */
 export function decodeEditorState(input: unknown): ContentBlock[] | null {
-  let value: unknown = input;
+  /*
+    The file itself, unresolved — `{ data_base64, file_type }` — which is what a backend that stores
+    nothing out-of-band hands back for a file field. Read as the data URI it would have resolved to,
+    so a composition copied out of such a backend is not mistaken for no composition at all.
+  */
+  let value: unknown =
+    input && typeof input === 'object' && typeof (input as { data_base64?: unknown }).data_base64 === 'string'
+      ? `data:application/json;base64,${(input as { data_base64: string }).data_base64}`
+      : input;
   if (typeof value === 'string') {
     if (!value.startsWith('data:') || !value.includes(';base64,')) {
       // A raw JSON string is tolerated — a fixture or a test may hand one over.

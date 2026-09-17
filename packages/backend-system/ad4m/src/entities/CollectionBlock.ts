@@ -137,6 +137,27 @@ export class CollectionBlock extends WeNode {
   textContent: string = '';
 
   /**
+   * Where this was posted before it was posted here — a reference to the original, and its space
+   * by name.
+   *
+   * Written only when an author brings their own post from one shared space into another, and
+   * only as a **portable** reference (`we:n:<cid>/…`): a reference into a personal dataset names
+   * nothing to anybody else, and would say that a private note exists. So a note shared into a
+   * space carries neither, and reads as what it is — a post, written here.
+   *
+   * Somebody else's post is never copied, so it never gets these: bringing one in makes a post
+   * that *quotes* it, through an `EmbedBlock` carrying its author. See `bringIn` in the shell.
+   *
+   * `sourceName` is a snapshot, for the reason the Pocket keeps one: a card must be able to say
+   * "also posted in Gardeners" without resolving a dataset its reader may not have joined.
+   */
+  @Property({ through: 'we://source_ref' })
+  sourceRef: string = '';
+
+  @Property({ through: 'we://source_name' })
+  sourceName: string = '';
+
+  /**
    * What is in this collection, in the order somebody put it there.
    *
    * `ordered` because the sequence is authored: a person dragged the image above the paragraph,

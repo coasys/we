@@ -21,6 +21,7 @@ import type { Activity, Peer } from '@we/backend-shared';
 import type {
   AgentDataKernel,
   ComposedDocument,
+  CopiedIn,
   DocumentAccess,
   ModuleDefinition,
   ModuleStoreDeps,
@@ -147,6 +148,7 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
     for (const fire of subscriptions) fire();
   };
   const documents = fakeDocuments({ datasetKey: options.datasetKey ?? 'n:test-space' });
+  const copiedIn = new Set<(event: CopiedIn) => void>();
 
   const kernel: RecordsKernel = {
     create: async (entity, fields, options) => {
@@ -192,6 +194,10 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
       return () => subscriptions.delete(fire);
     },
     documents: documents.access,
+    onCopiedIn: (cb) => {
+      copiedIn.add(cb);
+      return () => copiedIn.delete(cb);
+    },
   };
 
   return {
@@ -201,6 +207,10 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
     writes,
     /** Every composed document written through `kernel.documents`, by id. */
     documents: documents.documents,
+    /** Announce a post arriving from elsewhere, as the host does after a drop. */
+    copyIn: (event: CopiedIn) => {
+      for (const cb of copiedIn) cb(event);
+    },
     kernel,
     /** Seed a row without recording a write. */
     seed: (entity: string, fields: Record<string, unknown>, rowAuthor = author): FakeRow => {
@@ -224,6 +234,7 @@ export function fakeAgentData(options: { author?: string; ready?: boolean } = {}
   const inner = fakeRecords({ ...options, datasetKey: 'p:personal' });
   const kernel: AgentDataKernel = {
     ready: () => options.ready ?? true,
+    refKey: () => 'p:personal',
     create: (entity, fields, opts) => inner.kernel.create(entity, fields, opts),
     find: (entity, query) => inner.kernel.find(entity, query),
     update: (entity, id, fields) => inner.kernel.update(entity, id, fields),
