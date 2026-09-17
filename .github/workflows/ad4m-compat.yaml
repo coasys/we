@@ -29,9 +29,35 @@ name: AD4M compatibility
 # human reading the log and knowing the codebase. It also means a long-red `dev` no longer
 # blinds this job — it keeps answering about the last thing that worked.
 
+# Deactivated: the nightly now runs on CircleCI (`.circleci/config.yml`,
+# workflow `nightly-ad4m-compat`), 03:00 UTC, on the self-hosted
+# `coasys/marvin-we` pool. Two of these running would file and close the same
+# tracking issue against each other.
+#
+# Only the schedule is removed. `workflow_dispatch` stays, and everything the
+# manual path does still works: this remains the way to run a WE branch against
+# an AD4M branch carrying an unpublished API, and it is the fallback if the
+# runner host is unavailable.
+#
+# Note for whoever reactivates this: the CircleCI translation does *not* yet
+# reproduce the control below — testing the last commit green on `dev` rather
+# than HEAD — because it needs run history that project did not have on day one.
+# The reasoning for why that control exists is in the header above, and is worth
+# reading before deciding which of the two should own this job long-term.
+#
+# The `schedule` stays here for now, and deliberately so. The CircleCI
+# translation of this job cannot replace it yet: it has no `GH_TOKEN`, so it
+# cannot open, update or close the tracking issue, and nothing is configured to
+# tell a person when it fails. Deactivating the schedule here would freeze issue
+# #176 open — only the scheduled path closes it — and would leave the nightly
+# answer going into a build log nobody reads.
+#
+# A red nightly that files a slightly wrong issue is bad. A red nightly nobody is
+# told about is worse. So the nightly moves in its own pull request, once the
+# CircleCI side has a channel that reaches a person and the control is resolved
+# from commit statuses rather than Actions run history.
 on:
   schedule:
-    # 03:00 UTC daily — after AD4M's working day, before WE's.
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
