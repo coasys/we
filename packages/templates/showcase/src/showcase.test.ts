@@ -1666,9 +1666,9 @@ describe('the chooser’s colours', () => {
           ?.impl(args, {} as never),
     } as never);
 
-  it('rings a card in its kind’s colour, looked up by the entry’s name — the default, or the space’s', () => {
+  it('draws a card’s icon in its kind’s colour, looked up by the entry’s name — the default, or the space’s', () => {
     // The picker hands a whole entry; the key looks colours up by name. Passing the entry itself made
-    // every lookup miss, and every ring came out the plain card's colour.
+    // every lookup miss, and every icon came out the plain card's colour.
     const fill = kindFill('kind.value');
     const kind = { value: 'ImageBlock', label: 'Image' };
     expect(run(fill, { kind, local: { typeStyles: [] } })).toBe(KIND_DEFAULTS.ImageBlock);

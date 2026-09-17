@@ -90,7 +90,7 @@ export const BACK_TO_CHOOSER: SchemaProp[] = [{ $setLocal: 'chooserOpen', value:
  *
  * The note first (a collection, written in the composer — "(block collection)" because Text is in
  * the same grid), then this space's own types, then WE's blocks led by tasks and events. Each card's
- * icon is ringed in the colour the key gives its kind, so the chooser and the key agree.
+ * icon is drawn in the colour the key gives its kind, so the chooser and the key agree.
  *
  * A composed kind opens the composer. Anything else opens the generic form through `createOnCanvas`,
  * which remembers the canvas and the point, and then switches the form to the chosen model — two

@@ -9,8 +9,8 @@ export interface TypePickerOptions {
   /** Entity names to put first within their section, in this order — tasks and events on a canvas. */
   lead?: string[];
   /**
-   * The colour a kind is drawn in, as an expression over `kind` — the ring around its icon. Omit for a
-   * plain ring. A canvas passes the colour its key gives the kind, so the chooser and the key agree.
+   * The colour a kind is drawn in, as an expression over `kind` — its icon's colour. Omit for the
+   * ordinary text colour. A canvas passes the colour its key gives the kind, so the two agree.
    */
   fill?: (kind: string) => string;
   /**
@@ -44,9 +44,9 @@ export interface TypePickerOptions {
  * ## Cards
  *
  * Icon, name and description, on a sunken ground so a card stands clearly apart from the modal it
- * sits in. Where the caller gives a kind's colour, the ring around the icon and the icon itself take
- * it — the same colour the canvas draws that kind in, so the chooser reads as a key. The card's own
- * edge stays plain: a grid of coloured outlines was noise around the thing that says the kind.
+ * sits in. Where the caller gives a kind's colour, the icon takes it — the same colour the canvas draws
+ * that kind in, so the chooser reads as a key — on a raised disc, with no ring: colour on the glyph
+ * alone says it, and outlines around cards and discs were noise around it.
  *
  * One fragment rather than one per surface, because a canvas's chooser, a record form's type selector
  * and a graph's add button all ask the same question of the same list. The caller says what a pick
@@ -83,10 +83,6 @@ export function typePickerLists(opts: Pick<TypePickerOptions, 'items' | 'lead' |
 export function typePicker(opts: TypePickerOptions): SchemaNode {
   const { search, nameOf, matches, composed, own, builtIn, drawnOrder } = typePickerLists(opts);
 
-  /** The kind's colour as a border, or the plain border where the caller gives none. */
-  const edge = (kind: string, width: string) =>
-    opts.fill ? { $: `'${width} solid ' + ${opts.fill(kind)}` } : `${width} solid border`;
-
   const card = (kind: string): SchemaNode => ({
     type: 'we-button',
     props: {
@@ -117,8 +113,7 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
               r: 'full',
               ax: 'center',
               ay: 'center',
-              bg: 'surface',
-              border: edge(kind, '2px'),
+              bg: 'surface-raised',
             },
             children: [
               {
