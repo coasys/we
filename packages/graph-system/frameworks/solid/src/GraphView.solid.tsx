@@ -1475,18 +1475,44 @@ export function GraphView(props: GraphViewProps) {
   const actionsFor = (node: GraphNode) => (props.nodeActions ?? []).filter((action) => matches(node, action.when));
 
   /**
-   * Whether this card is worth offering a fold on — asked of the engine, which is the only thing
-   * that can answer it.
+   * What the fold control has to say about itself — how much it would take, and how much it cannot.
    *
-   * `version()` first, so the answer is re-asked when the graph moves: a card gains a connection and
-   * the control has to appear, loses its last one and it has to go. Not on the row like `folded` and
-   * `foldedCount` are, because the answer is exact and exactness costs a recomputation per candidate
-   * — paid here for the one or two cards whose chrome is drawn rather than for every card on screen.
+   * `version()` first, so every answer is re-asked when the graph moves: a card gains a connection
+   * and the control has to appear, loses its last one and it has to go. Not on the row like `folded`
+   * and `foldedCount` are, because these answers are exact and exactness costs a recomputation per
+   * card — paid here for the one or two whose chrome is drawn rather than for every card on screen.
+   *
+   * The second number is the whole reason this is not just a count. A fold never takes a card
+   * another card still points at, so folding something with four things under it sometimes takes
+   * two — and the two that stay read as a fold that half worked. Worse at the limit: where
+   * *everything* under a card is shared, the control used to vanish, which reads as "this card
+   * cannot fold" rather than as "there is nothing here a fold may take".
+   *
+   * So the control appears whenever there is anything under the card at all, and says which case it
+   * is in. Asked of the engine for the selected card only, like `canFold`.
    */
-  const canFold = (entry: NodeEntry) => {
+  const foldSays = (entry: NodeEntry) => {
     version();
-    return !!props.onNodeFold && engine.canFold(entry.node.id);
+    const hides = engine.foldImpact(entry.node.id);
+    const held = engine.foldHeldElsewhere(entry.node.id);
+    const enabled = engine.canFold(entry.node.id);
+    // The counts are true whether or not anybody is listening — a folded card still has to be able
+    // to say what it is holding. Only the *control* depends on the handler.
+    return { show: !!props.onNodeFold && (enabled || held > 0), enabled, hides, held };
   };
+
+  /** "1 card" / "3 cards" — the graph says what it is about in its own tooltips. */
+  const cards = (count: number) => `${count} ${count === 1 ? 'card' : 'cards'}`;
+
+  /** What the fold control's tooltip reads, in the three states it has. */
+  function foldTitle(entry: NodeEntry, says: { enabled: boolean; hides: number; held: number }): string {
+    // Named rather than counted, because it is the one state where the button does nothing: every
+    // card under this one is also connected to something else, and a fold may not take those.
+    if (!says.enabled) return 'Nothing to fold — everything under this card is also connected elsewhere';
+    const elsewhere = says.held ? ` · ${cards(says.held)} also connected elsewhere` : '';
+    if (entry.folded) return `Unfold ${cards(says.hides)}${elsewhere}`;
+    return `Fold ${cards(says.hides)} into this one${says.held ? ` · ${cards(says.held)} stays, connected elsewhere` : ''}`;
+  }
 
   /** What the fold control reports: the state being asked for, and how much it is about. */
   function reportFold(entry: NodeEntry): void {
@@ -2971,7 +2997,7 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={actionsFor(entry.node).length > 0 || canFold(entry)}>
+              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show}>
                 {/*
                   `pointerdown` stopped, as well as the click — on the bar, once, for everything in
                   it. The canvas hit-tests in world space from a pointer press on the layer beneath,
@@ -3005,22 +3031,20 @@ export function GraphView(props: GraphViewProps) {
                       does not take the count away with the chip it replaces. Icons rather than words:
                       the caret points the way the contents are about to go.
                     */}
-                    <Show when={canFold(entry)}>
-                      <we-tooltip
-                        content={
-                          entry.folded
-                            ? `Unfold ${entry.foldedCount} ${entry.foldedCount === 1 ? 'card' : 'cards'}`
-                            : `Fold ${engine.foldImpact(entry.node.id)} ${
-                                engine.foldImpact(entry.node.id) === 1 ? 'card' : 'cards'
-                              } into this one`
-                        }
-                      >
+                    <Show when={foldSays(entry).show}>
+                      <we-tooltip content={foldTitle(entry, foldSays(entry))}>
                         <we-button
                           variant="ghost"
                           size="md"
                           // Square only while there is no count beside the caret.
                           square={!entry.folded}
                           label={entry.folded ? 'Unfold' : 'Fold'}
+                          /*
+                            Shown and refused, rather than absent. Where everything under a card is
+                            held elsewhere there is nothing a fold may take — and a control that
+                            simply was not there said that about the card instead of about the rule.
+                          */
+                          disabled={!foldSays(entry).enabled}
                           color={entry.folded ? 'accent-text' : 'text-muted'}
                           prop:hoverProps={{ color: entry.folded ? 'accent' : 'text' }}
                           onClick={() => reportFold(entry)}
@@ -3142,8 +3166,17 @@ export function GraphView(props: GraphViewProps) {
                   reportFold(entry);
                 }}
               >
-                <we-tooltip content={`Unfold ${entry.foldedCount} ${entry.foldedCount === 1 ? 'card' : 'cards'}`}>
-                  <we-button variant="secondary" size="xs" r="pill" label={`Unfold ${entry.foldedCount}`} gap="100">
+                <we-tooltip content={foldTitle(entry, foldSays(entry))}>
+                  <we-button
+                    variant="secondary"
+                    size="xs"
+                    r="pill"
+                    label={`Unfold ${entry.foldedCount}`}
+                    // The count is drawn either way — a fold has to say what it is holding — but
+                    // there is nothing to press where the interface is not listening for it.
+                    disabled={!props.onNodeFold}
+                    gap="100"
+                  >
                     <we-icon name="caret-right" />
                     <we-text variant="label">{String(entry.foldedCount)}</we-text>
                   </we-button>

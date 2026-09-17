@@ -29,7 +29,7 @@ import { addressKind } from '@we/graph-protocol';
 
 import { connectionTarget } from './connect';
 import { ExpansionState, SEED_OPENER } from './expansion';
-import { FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, wouldFold } from './fold';
+import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, wouldFold } from './fold';
 import type { EdgeClearance } from './geometry';
 import {
   anchorsOf,
@@ -1017,6 +1017,25 @@ export class GraphEngine {
    */
   foldImpact(id: string): number {
     return this.foldedIds.has(id) ? this.foldedCount(id) : wouldFold(id, this.foldedIds, this.store);
+  }
+
+  /**
+   * How many cards under this one a fold has to **leave**, because something outside it is also
+   * pointing at them.
+   *
+   * The counterpart to {@link foldImpact}, and the reason it exists is that the rule behind it is
+   * invisible otherwise. A fold never takes a card another card still points at — it would leave
+   * that one with a line running to nothing — so folding a card with four things under it sometimes
+   * takes two, and the two that stayed look like a fold that half worked. This is the number an
+   * interface needs to say which it was.
+   */
+  foldHeldElsewhere(id: string): number {
+    const under = downstreamOf(id, this.store);
+    if (!under.size) return 0;
+    const hidden = this.foldedIds.has(id) ? this.fold.hidden : foldGraph([...this.foldedIds, id], this.store).hidden;
+    let held = 0;
+    for (const nodeId of under) if (!hidden.has(nodeId)) held += 1;
+    return held;
   }
 
   /** Whether folding this card would take anything away — see {@link foldableIds}. */

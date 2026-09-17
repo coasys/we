@@ -62,7 +62,7 @@ export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
 export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';
 export type { CollapseResult } from './expansion';
-export { FOLD_BUNDLE, foldableIn, foldGraph, wouldFold } from './fold';
+export { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, wouldFold } from './fold';
 export type { FoldResult } from './fold';
 export { PluginRegistry } from './registry';
 export type { GraphPlugins } from './registry';

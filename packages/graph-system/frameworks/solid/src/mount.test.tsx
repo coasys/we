@@ -439,6 +439,71 @@ describe('GraphView folding', () => {
     expect(leaf.querySelector('.we-graph__actions')).toBeNull();
   });
 
+  it('says what a fold will leave behind, rather than half working in silence', async () => {
+    /*
+      `shared` is held by `outside` as well, so folding `parent` may take `own` and may not take
+      `shared`. Pressing it and watching one of two cards go is the shape of thing that reads as a
+      bug, so the control says which it is.
+    */
+    const shared = {
+      literal: true as const,
+      nodes: [card('parent', 0, 0), card('own', 200, 0), card('shared', 400, 0), card('outside', 600, 0)],
+      edges: (
+        [
+          ['parent', 'own'],
+          ['parent', 'shared'],
+          ['outside', 'shared'],
+        ] as const
+      ).map(([from, to]) => ({
+        id: `${from}->${to}`,
+        source: entityAddress('ds', 'TaskBlock', from),
+        target: entityAddress('ds', 'TaskBlock', to),
+        type: 'rel',
+      })),
+    };
+    const host = mount({ seeds: shared, layout: { type: 'manual' }, focus: 'parent', onNodeFold: () => undefined });
+    await until(() => host.querySelector('.we-graph__actions we-tooltip') !== null);
+
+    expect(propOf(host, '.we-graph__actions we-tooltip', 'content')).toBe(
+      'Fold 1 card into this one · 1 card stays, connected elsewhere',
+    );
+  });
+
+  it('offers a refused fold, not no fold, where everything under a card is shared', async () => {
+    /*
+      The limit of the same case, and the one that reads worst: with nothing a fold may take, the
+      control used to vanish — which says "this card cannot fold" instead of "there is nothing here
+      a fold may take". Shown and refused, with the reason in the tooltip.
+    */
+    const allShared = {
+      literal: true as const,
+      nodes: [card('parent', 0, 0), card('shared', 200, 0), card('outside', 400, 0)],
+      edges: (
+        [
+          ['parent', 'shared'],
+          ['outside', 'shared'],
+        ] as const
+      ).map(([from, to]) => ({
+        id: `${from}->${to}`,
+        source: entityAddress('ds', 'TaskBlock', from),
+        target: entityAddress('ds', 'TaskBlock', to),
+        type: 'rel',
+      })),
+    };
+    const host = mount({
+      seeds: allShared,
+      layout: { type: 'manual' },
+      focus: 'parent',
+      onNodeFold: () => undefined,
+    });
+    await until(() => host.querySelector('.we-graph__actions we-button') !== null);
+
+    expect(propOf(host, '.we-graph__actions we-button', 'disabled')).toBe(true);
+    expect(propOf(host, '.we-graph__actions we-tooltip', 'content')).toBe(
+      'Nothing to fold — everything under this card is also connected elsewhere',
+    );
+  });
+
   it('reports the state being asked for, and how much it is about', async () => {
     const seen: { id: string; recordId?: string; folded: boolean; count: number }[] = [];
     const host = mount({

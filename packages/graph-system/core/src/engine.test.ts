@@ -1649,6 +1649,24 @@ describe('GraphEngine folding', () => {
     };
   }
 
+  /** `parent` → `shared` ← `other`, plus `parent` → `own`: one card a fold may take, one it may not. */
+  function sharedSeed(): SeedSource {
+    const ids = ['parent', 'other', 'shared', 'own'];
+    return {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: ids.map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+          edges: [
+            { id: 'parent->shared', source: 'parent', target: 'shared', type: 'rel' },
+            { id: 'other->shared', source: 'other', target: 'shared', type: 'rel' },
+            { id: 'parent->own', source: 'parent', target: 'own', type: 'rel' },
+          ],
+        };
+      },
+    };
+  }
+
   async function folded() {
     const registry = new PluginRegistry({ seeds: [chainSeed()], layouts });
     const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
@@ -1736,6 +1754,30 @@ describe('GraphEngine folding', () => {
     expect(engine.foldedCount('chain')).toBe(2);
     expect(engine.isFolded('chain')).toBe(true);
     expect(engine.foldedCount('loose')).toBe(0);
+  });
+
+  it('says how much a fold would have to leave behind', async () => {
+    /*
+      The rule a fold lives by is invisible without this number. A card another card still points at
+      is never taken — it would be left with a line running to nothing — so folding something with
+      two things under it can take one, and the one that stayed reads as a fold that half worked.
+    */
+    const registry = new PluginRegistry({ seeds: [sharedSeed()], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+
+    expect(engine.foldImpact('parent')).toBe(1);
+    expect(engine.foldHeldElsewhere('parent')).toBe(1);
+    // And the other parent's side of the same fact: it holds the shared card and nothing else.
+    expect(engine.foldImpact('other')).toBe(0);
+    expect(engine.foldHeldElsewhere('other')).toBe(1);
+  });
+
+  it('counts nothing held where nothing is shared', async () => {
+    const engine = await folded();
+
+    expect(engine.foldHeldElsewhere('chain')).toBe(0);
+    expect(engine.foldHeldElsewhere('leaf')).toBe(0);
   });
 
   it('offers a fold where one would do something, and not on a leaf', async () => {

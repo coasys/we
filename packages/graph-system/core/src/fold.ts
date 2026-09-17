@@ -143,6 +143,18 @@ export function foldableIn(folded: Iterable<string>, store: GraphStore): Set<str
 }
 
 /**
+ * Everything hanging off one card, following connections outward — what a fold is *about*, whether
+ * or not it would be allowed to take all of it.
+ *
+ * The denominator to {@link wouldFold}'s numerator, and the difference between the two is what a
+ * fold has to leave because something else is holding it. Exported so an interface can say so: a
+ * control that takes two of the four cards under a card, silently, is a control that looks broken.
+ */
+export function downstreamOf(id: string, store: GraphStore): Set<string> {
+  return store.hasNode(id) ? reach([id], store, { skipSeeds: true, exclude: id }) : new Set();
+}
+
+/**
  * Everything reachable from a set of nodes, following connections outward.
  *
  * `skipSeeds` leaves the starting nodes out of the answer unless something else reaches them, which
