@@ -264,3 +264,160 @@ describe('GraphView delete key', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 });
+
+/**
+ * Folding — the part of it that is DOM rather than engine.
+ *
+ * What is hidden and what stands in for it is decided and tested in `graph-core`. What is here is
+ * everything that could go wrong between that answer and the screen: whether a folded card says so
+ * where anybody can see it, whether the control exists at all when nothing is listening for it, and
+ * whether pressing it reports what it promised. None of those is visible to a typecheck, and the
+ * first one is the difference between a fold and cards quietly going missing.
+ */
+describe('GraphView folding', () => {
+  const card = (id: string, x: number, y: number) => ({
+    id: entityAddress('ds', 'TaskBlock', id),
+    kind: 'entity' as const,
+    type: 'TaskBlock',
+    label: id,
+    data: { x, y },
+  });
+
+  /** `parent` → `child`, so there is something for a fold to take. */
+  const literal = {
+    literal: true as const,
+    nodes: [card('parent', 0, 0), card('child', 200, 0)],
+    edges: [
+      {
+        id: 'e1',
+        source: entityAddress('ds', 'TaskBlock', 'parent'),
+        target: entityAddress('ds', 'TaskBlock', 'child'),
+        type: 'rel',
+      },
+    ],
+  };
+
+  async function until(check: () => boolean, tries = 50): Promise<void> {
+    for (let i = 0; i < tries && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+  }
+
+  const labels = (host: HTMLElement) =>
+    [...host.querySelectorAll('.we-graph__node')].map((el) => el.textContent?.trim());
+
+  /*
+    The primitives are not registered in this environment, so a `we-button` here is an unupgraded
+    unknown element: everything the renderer sets dynamically lands as a DOM property and reflects to
+    no attribute. Read the property, which is what a real `we-button` reads too.
+  */
+  const propOf = (host: HTMLElement, selector: string, name: string) =>
+    (host.querySelector(selector) as unknown as Record<string, unknown> | null)?.[name];
+
+  it('hides what is under a fold and says how much, on the card', async () => {
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      folded: ['parent'],
+      onNodeFold: () => undefined,
+    });
+    // Once the cards have finished travelling into the fold — they are drawn on their way there,
+    // which is the whole point of the movement.
+    await until(() => labels(host).length === 1);
+    // The count, where the reader is looking — not in a legend somewhere else.
+    expect(host.querySelector('.we-graph__fold')?.textContent).toContain('1');
+  });
+
+  it('draws every card when the fold names nothing it holds', async () => {
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      folded: ['nobody'],
+      onNodeFold: () => undefined,
+    });
+    await until(() => labels(host).length === 2);
+
+    expect(labels(host).sort()).toEqual(['child', 'parent']);
+    expect(host.querySelector('.we-graph__fold')).toBeNull();
+  });
+
+  it('offers no fold control when nothing is listening for one', async () => {
+    // The bargain every other gesture here makes: an affordance that could not do anything is worse
+    // than none, so binding the handler is what puts the control on the card.
+    const host = mount({ seeds: literal, layout: { type: 'manual' }, focus: 'parent' });
+    await until(() => host.querySelectorAll('.we-graph__node--selected').length > 0);
+
+    expect(host.querySelector('.we-graph__actions')).toBeNull();
+  });
+
+  it('offers it on a selected card that has something to fold, and not on a leaf', async () => {
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 'parent',
+      onNodeFold: () => undefined,
+    });
+    await until(() => host.querySelector('.we-graph__actions') !== null);
+
+    expect(propOf(host, '.we-graph__actions we-button', 'label')).toBe('Fold');
+
+    dispose?.();
+    dispose = undefined;
+
+    const leaf = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 'child',
+      onNodeFold: () => undefined,
+    });
+    await until(() => leaf.querySelectorAll('.we-graph__node--selected').length > 0);
+
+    expect(leaf.querySelector('.we-graph__actions')).toBeNull();
+  });
+
+  it('reports the state being asked for, and how much it is about', async () => {
+    const seen: { id: string; recordId?: string; folded: boolean; count: number }[] = [];
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 'parent',
+      onNodeFold: (payload) => seen.push(payload),
+    });
+    await until(() => host.querySelector('.we-graph__actions we-button') !== null);
+
+    (host.querySelector('.we-graph__actions we-button') as HTMLElement).click();
+
+    // A record id, as every other payload here carries — and the state wanted, so a handler writes
+    // what it is told rather than working out the opposite of what it was.
+    expect(seen).toEqual([
+      {
+        id: entityAddress('ds', 'TaskBlock', 'parent'),
+        recordId: 'parent',
+        recordType: 'TaskBlock',
+        folded: true,
+        count: 1,
+      },
+    ]);
+  });
+
+  it('unfolds from the chip, with no selecting first', async () => {
+    const seen: { id: string; folded: boolean; count: number }[] = [];
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      folded: ['parent'],
+      onNodeFold: (payload) => seen.push(payload),
+    });
+    await until(() => host.querySelector('.we-graph__fold we-button') !== null);
+
+    (host.querySelector('.we-graph__fold we-button') as HTMLElement).click();
+
+    expect(seen).toEqual([
+      {
+        id: entityAddress('ds', 'TaskBlock', 'parent'),
+        recordId: 'parent',
+        recordType: 'TaskBlock',
+        folded: false,
+        count: 1,
+      },
+    ]);
+  });
+});

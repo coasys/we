@@ -29,7 +29,7 @@ import { addressKind } from '@we/graph-protocol';
 
 import { connectionTarget } from './connect';
 import { ExpansionState, SEED_OPENER } from './expansion';
-import { FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult } from './fold';
+import { FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, wouldFold } from './fold';
 import type { EdgeClearance } from './geometry';
 import {
   anchorsOf,
@@ -967,6 +967,17 @@ export class GraphEngine {
       if (bundle.source === id || bundle.target === id) weight += bundle.weight ?? 1;
     }
     return weight;
+  }
+
+  /**
+   * How many cards a press on this card's fold control is about to hide — or, on a folded card,
+   * bring back.
+   *
+   * What the control says it will do, rather than what the graph looks like: a fold whose tooltip
+   * promised three cards and took two would be describing a computation nobody can check.
+   */
+  foldImpact(id: string): number {
+    return this.foldedIds.has(id) ? this.foldedCount(id) : wouldFold(id, this.foldedIds, this.store);
   }
 
   /** Whether folding this card would take anything away — see {@link foldableIds}. */

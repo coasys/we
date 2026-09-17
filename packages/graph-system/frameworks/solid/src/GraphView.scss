@@ -1179,3 +1179,25 @@
 .we-graph we-tooltip::part(arrow) {
   pointer-events: none;
 }
+
+/**
+ * What a folded card is holding — a count on the card, and the press that brings it back.
+ *
+ * Inside the card's bottom-right corner, and only while the card is unselected: a selected one has
+ * the same count in its action bar, and this corner is where a resize grip sits. Two things taking
+ * presses in one place is one thing too many, and the count moves rather than disappearing.
+ *
+ * Counter-scaled by the camera like the action bar, so it stays the size a finger expects at any
+ * zoom, and with the same transform order — placed in its own units, then scaled — so the inset is
+ * in screen pixels rather than world ones.
+ */
+.we-graph__fold {
+  position: absolute;
+  left: calc(var(--node-width) / 2);
+  top: calc(var(--node-height) / 2);
+
+  // The node layer is inert so the canvas can hit-test in world space; this takes its own presses.
+  pointer-events: auto;
+  transform-origin: top left;
+  transform: scale(calc(1 / var(--graph-zoom))) translate(calc(-100% - 6px), calc(-100% - 6px));
+}
