@@ -144,6 +144,18 @@ export function placementsQuery(call: Record<string, unknown>) {
 export const KIND_DEFAULTS: Record<string, string> = {
   TaskBlock: '#86c2ff',
   EventBlock: '#ff94f7',
+  /*
+    The blocks that stand on a canvas by themselves — dropped from a post or the Pocket, or put down
+    from the chooser. Pale and distinct from the three above, so a picture is not mistaken for a task.
+    A quote (`EmbedBlock`) is somebody else's thing brought in, and reads as its own kind.
+  */
+  TextBlock: '#ffd0a6',
+  ImageBlock: '#a9ecc6',
+  VideoBlock: '#cdbcff',
+  AudioBlock: '#f7b9c4',
+  FileBlock: '#d9d3c4',
+  LinkBlock: '#a3e4ea',
+  EmbedBlock: '#c8d7ec',
   // The post-it. A literal rather than a role on purpose: a note is yellow in a dark theme too, and
   // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
   CollectionBlock: '#ffea9f',
@@ -242,12 +254,20 @@ export const LINK_FILL = `(${linkColorChosen} ? ${linkColorChosen} : '${LINK_DEF
 /** The key's rows that are not kinds, for the per-kind rules to skip. */
 const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']`;
 
+/**
+ * `KIND_DEFAULTS` as an object literal the expression grammar can index.
+ *
+ * A lookup rather than a chain of `kind == 'X' ? … :` — the chain nested one level per kind, and the
+ * parser's depth limit refused it once the blocks that stand on a canvas by themselves joined.
+ */
+const KIND_DEFAULTS_LOOKUP = `{ ${Object.entries(KIND_DEFAULTS)
+  .map(([name, color]) => `${name}: '${color}'`)
+  .join(', ')} }`;
+
 /** The default fill for a kind, as an expression over `kind`. */
 export function kindDefaultFill(kind: string): string {
-  return Object.entries(KIND_DEFAULTS).reduceRight(
-    (rest, [name, color]) => `(${kind} == '${name}' ? '${color}' : ${rest})`,
-    CARD_FILL,
-  );
+  const hit = `${KIND_DEFAULTS_LOOKUP}[${kind}]`;
+  return `(${hit} ? ${hit} : ${CARD_FILL})`;
 }
 
 /** The community's colour for a kind, else the template's default. Reads `local.typeStyles`. */

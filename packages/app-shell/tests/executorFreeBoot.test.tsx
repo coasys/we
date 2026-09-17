@@ -662,6 +662,27 @@ describe('the personal space', () => {
   }, 10000);
 });
 
+describe('blocks on a canvas', () => {
+  it('can be put down there, and are named and drawn like any kind — without joining general pickers', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    const placeable = stores.records.placeableEntities();
+    const creatable = stores.records.creatableEntities().map((entity) => entity.value);
+    expect(placeable.find((entity) => entity.value === 'ImageBlock')).toMatchObject({ label: 'Image', icon: 'image' });
+    expect(placeable.find((entity) => entity.value === 'TextBlock')).toMatchObject({ label: 'Text', icon: 'text-t' });
+    // "Create something" elsewhere still leaves them out.
+    expect(creatable).not.toContain('ImageBlock');
+    expect(creatable).not.toContain('TextBlock');
+
+    // The key reads names and glyphs from `displays` — a quote dropped on a canvas included.
+    const displays = stores.records.displays();
+    expect(displays.ImageBlock).toMatchObject({ label: 'Image', icon: 'image' });
+    expect(displays.TextBlock).toMatchObject({ label: 'Text', icon: 'text-t' });
+    expect(displays.EmbedBlock?.label).toBe('Embed');
+  }, 10000);
+});
+
 describe('bringing a note into a space', () => {
   it('copies it in as a post, with nothing saying where it came from, and undoes', async () => {
     const stores = mountShell();

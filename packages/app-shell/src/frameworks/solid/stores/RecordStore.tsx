@@ -100,7 +100,9 @@ export interface PendingLink {
 const RELATIONSHIP = 'Relationship';
 
 /**
- * Models that can be *shown* but never *made from a form* — see {@link displayableEntities}.
+ * Models that can be *shown* but never *made from a form* — see {@link displayableEntities}. Every
+ * core block is shown as well, whether or not it has a form: any of them can be a node on a canvas.
+ *
  *
  * `Relationship` is drawn between two things rather than filled in from a picker. `CollectionBlock`
  * is composed: a note, a post, a call record are documents, and a generated form over their fields
@@ -175,6 +177,16 @@ export interface RecordStore {
    * defined three models should see three more entries than one that has defined none.
    */
   creatableEntities: Accessor<CreatableEntity[]>;
+  /**
+   * What can be put down somewhere that holds blocks on their own — a canvas: `creatableEntities`,
+   * then WE's own blocks that have a form but are not offered in general pickers (a picture, a line of
+   * text, a video, a file).
+   *
+   * Two lists because "create something" and "put something here" are different questions. A picture
+   * with nothing to belong to is not a thing anybody sets out to make in a space, which is why those
+   * blocks say `offered: false`. On a canvas it is exactly the thing — a node, where it lands.
+   */
+  placeableEntities: Accessor<CreatableEntity[]>;
   /**
    * The open form's draft, or null while closed — its non-nullness is what mounts the modal, the
    * same shape `shapeStore.shapeDraft` uses.
@@ -557,6 +569,19 @@ export function RecordStoreProvider(props: ParentProps) {
   // WE's built-ins are the fallback rather than the headline.
   const creatableEntities = createMemo<CreatableEntity[]>(() => [...shapeEntities(), ...coreEntities()]);
 
+  /** WE's blocks with a form that general pickers leave out — see `placeableEntities`. */
+  const placeableBlocks = createMemo<CreatableEntity[]>(() =>
+    Object.entries(CORE_MANIFEST.entities)
+      .filter(([, entity]) => entity.blockable && entity.authoring?.fields.length && !offeredForCreation(entity))
+      .map(([name]) => ({ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Blocks' }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  );
+
+  const placeableEntities = createMemo<CreatableEntity[]>(() => {
+    const named = new Set(creatableEntities().map((entity) => entity.value));
+    return [...creatableEntities(), ...placeableBlocks().filter((block) => !named.has(block.value))];
+  });
+
   /**
    * The schema behind a name, and whether every property of it belongs to the author.
    *
@@ -637,12 +662,22 @@ export function RecordStoreProvider(props: ParentProps) {
    */
   const displayableEntities = createMemo<CreatableEntity[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
-    const extra = DISPLAY_ONLY.filter((name) => !named.has(name) && CORE_MANIFEST.entities[name]).map((name) => ({
-      label: modelLabel(name),
-      value: name,
-      icon: BLOCK_ICONS[name] ?? 'cube',
-      group: 'Built in',
-    }));
+    /*
+      Every core block too. A picture or a line of text dropped on a canvas is a node there, and the
+      key and the inspector read its name and glyph from here — without one, the key said
+      `ImageBlock` with no icon beside a `Task` that had both.
+    */
+    const blocks = Object.entries(CORE_MANIFEST.entities)
+      .filter(([, entity]) => entity.blockable)
+      .map(([name]) => name);
+    const extra = [...new Set([...DISPLAY_ONLY, ...blocks])]
+      .filter((name) => !named.has(name) && CORE_MANIFEST.entities[name])
+      .map((name) => ({
+        label: modelLabel(name),
+        value: name,
+        icon: BLOCK_ICONS[name] ?? 'cube',
+        group: 'Built in',
+      }));
     return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
   });
 
@@ -1751,6 +1786,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
   const store: RecordStore = {
     creatableEntities,
+    placeableEntities,
     recordDraft,
     recordDraftDirty,
     displays,

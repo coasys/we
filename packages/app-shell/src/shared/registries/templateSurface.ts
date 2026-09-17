@@ -720,6 +720,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // container. Creating one is writing a record, which is the same act as posting — so it belongs
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
+    placeableEntities: state('content'),
     displays: state('content'),
     // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
     // a property declaration. Wiring between two stores, never something a template names.

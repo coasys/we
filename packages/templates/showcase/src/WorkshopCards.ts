@@ -70,14 +70,15 @@ export function askWhatGoesHere(call: { $: string }): SchemaProp {
 const LEADING_KINDS = ['TaskBlock', 'EventBlock'];
 
 /**
- * `creatableEntities`, the leading kinds first. The names are merged with `distinct`, dropped where
+ * `placeableEntities` — everything creatable, and the blocks a canvas holds on their own (a picture,
+ * a line of text) — the leading kinds first. The names are merged with `distinct`, dropped where
  * the space does not offer them, and looked back up — so a leading kind a space cannot make is left
  * out rather than listed.
  */
 const CHOOSER_KINDS =
-  `distinct([${LEADING_KINDS.map((kind) => `'${kind}'`).join(', ')}], recordStore.creatableEntities.map(k, k.value))` +
-  '.filter(n, recordStore.creatableEntities.exists(k, k.value == n))' +
-  '.map(n, find(recordStore.creatableEntities, { value: n }))';
+  `distinct([${LEADING_KINDS.map((kind) => `'${kind}'`).join(', ')}], recordStore.placeableEntities.map(k, k.value))` +
+  '.filter(n, recordStore.placeableEntities.exists(k, k.value == n))' +
+  '.map(n, find(recordStore.placeableEntities, { value: n }))';
 
 /** One choice in the chooser: an icon and a name, the full width, opening to the left. */
 function choice(icon: string | { $: string }, label: string | { $: string }, onClick: SchemaProp): SchemaNode {
@@ -116,11 +117,15 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
             type: 'Column',
             props: { gap: '100', width: '100%' },
             children: [
-              choice('note', 'Note', [close, { $setLocal: 'newNoteOpen', value: true }]),
+              /*
+                "(block collection)" beside it, because Text is in the list below: a note is a document
+                of several blocks, where Text is one paragraph on its own.
+              */
+              choice('note', 'Note (block collection)', [close, { $setLocal: 'newNoteOpen', value: true }]),
               {
                 type: '$if',
                 props: {
-                  condition: { $: 'count(recordStore.creatableEntities)' },
+                  condition: { $: 'count(recordStore.placeableEntities)' },
                   then: {
                     type: 'Column',
                     props: { gap: '200', width: '100%', pt: '100' },

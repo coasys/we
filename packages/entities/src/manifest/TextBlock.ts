@@ -22,6 +22,12 @@ export const TextBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    /*
+      A form, for a paragraph that stands on its own — a line of text on a canvas. Not offered in
+      "create something", for the reason a picture is not: text with nothing to belong to is written
+      in a post or a note, and a canvas asks for it by name. See `recordStore.placeableEntities`.
+    */
+    authoring: { fields: ['text'], offered: false },
     flag: { predicate: 'we://flag', value: 'we://text_block' },
     properties: {
       /** `normal` (a paragraph), `h1` | `h2` | `h3`, or `blockquote`. */
@@ -37,7 +43,7 @@ export const TextBlock: CoreEntityDef = {
       /** `rtl` when set. */
       direction: { type: 'string', predicate: 'we://direction', default: '' },
       /** The block's words, and the one string search, transcripts, notes and the AI all read. */
-      text: { type: 'string', predicate: 'we://text', default: '' },
+      text: { type: 'string', predicate: 'we://text', default: '', control: 'textarea' },
       /**
        * Inline structure over `text`, as standoff annotations — a JSON array of
        * `{ start, end, type, ...data }` ranges, offsets in Unicode **code points**, empty string for
