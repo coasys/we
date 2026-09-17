@@ -48,14 +48,14 @@ function peer(agentId: string, ...activities: Activity[]): Peer {
  *
  * The kernels by their contract names — a test overriding `transcription` puts a port under
  * `deps.kernels.transcription`, and `records` merges over the harness's recording writes so a test
- * can replace one of the three without restating the others. Loosely typed on purpose: most tests
+ * can replace one of the four without restating the others. Loosely typed on purpose: most tests
  * hand over the two or three members they are about, not a whole kernel.
  */
 interface HarnessDeps {
   transcription?: Record<string, unknown>;
   interpretation?: Record<string, unknown>;
   media?: { input: () => MediaStream | null };
-  records?: Partial<Record<'create' | 'link' | 'update', unknown>>;
+  records?: Partial<Record<'create' | 'link' | 'update' | 'find', unknown>>;
   presence?: Record<string, unknown>;
   dataset?: () => unknown;
   settings?: (() => Record<string, boolean | string | number>) | undefined;
@@ -1808,7 +1808,7 @@ describe('staged suggestions', () => {
     const held = { id: 'task-1', status: 'todo', title: 'Ship the docs' };
 
     /** A host whose records kernel can be read as well as written to. */
-    const withRecord = (i: { port: unknown }, rows: Record<string, unknown>[] = [held]) =>
+    const withRecord = (i: ReturnType<typeof interpreterWith>, rows: Record<string, unknown>[] = [held]) =>
       harness(inCall, { interpretation: i.port, records: { find: async () => rows } });
 
     const amendments = (h: ReturnType<typeof harness>) => h.created.filter((c) => c.entity === 'ExtractionAmendment');
