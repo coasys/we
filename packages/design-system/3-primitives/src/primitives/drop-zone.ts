@@ -102,23 +102,22 @@ const CSS_STYLES = css`
     that post, so the ring read as "drop onto this post" — the one thing it did not mean. Words fix
     what geometry cannot.
 
-    A zero-height sticky anchor after the content, so it takes no room in the layout, sits at the
-    bottom of whatever part of a tall zone is on screen, and settles at the zone's end when that end
-    is in view. The pill hangs above the anchor.
+    Absolutely placed at the top of the zone, and a sibling of [part='base'] rather than inside it:
+    base lays its children out, and a hint in that flow took a column beside the content and was
+    squeezed to fit it. Out of flow it takes no room and moves nothing when it appears.
   */
-  [part='hint-anchor'] {
-    position: sticky;
-    bottom: var(--we-space-400, 16px);
-    height: 0;
-    display: flex;
-    justify-content: center;
-    pointer-events: none;
-  }
-
   [part='hint'] {
-    transform: translateY(calc(-100% - var(--we-space-200, 8px)));
+    position: absolute;
+    top: var(--we-space-300, 12px);
+    left: 50%;
+    z-index: 1;
+    transform: translateX(-50%);
+    max-width: calc(100% - 2 * var(--we-space-300, 12px));
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: var(--we-space-200, 8px) var(--we-space-400, 16px);
-    border-radius: var(--we-radius-full, 999px);
+    border-radius: var(--we-radius-300, 8px);
+    pointer-events: none;
     background: var(--we-role-accent, #3b82f6);
     color: var(--we-role-on-accent, #fff);
     font-size: var(--we-font-size-200, 14px);
@@ -216,7 +215,7 @@ export default class DropZone extends LayoutElement {
 
   /**
    * What dropping here does, in words — "Drop to post it here". Shown only while a drag this zone
-   * would take is running, pinned to the bottom of the part of the zone on screen.
+   * would take is running, as a badge at the top of the zone, over its content.
    *
    * For a zone whose shape does not explain itself: a feed with one post in it is, to the eye, that
    * post. Leave it empty for a zone that is obviously a container, like a panel.
@@ -314,9 +313,7 @@ export default class DropZone extends LayoutElement {
   };
 
   render() {
-    return html`<div part="base">
-      <slot></slot>
-      ${this.hint ? html`<div part="hint-anchor" aria-hidden="true"><span part="hint">${this.hint}</span></div>` : null}
-    </div>`;
+    return html`${this.hint ? html`<div part="hint" aria-hidden="true">${this.hint}</div>` : null}
+      <div part="base"><slot></slot></div>`;
   }
 }

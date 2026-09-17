@@ -13,8 +13,7 @@ import {
 
 export const postsList: SchemaNode = {
   type: 'Column',
-  // Grows into the page below the header, so the drop zone inside can too — see below.
-  props: { gap: '0', width: '100%', flex: '1' },
+  props: { gap: '0', width: '100%' },
   $queries: {
     signalTypes: { entity: 'SignalType', subscribe: true },
   },
@@ -33,14 +32,13 @@ export const postsList: SchemaNode = {
       this feed is already here, and lighting the feed up for it would promise a drop that does
       nothing.
 
-      It fills the page below the header rather than hugging the cards, and says what a drop does.
-      Around a feed of one post the ring was the post's outline, which read as "drop onto this post".
+      It says what a drop does, in a badge at its top while a drag is running: around a feed of one
+      post the ring alone is that post's outline, which reads as "drop onto this post".
     */
     {
       type: 'we-drop-zone',
       props: {
         width: '100%',
-        flex: '1',
         noSelf: true,
         hint: 'Drop to post it in this space',
         onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] },
