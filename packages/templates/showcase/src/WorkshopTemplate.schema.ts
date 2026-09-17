@@ -1773,6 +1773,16 @@ const originLine: SchemaNode = {
   },
 };
 
+/**
+ * Whether a reply here may itself be replied to — the community's answer, in Settings → Features.
+ *
+ * Anything but the stored `'flat'` reads as branching, so a space that predates the setting behaves
+ * exactly as it did. The test is on the value rather than on its absence because `!=` over an
+ * unbound value is the trap this codebase keeps rediscovering; here it is client-side and safe, and
+ * written positively so the reading is the same either way.
+ */
+const FRACTAL_THREADS = "spaceStore.currentSpace.threadMode != 'flat'";
+
 /** The connection section for whatever is selected — a card's connections, or a line's two ends. */
 const connectionsSection: SchemaNode = {
   type: '$if',
@@ -1813,7 +1823,10 @@ const reactionsSection: SchemaNode = {
 const discussion: SchemaNode = {
   type: 'Column',
   props: { gap: '200', pt: '200', borderTop: '1px solid border', width: '100%' },
-  children: [sectionCaption('Discussion', 'count(row.comments)'), discussionSection({ record: 'row' })],
+  children: [
+    sectionCaption('Discussion', 'count(row.comments)'),
+    discussionSection({ record: 'row', fractal: FRACTAL_THREADS }),
+  ],
 };
 
 /**

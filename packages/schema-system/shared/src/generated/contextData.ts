@@ -1692,6 +1692,7 @@ export const contextData: ContextData = {
         { name: 'enabledViews', type: 'string', predicate: 'we://enabled_views', required: false },
         { name: 'extractionTargets', type: 'string', predicate: 'we://extraction_targets', required: false },
         { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'true' },
+        { name: 'threadMode', type: 'string', predicate: 'we://thread_mode', required: false, default: "'fractal'" },
         { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
       ],
       relations: [
@@ -2785,6 +2786,7 @@ export const contextData: ContextData = {
         'autoInterpretForCall',
         'setAutoInterpretForCall',
         'setAutoInterpret',
+        'setThreadMode',
         'setExtractionTarget',
         'setModuleInstalled',
         'setModuleVisible',

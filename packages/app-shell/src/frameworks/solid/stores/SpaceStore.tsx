@@ -807,6 +807,7 @@ export interface SpaceStore {
   /** Turn it on or off for one call, for everyone in it. A participant's decision, not an admin's. */
   setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
+  setThreadMode: (mode: string, spaceUuid?: string) => Promise<void>;
   /**
    * Which models this community's calls start out extracting.
    *
@@ -4432,6 +4433,39 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * How deep conversations here may go — `'fractal'` or `'flat'`.
+   *
+   * A decision about what may be *added*, never about what is stored: replies are a tree whatever
+   * this says, so switching to flat leaves every existing thread drawn as it is and switching back
+   * restores the button that grows it. That is the whole reason this is safe to change twice on a
+   * Tuesday — there is nothing to migrate and nothing to lose, which a setting that reshaped stored
+   * data could not promise.
+   *
+   * Takes the value rather than toggling, so a picker can pass `event.detail` straight through.
+   */
+  async function setThreadMode(mode: string, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    const threadMode = mode === 'flat' ? 'flat' : 'fractal';
+    try {
+      await Space.update(ds.handle, space.id, { threadMode });
+    } catch (error) {
+      console.error('SpaceStore: could not persist threadMode', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { threadMode } as never);
+    if (!isCurrent(ds)) return;
+    // A new instance, the `setExtractionTarget` idiom: `currentSpace` is a plain signal and Solid
+    // dedupes on `===`, so handing back the object just written notifies nothing and every thread
+    // on screen would keep the previous answer until something else refetched the space.
+    setCurrentSpace((prev) =>
+      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { threadMode }) as Space) : prev,
+    );
+  }
+
+  /**
    * Add or remove one model from what this community's calls start out extracting.
    *
    * Writes the resolved list, exactly as `setModuleEnabled` does and for the same two reasons: the
@@ -4953,6 +4987,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setMyModuleSetting,
     setAgentModuleSetting,
     setAutoInterpret,
+    setThreadMode,
     extractionTargets,
     setExtractionTarget,
     setModuleInstalled,

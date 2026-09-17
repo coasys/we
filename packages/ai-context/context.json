@@ -4706,6 +4706,13 @@
           "default": "true"
         },
         {
+          "name": "threadMode",
+          "type": "string",
+          "predicate": "we://thread_mode",
+          "required": false,
+          "default": "'fractal'"
+        },
+        {
           "name": "moduleSettings",
           "type": "string",
           "predicate": "we://module_settings",
@@ -6840,6 +6847,7 @@
         "autoInterpretForCall",
         "setAutoInterpretForCall",
         "setAutoInterpret",
+        "setThreadMode",
         "setExtractionTarget",
         "setModuleInstalled",
         "setModuleVisible",
