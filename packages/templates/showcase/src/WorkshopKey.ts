@@ -646,6 +646,9 @@ function shownToggle(kind: string): SchemaNode {
           variant: 'ghost',
           square: true,
           label: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` },
+          // `text-faint` is the faintest text role, and beside `text-muted` it barely showed, so a hidden
+          // kind's eye goes one step further. On the button: an icon has no visual layer to fade.
+          opacity: { $: `${hidden} ? 0.5 : 1` },
           onClick: toggleKindShown(kind),
         },
         /*
@@ -660,9 +663,6 @@ function shownToggle(kind: string): SchemaNode {
               name: { $: `${hidden} ? 'eye-slash' : 'eye'` },
               size: 'xs',
               color: { $: `${hidden} ? 'text-faint' : 'text-muted'` },
-              // `text-faint` is the faintest text role, and beside `text-muted` it barely showed, so a
-              // hidden kind's eye goes one step further.
-              opacity: { $: `${hidden} ? '0.5' : '1'` },
             },
           },
         ],
