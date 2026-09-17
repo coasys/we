@@ -645,11 +645,24 @@ function shownToggle(kind: string): SchemaNode {
           size: 'xs',
           variant: 'ghost',
           square: true,
-          color: { $: `${hidden} ? 'text-faint' : 'text-muted'` },
           label: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` },
           onClick: toggleKindShown(kind),
         },
-        children: [{ type: 'we-icon', props: { name: { $: `${hidden} ? 'eye-slash' : 'eye'` } } }],
+        /*
+          A step up from the glyph an `xs` button gives (`xxs`), so the state reads at a glance; and set on
+          the icon, which does not take the button's colour. Faint while hidden, so a put-away kind reads
+          as switched off.
+        */
+        children: [
+          {
+            type: 'we-icon',
+            props: {
+              name: { $: `${hidden} ? 'eye-slash' : 'eye'` },
+              size: 'xs',
+              color: { $: `${hidden} ? 'text-faint' : 'text-muted'` },
+            },
+          },
+        ],
       },
     ],
   };
