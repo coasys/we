@@ -2660,6 +2660,7 @@ RecordStore:
   - connectNodesNow(link): writes the Relationship straight away, with no label and no kind, and answers with its id. The same onEdgeCreate payload; the choice between this and connectNodes is the template's. Ask first where the claim is the point (a knowledge map); write first where the arrangement is (a canvas beside a live call), and let the words be added in an inspector afterwards. Pair it with an onSuccess that selects the new line — a connection nobody is shown is a connection nobody knows is a record
   - setRecordEntity(entity): switches which model is being created, discarding what was typed
   - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data. A file control passes its File as event.detail
+  - setRecordPlace(detail): pins the open draft's place — pass a we-location-picker's arg.detail. Writes latitude, longitude and address where the draft has them, and a name where none was typed. recordFormModal draws the picker for any model with both a latitude and a longitude field, in place of the two number boxes
   - openRelationForm(field): opens the nested form on a relation field’s target model
   - setRelationField(name, value): sets one field of the nested form, as setRecordField does for the outer one
   - saveRelationForm(): adds what the nested form holds to its relation field as a chip, and closes it. Nothing is written until the outer form saves

@@ -2303,6 +2303,7 @@ export const contextData: ContextData = {
         'connectNodesNow',
         'setRecordEntity',
         'setRecordField',
+        'setRecordPlace',
         'openRelationForm',
         'setRelationField',
         'saveRelationForm',

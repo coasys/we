@@ -1291,6 +1291,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setRecordField:
           '(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data. A file control passes its File as event.detail',
         openRelationForm: '(field): opens the nested form on a relation field’s target model',
+        setRecordPlace:
+          "(detail): pins the open draft's place — pass a we-location-picker's arg.detail. Writes latitude, longitude and address where the draft has them, and a name where none was typed. recordFormModal draws the picker for any model with both a latitude and a longitude field, in place of the two number boxes",
         setRelationField: '(name, value): sets one field of the nested form, as setRecordField does for the outer one',
         saveRelationForm:
           '(): adds what the nested form holds to its relation field as a chip, and closes it. Nothing is written until the outer form saves',

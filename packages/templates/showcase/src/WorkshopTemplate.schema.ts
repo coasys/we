@@ -92,6 +92,7 @@ import {
 import {
   CANVAS_FILL,
   keyPanel,
+  kindFill,
   kindIcon,
   kindLabel,
   LENS_PARAM,
@@ -3125,7 +3126,9 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
       the entity it draws connections from, so a new `Relationship` arrives on its own.
     */
     // Back goes to the chooser a record was picked from; a drawn connection gets no Back button.
-    recordFormModal({ back: BACK_TO_CHOOSER }),
+    // No model picker: the kind was just chosen on the screen before. The header's disc takes the
+    // kind's colour, as the chooser's card did — `kindFill` reads the route's `typeStyles`.
+    recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindFill }),
     // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
     newThingChooser(CALL),
     newNoteModal(CALL),

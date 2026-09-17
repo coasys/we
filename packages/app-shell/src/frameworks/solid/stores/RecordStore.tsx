@@ -71,6 +71,7 @@ import {
   type RelationEntry,
   type RelationTargetAbilities,
   withoutRelationEntry,
+  withPlace,
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
@@ -280,6 +281,11 @@ export interface RecordStore {
    * control's `File` included, which is read into the draft as the payload storage takes.
    */
   setRecordField: (name: string, value: unknown) => void;
+  /**
+   * Pin the draft's place — pass a `we-location-picker`'s `arg.detail`. Writes the latitude, longitude
+   * and address the draft asks for, and a name where nobody typed one.
+   */
+  setRecordPlace: (detail: unknown) => void;
   /**
    * The record being made inline for a relation field — an image for a sighting's `photo` — or null.
    * Its non-nullness mounts the nested form, over the one it belongs to.
@@ -772,6 +778,12 @@ export function RecordStoreProvider(props: ParentProps) {
    */
   function setRecordField(name: string, value: unknown): void {
     writeInto(recordDraft, name, value);
+  }
+
+  function setRecordPlace(detail: unknown): void {
+    const current = recordDraft();
+    const next = current ? withPlace(current, detail) : null;
+    if (next) setRecordDraft(next);
   }
 
   /**
@@ -1812,6 +1824,7 @@ export function RecordStoreProvider(props: ParentProps) {
     updateRecordField,
     setRecordEntity,
     setRecordField,
+    setRecordPlace,
     relationDraft,
     relationErrors,
     openRelationForm,

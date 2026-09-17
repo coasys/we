@@ -94,6 +94,8 @@ export { recordCard } from './layout/recordCard.ts';
 export type { RecordCardOptions } from './layout/recordCard.ts';
 export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';
 export type { RailButtonOptions, RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
+export { iconDisc } from './layout/iconDisc.ts';
+export type { IconDiscOptions } from './layout/iconDisc.ts';
 export { sectionCard } from './layout/sectionCard.ts';
 export type { SectionCardOptions } from './layout/sectionCard.ts';
 export { statChip } from './layout/statChip.ts';

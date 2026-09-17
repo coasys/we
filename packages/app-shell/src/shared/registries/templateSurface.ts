@@ -759,6 +759,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateRecordField: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
+    setRecordPlace: action('content'),
     relationDraft: state('content'),
     relationErrors: state('content'),
     openRelationForm: action('content'),

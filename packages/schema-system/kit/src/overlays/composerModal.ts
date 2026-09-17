@@ -28,6 +28,7 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { iconDisc } from '../layout/iconDisc.ts';
 import { discardGuard } from './discardGuard.ts';
 
 export interface ComposerModalOptions {
@@ -37,6 +38,11 @@ export interface ComposerModalOptions {
    * first, and a discard closes without going back.
    */
   back?: SchemaProp[];
+  /**
+   * A disc beside the title saying what kind of thing is being written — the same disc the chooser
+   * drew it with. Omit for a title alone.
+   */
+  icon?: { name: SchemaProp; color?: SchemaProp };
   /**
    * `$localState` boolean controlling visibility, declared on an ancestor of the **button that
    * opens it** — not merely of this modal. Undeclared, `$setLocal` warns and no-ops: the button
@@ -143,12 +149,11 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
           }),
         },
         children: [
-          opts.back
-            ? {
-                type: 'Row',
-                props: { gap: '200', ay: 'center', width: '100%' },
-                children: [
-                  backButton(
+          // Back, in the modal's top-left corner — the close button's mirror, out of the title's line.
+          ...(opts.back
+            ? [
+                {
+                  ...backButton(
                     guard
                       ? {
                           $if: {
@@ -159,6 +164,16 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                         }
                       : [...(Array.isArray(close) ? close : [close]), ...opts.back],
                   ),
+                  slot: 'start-button',
+                },
+              ]
+            : []),
+          opts.icon
+            ? {
+                type: 'Row',
+                props: { gap: '300', ay: 'center', width: '100%' },
+                children: [
+                  iconDisc({ icon: opts.icon.name, color: opts.icon.color }),
                   { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
                 ],
               }

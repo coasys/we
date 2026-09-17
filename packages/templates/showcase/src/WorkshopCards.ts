@@ -30,7 +30,7 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { composerModal, typePicker } from '@we/template-kit';
 
-import { kindFill, TYPE_STYLES_QUERY } from './WorkshopKey.ts';
+import { kindFill } from './WorkshopKey.ts';
 
 /** The locals a canvas route declares for these. All ephemeral: nothing here survives a reload. */
 export const CARD_LOCALS = {
@@ -107,8 +107,6 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
         type: 'we-modal',
         // Wide enough for three columns of cards where the screen has room; it narrows with the screen.
         props: { size: 'lg', close },
-        // The space's colours for its kinds, which the key reads too — see `kindFill`.
-        $queries: { typeStyles: TYPE_STYLES_QUERY },
         children: [
           { type: 'we-text', slot: 'header', props: { variant: 'heading-md' }, children: ['Add to the canvas'] },
           typePicker({
@@ -159,6 +157,8 @@ export function newNoteModal(call: SchemaProp): SchemaNode {
     },
     onSaved: [{ $setLocal: 'newAt', value: null }],
     back: BACK_TO_CHOOSER,
+    // The disc the chooser drew a note with — its glyph, in the note's colour.
+    icon: { name: 'note', color: { $: kindFill("'CollectionBlock'") } },
   });
 }
 

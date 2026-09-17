@@ -1295,8 +1295,14 @@ describe('the workshop’s canvas', () => {
     expect(canvas).toContain(
       "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities",
     );
-    // Back from the form or the composer reopens this chooser — and not for a drawn connection.
+    // Back from the form or the composer reopens this chooser — and not for a drawn connection. In
+    // the modal's top-left corner, not in the title's line.
     expect(canvas).toContain('"condition":{"$":"!recordStore.pendingLink"}');
+    expect(canvas).toContain('"slot":"start-button"');
+    // No model picker in the form: the kind was just chosen.
+    expect(canvas).not.toContain('"label":"Entity"');
+    // A pin rather than two number boxes, for anything with a latitude and a longitude.
+    expect(canvas).toContain('"$action":"recordStore.setRecordPlace"');
     expect(canvas.split('{"$setLocal":"chooserOpen","value":true}').length - 1).toBeGreaterThanOrEqual(3);
     expect(canvas).toContain(
       `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,

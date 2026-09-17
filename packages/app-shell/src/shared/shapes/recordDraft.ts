@@ -357,6 +357,36 @@ export function writeFieldValue(draft: RecordDraft | null, name: string, value: 
 }
 
 /**
+ * A draft with a place pinned — what a `we-location-picker` reports, written into whichever of
+ * `latitude`, `longitude` and `address` the draft asks for, and into `name` where nobody typed one.
+ *
+ * A new draft, and new field objects only for the fields that changed. Replacement rather than the
+ * in-place write `writeFieldValue` makes, because these values arrive from a pick rather than from
+ * the control showing them: the name and address boxes have to redraw with what geocoding found, and
+ * `<For>` redraws a row when its object changes. The rows not touched keep their identity, so nothing
+ * being typed into loses focus. `null` when the detail is not a place.
+ */
+export function withPlace(draft: RecordDraft, detail: unknown): RecordDraft | null {
+  if (!detail || typeof detail !== 'object') return null;
+  const picked = detail as Record<string, unknown>;
+  if (typeof picked.latitude !== 'number' || typeof picked.longitude !== 'number') return null;
+
+  const values: Record<string, RecordFieldValue> = {};
+  for (const key of ['latitude', 'longitude', 'address']) {
+    if (picked[key] !== undefined) values[key] = picked[key] as RecordFieldValue;
+  }
+  const name = draft.fields.find((field) => field.name === 'name');
+  if (name && isBlank(name.value)) {
+    const named = picked.city ?? picked.address;
+    if (typeof named === 'string' && named) values.name = named;
+  }
+  return {
+    ...draft,
+    fields: draft.fields.map((field) => (field.name in values ? { ...field, value: values[field.name] } : field)),
+  };
+}
+
+/**
  * What is stopping this draft being saved.
  *
  * Only the checks the declaration actually supports. A `required` property with nothing in it is

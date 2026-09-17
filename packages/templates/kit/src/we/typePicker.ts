@@ -1,4 +1,4 @@
-import { sectionLabel } from '@we/schema-kit';
+import { iconDisc, sectionLabel } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 export interface TypePickerOptions {
@@ -108,29 +108,14 @@ export function typePicker(opts: TypePickerOptions): SchemaNode {
         type: 'Row',
         props: { gap: '300', ay: 'start', width: '100%' },
         children: [
-          {
-            type: 'Column',
-            props: {
-              width: '36px',
-              height: '36px',
-              flexShrink: '0',
-              r: 'full',
-              ax: 'center',
-              ay: 'center',
-              bg: 'surface-raised',
+          iconDisc({
+            icon: {
+              $: `${kind}.via == 'composer' ? '${opts.composedIcon ?? 'note'}' : ${kind}.icon ? ${kind}.icon : 'cube'`,
             },
-            children: [
-              {
-                type: 'we-icon',
-                props: {
-                  name: {
-                    $: `${kind}.via == 'composer' ? '${opts.composedIcon ?? 'note'}' : ${kind}.icon ? ${kind}.icon : 'cube'`,
-                  },
-                  color: opts.fill ? { $: opts.fill(kind) } : 'text',
-                },
-              },
-            ],
-          },
+            ...(opts.fill && { color: { $: opts.fill(kind) } }),
+            // A step off the sunken card it sits on.
+            bg: 'surface-raised',
+          }),
           {
             type: 'Column',
             props: { gap: '100', flex: '1', minWidth: '0' },

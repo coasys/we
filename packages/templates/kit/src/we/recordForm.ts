@@ -1,4 +1,4 @@
-import { backButton, discardGuard } from '@we/schema-kit';
+import { backButton, discardGuard, iconDisc } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -476,7 +476,50 @@ export interface RecordFormModalOptions {
    * anything. With fields filled in it asks first, and a discard closes without going back.
    */
   back?: SchemaProp[];
+  /**
+   * Whether to offer a model picker above the fields. On by default, for a form opened with nothing
+   * chosen yet. Off where the model was just picked on the screen before — the chooser — where a
+   * second picker asks again what has already been answered.
+   */
+  entityPicker?: boolean;
+  /**
+   * The colour of the model's icon, as an expression over an expression naming the entity — the colour
+   * the chooser drew it in. Omit for the ordinary text colour.
+   */
+  iconColor?: (entity: string) => string;
 }
+
+/** Whether the draft has a place: a latitude and a longitude, which the form asks for as a pin. */
+const HAS_PLACE =
+  "recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')";
+
+/**
+ * A pin on the map for a model with a latitude and a longitude — a location, or a community's type
+ * that has a where — in place of two number boxes nobody knows the values for. Reverse geocoding fills
+ * the address, and a name nobody typed. Any model with both fields gets it, not only `LocationBlock`.
+ */
+const placePicker: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: HAS_PLACE },
+    then: {
+      type: 'we-form-field',
+      props: { label: 'Location', width: '100%' },
+      children: [
+        {
+          type: 'we-location-picker',
+          props: {
+            width: '100%',
+            latitude: { $: "find(recordStore.recordDraft.fields, { name: 'latitude' }).value" },
+            longitude: { $: "find(recordStore.recordDraft.fields, { name: 'longitude' }).value" },
+            placeholder: 'Pin it on the map…',
+            onChange: { $action: 'recordStore.setRecordPlace', args: [{ $: 'arg.detail' }] },
+          },
+        },
+      ],
+    },
+  },
+};
 
 export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
   const save: SchemaProp = {
@@ -517,29 +560,37 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
         // The guard's flag has to live on the modal so it is destroyed with the draft it guards.
         $localState: guard.localState,
         children: [
+          // Back, in the modal's top-left corner — the close button's mirror, out of the title's line.
+          ...(opts.back
+            ? [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: '!recordStore.pendingLink' },
+                    then: {
+                      ...backButton({
+                        $if: {
+                          condition: { $: 'recordStore.recordDraftDirty' },
+                          then: guard.close,
+                          else: [{ $action: 'recordStore.cancelRecordForm' }, ...opts.back],
+                        },
+                      }),
+                      slot: 'start-button',
+                    },
+                  },
+                } as SchemaNode,
+              ]
+            : []),
           {
             type: 'Row',
             props: { gap: '300', ay: 'center', width: '100%' },
             slot: 'header',
             children: [
-              ...(opts.back
-                ? [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: '!recordStore.pendingLink' },
-                        then: backButton({
-                          $if: {
-                            condition: { $: 'recordStore.recordDraftDirty' },
-                            then: guard.close,
-                            else: [{ $action: 'recordStore.cancelRecordForm' }, ...opts.back],
-                          },
-                        }),
-                      },
-                    } as SchemaNode,
-                  ]
-                : []),
-              { type: 'we-icon', props: { name: { $: 'recordStore.recordDraft.icon' } } },
+              // The disc the chooser drew this model with, so the form reads as the thing picked.
+              iconDisc({
+                icon: { $: 'recordStore.recordDraft.icon' },
+                ...(opts.iconColor && { color: { $: opts.iconColor('recordStore.recordDraft.entity') } }),
+              }),
               {
                 type: 'we-text',
                 props: { variant: 'heading-md' },
@@ -682,34 +733,45 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
             A space with one vocabulary has one answer, and offering a select with a single option
             asks a question whose answer is already on screen.
           */
-          {
-            type: '$if',
-            props: {
-              // The form-made ones: a note or a post is written in the composer, not picked here.
-              condition: {
-                $: "!recordStore.pendingLink && count(recordStore.creatableEntities.filter(k, k.via == 'form')) > 1",
-              },
-              then: {
-                type: 'we-form-field',
-                props: { label: 'Entity', width: '100%' },
-                children: [
-                  {
-                    type: 'we-select',
-                    props: {
-                      width: '100%',
-                      options: { $: "recordStore.creatableEntities.filter(k, k.via == 'form')" },
-                      value: { $: 'recordStore.recordDraft.entity' },
-                      onChange: { $action: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
+          ...(opts.entityPicker === false
+            ? []
+            : [
+                {
+                  type: '$if',
+                  props: {
+                    // The form-made ones: a note or a post is written in the composer, not picked here.
+                    condition: {
+                      $: "!recordStore.pendingLink && count(recordStore.creatableEntities.filter(k, k.via == 'form')) > 1",
+                    },
+                    then: {
+                      type: 'we-form-field',
+                      props: { label: 'Entity', width: '100%' },
+                      children: [
+                        {
+                          type: 'we-select',
+                          props: {
+                            width: '100%',
+                            options: { $: "recordStore.creatableEntities.filter(k, k.via == 'form')" },
+                            value: { $: 'recordStore.recordDraft.entity' },
+                            onChange: { $action: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
+                          },
+                        },
+                      ],
                     },
                   },
-                ],
-              },
-            },
-          },
+                },
+              ]),
 
+          placePicker,
           {
             type: '$each',
-            props: { items: { $: 'recordStore.recordDraft.fields' }, as: 'field' },
+            // The latitude and longitude are the pin above, where there is one.
+            props: {
+              items: {
+                $: `recordStore.recordDraft.fields.filter(f, !(${HAS_PLACE}) || !(f.name in ['latitude', 'longitude']))`,
+              },
+              as: 'field',
+            },
             children: [
               {
                 type: 'Column',
