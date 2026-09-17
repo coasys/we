@@ -55,7 +55,7 @@ export {
   createAd4mProfileDirectory,
   createAd4mSchemaPort,
 } from './backendPortsAdapter';
-export type { Ad4mHttpConnection } from './languageModelPort';
+export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
 export {
