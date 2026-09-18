@@ -62,7 +62,19 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
   const as = level === 1 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level}`;
   const key = `${as}Rows`;
 
-  const children: SchemaNode[] = [
+  /*
+    One row is ONE node — the reply, and the thread hanging off it, inside a single box.
+
+    `$each` renders `children[0]` and drops the rest, silently: it is a template for a row, not a
+    fragment of them. This was written as a list — the reply body, then the thread under it — so
+    every level below the first was built, validated, and never mounted. The bug that surfaced it is
+    the one it looks like from outside: a reply to a reply appeared nowhere, with no error, because
+    nothing ever asked for that reply's own replies.
+
+    `threadDepth.test.tsx` is the regression, and the renderer now warns rather than dropping in
+    silence — see `semanticValidation`.
+  */
+  const row: SchemaNode[] = [
     ...opts.reply(as),
     // One level further in, anchored to this reply. At the limit, a count instead — a thread that
     // simply stops looks finished, and someone who wrote the reply below it would never know.
@@ -108,7 +120,13 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
           then: {
             type: 'Column',
             props: { width: '100%', gap: '300' },
-            children: [{ type: '$each', props: { items: { $: `local.${key}` }, as }, children }],
+            children: [
+              {
+                type: '$each',
+                props: { items: { $: `local.${key}` }, as },
+                children: [{ type: 'Column', props: { width: '100%', gap: '300' }, children: row }],
+              },
+            ],
           },
           ...(opts.empty && level === 1 && { else: opts.empty }),
         },

@@ -531,6 +531,33 @@ function walkNode(
   }
 
   /**
+   * A node type the renderer draws ONE child of, given several.
+   *
+   * `$each` renders `children[0]` as its row template and drops the rest; `$animate` does the same
+   * with the child it wraps. Both are documented as taking one child, and both discard the others in
+   * silence — no warning, no fallback, nothing in the DOM.
+   *
+   * That silence is the whole reason this check exists. `commentThread` built each row as *two*
+   * nodes — the reply, then the thread hanging off it — so every level of every thread below the
+   * first was expanded, validated, and never mounted. The symptom was a reply to a reply appearing
+   * nowhere at all, with nothing anywhere to say a node had been dropped, and the fragment's own
+   * tests could not see it: the expansion was correct, and what was wrong was what the renderer did
+   * with it.
+   *
+   * The fix at a call site is always the same — wrap the children in one box.
+   */
+  if ((type === '$each' || type === '$animate') && Array.isArray(n.children) && n.children.length > 1) {
+    errors.push({
+      path: `${path}.children`,
+      message:
+        `{ type: "${type}" } renders only its first child and silently drops the other ` +
+        `${n.children.length - 1}. Wrap them in one node — a Column or a Row — so the whole ` +
+        `${type === '$each' ? 'row' : 'subject'} is one child.`,
+      severity: 'error',
+    });
+  }
+
+  /**
    * `$part` — a module's named fragment, placed by an interface.
    *
    * The host expands the marker before the renderer sees it, so an unknown id renders nothing and
