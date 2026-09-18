@@ -372,6 +372,49 @@ describe('contracts call sites depend on', () => {
     expect(plain.get('we-text')?.fontSize).toBeUndefined();
   });
 
+  it('a reply offers every reaction the community has, and Reply after them', () => {
+    // The row reads left to right: the types, then the answer. A read-only count would be the wrong
+    // half of the pair — a thread is where the thing being answered is somebody's sentence, and the
+    // lightest answer to it should not be a press away in another panel.
+    const order: string[] = [];
+    walk(weDomain.discussionSection, (n) => {
+      if (n.type === 'SignalControl') order.push('signal');
+      if (n.type === 'we-button' && JSON.stringify(n.children ?? []).includes('Reply')) order.push('reply');
+    });
+    expect(order.indexOf('signal')).toBeLessThan(order.indexOf('reply'));
+    // And nothing on that row is pinned to the right edge.
+    let pinnedReply = false;
+    walk(weDomain.discussionSection, (n) => {
+      const props = (n.props ?? {}) as { ml?: unknown };
+      if (n.type === 'we-button' && props.ml === 'auto') pinnedReply = true;
+    });
+    expect(pinnedReply).toBe(false);
+  });
+
+  it('a reply can be rewritten, and the composer waits for the record before it opens', () => {
+    /*
+      The failure this guards: `composerModal` mounts on its own local, the local is set on the
+      click, and the query that fetches the reply answers a round trip later — so an ungated composer
+      opens empty and Save writes that emptiness over somebody's words.
+    */
+    const section = weDomain.discussionSection as SchemaNode & {
+      $queries?: Record<string, { when?: unknown }>;
+    };
+    expect(section.$queries?.discussionEdit?.when).toEqual({ $: 'local.discussionEditing' });
+    let gated = false;
+    walk(section, (n) => {
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (condition === 'count(local.discussionEdit) && local.discussionEditing') gated = true;
+    });
+    expect(gated).toBe(true);
+    let saves: unknown;
+    walk(section, (n) => {
+      if ((n as { $action?: string }).$action === 'spaceStore.updatePost') saves = (n as { args?: unknown }).args;
+    });
+    // The id first: `updatePost(postId, json)` takes the tree second.
+    expect(saves).toEqual([{ $: 'local.discussionEditing' }, { $: 'arg' }]);
+  });
+
   it('a reply draws its words flush, through the renderer rather than a wrapper', () => {
     // `.we-block-content` pads every paragraph on all four sides — a document's padding, which in a
     // thread insets the text from the byline above it and bands every line.

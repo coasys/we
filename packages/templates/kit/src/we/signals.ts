@@ -55,6 +55,14 @@ export interface SignalsSectionOptions {
   /** Context key bound per signal type. Defaults to `'sig'`; change it inside another `$each` using that name. */
   as?: string;
   /**
+   * Sit among other controls rather than owning the line: no full width, no height floor.
+   *
+   * For a row that holds the reactions *and* something else — a thread's reply, where the types the
+   * community offers are followed by "Reply". Full width there would take the whole row and push
+   * whatever comes next to the far edge, which is the one place it must not go.
+   */
+  inline?: boolean;
+  /**
    * What to draw where the community has defined no reactions at all. Omit for nothing.
    *
    * Worth passing on a surface with a heading — a caption reading "Reactions" over empty space is a
@@ -95,7 +103,12 @@ export function signalsSection(opts: SignalsSectionOptions): SchemaNode {
           height the moment they exist and none before the subscription answers.
         */
         type: 'Row',
-        props: { gap: '400', ay: 'center', wrap: true, width: '100%', minHeight: '40px' },
+        props: {
+          gap: '400',
+          ay: 'center',
+          wrap: true,
+          ...(opts.inline ? {} : { width: '100%', minHeight: '40px' }),
+        },
         children: [
           {
             type: '$each',

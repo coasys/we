@@ -16,6 +16,10 @@ export interface AgentBylineOptions {
    * A thread is the case it was added for: a reply's byline sits above two lines of text and under
    * another reply, so at a post's weight it competes with the words it introduces. `avatarSize`
    * still wins where a caller names one, since the two are not always wanted together.
+   *
+   * It shortens the time as well as the type: "3h", not "3 hours ago". Dense is about words as much
+   * as points — the same reason the transcript writes a clock rather than a sentence on every line —
+   * and a byline compact enough to want an xs face does not want a clause after the name.
    */
   compact?: boolean;
   /** When this was written. Shown relative, because that is what a reader wants from a byline. */
@@ -70,7 +74,7 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
               value: opts.timestamp,
               relative: true,
               color: 'text-muted',
-              ...(opts.compact && { fontSize: '200' }),
+              ...(opts.compact && { fontSize: '200', relativeStyle: 'narrow' }),
             },
           },
         ]

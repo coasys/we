@@ -52,7 +52,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { commentThread } from '../lists/commentThread.ts';
 import { agentByline } from './agentByline.ts';
-import { activitySummary } from './signals.ts';
+import { signalsSection } from './signals.ts';
 
 /** The reply the composer is open on, or empty. Holds the answer rather than a flag — see above. */
 const REPLY_TO = 'discussionReplyTo';
@@ -60,6 +60,8 @@ const REPLY_TO = 'discussionReplyTo';
 const ROOT = 'discussionRoot';
 /** The reply whose delete is being confirmed, or empty. The same trick `REPLY_TO` uses. */
 const DELETING = 'discussionDeleting';
+/** The reply being rewritten, or empty. The same trick again — one composer serves every level. */
+const EDITING = 'discussionEditing';
 
 export interface DiscussionSectionOptions {
   /** Context key of the record being discussed — `'row'`, `'link'`, `'card'`. */
@@ -79,7 +81,6 @@ function replyButton(as: string): SchemaNode {
     props: {
       variant: 'ghost',
       size: 'xs',
-      ml: 'auto',
       onClick: { $setLocal: REPLY_TO, value: { $: `${as}.id` } },
     },
     children: [{ type: 'we-icon', props: { name: 'arrow-bend-up-left' } }, 'Reply'],
@@ -91,52 +92,83 @@ function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
   const fractal = opts.fractal;
   return [
     /*
-      Who, when — and the one control that is about the reply rather than about answering it.
+      Who, when — and, for your own words, what you may do to them.
 
       Compact: a reply's byline sits above two lines of text and under another reply, so at a post's
-      weight it competes with the words it introduces. The delete rides in the byline's `children`
-      with an auto margin, which puts it at the right end of that line — the row already exists, and
-      a control that removes the thing is better placed beside its author than beside "Reply", where
-      the two read as a pair of answers.
+      weight it competes with the words it introduces. The name takes `text-muted` from the
+      transcript's speaker line, which is the other place in WE where a name heads a line of
+      conversation rather than a piece of content.
 
-      Your own only, which is narrower than the rule `EdgeDetail` applies to a drawn connection —
-      there, anybody may retract a claim the community's records carry, and the deletion being
-      authored is what holds it accountable. A reply is not a claim about the records; it is
-      somebody's sentence, and a neighbourhood being writable by every member is a fact about the
-      protocol rather than an invitation to edit each other's speech.
+      Edit and delete sit together at the right end, on the line with the face, rather than beside
+      "Reply" below — the pair there would read as two ways of answering. One gate over both: they
+      are the same permission, and it is yours alone. That is narrower than the rule `EdgeDetail`
+      applies to a drawn connection, where anybody may retract a claim the community's records carry
+      and the retraction being authored is what holds it accountable. A reply is not a claim about
+      the records; it is somebody's sentence, and a neighbourhood being writable by every member is a
+      fact about the protocol rather than an invitation to rewrite each other's speech.
     */
     {
       /*
-        The byline and the delete on one line, in a row this fragment owns.
+        The byline and the controls on one line, in a row this fragment owns.
 
-        Rather than passing the control as the byline's `children`, which would need that fragment's
-        row to be full width for an auto margin to reach the edge — and it is used at seventeen other
-        call sites, several of them inside rows of their own, where growing it would push a sibling.
-        A caller that wants the edge can hold the line itself; the byline stays as wide as its words.
+        Rather than passing them as the byline's `children`, which would need that fragment's row to
+        be full width for an auto margin to reach the edge — and it is used at seventeen other call
+        sites, several of them inside rows of their own, where growing it would push a sibling. A
+        caller that wants the edge holds the line itself; the byline stays as wide as its words.
       */
       type: 'Row',
       props: { ay: 'center', gap: '300', width: '100%' },
       children: [
-        agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` }, compact: true }),
+        agentByline({
+          did: { $: `${as}.author` },
+          timestamp: { $: `${as}.createdAt` },
+          compact: true,
+          nameColor: 'text-muted',
+        }),
         {
           type: '$if',
           props: {
             condition: { $: `${as}.author == me.did` },
             then: {
-              type: 'we-tooltip',
-              props: { content: 'Delete this reply', ml: 'auto' },
+              // The auto margin belongs to the pair, not to either button: on the row rather than on
+              // a `we-tooltip`, whose host is not a box a margin can push.
+              type: 'Row',
+              props: { ml: 'auto', gap: '100', ay: 'center', flexShrink: '0' },
               children: [
                 {
-                  type: 'we-button',
-                  props: {
-                    variant: 'ghost',
-                    size: 'xs',
-                    square: true,
-                    color: 'danger-text',
-                    label: 'Delete this reply',
-                    onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                  type: 'we-tooltip',
+                  props: { content: 'Edit this reply' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        square: true,
+                        label: 'Edit this reply',
+                        onClick: { $setLocal: EDITING, value: { $: `${as}.id` } },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-tooltip',
+                  props: { content: 'Delete this reply' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        square: true,
+                        color: 'danger-text',
+                        label: 'Delete this reply',
+                        onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                    },
+                  ],
                 },
               ],
             },
@@ -159,17 +191,20 @@ function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
     },
     {
       type: 'Row',
-      props: { gap: '300', ay: 'center', width: '100%' },
+      props: { gap: '300', ay: 'center', wrap: true, width: '100%' },
       children: [
         /*
-          What this reply has collected, read-only.
+          Every reaction the community offers, on the reply itself.
 
-          Counts rather than the controls the record itself gets: a thread is a column of replies and
-          a row of buttons under each one is more furniture than conversation. Reacting to a reply is
-          a gap and is named as one in the PR — it wants a control that appears on attention, which
-          is the same thing `signalRow` is waiting on.
+          The same controls the record gets, `inline` so they share the line with "Reply" rather than
+          taking it. This was a read-only summary, which was the wrong half of the pair: a count you
+          cannot add to is a scoreboard, and a thread is the one place where the thing being answered
+          is somebody's sentence — the lightest possible answer to it should not be a press away in
+          another panel. It costs nothing that was not already here: the types come from the
+          subscription the section already hoists, and each reply's signals from the `include` the
+          thread's own query already carries.
         */
-        activitySummary({ record: as, replies: false, as: `${as}Sum` }),
+        signalsSection({ record: as, as: `${as}Sig`, inline: true }),
         // Whether this reply may be answered. Unconditional where the caller named no rule, rather
         // than gated on a literal `true`: a bare boolean in an expression is a *name* to the parser,
         // and the node this would wrap is cheaper to leave out than to guard.
@@ -220,6 +255,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       [REPLY_TO]: { type: 'string', initial: '' },
       [ROOT]: { type: 'string', initial: '' },
       [DELETING]: { type: 'string', initial: '' },
+      [EDITING]: { type: 'string', initial: '' },
     },
     $queries: {
       /*
@@ -234,6 +270,20 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         where: { id: { $: `local.${ROOT}` } },
         when: { $: `local.${ROOT}` },
         include: { signals: true },
+        limit: 1,
+      },
+      /*
+        The reply being rewritten, for the composer to open on.
+
+        A composer at the section level cannot read a row bound inside the thread, and one *per* reply
+        would be a modal per reply in the tree — so the id travels in a local and the record is
+        fetched back by it, exactly as the re-rooted reply is. `when` keeps it asleep until somebody
+        presses the pencil.
+      */
+      discussionEdit: {
+        entity: 'CollectionBlock',
+        where: { id: { $: `local.${EDITING}` } },
+        when: { $: `local.${EDITING}` },
         limit: 1,
       },
     },
@@ -329,6 +379,33 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             children: [{ type: 'we-icon', props: { name: 'chat-circle' } }, 'Reply'],
           },
         ],
+      },
+      /*
+        Rewriting one, seeded from what it says.
+
+        Behind a `$if` on the record having arrived, which is not belt and braces: `composerModal`
+        mounts on its own local, the local is set on the click, and the query answers a round trip
+        later — so without the gate the composer opens **empty**, and Save would write that emptiness
+        over somebody's words. Gated, it opens once there is something to open it with.
+      */
+      {
+        type: '$if',
+        props: {
+          condition: { $: `count(local.discussionEdit) && local.${EDITING}` },
+          then: composerModal({
+            openLocal: EDITING,
+            clearTo: '',
+            title: 'Edit reply',
+            saveLabel: 'Save',
+            editorState: { $: 'first(local.discussionEdit).editorState' },
+            saveAction: {
+              $action: 'spaceStore.updatePost',
+              // The id first: `updatePost(postId, json)` takes the tree second, which is why the
+              // fragment asks a caller to place `arg` rather than appending it.
+              args: [{ $: `local.${EDITING}` }, { $: 'arg' }],
+            },
+          }),
+        },
       },
       composerModal({
         openLocal: REPLY_TO,
