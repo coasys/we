@@ -152,7 +152,9 @@ describe('a thread in a panel', () => {
       reply, the other to the one under it.
     */
     const html = host.innerHTML.replace(/<!--.*?-->/g, '');
-    expect(html.match(/width: 20px/g) ?? []).not.toHaveLength(0);
+    // The rail's column, under the author's face: an `xs` avatar wide, so the line falls under the
+    // middle of it and a reply's own face starts where that author's name does.
+    expect(html.match(/width: 24px/g) ?? []).not.toHaveLength(0);
     // A branch that can be folded says so, with a caret pointing down while it is open.
     expect(html).toContain('caret-down');
   });

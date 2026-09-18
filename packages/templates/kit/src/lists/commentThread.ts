@@ -112,77 +112,79 @@ function fold(opts: CommentThreadOptions, collapsed: string, node: SchemaNode): 
 }
 
 /**
- * The caret and the rail, in a column of their own down the left of a reply.
+ * How wide the rail's column is, and the gap after it.
  *
- * Only for a reply that has replies: a leaf has nothing to fold, so it gets the width and no
- * controls — the gutter is the indent as well as the affordance, and a leaf that lost it would sit
- * further left than its siblings.
- *
- * The rail stands down while the branch is folded. There is nothing under it to trace, and leaving
- * it would draw a line alongside a single line of text.
+ * The width is an `xs` avatar (24px) and the gap is the one a compact byline puts between the face
+ * and the name, because that is what the two numbers are *for*: the line falls under the middle of
+ * the author's face, and a reply's own face starts where that author's name does. Nesting then reads
+ * as a hanging indent from a person rather than as a series of margins.
  */
-function gutter(as: string, collapsed: string): SchemaNode {
+const RAIL_WIDTH = '24px';
+const RAIL_GAP = '200';
+
+/**
+ * The caret and the rail — under the author's face, above their replies.
+ *
+ * Below rather than beside, which is the convention and the clearer of the two: a line descending
+ * from somebody's face says *these are answers to them*, where a line to the left of the whole
+ * comment only says how deep you are. It also stops a leaf paying for a gutter it has no use for —
+ * only a reply that has replies draws one, so an ordinary comment sits at the full width.
+ *
+ * The rail stands down while the branch is folded: there is nothing under it to trace, and the caret
+ * alone is what a folded branch needs. The caret stays, since it is the way back.
+ */
+function branchRail(as: string, collapsed: string): SchemaNode {
   const toggle = { $toggleLocalIn: COLLAPSED, value: { $: `${as}.id` } };
   return {
-    type: '$if',
-    props: {
-      condition: { $: `count(${as}.comments)` },
-      // A leaf keeps the width, so every reply at a level starts at the same place.
-      else: { type: 'Column', props: { width: '20px', flexShrink: '0' } },
-      then: {
-        type: 'Column',
-        props: { width: '20px', flexShrink: '0', ax: 'center', gap: '100' },
+    type: 'Column',
+    props: { width: RAIL_WIDTH, flexShrink: '0', ax: 'center', gap: '100' },
+    children: [
+      {
+        type: 'we-tooltip',
+        props: { content: { $: `(${collapsed}) ? 'Show this branch' : 'Hide this branch'` } },
         children: [
           {
-            type: 'we-tooltip',
-            props: { content: { $: `(${collapsed}) ? 'Show this branch' : 'Hide this branch'` } },
-            children: [
-              {
-                type: 'we-button',
-                props: {
-                  variant: 'ghost',
-                  size: 'xs',
-                  square: true,
-                  color: 'text-faint',
-                  label: 'Fold this branch',
-                  onClick: toggle,
-                },
-                children: [
-                  { type: 'we-icon', props: { name: { $: `(${collapsed}) ? 'caret-right' : 'caret-down'` } } },
-                ],
-              },
-            ],
-          },
-          /*
-            The line, as a control.
-
-            A press anywhere along a branch folds it, which is the affordance a border could not
-            carry — and the hover band is what says so before the press. The line itself is a 1px
-            column inside the button rather than the button's own border, so the target is the whole
-            gutter and the mark is a hairline.
-          */
-          {
-            type: '$if',
+            type: 'we-button',
             props: {
-              condition: { $: `!(${collapsed})` },
-              then: {
-                type: 'we-button',
-                props: {
-                  variant: 'bare',
-                  width: '100%',
-                  flex: '1',
-                  ax: 'center',
-                  label: 'Hide this branch',
-                  hoverProps: { bg: 'surface-hover' },
-                  onClick: toggle,
-                },
-                children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
-              },
+              variant: 'ghost',
+              size: 'xs',
+              square: true,
+              color: 'text-faint',
+              label: 'Fold this branch',
+              onClick: toggle,
             },
+            children: [{ type: 'we-icon', props: { name: { $: `(${collapsed}) ? 'caret-right' : 'caret-down'` } } }],
           },
         ],
       },
-    },
+      /*
+        The line, as a control.
+
+        A press anywhere along a branch folds it, which is the affordance a border could not carry —
+        and the hover band is what says so before the press. The line is a 1px column inside the
+        button rather than the button's own border, so the target is the whole 24px and the mark is a
+        hairline.
+      */
+      {
+        type: '$if',
+        props: {
+          condition: { $: `!(${collapsed})` },
+          then: {
+            type: 'we-button',
+            props: {
+              variant: 'bare',
+              width: '100%',
+              flex: '1',
+              ax: 'center',
+              label: 'Hide this branch',
+              hoverProps: { bg: 'surface-hover' },
+              onClick: toggle,
+            },
+            children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
+          },
+        },
+      },
+    ],
   };
 }
 
@@ -192,28 +194,17 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
   const as = level === 1 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level}`;
   const key = `${as}Rows`;
 
-  /*
-    One row is ONE node — the reply, and the thread hanging off it, inside a single box.
-
-    `$each` renders `children[0]` and drops the rest, silently: it is a template for a row, not a
-    fragment of them. This was written as a list — the reply body, then the thread under it — so
-    every level below the first was built, validated, and never mounted. The bug that surfaced it is
-    the one it looks like from outside: a reply to a reply appeared nowhere, with no error, because
-    nothing ever asked for that reply's own replies.
-
-    `threadDepth.test.tsx` is the regression, and the renderer now warns rather than dropping in
-    silence — see `semanticValidation`.
-  */
-  /** True while this reply is folded. One expression, read by the gutter, the fold and the caller. */
+  /** True while this reply is folded. One expression, read by the rail, the fold and the caller. */
   const collapsed = `${as}.id in local.${COLLAPSED}`;
 
-  const body: SchemaNode[] = [
-    ...opts.reply(as, collapsed),
-    // One level further in, anchored to this reply. At the limit, a count instead — a thread that
-    // simply stops looks finished, and someone who wrote the reply below it would never know.
+  /*
+    One level further in, anchored to this reply. At the limit, a count instead — a thread that
+    simply stops looks finished, and someone who wrote the reply below it would never know.
+  */
+  const subtree: SchemaNode =
     level < depth
-      ? fold(opts, collapsed, commentThread({ ...opts, anchorId: { $: `${as}.id` }, level: level + 1 }))
-      : fold(opts, collapsed, {
+      ? commentThread({ ...opts, anchorId: { $: `${as}.id` }, level: level + 1 })
+      : {
           type: '$if',
           props: {
             condition: { $: `count(${as}.comments)` },
@@ -228,26 +219,52 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
                   ],
                 },
           },
-        }),
-  ];
+        };
 
   /*
-    The row: a gutter down the left holding the caret and the rail, and everything else beside it.
+    The row: the reply itself at the full width, and — where it has replies — the branch below it.
 
-    The gutter is also the indent — a nested thread sits inside the right-hand column, so its own
-    gutter offsets it from its parent and `pl` would be that offset twice. Without `collapsible`
-    there is no gutter and `pl` is the indent, as it was.
+    The branch is a rail under the author's face with the replies beside it, so the indent is the
+    rail's own column and the gap after it. A reply with none draws neither, which is what keeps an
+    ordinary comment at the width of the thread rather than one notch in from it.
+  */
+  /*
+    Whichever shape it takes, one row is ONE node.
+
+    `$each` renders `children[0]` and drops the rest, silently: it is a template for a row, not a
+    fragment of them. This was written as a list — the reply body, then the thread under it — so
+    every level below the first was built, validated, and never mounted. The bug that surfaced it is
+    the one it looks like from outside: a reply to a reply appeared nowhere, with no error, because
+    nothing ever asked for that reply's own replies. `threadDepth.test.tsx` is the regression, and
+    the validator now refuses a multi-child `$each` rather than dropping in silence.
   */
   const row: SchemaNode = opts.collapsible
     ? {
-        type: 'Row',
-        props: { width: '100%', gap: '200', ay: 'stretch' },
+        type: 'Column',
+        props: { width: '100%', gap: '100' },
         children: [
-          gutter(as, collapsed),
-          { type: 'Column', props: { flex: '1', minWidth: '0', gap: '300' }, children: body },
+          ...opts.reply(as, collapsed),
+          {
+            type: '$if',
+            props: {
+              condition: { $: `count(${as}.comments)` },
+              then: {
+                type: 'Row',
+                props: { width: '100%', gap: RAIL_GAP, ay: 'stretch' },
+                children: [
+                  branchRail(as, collapsed),
+                  {
+                    type: 'Column',
+                    props: { flex: '1', minWidth: '0' },
+                    children: [fold(opts, collapsed, subtree)],
+                  },
+                ],
+              },
+            },
+          },
         ],
       }
-    : { type: 'Column', props: { width: '100%', gap: '300' }, children: body };
+    : { type: 'Column', props: { width: '100%', gap: '300' }, children: [...opts.reply(as, collapsed), subtree] };
 
   return {
     type: 'Column',
