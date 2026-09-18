@@ -62,6 +62,15 @@ const ROOT = 'discussionRoot';
 const DELETING = 'discussionDeleting';
 /** The reply being rewritten, or empty. The same trick again — one composer serves every level. */
 const EDITING = 'discussionEditing';
+/**
+ * The reply whose actions are showing, or empty — one at a time.
+ *
+ * An id rather than a flag per row, for the reason the fold is a set of ids: rows come from a
+ * subscription, so a boolean on the row is lost the moment anybody replies anywhere and the query
+ * answers again. One at a time rather than a set, because the row is about what you are answering
+ * and a thread with six of them open is the furniture this hides in the first place.
+ */
+const OPEN = 'discussionOpen';
 
 export interface DiscussionSectionOptions {
   /** Context key of the record being discussed — `'row'`, `'link'`, `'card'`. */
@@ -87,166 +96,251 @@ function replyButton(as: string): SchemaNode {
   };
 }
 
-/** One reply, as it is drawn wherever it appears — in the thread, and above it once re-rooted. */
-function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
+/**
+ * One reply, as it is drawn wherever it appears — in the thread, and above it once re-rooted.
+ *
+ * ## Quiet until it is asked
+ *
+ * A thread is read far more often than it is acted on, and a reaction row plus a Reply under every
+ * reply is a column of furniture between one sentence and the next. So the actions arrive in two
+ * steps, and each is drawn to cost what it is worth:
+ *
+ * - **Edit and delete fade in with the pointer**, anywhere on the comment. They live in a row that is
+ *   already there, so nothing moves as they appear — the transcript's pencil, and its `focusProps`,
+ *   without which tabbing lands on something invisible.
+ * - **The reactions and Reply are not drawn at all until the comment is pressed.** Mounting them on
+ *   the press is what keeps a quiet thread quiet; it changes the row's height, which is why it is a
+ *   deliberate press rather than a hover. A second press puts them away, and pressing another
+ *   comment moves them there — one open at a time, because the row is about what you are answering.
+ *
+ * The press is on the words rather than on a button around them: a button cannot contain the links a
+ * composition may hold. The cost is that a click ending a text selection also toggles the row, which
+ * is worth knowing and cheaper than the alternatives.
+ */
+function replyBody(as: string, collapsed: string, opts: DiscussionSectionOptions): SchemaNode[] {
   const fractal = opts.fractal;
+  /** The controls this reply shows: while the pointer is on it, or while it is the open one. */
+  const roused = `local.pointerOnReply || local.${OPEN} == ${as}.id`;
   return [
-    /*
-      Who, when — and, for your own words, what you may do to them.
-
-      Compact: a reply's byline sits above two lines of text and under another reply, so at a post's
-      weight it competes with the words it introduces. The name takes `text-muted` from the
-      transcript's speaker line, which is the other place in WE where a name heads a line of
-      conversation rather than a piece of content.
-    */
     {
       /*
-        The byline and the controls on one line, in a row this fragment owns.
+        The whole comment, and whether the pointer is on it.
 
-        Rather than passing them as the byline's `children`, which would need that fragment's row to
-        be full width for them to sit anywhere but beside the time — and it is used at seventeen
-        other call sites, several of them inside rows of their own, where growing it would push a
-        sibling. A caller that wants the line holds it itself.
-
-        The row knows whether the pointer is on it, which is what lets the controls keep out of the
-        way until they are wanted. Held here rather than by the buttons, and that is the whole point:
-        `hoverProps` answers for the element it is on, so an affordance that appeared only once you
-        were already on it could not be found. The transcript's pencil is the same shape, and this
-        follows it — including the part that is easy to drop, `focusProps`, without which tabbing
-        moves focus onto something invisible.
+        On this column rather than on the byline's row, so crossing the words or the reactions counts
+        as being on the comment — `hoverProps` answers for the element it is on, and an affordance
+        that appeared only once you were over the exact row that holds it could not be found. The
+        nested thread is a SIBLING of this column rather than a child (see `commentThread`'s row), so
+        hovering a reply does not light up every ancestor it hangs from.
 
         Per reply: `$localState` on a node inside `$each` is created per row, so two replies cannot
         disagree about which one the pointer is on.
       */
-      type: 'Row',
+      type: 'Column',
       props: {
-        ay: 'center',
-        gap: '200',
         width: '100%',
+        gap: '100',
+        py: '100',
         onMouseEnter: { $setLocal: 'pointerOnReply', value: true },
         onMouseLeave: { $setLocal: 'pointerOnReply', value: false },
       },
       $localState: { pointerOnReply: { type: 'boolean', initial: false } },
       children: [
-        agentByline({
-          did: { $: `${as}.author` },
-          timestamp: { $: `${as}.createdAt` },
-          compact: true,
-          nameColor: 'text-muted',
-        }),
         /*
-          Your own words, and what you may do to them — beside the byline, where the sentence they
-          act on is.
+          Who, when — and, for your own words, what you may do to them.
 
-          One gate over both: they are the same permission and it is yours alone. That is narrower
-          than the rule `EdgeDetail` applies to a drawn connection, where anybody may retract a claim
-          the community's records carry and the retraction being authored is what holds it
-          accountable. A reply is not a claim about the records; it is somebody's sentence, and a
-          neighbourhood being writable by every member is a fact about the protocol rather than an
-          invitation to rewrite each other's speech.
-
-          Faded rather than unmounted, so the row does not change width as the pointer crosses it and
-          the buttons keep their place in the tab order.
+          Compact: a reply's byline sits above two lines of text and under another reply, so at a
+          post's weight it competes with the words it introduces. The name takes `text-muted` from
+          the transcript's speaker line, which is the other place in WE where a name heads a line of
+          conversation rather than a piece of content.
         */
         {
-          type: '$if',
-          props: {
-            condition: { $: `${as}.author == me.did` },
-            then: {
-              type: 'Row',
+          type: 'Row',
+          props: { ay: 'center', gap: '200', width: '100%' },
+          children: [
+            agentByline({
+              did: { $: `${as}.author` },
+              timestamp: { $: `${as}.createdAt` },
+              compact: true,
+              nameColor: 'text-muted',
+            }),
+            /*
+              What a folded branch says instead of itself.
+
+              Direct replies, not descendants: `count` reads the relation this reply holds, and the
+              query language cannot walk a subtree — so "3 replies" is true where "3" as a total
+              would be a guess. Beside the time, where the rest of the line's facts are.
+            */
+            {
+              type: '$if',
               props: {
-                gap: '100',
-                ay: 'center',
-                flexShrink: '0',
-                opacity: { $: 'local.pointerOnReply ? 1 : 0' },
-                focusProps: { opacity: 1 },
-                transition: 'opacity 200 ease-in-out',
+                condition: { $: `(${collapsed}) && count(${as}.comments)` },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [
+                    { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
+                    { $: `plural(count(${as}.comments), ' reply', ' replies')` },
+                  ],
+                },
               },
-              children: [
-                {
-                  type: 'we-tooltip',
-                  props: { content: 'Edit this reply' },
+            },
+            /*
+              Your own words, and what you may do to them.
+
+              One gate over both: they are the same permission and it is yours alone. That is
+              narrower than the rule `EdgeDetail` applies to a drawn connection, where anybody may
+              retract a claim the community's records carry and the retraction being authored is what
+              holds it accountable. A reply is not a claim about the records; it is somebody's
+              sentence, and a neighbourhood being writable by every member is a fact about the
+              protocol rather than an invitation to rewrite each other's speech.
+
+              Faded rather than unmounted, so the row does not change width as the pointer crosses it
+              and the buttons keep their place in the tab order.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $: `${as}.author == me.did` },
+                then: {
+                  type: 'Row',
+                  props: {
+                    gap: '100',
+                    ay: 'center',
+                    flexShrink: '0',
+                    opacity: { $: `(${roused}) ? 1 : 0` },
+                    focusProps: { opacity: 1 },
+                    transition: 'opacity 200 ease-in-out',
+                  },
                   children: [
                     {
-                      type: 'we-button',
+                      type: 'we-tooltip',
+                      props: { content: 'Edit this reply' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            square: true,
+                            label: 'Edit this reply',
+                            onClick: { $setLocal: EDITING, value: { $: `${as}.id` } },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-tooltip',
+                      props: { content: 'Delete this reply' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            square: true,
+                            color: 'danger-text',
+                            label: 'Delete this reply',
+                            onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        /*
+          The words and the actions, folded away together.
+
+          `$animate` rather than `$if` for the same reason the branch below uses one: what is closed
+          keeps its place rather than being rebuilt, and a fold is a thing you undo.
+        */
+        {
+          type: '$animate',
+          props: {
+            condition: { $: `!(${collapsed})` },
+            enterTransition: { type: 'reveal', duration: 200 },
+          },
+          children: [
+            {
+              type: 'Column',
+              props: { width: '100%', gap: '100' },
+              children: [
+                /*
+                  The words, flush with the face above them — and the press that opens the actions.
+
+                  `rootClass` rather than a wrapper: `.we-block-content` pads every paragraph on all
+                  four sides, which is a *document's* padding — it is what makes the hover highlight a
+                  comfortable block in a composer. In a thread it insets the text from the byline and
+                  puts a blank band over and under every line. The compact variant takes the
+                  horizontal padding off and quarters the vertical; see `blocks.scss`, where the graph
+                  card's equivalent lives beside it.
+                */
+                {
+                  type: 'Column',
+                  props: {
+                    width: '100%',
+                    cursor: 'pointer',
+                    onClick: {
+                      $setLocal: OPEN,
+                      value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` },
+                    },
+                  },
+                  children: [
+                    {
+                      type: 'BlockRenderer',
                       props: {
-                        variant: 'ghost',
-                        size: 'xs',
-                        square: true,
-                        label: 'Edit this reply',
-                        onClick: { $setLocal: EDITING, value: { $: `${as}.id` } },
+                        editorState: { $: `${as}.editorState` },
+                        rootClass: 'we-block-content--compact',
                       },
-                      children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
                     },
                   ],
                 },
                 {
-                  type: 'we-tooltip',
-                  props: { content: 'Delete this reply' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        size: 'xs',
-                        square: true,
-                        color: 'danger-text',
-                        label: 'Delete this reply',
-                        onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                  type: '$if',
+                  props: {
+                    condition: { $: `local.${OPEN} == ${as}.id` },
+                    then: {
+                      type: 'Row',
+                      props: { gap: '300', ay: 'center', wrap: true, width: '100%' },
+                      children: [
+                        /*
+                          Every reaction the community offers, on the reply itself.
+
+                          The same controls the record gets, `inline` so they share the line with
+                          "Reply" rather than taking it, and `xs` because a reaction is drawn at the
+                          weight of the thing it is about. This was a read-only summary, which was the
+                          wrong half of the pair: a count you cannot add to is a scoreboard, and a
+                          thread is the one place where the thing being answered is somebody's
+                          sentence. It costs nothing new — the types come from the subscription the
+                          section already hoists, and each reply's signals from the `include` the
+                          thread's own query already carries.
+                        */
+                        signalsSection({ record: as, as: `${as}Sig`, inline: true, size: 'xs' }),
+                        // Whether this reply may be answered. Unconditional where the caller named no
+                        // rule: a `$if` that can only ever be true is a node to build, resolve and
+                        // walk on every reply at every level, for an answer the expansion already
+                        // knows.
+                        ...(fractal
+                          ? [
+                              {
+                                type: '$if',
+                                props: { condition: { $: fractal }, then: replyButton(as) },
+                              } as SchemaNode,
+                            ]
+                          : [replyButton(as)]),
+                      ],
                     },
-                  ],
+                  },
                 },
               ],
             },
-          },
+          ],
         },
-      ],
-    },
-    /*
-      The words, flush with the face above them.
-
-      `rootClass` rather than a wrapper: `.we-block-content` pads every paragraph on all four sides,
-      which is a *document's* padding — it is what makes the hover highlight a comfortable block in a
-      composer. In a thread it insets the text from the byline and puts a blank band over and under
-      every line. The compact variant takes the horizontal padding off and quarters the vertical; see
-      `blocks.scss`, where the graph card's equivalent lives beside it.
-    */
-    {
-      type: 'BlockRenderer',
-      props: { editorState: { $: `${as}.editorState` }, rootClass: 'we-block-content--compact' },
-    },
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center', wrap: true, width: '100%' },
-      children: [
-        /*
-          Every reaction the community offers, on the reply itself.
-
-          The same controls the record gets, `inline` so they share the line with "Reply" rather than
-          taking it. This was a read-only summary, which was the wrong half of the pair: a count you
-          cannot add to is a scoreboard, and a thread is the one place where the thing being answered
-          is somebody's sentence — the lightest possible answer to it should not be a press away in
-          another panel. It costs nothing that was not already here: the types come from the
-          subscription the section already hoists, and each reply's signals from the `include` the
-          thread's own query already carries.
-        */
-        signalsSection({ record: as, as: `${as}Sig`, inline: true, size: 'xs' }),
-        // Whether this reply may be answered. Unconditional where the caller named no rule, rather
-        // than gated on a literal `true`: a bare boolean in an expression is a *name* to the parser,
-        // and the node this would wrap is cheaper to leave out than to guard.
-        ...(fractal
-          ? [
-              {
-                type: '$if',
-                props: {
-                  condition: { $: fractal },
-                  then: replyButton(as),
-                },
-              } as SchemaNode,
-            ]
-          : [replyButton(as)]),
       ],
     },
     /*
@@ -284,6 +378,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       [ROOT]: { type: 'string', initial: '' },
       [DELETING]: { type: 'string', initial: '' },
       [EDITING]: { type: 'string', initial: '' },
+      [OPEN]: { type: 'string', initial: '' },
     },
     $queries: {
       /*
@@ -345,7 +440,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                     // a rule down its left edge, which is what the indent says one level in.
                     type: 'Column',
                     props: { gap: '100', width: '100%', pl: '400', borderLeft: '2px solid border-strong' },
-                    children: replyBody('focused', opts),
+                    children: replyBody('focused', 'false', opts),
                   },
                 ],
               },
@@ -356,18 +451,10 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       commentThread({
         anchorId: { $: anchor },
         ...(opts.depth !== undefined && { depth: opts.depth }),
-        reply: (as) => [
-          {
-            type: 'Column',
-            /*
-              `py: '100'`, not '200': the blocks inside carry their own vertical padding now (see the
-              compact variant), so the old value was that padding twice over and a two-line reply
-              stood as tall as a card.
-            */
-            props: { gap: '100', width: '100%', py: '100' },
-            children: replyBody(as, opts),
-          },
-        ],
+        collapsible: true,
+        // The reply's own box is `replyBody`'s now — it holds whether the pointer is on the comment,
+        // which is a fact about the whole comment rather than about any row inside it.
+        reply: (as, collapsed) => replyBody(as, collapsed, opts),
         // The limit, made a door — see the docblock. The count is the same one the default sentence
         // shows; what changes is that pressing it goes there.
         more: (as) => ({

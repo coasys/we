@@ -29,8 +29,16 @@ import type { SchemaNode } from '@we/schema-shared';
 export interface CommentThreadOptions {
   /** Id of the node being replied to — a post, a block, or a reply one level up. */
   anchorId: AnchorId;
-  /** Renders one reply. Receives the context key below. */
-  reply: (as: string) => SchemaNode[];
+  /**
+   * Renders one reply. Receives the context key below, and an expression that is true while this
+   * reply is folded — see {@link CommentThreadOptions.collapsible}.
+   *
+   * The fold is split between the two because the pieces belong to different owners: this fragment
+   * hides what it draws (the replies underneath), and the caller hides what *it* draws (the words),
+   * usually leaving the byline as the stub. Handing over the expression is what lets both read one
+   * answer rather than keeping two flags in step.
+   */
+  reply: (as: string, collapsed: string) => SchemaNode[];
   /** Context key for each reply. Defaults to `'reply'`; nested levels get `reply2`, `reply3`, … */
   as?: string;
   /** How many levels to expand. Defaults to 3. */
@@ -50,10 +58,132 @@ export interface CommentThreadOptions {
    * ends still ends: this replaces what is said, never whether anything is.
    */
   more?: (as: string) => SchemaNode;
-  /** Indent per level, as a space token. Defaults to `'400'`. */
+  /**
+   * Fold a reply and everything under it, from a caret and a rail in a gutter down its left.
+   *
+   * The rail is the affordance worth having and the reason this is a gutter rather than a border: a
+   * line down the left of a branch says how deep you are, and Reddit's makes it a *target* — press
+   * anywhere along it and the branch folds. A border cannot take a press, so the line is a control
+   * filling a column, with the caret above it.
+   *
+   * ## Which ids are folded, rather than a flag per row
+   *
+   * The state is an array of reply ids on the outermost thread, toggled with `$toggleLocalIn`. The
+   * obvious alternative — a boolean `$localState` on each row, the way a row holds whether the
+   * pointer is on it — loses the fold at the worst moment: rows come from a subscription, so when
+   * anybody replies anywhere the query answers again, `<For>` sees new objects, and every row
+   * remounts with its state reset. Somebody would watch a branch they had folded spring open because
+   * a stranger wrote something else. Keyed by id, a remount changes nothing.
+   *
+   * Declared once, at the top: the nested levels read the same local rather than shadowing it, which
+   * is what lets a caret three levels down fold a branch the top level is drawing.
+   */
+  collapsible?: boolean;
+  /** Indent per level, as a space token. Defaults to `'400'`. Ignored when `collapsible` — the gutter indents. */
   indent?: string;
   /** Internal: the current level, counted down. */
   level?: number;
+}
+
+/** Which replies are folded, by id — declared on the outermost thread. See `collapsible`. */
+const COLLAPSED = 'collapsedReplies';
+
+/**
+ * Hide a folded branch without tearing it down.
+ *
+ * `$animate` rather than `$if`, and the difference is a round trip: `$if` unmounts, which disposes
+ * the nested thread's subscription and re-asks the backend on every expand — so a branch opened,
+ * closed and opened again flashes empty each time. `$animate` keeps it mounted and closes the box.
+ *
+ * The cost, stated because it is real: a folded branch goes on holding its subscriptions. That is
+ * the wrong trade on a thread of hundreds, and the place to revisit it is the deepest level, where
+ * the subtree is largest and reopening it is rarest.
+ */
+function fold(opts: CommentThreadOptions, collapsed: string, node: SchemaNode): SchemaNode {
+  if (!opts.collapsible) return node;
+  return {
+    type: '$animate',
+    props: {
+      condition: { $: `!(${collapsed})` },
+      enterTransition: { type: 'reveal', duration: 200 },
+    },
+    children: [node],
+  };
+}
+
+/**
+ * The caret and the rail, in a column of their own down the left of a reply.
+ *
+ * Only for a reply that has replies: a leaf has nothing to fold, so it gets the width and no
+ * controls — the gutter is the indent as well as the affordance, and a leaf that lost it would sit
+ * further left than its siblings.
+ *
+ * The rail stands down while the branch is folded. There is nothing under it to trace, and leaving
+ * it would draw a line alongside a single line of text.
+ */
+function gutter(as: string, collapsed: string): SchemaNode {
+  const toggle = { $toggleLocalIn: COLLAPSED, value: { $: `${as}.id` } };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `count(${as}.comments)` },
+      // A leaf keeps the width, so every reply at a level starts at the same place.
+      else: { type: 'Column', props: { width: '20px', flexShrink: '0' } },
+      then: {
+        type: 'Column',
+        props: { width: '20px', flexShrink: '0', ax: 'center', gap: '100' },
+        children: [
+          {
+            type: 'we-tooltip',
+            props: { content: { $: `(${collapsed}) ? 'Show this branch' : 'Hide this branch'` } },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  variant: 'ghost',
+                  size: 'xs',
+                  square: true,
+                  color: 'text-faint',
+                  label: 'Fold this branch',
+                  onClick: toggle,
+                },
+                children: [
+                  { type: 'we-icon', props: { name: { $: `(${collapsed}) ? 'caret-right' : 'caret-down'` } } },
+                ],
+              },
+            ],
+          },
+          /*
+            The line, as a control.
+
+            A press anywhere along a branch folds it, which is the affordance a border could not
+            carry — and the hover band is what says so before the press. The line itself is a 1px
+            column inside the button rather than the button's own border, so the target is the whole
+            gutter and the mark is a hairline.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: `!(${collapsed})` },
+              then: {
+                type: 'we-button',
+                props: {
+                  variant: 'bare',
+                  width: '100%',
+                  flex: '1',
+                  ax: 'center',
+                  label: 'Hide this branch',
+                  hoverProps: { bg: 'surface-hover' },
+                  onClick: toggle,
+                },
+                children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
 }
 
 export function commentThread(opts: CommentThreadOptions): SchemaNode {
@@ -74,13 +204,16 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     `threadDepth.test.tsx` is the regression, and the renderer now warns rather than dropping in
     silence — see `semanticValidation`.
   */
-  const row: SchemaNode[] = [
-    ...opts.reply(as),
+  /** True while this reply is folded. One expression, read by the gutter, the fold and the caller. */
+  const collapsed = `${as}.id in local.${COLLAPSED}`;
+
+  const body: SchemaNode[] = [
+    ...opts.reply(as, collapsed),
     // One level further in, anchored to this reply. At the limit, a count instead — a thread that
     // simply stops looks finished, and someone who wrote the reply below it would never know.
     level < depth
-      ? commentThread({ ...opts, anchorId: { $: `${as}.id` }, level: level + 1 })
-      : {
+      ? fold(opts, collapsed, commentThread({ ...opts, anchorId: { $: `${as}.id` }, level: level + 1 }))
+      : fold(opts, collapsed, {
           type: '$if',
           props: {
             condition: { $: `count(${as}.comments)` },
@@ -95,12 +228,37 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
                   ],
                 },
           },
-        },
+        }),
   ];
+
+  /*
+    The row: a gutter down the left holding the caret and the rail, and everything else beside it.
+
+    The gutter is also the indent — a nested thread sits inside the right-hand column, so its own
+    gutter offsets it from its parent and `pl` would be that offset twice. Without `collapsible`
+    there is no gutter and `pl` is the indent, as it was.
+  */
+  const row: SchemaNode = opts.collapsible
+    ? {
+        type: 'Row',
+        props: { width: '100%', gap: '200', ay: 'stretch' },
+        children: [
+          gutter(as, collapsed),
+          { type: 'Column', props: { flex: '1', minWidth: '0', gap: '300' }, children: body },
+        ],
+      }
+    : { type: 'Column', props: { width: '100%', gap: '300' }, children: body };
 
   return {
     type: 'Column',
-    props: { width: '100%', gap: '300', ...(level > 1 && { pl: opts.indent ?? '400' }) },
+    props: {
+      width: '100%',
+      gap: '300',
+      ...(level > 1 && !opts.collapsible && { pl: opts.indent ?? '400' }),
+    },
+    // The folded ids, declared once at the top so a caret three levels down folds a branch the top
+    // level is drawing. An inner declaration would shadow it, and each level would fold only itself.
+    ...(opts.collapsible && level === 1 ? { $localState: { [COLLAPSED]: { type: 'array', initial: [] } } } : {}),
     $queries: {
       [key]: {
         entity: 'CollectionBlock',
@@ -124,7 +282,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
               {
                 type: '$each',
                 props: { items: { $: `local.${key}` }, as },
-                children: [{ type: 'Column', props: { width: '100%', gap: '300' }, children: row }],
+                children: [row],
               },
             ],
           },

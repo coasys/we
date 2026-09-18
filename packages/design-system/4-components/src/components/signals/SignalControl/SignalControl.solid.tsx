@@ -33,8 +33,15 @@ function aggregateFor(type: SignalTypeData): SignalAggregate {
   return type.aggregate;
 }
 
-/** The count's type size for each control size — one step behind the glyph, as a caption is. */
-const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '100', sm: '200', md: '' };
+/**
+ * The count's type size for each control size — one step behind the glyph, as a caption is.
+ *
+ * `xs` is a length rather than a token because the scale stops at `100` (12px), which is also what
+ * an `xs` button draws its glyph at: equal sizes, and the digits read heavier than the outline, so
+ * the number is the loudest thing in a control that is meant to be a footnote. 11px is the step the
+ * scale does not have.
+ */
+const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '11px', sm: '200', md: '' };
 
 export function SignalControl(props: SignalControlProps) {
   const size = () => props.size ?? 'md';

@@ -146,15 +146,73 @@ describe('a thread in a panel', () => {
     expect(asked).toContain('r1');
 
     /*
-      And it is drawn, indented. `$each` renders its first child and drops the rest, so a row built
-      as a list — the reply, then the thread under it — lost every level below the first without a
-      word. The indent is the cheapest proof a nested level mounted: only a thread past level one
-      carries it.
+      And it is drawn. `$each` renders its first child and drops the rest, so a row built as a list —
+      the reply, then the thread under it — lost every level below the first without a word. Two
+      gutters is the cheapest proof a nested level mounted: one belongs to the reply that has a
+      reply, the other to the one under it.
     */
     const html = host.innerHTML.replace(/<!--.*?-->/g, '');
-    expect(html).toContain('padding: 0 0 0 var(--we-space-400)');
+    expect(html.match(/width: 20px/g) ?? []).not.toHaveLength(0);
+    // A branch that can be folded says so, with a caret pointing down while it is open.
+    expect(html).toContain('caret-down');
+  });
 
-    // Three Reply buttons: the record's, the reply's, and the nested reply's.
-    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(3);
+  it("keeps a reply's actions out of the way until the comment is pressed", async () => {
+    // A thread is read far more often than it is acted on: a reaction row and a Reply under every
+    // reply is a column of furniture between one sentence and the next.
+    const replies: Reply[] = [
+      { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: [] },
+    ];
+    const collections = {
+      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string } }) => ({
+        subscribe: () => Promise.resolve(replies.filter((reply) => reply.parent === options.scope?.anchorId)),
+        dispose: vi.fn(),
+      })),
+    };
+    const empty = { query: vi.fn(() => ({ subscribe: () => Promise.resolve([]), dispose: vi.fn() })) };
+    const stores = {
+      $getEntity: (name: string) => (name === 'CollectionBlock' ? collections : empty),
+      $currentDataset: () => ({ uuid: 'space' }),
+      $queryAdapter: passthroughAdapter,
+      $me: { did: 'did:me' },
+      $sources: hostSourceBag(),
+      spaceStore: { mutedDids: [], currentSpace: { id: 'space' } },
+      profileStore: { profiles: [] },
+      routeStore: { params: {} },
+      recordStore: { displays: {} },
+    };
+
+    const node: SchemaNode = {
+      type: '$each',
+      props: { items: [{ id: 'task-1', comments: ['r1'] }], as: 'row' },
+      $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
+      children: [discussionSection({ record: 'row' })],
+    };
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(
+      () => <RenderSchema node={node} stores={stores as never} registry={componentRegistry as never} />,
+      host,
+    );
+    await settled();
+    await tick();
+    await settled();
+
+    // One "Reply" on screen — the record's own, at the foot of the section. The reply has none yet.
+    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(1);
+
+    const words = host.querySelector('[style*="cursor: pointer"]') as HTMLElement | null;
+    expect(words).not.toBeNull();
+    words?.click();
+    await settled();
+
+    // Pressed: the reply's own Reply appears beside the reactions.
+    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(2);
+
+    // Pressed again, it goes away — one open at a time, and this was the one.
+    words?.click();
+    await settled();
+    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(1);
   });
 });

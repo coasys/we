@@ -351,6 +351,38 @@ describe('contracts call sites depend on', () => {
     expect(conditions.filter((c) => c.includes('row.signals'))).toEqual([]);
   });
 
+  it('folds a branch by id, declared once, and closes it without tearing it down', () => {
+    /*
+      Three decisions in one shape.
+
+      The fold is a set of ids rather than a flag per row, because rows come from a subscription: a
+      boolean on the row is lost the moment anybody replies anywhere and `<For>` remounts them, so a
+      branch somebody folded would spring open because a stranger wrote something else.
+
+      Declared once, at the top: a nested level that declared its own would shadow it, and a caret
+      three deep would fold only what it could see.
+
+      And closed with `$animate` rather than `$if` — unmounting disposes the nested thread's
+      subscription and re-asks the backend on every expand.
+    */
+    const section = weDomain.discussionSection;
+    let declarations = 0;
+    let toggles = 0;
+    let folds = 0;
+    walk(section, (n) => {
+      const state = (n as { $localState?: Record<string, unknown> }).$localState;
+      if (state && 'collapsedReplies' in state) declarations += 1;
+      if ((n as { $toggleLocalIn?: string }).$toggleLocalIn === 'collapsedReplies') toggles += 1;
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (n.type === '$animate' && condition?.includes('collapsedReplies')) folds += 1;
+    });
+    expect(declarations).toBe(1);
+    // A caret and a rail, at each of the three levels.
+    expect(toggles).toBe(6);
+    // Each level folds twice: the reply's own words, and the branch under it.
+    expect(folds).toBeGreaterThanOrEqual(6);
+  });
+
   it('a reply keeps its controls out of the way until the pointer is on the row', () => {
     /*
       The transcript's pencil pattern: the ROW holds whether the pointer is on it, because
@@ -362,11 +394,13 @@ describe('contracts call sites depend on', () => {
     let controls: Record<string, unknown> | undefined;
     walk(weDomain.discussionSection, (n) => {
       const props = (n.props ?? {}) as Record<string, unknown>;
-      if (n.type === 'Row' && (props.opacity as { $?: string } | undefined)?.$?.includes('pointerOnReply')) {
-        controls = props;
-      }
+      const opacity = (props.opacity as { $?: string } | undefined)?.$;
+      // The first level's — the walk reaches reply2 and reply3 after it.
+      if (n.type === 'Row' && opacity?.includes('reply.id') && !controls) controls = props;
     });
-    expect(controls?.opacity).toEqual({ $: 'local.pointerOnReply ? 1 : 0' });
+    // Roused by either: the pointer anywhere on the comment, or the comment being the open one —
+    // so a thread opened by touch, which has no hover, still shows what it can do.
+    expect(controls?.opacity).toEqual({ $: '(local.pointerOnReply || local.discussionOpen == reply.id) ? 1 : 0' });
     expect(controls?.focusProps).toEqual({ opacity: 1 });
     // Left-aligned: the pair sits after the time rather than at the far edge.
     expect(controls?.ml).toBeUndefined();
