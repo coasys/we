@@ -90,8 +90,73 @@ function replyButton(as: string): SchemaNode {
 function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
   const fractal = opts.fractal;
   return [
-    agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
-    { type: 'BlockRenderer', props: { editorState: { $: `${as}.editorState` } } },
+    /*
+      Who, when — and the one control that is about the reply rather than about answering it.
+
+      Compact: a reply's byline sits above two lines of text and under another reply, so at a post's
+      weight it competes with the words it introduces. The delete rides in the byline's `children`
+      with an auto margin, which puts it at the right end of that line — the row already exists, and
+      a control that removes the thing is better placed beside its author than beside "Reply", where
+      the two read as a pair of answers.
+
+      Your own only, which is narrower than the rule `EdgeDetail` applies to a drawn connection —
+      there, anybody may retract a claim the community's records carry, and the deletion being
+      authored is what holds it accountable. A reply is not a claim about the records; it is
+      somebody's sentence, and a neighbourhood being writable by every member is a fact about the
+      protocol rather than an invitation to edit each other's speech.
+    */
+    {
+      /*
+        The byline and the delete on one line, in a row this fragment owns.
+
+        Rather than passing the control as the byline's `children`, which would need that fragment's
+        row to be full width for an auto margin to reach the edge — and it is used at seventeen other
+        call sites, several of them inside rows of their own, where growing it would push a sibling.
+        A caller that wants the edge can hold the line itself; the byline stays as wide as its words.
+      */
+      type: 'Row',
+      props: { ay: 'center', gap: '300', width: '100%' },
+      children: [
+        agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` }, compact: true }),
+        {
+          type: '$if',
+          props: {
+            condition: { $: `${as}.author == me.did` },
+            then: {
+              type: 'we-tooltip',
+              props: { content: 'Delete this reply', ml: 'auto' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'ghost',
+                    size: 'xs',
+                    square: true,
+                    color: 'danger-text',
+                    label: 'Delete this reply',
+                    onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+    /*
+      The words, flush with the face above them.
+
+      `rootClass` rather than a wrapper: `.we-block-content` pads every paragraph on all four sides,
+      which is a *document's* padding — it is what makes the hover highlight a comfortable block in a
+      composer. In a thread it insets the text from the byline and puts a blank band over and under
+      every line. The compact variant takes the horizontal padding off and quarters the vertical; see
+      `blocks.scss`, where the graph card's equivalent lives beside it.
+    */
+    {
+      type: 'BlockRenderer',
+      props: { editorState: { $: `${as}.editorState` }, rootClass: 'we-block-content--compact' },
+    },
     {
       type: 'Row',
       props: { gap: '300', ay: 'center', width: '100%' },
@@ -119,42 +184,6 @@ function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
               } as SchemaNode,
             ]
           : [replyButton(as)]),
-        /*
-          Taking your own words back.
-
-          Your own only, which is a narrower rule than the one `EdgeDetail` applies to a drawn
-          connection — there, anybody may retract a claim the community's records carry, and the
-          deletion being authored is what holds it accountable. A reply is not a claim about the
-          records; it is somebody's sentence, and a neighbourhood being writable by every member is
-          a fact about the protocol rather than an invitation to edit each other's speech.
-
-          `ml: 0` because the Reply button above it already took the auto margin: the pair sits
-          together at the right end rather than at opposite ends of the row.
-        */
-        {
-          type: '$if',
-          props: {
-            condition: { $: `${as}.author == me.did` },
-            then: {
-              type: 'we-tooltip',
-              props: { content: 'Delete this reply' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: {
-                    variant: 'ghost',
-                    size: 'xs',
-                    square: true,
-                    color: 'danger-text',
-                    label: 'Delete this reply',
-                    onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'trash' } }],
-                },
-              ],
-            },
-          },
-        },
       ],
     },
     /*
@@ -252,7 +281,12 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         reply: (as) => [
           {
             type: 'Column',
-            props: { gap: '100', width: '100%', py: '200' },
+            /*
+              `py: '100'`, not '200': the blocks inside carry their own vertical padding now (see the
+              compact variant), so the old value was that padding twice over and a two-line reply
+              stood as tall as a card.
+            */
+            props: { gap: '100', width: '100%', py: '100' },
             children: replyBody(as, opts),
           },
         ],

@@ -187,6 +187,12 @@ const portable: Record<string, SchemaNode> = {
 const weDomain: Record<string, SchemaNode> = {
   agentByline: agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
   'agentByline (stacked)': agentByline({ did: { $: 'u.author' }, as: 'speaker', stacked: true }),
+  'agentByline (compact)': agentByline({
+    did: { $: 'reply.author' },
+    as: 'writer',
+    timestamp: { $: 'reply.createdAt' },
+    compact: true,
+  }),
   peopleRow: peopleRow({ items: { $: 'spaceStore.members' }, noun: 'Member' }),
   peopleFilter: peopleFilter({
     people: 'who',
@@ -343,6 +349,37 @@ describe('contracts call sites depend on', () => {
     });
     expect(conditions).toContain('count(filter(local.signalTypes, { retired: { not: true } }))');
     expect(conditions.filter((c) => c.includes('row.signals'))).toEqual([]);
+  });
+
+  it('a compact byline drops the face, the name and the time a step — and only those', () => {
+    // A reply's byline sits above two lines of text and under another reply; at a post's weight it
+    // competes with the words it introduces. The row stays as wide as its words: seventeen other
+    // call sites place a byline inside a row of their own, where a full-width one pushes a sibling.
+    const props = new Map<string, Record<string, unknown>>();
+    walk(weDomain['agentByline (compact)'], (n) => {
+      if (typeof n.type === 'string') props.set(n.type, (n.props ?? {}) as Record<string, unknown>);
+    });
+    expect(props.get('we-avatar')?.size).toBe('xs');
+    expect(props.get('we-text')?.fontSize).toBe('200');
+    expect(props.get('we-timestamp')?.fontSize).toBe('200');
+    expect(props.get('Row')?.width).toBeUndefined();
+    // And an ordinary byline is untouched.
+    const plain = new Map<string, Record<string, unknown>>();
+    walk(weDomain.agentByline, (n) => {
+      if (typeof n.type === 'string') plain.set(n.type, (n.props ?? {}) as Record<string, unknown>);
+    });
+    expect(plain.get('we-avatar')?.size).toBe('sm');
+    expect(plain.get('we-text')?.fontSize).toBeUndefined();
+  });
+
+  it('a reply draws its words flush, through the renderer rather than a wrapper', () => {
+    // `.we-block-content` pads every paragraph on all four sides — a document's padding, which in a
+    // thread insets the text from the byline above it and bands every line.
+    let rootClass: unknown;
+    walk(weDomain.discussionSection, (n) => {
+      if (n.type === 'BlockRenderer') rootClass = (n.props as { rootClass?: unknown }).rootClass;
+    });
+    expect(rootClass).toBe('we-block-content--compact');
   });
 
   it('discussionSection can reply at every level it draws, not just the top', () => {

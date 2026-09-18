@@ -10,6 +10,14 @@ export interface AgentBylineOptions {
    */
   as?: string;
   avatarSize?: string;
+  /**
+   * One step down — the face, the name and the time, for a byline inside something dense.
+   *
+   * A thread is the case it was added for: a reply's byline sits above two lines of text and under
+   * another reply, so at a post's weight it competes with the words it introduces. `avatarSize`
+   * still wins where a caller names one, since the two are not always wanted together.
+   */
+  compact?: boolean;
   /** When this was written. Shown relative, because that is what a reader wants from a byline. */
   timestamp?: SchemaProp;
   /** Stack the name above the timestamp rather than running them along one line. */
@@ -38,16 +46,34 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
   const as = opts.as ?? 'author';
   const avatar: SchemaNode = {
     type: 'we-avatar',
-    props: { size: opts.avatarSize ?? 'sm', image: { $: `${as}.avatar` }, hash: { $: `${as}.did` } },
+    props: {
+      size: opts.avatarSize ?? (opts.compact ? 'xs' : 'sm'),
+      image: { $: `${as}.avatar` },
+      hash: { $: `${as}.did` },
+    },
   };
   const name: SchemaNode = {
     type: 'we-text',
-    props: { fontWeight: 'semibold', ...(opts.nameColor && { color: opts.nameColor }) },
+    props: {
+      fontWeight: 'semibold',
+      ...(opts.compact && { fontSize: '200' }),
+      ...(opts.nameColor && { color: opts.nameColor }),
+    },
     children: [{ $: `${as}.name` }],
   };
   const time: SchemaNode[] =
     opts.timestamp !== undefined
-      ? [{ type: 'we-timestamp', props: { value: opts.timestamp, relative: true, color: 'text-muted' } }]
+      ? [
+          {
+            type: 'we-timestamp',
+            props: {
+              value: opts.timestamp,
+              relative: true,
+              color: 'text-muted',
+              ...(opts.compact && { fontSize: '200' }),
+            },
+          },
+        ]
       : [];
 
   return {
