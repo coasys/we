@@ -33,7 +33,13 @@ function aggregateFor(type: SignalTypeData): SignalAggregate {
   return type.aggregate;
 }
 
+/** The count's type size for each control size — one step behind the glyph, as a caption is. */
+const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '100', sm: '200', md: '' };
+
 export function SignalControl(props: SignalControlProps) {
+  const size = () => props.size ?? 'md';
+  /** The gap between the glyph and its count, closed up as the control shrinks. */
+  const gap = () => (size() === 'md' ? '300' : '200');
   const [previewValue, setPreviewValue] = createSignal<number | null>(null);
   /** Draft value while the slider thumb is being dragged — not persisted until release */
   const [sliderDraft, setSliderDraft] = createSignal<number | null>(null);
@@ -92,33 +98,36 @@ export function SignalControl(props: SignalControlProps) {
       <Switch>
         {/* Toggle */}
         <Match when={props.signalType.mode === 'toggle'}>
-          <Row class="signal-control__toggle" ay="center" gap="300">
+          <Row class="signal-control__toggle" ay="center" gap={gap()}>
             <we-button
               variant={value() ? 'primary' : 'ghost'}
+              size={size()}
               square
               disabled={isDisabled()}
               onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
             >
               <we-icon name={props.signalType.icon} />
             </we-button>
-            <we-number class="signal-control__count" value={aggregate()} shorten />
+            <we-number class="signal-control__count" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
           </Row>
         </Match>
 
         {/* Vote */}
         <Match when={props.signalType.mode === 'vote'}>
-          <Row class="signal-control__vote" ay="center" gap="300">
+          <Row class="signal-control__vote" ay="center" gap={gap()}>
             <we-button
               variant={value() !== null && value()! > 0 ? 'primary' : 'ghost'}
+              size={size()}
               square
               disabled={isDisabled()}
               onClick={() => signal(value() !== null && value()! > 0 ? 0 : 1)}
             >
               <we-icon name={props.signalType.icon} />
             </we-button>
-            <we-number class="signal-control__count" value={aggregate()} shorten />
+            <we-number class="signal-control__count" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             <we-button
               variant={value() !== null && value()! < 0 ? 'primary' : 'ghost'}
+              size={size()}
               square
               disabled={isDisabled()}
               onClick={() => signal(value() !== null && value()! < 0 ? 0 : -1)}
@@ -132,7 +141,7 @@ export function SignalControl(props: SignalControlProps) {
         <Match when={props.signalType.mode === 'rating'}>
           <Row class="signal-control__rating" ay="center" gap="400">
             {/* Community mean */}
-            <we-number class="signal-control__agg" value={aggregate()} shorten />
+            <we-number class="signal-control__agg" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             {/* Icon row: one icon per integer step between rangeMin and rangeMax */}
             <Row class="signal-control__rating-icons" ay="center" gap="100">
               <For
@@ -162,13 +171,13 @@ export function SignalControl(props: SignalControlProps) {
                       onClick={isDisabled() ? undefined : handleClick}
                     >
                       {/* Background (empty) icon — muted colour via CSS */}
-                      <we-icon name={props.signalType.icon} size="sm" />
+                      <we-icon name={props.signalType.icon} size={size() === 'md' ? 'sm' : 'xs'} />
                       {/* Foreground (filled) icon — primary colour via CSS, clipped to fraction */}
                       <span
                         class="signal-icon-stack__fill"
                         style={{ 'clip-path': `inset(0 ${(1 - fraction()) * 100}% 0 0)` }}
                       >
-                        <we-icon name={props.signalType.icon} size="sm" />
+                        <we-icon name={props.signalType.icon} size={size() === 'md' ? 'sm' : 'xs'} />
                       </span>
                     </span>
                   );
@@ -190,9 +199,9 @@ export function SignalControl(props: SignalControlProps) {
 
         {/* ── slider ───────────────────────────────────────────────────────── */}
         <Match when={props.signalType.mode === 'slider'}>
-          <Row class="signal-control__slider" ay="center" gap="300">
+          <Row class="signal-control__slider" ay="center" gap={gap()}>
             {/* Community mean shown on the left */}
-            <we-number class="signal-control__agg" value={aggregate()} shorten />
+            <we-number class="signal-control__agg" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             <we-icon name={props.signalType.icon} />
             <we-slider
               min={props.signalType.rangeMin}

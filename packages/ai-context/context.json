@@ -3077,6 +3077,11 @@
           "optional": false
         },
         {
+          "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\"",
+          "optional": true
+        },
+        {
           "name": "signals",
           "type": "SignalData[]",
           "optional": true

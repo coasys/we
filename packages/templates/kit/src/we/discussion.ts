@@ -98,26 +98,35 @@ function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
       weight it competes with the words it introduces. The name takes `text-muted` from the
       transcript's speaker line, which is the other place in WE where a name heads a line of
       conversation rather than a piece of content.
-
-      Edit and delete sit together at the right end, on the line with the face, rather than beside
-      "Reply" below — the pair there would read as two ways of answering. One gate over both: they
-      are the same permission, and it is yours alone. That is narrower than the rule `EdgeDetail`
-      applies to a drawn connection, where anybody may retract a claim the community's records carry
-      and the retraction being authored is what holds it accountable. A reply is not a claim about
-      the records; it is somebody's sentence, and a neighbourhood being writable by every member is a
-      fact about the protocol rather than an invitation to rewrite each other's speech.
     */
     {
       /*
         The byline and the controls on one line, in a row this fragment owns.
 
         Rather than passing them as the byline's `children`, which would need that fragment's row to
-        be full width for an auto margin to reach the edge — and it is used at seventeen other call
-        sites, several of them inside rows of their own, where growing it would push a sibling. A
-        caller that wants the edge holds the line itself; the byline stays as wide as its words.
+        be full width for them to sit anywhere but beside the time — and it is used at seventeen
+        other call sites, several of them inside rows of their own, where growing it would push a
+        sibling. A caller that wants the line holds it itself.
+
+        The row knows whether the pointer is on it, which is what lets the controls keep out of the
+        way until they are wanted. Held here rather than by the buttons, and that is the whole point:
+        `hoverProps` answers for the element it is on, so an affordance that appeared only once you
+        were already on it could not be found. The transcript's pencil is the same shape, and this
+        follows it — including the part that is easy to drop, `focusProps`, without which tabbing
+        moves focus onto something invisible.
+
+        Per reply: `$localState` on a node inside `$each` is created per row, so two replies cannot
+        disagree about which one the pointer is on.
       */
       type: 'Row',
-      props: { ay: 'center', gap: '300', width: '100%' },
+      props: {
+        ay: 'center',
+        gap: '200',
+        width: '100%',
+        onMouseEnter: { $setLocal: 'pointerOnReply', value: true },
+        onMouseLeave: { $setLocal: 'pointerOnReply', value: false },
+      },
+      $localState: { pointerOnReply: { type: 'boolean', initial: false } },
       children: [
         agentByline({
           did: { $: `${as}.author` },
@@ -125,15 +134,34 @@ function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
           compact: true,
           nameColor: 'text-muted',
         }),
+        /*
+          Your own words, and what you may do to them — beside the byline, where the sentence they
+          act on is.
+
+          One gate over both: they are the same permission and it is yours alone. That is narrower
+          than the rule `EdgeDetail` applies to a drawn connection, where anybody may retract a claim
+          the community's records carry and the retraction being authored is what holds it
+          accountable. A reply is not a claim about the records; it is somebody's sentence, and a
+          neighbourhood being writable by every member is a fact about the protocol rather than an
+          invitation to rewrite each other's speech.
+
+          Faded rather than unmounted, so the row does not change width as the pointer crosses it and
+          the buttons keep their place in the tab order.
+        */
         {
           type: '$if',
           props: {
             condition: { $: `${as}.author == me.did` },
             then: {
-              // The auto margin belongs to the pair, not to either button: on the row rather than on
-              // a `we-tooltip`, whose host is not a box a margin can push.
               type: 'Row',
-              props: { ml: 'auto', gap: '100', ay: 'center', flexShrink: '0' },
+              props: {
+                gap: '100',
+                ay: 'center',
+                flexShrink: '0',
+                opacity: { $: 'local.pointerOnReply ? 1 : 0' },
+                focusProps: { opacity: 1 },
+                transition: 'opacity 200 ease-in-out',
+              },
               children: [
                 {
                   type: 'we-tooltip',
@@ -204,7 +232,7 @@ function replyBody(as: string, opts: DiscussionSectionOptions): SchemaNode[] {
           subscription the section already hoists, and each reply's signals from the `include` the
           thread's own query already carries.
         */
-        signalsSection({ record: as, as: `${as}Sig`, inline: true }),
+        signalsSection({ record: as, as: `${as}Sig`, inline: true, size: 'xs' }),
         // Whether this reply may be answered. Unconditional where the caller named no rule, rather
         // than gated on a literal `true`: a bare boolean in an expression is a *name* to the parser,
         // and the node this would wrap is cheaper to leave out than to guard.

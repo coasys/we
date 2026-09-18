@@ -351,6 +351,27 @@ describe('contracts call sites depend on', () => {
     expect(conditions.filter((c) => c.includes('row.signals'))).toEqual([]);
   });
 
+  it('a reply keeps its controls out of the way until the pointer is on the row', () => {
+    /*
+      The transcript's pencil pattern: the ROW holds whether the pointer is on it, because
+      `hoverProps` answers for the element it is on and an affordance that appears only once you are
+      already over it cannot be found. Faded rather than unmounted, so the row does not change width
+      as the pointer crosses it — and `focusProps`, without which tabbing lands on something
+      invisible.
+    */
+    let controls: Record<string, unknown> | undefined;
+    walk(weDomain.discussionSection, (n) => {
+      const props = (n.props ?? {}) as Record<string, unknown>;
+      if (n.type === 'Row' && (props.opacity as { $?: string } | undefined)?.$?.includes('pointerOnReply')) {
+        controls = props;
+      }
+    });
+    expect(controls?.opacity).toEqual({ $: 'local.pointerOnReply ? 1 : 0' });
+    expect(controls?.focusProps).toEqual({ opacity: 1 });
+    // Left-aligned: the pair sits after the time rather than at the far edge.
+    expect(controls?.ml).toBeUndefined();
+  });
+
   it('a compact byline drops the face, the name and the time a step — and only those', () => {
     // A reply's byline sits above two lines of text and under another reply; at a post's weight it
     // competes with the words it introduces. The row stays as wide as its words: seventeen other
@@ -361,7 +382,11 @@ describe('contracts call sites depend on', () => {
     });
     expect(props.get('we-avatar')?.size).toBe('xs');
     expect(props.get('we-text')?.fontSize).toBe('200');
+    // A name shouting over the sentence under it, once per reply, is what the weight would be here.
+    expect(props.get('we-text')?.fontWeight).toBeUndefined();
     expect(props.get('we-timestamp')?.fontSize).toBe('200');
+    expect(props.get('we-timestamp')?.relativeStyle).toBe('narrow');
+    expect(props.get('Row')?.gap).toBe('200');
     expect(props.get('Row')?.width).toBeUndefined();
     // And an ordinary byline is untouched.
     const plain = new Map<string, Record<string, unknown>>();
@@ -369,7 +394,9 @@ describe('contracts call sites depend on', () => {
       if (typeof n.type === 'string') plain.set(n.type, (n.props ?? {}) as Record<string, unknown>);
     });
     expect(plain.get('we-avatar')?.size).toBe('sm');
+    expect(plain.get('we-text')?.fontWeight).toBe('semibold');
     expect(plain.get('we-text')?.fontSize).toBeUndefined();
+    expect(plain.get('we-timestamp')?.relativeStyle).toBeUndefined();
   });
 
   it('a reply offers every reaction the community has, and Reply after them', () => {

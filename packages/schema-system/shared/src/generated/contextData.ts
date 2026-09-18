@@ -1092,6 +1092,7 @@ export const contextData: ContextData = {
       name: 'SignalControl',
       props: [
         { name: 'signalType', type: 'SignalTypeData', optional: false },
+        { name: 'size', type: '"xs" | "sm" | "md"', optional: true },
         { name: 'signals', type: 'SignalData[]', optional: true },
         { name: 'myDid', type: 'string', optional: true },
         { name: 'onSignal', type: '((value: number) => void)', optional: true },

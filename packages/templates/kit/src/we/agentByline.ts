@@ -59,8 +59,12 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
   const name: SchemaNode = {
     type: 'we-text',
     props: {
-      fontWeight: 'semibold',
-      ...(opts.compact && { fontSize: '200' }),
+      /*
+        Bold everywhere but compact. A byline over a post is a heading for what follows and earns
+        the weight; in a thread the same treatment makes every name shout over the sentence under
+        it, and there is one per reply.
+      */
+      ...(opts.compact ? { fontSize: '200' } : { fontWeight: 'semibold' }),
       ...(opts.nameColor && { color: opts.nameColor }),
     },
     children: [{ $: `${as}.name` }],
@@ -102,7 +106,9 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
           }
         : {
             type: 'Row',
-            props: { ay: 'center', gap: '300' },
+            // Closer together when compact: at `300` the face, the name and the time read as three
+            // things on a line rather than one byline.
+            props: { ay: 'center', gap: opts.compact ? '200' : '300' },
             children: [avatar, name, ...time, ...(opts.children ?? [])],
           },
     ],

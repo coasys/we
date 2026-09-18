@@ -33,6 +33,15 @@ export interface SignalData {
 export interface SignalControlProps {
   signalType: SignalTypeData;
   /**
+   * How big the control is drawn, on `we-button`'s own scale. Defaults to `md`.
+   *
+   * A reaction is drawn at the weight of the thing it is about. On a record it is a control in its
+   * own right; in a thread it sits under a reply beside "Reply", where a control the size of the
+   * reply's own byline reads as the loudest thing in the conversation. The button carries the glyph
+   * (`we-button` sizes a nested icon from its own size) and the count follows it down.
+   */
+  size?: 'xs' | 'sm' | 'md';
+  /**
    * All signals attached to the parent entity for this signalType.
    * SignalControl computes myValue and aggregate internally from this array.
    */

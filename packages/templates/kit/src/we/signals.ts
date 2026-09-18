@@ -62,6 +62,8 @@ export interface SignalsSectionOptions {
    * whatever comes next to the far edge, which is the one place it must not go.
    */
   inline?: boolean;
+  /** How big each control is drawn — `SignalControl`'s own scale. Defaults to `md`. */
+  size?: 'xs' | 'sm' | 'md';
   /**
    * What to draw where the community has defined no reactions at all. Omit for nothing.
    *
@@ -104,7 +106,7 @@ export function signalsSection(opts: SignalsSectionOptions): SchemaNode {
         */
         type: 'Row',
         props: {
-          gap: '400',
+          gap: opts.size === 'xs' ? '300' : '400',
           ay: 'center',
           wrap: true,
           ...(opts.inline ? {} : { width: '100%', minHeight: '40px' }),
@@ -117,6 +119,7 @@ export function signalsSection(opts: SignalsSectionOptions): SchemaNode {
               {
                 type: 'SignalControl',
                 props: {
+                  ...(opts.size && { size: opts.size }),
                   signalType: { $: as },
                   signals: { $: `filter(${opts.record}.signals, ${MINE_AND_UNMUTED(as)})` },
                   myDid: { $: 'me.did' },

@@ -1472,7 +1472,7 @@ when `relative` is enabled.
 - Select (DesignSystemElement)
   Props: options: SelectOption[], value?: string, placeholder?: string, searchable?: boolean, label?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - SignalControl
-  Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
+  Props: signalType: SignalTypeData, size?: "xs" | "sm" | "md", signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - ToastContainer
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
