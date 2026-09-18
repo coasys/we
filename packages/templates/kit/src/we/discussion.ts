@@ -50,7 +50,7 @@
 import { composerModal, confirmModal, emptyNote } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { commentThread } from '../lists/commentThread.ts';
+import { commentThread, foldToggle } from '../lists/commentThread.ts';
 import { agentByline } from './agentByline.ts';
 import { signalsSection } from './signals.ts';
 
@@ -117,7 +117,17 @@ function replyButton(as: string): SchemaNode {
  * composition may hold. The cost is that a click ending a text selection also toggles the row, which
  * is worth knowing and cheaper than the alternatives.
  */
-function replyBody(as: string, collapsed: string, opts: DiscussionSectionOptions): SchemaNode[] {
+function replyBody(
+  as: string,
+  collapsed: string,
+  opts: DiscussionSectionOptions,
+  /**
+   * Whether this reply may be folded. False for the reply the thread has been re-rooted at: it is
+   * the thing being continued, so folding it would leave the panel showing a caret and nothing else
+   * — and its branch is the thread below, whose folded ids live in a scope this copy is outside of.
+   */
+  foldable = true,
+): SchemaNode[] {
   const fractal = opts.fractal;
   /** The controls this reply shows: while the pointer is on it, or while it is the open one. */
   const roused = `local.pointerOnReply || local.${OPEN} == ${as}.id`;
@@ -143,7 +153,11 @@ function replyBody(as: string, collapsed: string, opts: DiscussionSectionOptions
         onMouseEnter: { $setLocal: 'pointerOnReply', value: true },
         onMouseLeave: { $setLocal: 'pointerOnReply', value: false },
       },
-      $localState: { pointerOnReply: { type: 'boolean', initial: false } },
+      $localState: {
+        pointerOnReply: { type: 'boolean', initial: false },
+        // Set by a control in the byline, read and cleared by the row it sits in — see that row.
+        pressedControl: { type: 'boolean', initial: false },
+      },
       children: [
         /*
           Who, when — and, for your own words, what you may do to them.
@@ -154,9 +168,78 @@ function replyBody(as: string, collapsed: string, opts: DiscussionSectionOptions
           conversation rather than a piece of content.
         */
         {
+          /*
+            The byline row, and a press on it opens the comment.
+
+            Pressing the words does too, so the whole comment answers the same gesture — a reader who
+            aims at the name rather than the sentence means the same thing by it. What must not
+            answer it is a control *inside* the row: a schema cannot stop an event propagating, so
+            the button marks the press as its own and the row reads the mark, which is the shape the
+            kanban route uses to tell a press on a card from a press on the page.
+          */
           type: 'Row',
-          props: { ay: 'center', gap: '200', width: '100%' },
+          props: {
+            ay: 'center',
+            gap: '200',
+            width: '100%',
+            cursor: 'pointer',
+            onClick: {
+              $if: {
+                condition: { $: 'local.pressedControl' },
+                then: { $setLocal: 'pressedControl', value: false },
+                else: { $setLocal: OPEN, value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` } },
+              },
+            },
+          },
           children: [
+            /*
+              The caret, at the head of the line and before the face.
+
+              Here rather than under the byline, which is where the rail starts: a caret on a row of
+              its own is a whole row of chrome for one glyph, and on a folded branch it was the only
+              row left. A reply with nothing under it keeps the width and draws no caret, so every
+              byline in a thread starts at the same place.
+            */
+            /*
+              Left out entirely where it cannot fold, rather than gated on a condition that is always
+              false: the validator walks both branches of a `$if`, and rightly — a node referencing a
+              local nothing declares is a mistake whether or not it draws. The slot stays, so a byline
+              with no caret starts where its siblings do.
+            */
+            ...(foldable
+              ? [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `count(${as}.comments)` },
+                      else: { type: 'Column', props: { width: '24px', flexShrink: '0' } },
+                      then: {
+                        type: 'we-tooltip',
+                        props: { content: { $: `(${collapsed}) ? 'Show this branch' : 'Hide this branch'` } },
+                        children: [
+                          {
+                            type: 'we-button',
+                            props: {
+                              variant: 'bare',
+                              size: 'xs',
+                              square: true,
+                              color: 'text-faint',
+                              label: 'Fold this branch',
+                              onClick: [{ $setLocal: 'pressedControl', value: true }, foldToggle(as)],
+                            },
+                            children: [
+                              {
+                                type: 'we-icon',
+                                props: { name: { $: `(${collapsed}) ? 'caret-right' : 'caret-down'` } },
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  } as SchemaNode,
+                ]
+              : [{ type: 'Column', props: { width: '24px', flexShrink: '0' } } as SchemaNode]),
             agentByline({
               did: { $: `${as}.author` },
               timestamp: { $: `${as}.createdAt` },
@@ -222,8 +305,15 @@ function replyBody(as: string, collapsed: string, opts: DiscussionSectionOptions
                             variant: 'ghost',
                             size: 'sm',
                             square: true,
+                            // The transcript's pencil ink: a control on a line of conversation is a
+                            // footnote until it is wanted, and it brightens under the pointer.
+                            color: 'text-faint',
+                            hoverProps: { color: 'text' },
                             label: 'Edit this reply',
-                            onClick: { $setLocal: EDITING, value: { $: `${as}.id` } },
+                            onClick: [
+                              { $setLocal: 'pressedControl', value: true },
+                              { $setLocal: EDITING, value: { $: `${as}.id` } },
+                            ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
                         },
@@ -240,8 +330,21 @@ function replyBody(as: string, collapsed: string, opts: DiscussionSectionOptions
                             size: 'sm',
                             square: true,
                             color: 'danger-text',
+                            /*
+                              Red, and redder — not white.
+
+                              `ghost`'s hover sets the foreground back to `text`, which turned the one
+                              control that should look dangerous into the same grey as the rest at
+                              the exact moment somebody was about to press it. Stating the colour in
+                              `hoverProps` keeps it, and the tinted fill is what acknowledges the
+                              pointer instead.
+                            */
+                            hoverProps: { color: 'danger-text', bg: 'danger-surface' },
                             label: 'Delete this reply',
-                            onClick: { $setLocal: DELETING, value: { $: `${as}.id` } },
+                            onClick: [
+                              { $setLocal: 'pressedControl', value: true },
+                              { $setLocal: DELETING, value: { $: `${as}.id` } },
+                            ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
                         },
@@ -440,7 +543,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                     // a rule down its left edge, which is what the indent says one level in.
                     type: 'Column',
                     props: { gap: '100', width: '100%', pl: '400', borderLeft: '2px solid border-strong' },
-                    children: replyBody('focused', 'false', opts),
+                    children: replyBody('focused', 'false', opts, false),
                   },
                 ],
               },

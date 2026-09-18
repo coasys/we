@@ -108,6 +108,23 @@ defineFunction({
   impl: ([items]) => asList(items).length,
 });
 
+/*
+  `sum` exists for the same reason `count` does, one question along: "how many" has an answer in this
+  library and "how much" did not, so anything totalling a list — a thread's replies across its
+  levels, votes, a column of numbers a model wrote — had to be a host function or a number the
+  template could not say. It is deliberately the only arithmetic over a list: an `average` is
+  `sum(xs) / count(xs)`, and a `reduce` would be the grammar growing, which is the thing this layer
+  refuses.
+*/
+defineFunction({
+  name: 'sum',
+  category: 'list',
+  params: ['items'],
+  doc: 'The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.',
+  example: 'sum(local.replies.map(r, count(r.comments)))',
+  impl: ([items]) => asList(items).reduce((total: number, value) => total + asNumber(value), 0),
+});
+
 defineFunction({
   name: 'first',
   category: 'list',

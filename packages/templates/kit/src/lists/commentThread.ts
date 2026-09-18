@@ -24,7 +24,7 @@
  */
 import type { AnchorId } from '@we/schema-kit';
 import { emptyNote } from '@we/schema-kit';
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 export interface CommentThreadOptions {
   /** Id of the node being replied to — a post, a block, or a reply one level up. */
@@ -89,6 +89,19 @@ export interface CommentThreadOptions {
 const COLLAPSED = 'collapsedReplies';
 
 /**
+ * Fold or unfold one reply — the handler behind a caret, wherever the caller draws one.
+ *
+ * Exported because the caret does not belong to this fragment. It reads best at the head of the
+ * byline, before the face, which is the caller's row: a caret on a line of its own under the byline
+ * is a whole row of chrome for one glyph, and on a folded branch it is the only row left. The state
+ * stays here — an id in a set on the outermost thread — so what the caller gets is the press and the
+ * expression that answers it, never the bookkeeping.
+ */
+export function foldToggle(as: string): SchemaProp {
+  return { $toggleLocalIn: COLLAPSED, value: { $: `${as}.id` } };
+}
+
+/**
  * Hide a folded branch without tearing it down.
  *
  * `$animate` rather than `$if`, and the difference is a round trip: `$if` unmounts, which disposes
@@ -123,40 +136,22 @@ const RAIL_WIDTH = '24px';
 const RAIL_GAP = '200';
 
 /**
- * The caret and the rail — under the author's face, above their replies.
+ * The rail — under the caret, beside the replies it gathers.
  *
- * Below rather than beside, which is the convention and the clearer of the two: a line descending
- * from somebody's face says *these are answers to them*, where a line to the left of the whole
- * comment only says how deep you are. It also stops a leaf paying for a gutter it has no use for —
- * only a reply that has replies draws one, so an ordinary comment sits at the full width.
+ * A line descending from the head of a comment says *these are answers to it*, where a line to the
+ * left of the whole comment only says how deep you are. It falls under the caret rather than the
+ * face because the caret is what the line *is*: press either and the branch folds. A reply's own
+ * caret then sits under its parent's face, which is the hanging indent this reads as.
  *
- * The rail stands down while the branch is folded: there is nothing under it to trace, and the caret
- * alone is what a folded branch needs. The caret stays, since it is the way back.
+ * Only for a reply that has replies, so an ordinary comment sits at the full width of the thread
+ * rather than one notch in from it. It stands down while the branch is folded — there is nothing
+ * under it to trace, and the caret in the byline is the way back.
  */
-function branchRail(as: string, collapsed: string): SchemaNode {
-  const toggle = { $toggleLocalIn: COLLAPSED, value: { $: `${as}.id` } };
+function branchRail(as: string): SchemaNode {
   return {
     type: 'Column',
-    props: { width: RAIL_WIDTH, flexShrink: '0', ax: 'center', gap: '100' },
+    props: { width: RAIL_WIDTH, flexShrink: '0', ax: 'center' },
     children: [
-      {
-        type: 'we-tooltip',
-        props: { content: { $: `(${collapsed}) ? 'Show this branch' : 'Hide this branch'` } },
-        children: [
-          {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              size: 'xs',
-              square: true,
-              color: 'text-faint',
-              label: 'Fold this branch',
-              onClick: toggle,
-            },
-            children: [{ type: 'we-icon', props: { name: { $: `(${collapsed}) ? 'caret-right' : 'caret-down'` } } }],
-          },
-        ],
-      },
       /*
         The line, as a control.
 
@@ -166,23 +161,17 @@ function branchRail(as: string, collapsed: string): SchemaNode {
         hairline.
       */
       {
-        type: '$if',
+        type: 'we-button',
         props: {
-          condition: { $: `!(${collapsed})` },
-          then: {
-            type: 'we-button',
-            props: {
-              variant: 'bare',
-              width: '100%',
-              flex: '1',
-              ax: 'center',
-              label: 'Hide this branch',
-              hoverProps: { bg: 'surface-hover' },
-              onClick: toggle,
-            },
-            children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
-          },
+          variant: 'bare',
+          width: '100%',
+          flex: '1',
+          ax: 'center',
+          label: 'Hide this branch',
+          hoverProps: { bg: 'surface-hover' },
+          onClick: foldToggle(as),
         },
+        children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
       },
     ],
   };
@@ -248,18 +237,16 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
             type: '$if',
             props: {
               condition: { $: `count(${as}.comments)` },
-              then: {
+              // The rail and what it gathers fold together: a line with nothing beside it is a mark
+              // on empty space, and the caret in the byline is what brings both back.
+              then: fold(opts, collapsed, {
                 type: 'Row',
                 props: { width: '100%', gap: RAIL_GAP, ay: 'stretch' },
                 children: [
-                  branchRail(as, collapsed),
-                  {
-                    type: 'Column',
-                    props: { flex: '1', minWidth: '0' },
-                    children: [fold(opts, collapsed, subtree)],
-                  },
+                  branchRail(as),
+                  { type: 'Column', props: { flex: '1', minWidth: '0' }, children: [subtree] },
                 ],
-              },
+              }),
             },
           },
         ],

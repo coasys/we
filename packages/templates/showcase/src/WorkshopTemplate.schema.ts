@@ -1827,19 +1827,29 @@ const reactionsSection: SchemaNode = {
 };
 
 /**
- * The thread, and the way into it.
+ * The whole conversation, counted — not the top of it.
  *
- * `count(row.comments)` beside the caption without an `include`: `comments` arrives as the relation's
- * own ids on any record, so the heading can say how many replies there are before a single one has
- * been fetched — which is what keeps the count honest while the thread below it is still loading.
+ * `count(row.comments)` is what the record itself can answer, and it is the first level only: a
+ * thread of one reply carrying nine answers read "1". A caption over a conversation should count the
+ * conversation, so this adds the levels the panel actually draws.
+ *
+ * Three, and no more, because there is no fourth to be had: the query language cannot walk a subtree
+ * — each level is another hop — so a true descendant total is not expressible at any price. Level
+ * one comes off the record, level two off each reply's own `comments` ids (which arrive with the
+ * row, un-included), and level three off the grandchildren the `include` hydrates. Past that the
+ * thread re-roots, and the count of what is down there belongs to the branch you follow.
  */
+const REPLY_TOTAL = [
+  'count(row.comments)',
+  ' + sum(local.cardReplies.map(r, count(r.comments)))',
+  ' + sum(local.cardReplies.map(r, sum(r.comments.map(c, count(c.comments)))))',
+].join('');
+
+/** The thread, and the way into it. */
 const discussion: SchemaNode = {
   type: 'Column',
   props: { gap: '200', pt: '200', borderTop: '1px solid border', width: '100%' },
-  children: [
-    sectionCaption('Discussion', 'count(row.comments)'),
-    discussionSection({ record: 'row', fractal: FRACTAL_THREADS }),
-  ],
+  children: [sectionCaption('Discussion', REPLY_TOTAL), discussionSection({ record: 'row', fractal: FRACTAL_THREADS })],
 };
 
 /**
@@ -1988,6 +1998,21 @@ const inspectorPanel: SchemaNode = {
       it up again on every click to save nothing.
     */
     signalTypes: { entity: 'SignalType', subscribe: true },
+    /*
+      The selected record's replies, one level hydrated — what the Discussion caption counts past its
+      own first level. See `REPLY_TOTAL`.
+
+      A second subscription over rows the thread below is also reading, which is the price of a
+      caption that counts more than the record can answer for itself: the thread's own queries live
+      inside the fragment, where a heading above it cannot see them. `include` on `comments` rather
+      than a third query, since a hydrated grandchild carries its own ids and that is the third level.
+    */
+    cardReplies: {
+      entity: 'CollectionBlock',
+      scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: { $: CARD_ID } },
+      include: { comments: true },
+      when: { $: CARD_ID },
+    },
   },
   children: [
     panelHeader({
