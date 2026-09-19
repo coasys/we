@@ -409,7 +409,10 @@ describe('contracts call sites depend on', () => {
       const opacity = (props.opacity as { $?: string } | undefined)?.$;
       // The controls' own fade, not the byline's: a folded stub fades too, and it is the row the
       // walk meets first. The first level's, since the walk reaches reply2 and reply3 after it.
-      const isControls = opacity?.includes('pointerOnReply') && opacity.includes('reply.id');
+      // The controls' own fade: roused by the pointer OR by this being the open comment. The byline
+      // reads `pointerOnReply` too — a folded stub fades and comes back under the pointer — so the
+      // open-comment half is what tells them apart.
+      const isControls = opacity?.includes('pointerOnReply') && opacity.includes('discussionOpen == reply.id');
       if (n.type === 'Row' && isControls && !controls) controls = props;
     });
     // Roused by either: the pointer anywhere on the comment, or the comment being the open one —

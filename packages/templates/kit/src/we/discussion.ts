@@ -207,9 +207,16 @@ function replyBody(
               Folded, the stub steps back — it stands for something put away rather than being the
               thing itself. Faded rather than greyed, and back to full strength under the pointer,
               so it reads as closed rather than as unavailable.
+
+              The pointer is read from the local this comment already keeps, NOT from `hoverProps`.
+              A state bag moves every one of an element's layout declarations out of its inline
+              style and into `--we-ds-*` custom properties for the stylesheet to resolve — which is
+              sound, and is how hover works everywhere — but it is a different code path for the
+              most crowded row in the app, and this row lost its layout to it: the name vanished and
+              the controls came to rest on top of the face. An expression over state already being
+              tracked costs nothing and leaves the row's own styles alone.
             */
-            opacity: { $: `(${collapsed}) ? 0.65 : 1` },
-            hoverProps: { opacity: 1 },
+            opacity: { $: `(${collapsed}) && !local.pointerOnReply ? 0.65 : 1` },
             onClick: {
               $if: {
                 condition: { $: 'local.pressedControl' },
