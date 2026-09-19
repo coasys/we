@@ -442,7 +442,7 @@ export type QueryToken = {
        * together rather than a level at a time. Flat and breadth-first, so include the inverse
        * relation to rebuild the shape.
        */
-      levels?: number[];
+      levels?: Array<number | Record<string, unknown>>;
     };
     subscribe?: boolean;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */

@@ -111,6 +111,15 @@ export const descendantCount = (as: string): string => `${as}.$descendants ?? co
 /** Which replies are folded, by id — declared on the outermost thread. See `collapsible`. */
 const COLLAPSED = 'collapsedReplies';
 
+/**
+ * How many top-level replies to fetch — a local, so "show more" raises it.
+ *
+ * Only the top level grows. A deeper one is reached by opening the branch it is in, which re-roots
+ * the thread there and gives it the top level's budget; adding a second way to widen every depth in
+ * place would be two mechanisms for one want.
+ */
+const TOP_LIMIT = 'topReplies';
+
 /** The one query a thread makes, and the local its rows arrive in. */
 const WHOLE_THREAD = 'threadRows';
 
@@ -152,6 +161,55 @@ const THREAD_INCLUDE = {
 } as const;
 
 /**
+ * What a level says when it came back full.
+ *
+ * Silent truncation is the failure worth avoiding: a thread capped at ten top-level replies looked
+ * exactly like a thread with ten. There is no count of "how many were left" to show — asking for
+ * one is another query — so this says that there are more and offers the way to them rather than
+ * naming a number it would have to invent.
+ *
+ * The top level grows in place, because it is the level somebody is reading. A deeper one offers
+ * the branch instead: re-rooting there gives it the top level's budget, which is both more room and
+ * a better place to read it from. Where the caller has given no way to re-root, a deeper level says
+ * nothing — a dead-end note is worse than none.
+ */
+function truncationNote(
+  opts: CommentThreadOptions,
+  level: number,
+  itemsExpr: string,
+  levelBreadth: string,
+): SchemaNode {
+  const full = `count(${itemsExpr}) >= ${levelBreadth}`;
+  if (level > 1) {
+    const parentAs = level === 2 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level - 1}`;
+    return opts.more
+      ? { type: '$if', props: { condition: { $: full }, then: opts.more(parentAs) } }
+      : { type: '$if', props: { condition: { $: 'false' } } };
+  }
+  return {
+    type: '$if',
+    props: {
+      condition: { $: full },
+      then: {
+        type: 'we-button',
+        props: {
+          variant: 'ghost',
+          size: 'sm',
+          ax: 'start',
+          // A page more of whatever the caller asked for at the top, so the step matches the shape
+          // of the thread rather than a number chosen here.
+          onClick: {
+            $setLocal: TOP_LIMIT,
+            value: { $: `local.${TOP_LIMIT} + ${(opts.perLevel ?? DEFAULT_PER_LEVEL)[0]}` },
+          },
+        },
+        children: ['Show more replies'],
+      },
+    },
+  };
+}
+
+/**
  * The thread's one subscription.
  *
  * Every shape this has taken is visible in what it is not. A query per *reply* cost a subscription
@@ -166,7 +224,10 @@ const THREAD_INCLUDE = {
  */
 function threadQueries(opts: CommentThreadOptions, depth: number): Record<string, QueryStateField> {
   // Trimmed to the drawn depth: a level nobody renders is a level nobody should pay for.
-  const levels = (opts.perLevel ?? DEFAULT_PER_LEVEL).slice(0, depth);
+  const configured = (opts.perLevel ?? DEFAULT_PER_LEVEL).slice(0, depth);
+  // The top level's breadth is the local, so pressing "show more" re-asks with a bigger number
+  // instead of adding a second query beside the first.
+  const levels: Array<number | Record<string, unknown>> = [{ $: `local.${TOP_LIMIT}` }, ...configured.slice(1)];
   return {
     [WHOLE_THREAD]: {
       entity: 'CollectionBlock',
@@ -281,6 +342,13 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
   */
   const parent = level === 1 ? anchorExpr(opts.anchorId) : `${asFor(level - 1)}.id`;
   const itemsExpr = `local.${WHOLE_THREAD}.filter(r, r.inReplyTo.id == ${parent})`;
+  /*
+    How many this level was allowed. A level that came back full is a level with more behind it —
+    the honest test available without asking again, and it over-offers only when the count lands
+    exactly on the limit.
+  */
+  const breadth = opts.perLevel ?? DEFAULT_PER_LEVEL;
+  const levelBreadth = level === 1 ? `local.${TOP_LIMIT}` : String(breadth[level - 1] ?? 0);
 
   /** True while this reply is folded. One expression, read by the rail, the fold and the caller. */
   const collapsed = `${as}.id in local.${COLLAPSED}`;
@@ -361,7 +429,14 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     },
     // The folded ids, declared once at the top so a caret three levels down folds a branch the top
     // level is drawing. An inner declaration would shadow it, and each level would fold only itself.
-    ...(opts.collapsible && level === 1 ? { $localState: { [COLLAPSED]: { type: 'array', initial: [] } } } : {}),
+    ...(level === 1
+      ? {
+          $localState: {
+            [TOP_LIMIT]: { type: 'number', initial: (opts.perLevel ?? DEFAULT_PER_LEVEL)[0] },
+            ...(opts.collapsible ? { [COLLAPSED]: { type: 'array', initial: [] } } : {}),
+          },
+        }
+      : {}),
     ...(level === 1 ? { $queries: threadQueries(opts, depth) } : {}),
     children: [
       {
@@ -377,6 +452,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
                 props: { items: { $: itemsExpr }, as },
                 children: [row],
               },
+              truncationNote(opts, level, itemsExpr, levelBreadth),
             ],
           },
           ...(opts.empty && level === 1 && { else: opts.empty }),

@@ -78,3 +78,50 @@ describe('commentThread row selection', () => {
     expect(evaluate(second, { local: { threadRows: rows }, reply: { id: 'c2' } })).toEqual([]);
   });
 });
+
+/**
+ * Silent truncation was the gap: a thread capped at ten top-level replies looked exactly like a
+ * thread with ten in it.
+ */
+describe('commentThread truncation', () => {
+  const thread = commentThread({
+    anchorId: { $: 'row.id' },
+    perLevel: [2, 1],
+    depth: 2,
+    reply: () => [{ type: 'we-text' }],
+  }) as Node;
+
+  /** Every `$if` condition in the tree, so the "level came back full" tests can be found. */
+  function conditions(node: Node): string[] {
+    const out: string[] = [];
+    const walk = (n: Node | undefined): void => {
+      if (!n || typeof n !== 'object') return;
+      const props = n.props as { condition?: { $?: string }; then?: Node; else?: Node } | undefined;
+      if (n.type === '$if' && props?.condition?.$) out.push(props.condition.$);
+      for (const child of n.children ?? []) walk(child);
+      walk(props?.then);
+      walk(props?.else);
+    };
+    walk(node);
+    return out;
+  }
+
+  it('asks the backend for the top level’s breadth as a local, so it can grow', () => {
+    const scope = (thread.$queries as { threadRows: { scope: { levels: unknown[] } } }).threadRows.scope;
+    expect(scope.levels[0]).toEqual({ $: 'local.topReplies' });
+    // The levels below are fixed: a deeper one is widened by opening the branch, not in place.
+    expect(scope.levels[1]).toBe(1);
+  });
+
+  it('offers more only when a level came back full', () => {
+    const full = conditions(thread).filter((c) => c.includes('>='));
+    expect(full.length).toBeGreaterThan(0);
+    // The top level measures against the local it raises, not against the number it started at.
+    expect(full.some((c) => c.includes('local.topReplies'))).toBe(true);
+  });
+
+  it('starts the local at the caller’s own top-level breadth', () => {
+    const state = thread.$localState as Record<string, { initial?: unknown }>;
+    expect(state.topReplies.initial).toBe(2);
+  });
+});
