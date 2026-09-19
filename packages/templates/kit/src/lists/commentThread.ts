@@ -194,7 +194,12 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
   const silent: SchemaNode = { type: '$if', props: { condition: { $: 'false' } } };
   if (!total) return silent;
 
-  const hidden = `${total} - count(${itemsExpr})`;
+  // Parenthesised for the same reason the anchor is: `total` is the caller's expression and may be
+  // anything — `discussionSection` passes a ternary, since the thread can be re-rooted. Spliced in
+  // bare, `a ? b : c - count(…)` parses as `a ? b : (c - count(…))`, so the re-rooted branch yields
+  // the total instead of what is left over, and a thread showing everything it had still offered
+  // more. Interpolating a caller's expression without brackets has now been wrong three times.
+  const hidden = `(${total}) - count(${itemsExpr})`;
   const condition = { $: `${hidden} > 0` };
 
   if (level > 1) {

@@ -172,3 +172,65 @@ describe('resetTopLimit', () => {
     expect(thread.$localState![reset.$setLocal].initial).toBe(4);
   });
 });
+
+/**
+ * `anchorTotal` is the caller's expression and may be any shape — `discussionSection` passes a
+ * ternary, because the thread can be re-rooted onto a reply. Interpolating one without brackets has
+ * been wrong three times now, so this evaluates the emitted arithmetic rather than reading it.
+ */
+describe('commentThread truncation arithmetic', () => {
+  /** The `hidden` expression the top-level offer is built from. */
+  function topOfferCondition(node: Node): string {
+    const found: string[] = [];
+    const walk = (n: Node | undefined): void => {
+      if (!n || typeof n !== 'object') return;
+      const props = n.props as { condition?: { $?: string }; then?: Node; else?: Node } | undefined;
+      if (n.type === '$if' && props?.condition?.$?.includes('> 0')) found.push(props.condition.$);
+      for (const child of n.children ?? []) walk(child);
+      walk(props?.then);
+      walk(props?.else);
+    };
+    walk(node);
+    return found[0];
+  }
+
+  const thread = commentThread({
+    anchorId: { $: 'root ? root : card.id' },
+    anchorTotal: 'root ? count(first(focus).comments) : count(card.comments)',
+    perLevel: [1],
+    depth: 1,
+    reply: () => [{ type: 'we-text' }],
+  }) as Node;
+
+  const rows = [
+    { id: 'x', inReplyTo: { id: 'focused' } },
+    { id: 'y', inReplyTo: { id: 'card-1' } },
+    { id: 'z', inReplyTo: { id: 'card-1' } },
+  ];
+
+  const offers = (roots: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(topOfferCondition(thread)), {
+      root: (name: string) => ({ bound: name in roots, value: roots[name] }),
+      call: (name: string, args: unknown[]) => {
+        const fn = listFunctions().find((f) => f.name === name);
+        return fn ? fn.impl(args, { context: {}, stores: {} }) : undefined;
+      },
+    });
+
+  it('offers nothing when a re-rooted thread is showing everything it has', () => {
+    // One reply under the focused row, and it is drawn: nothing is hidden.
+    const local = { threadRows: rows, topReplies: 1 };
+    expect(offers({ local, root: 'focused', focus: [{ comments: ['x'] }], card: { id: 'card-1' } })).toBe(false);
+  });
+
+  it('offers what is left when a re-rooted thread is showing some of them', () => {
+    const local = { threadRows: rows, topReplies: 1 };
+    expect(offers({ local, root: 'focused', focus: [{ comments: ['x', 'x2'] }], card: { id: 'card-1' } })).toBe(true);
+  });
+
+  it('counts against the record when the thread is not re-rooted', () => {
+    const local = { threadRows: rows, topReplies: 2 };
+    // Two drawn under the card, two it has: nothing hidden.
+    expect(offers({ local, root: '', focus: [], card: { id: 'card-1', comments: ['y', 'z'] } })).toBe(false);
+  });
+});
