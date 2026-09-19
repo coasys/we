@@ -123,8 +123,15 @@ export function SignalControl(props: SignalControlProps) {
               size={size()}
               p="0"
               disabled={isDisabled()}
-              color={value() ? 'accent-text' : 'text-faint'}
-              hoverProps={{ color: value() ? 'accent-text' : 'text-muted' }}
+              /*
+                A scale position rather than a role, which is the exception the guidance allows: the
+                unreacted glyph is a mark on the page rather than a foreground with a meaning, and
+                the faintest text role still read as something to attend to when filled. Reacted is
+                the accent at full strength — `accent-text` is tuned for legible prose, and a 16px
+                glyph wants the saturated step rather than a readable one.
+              */
+              color={value() ? 'primary-500' : 'neutral-400'}
+              hoverProps={{ color: value() ? 'primary-500' : 'neutral-300' }}
               onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
             >
               <we-icon name={props.signalType.icon} weight="fill" />

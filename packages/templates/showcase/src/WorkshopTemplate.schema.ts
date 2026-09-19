@@ -1393,77 +1393,99 @@ const cardConnections: SchemaNode = {
   children: [
     sectionCaption('Connections', 'count(local.connections)'),
     {
+      /*
+        Waiting, then counted — the same gate the thread below uses, and for the same reason: an
+        unanswered query and an empty one are both `count() == 0`, so a section that tests the count
+        alone declares itself empty on its first frame and fills a moment later. The connections
+        arrive after the card does, so that frame is visible.
+      */
       type: '$if',
       props: {
-        condition: { $: 'count(local.connections)' },
+        condition: { $: 'local.connectionsLoaded' },
+        else: {
+          type: 'Column',
+          props: { gap: '200', py: '100' },
+          children: [1, 2].map(() => ({
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [
+              { type: 'we-skeleton', props: { width: '16px', height: '16px', bg: 'control-surface' } },
+              { type: 'we-skeleton', props: { width: '60%', height: '12px', bg: 'control-surface' } },
+            ],
+          })),
+        },
         then: {
-          type: '$each',
-          props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
-          children: [
-            {
-              type: 'Row',
-              props: { gap: '100', ay: 'center', width: '100%' },
+          type: '$if',
+          props: {
+            condition: { $: 'count(local.connections)' },
+            then: {
+              type: '$each',
+              props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
               children: [
-                endButton({
-                  id: 'conn.otherId',
-                  type: 'conn.otherType',
-                  icon: 'conn.icon',
-                  name: 'conn.name',
-                  lead: [
-                    {
-                      type: 'we-icon',
-                      props: {
-                        name: { $: 'conn.arrow' },
-                        size: 'xs',
-                        // The kind's own colour, where the community chose one — the same colour its
-                        // lines are drawn in on the knowledge map.
-                        color: { $: "conn.tint ? conn.tint : 'text-faint'" },
-                      },
-                    },
-                    {
-                      type: 'we-text',
-                      props: {
-                        variant: 'footnote',
-                        flexShrink: '0',
-                        color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
-                      },
-                      children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
-                    },
-                  ],
-                }),
                 {
-                  type: 'we-tooltip',
-                  props: { content: 'Open this connection' },
+                  type: 'Row',
+                  props: { gap: '100', ay: 'center', width: '100%' },
                   children: [
+                    endButton({
+                      id: 'conn.otherId',
+                      type: 'conn.otherType',
+                      icon: 'conn.icon',
+                      name: 'conn.name',
+                      lead: [
+                        {
+                          type: 'we-icon',
+                          props: {
+                            name: { $: 'conn.arrow' },
+                            size: 'xs',
+                            // The kind's own colour, where the community chose one — the same colour its
+                            // lines are drawn in on the knowledge map.
+                            color: { $: "conn.tint ? conn.tint : 'text-faint'" },
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: {
+                            variant: 'footnote',
+                            flexShrink: '0',
+                            color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
+                          },
+                          children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
+                        },
+                      ],
+                    }),
                     {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        size: 'sm',
-                        square: true,
-                        flexShrink: '0',
-                        label: 'Open this connection',
-                        onClick: openRecord('conn.id', 'Relationship'),
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                      type: 'we-tooltip',
+                      props: { content: 'Open this connection' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            square: true,
+                            flexShrink: '0',
+                            label: 'Open this connection',
+                            onClick: openRecord('conn.id', 'Relationship'),
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                        },
+                      ],
                     },
                   ],
                 },
               ],
             },
-          ],
-        },
-        /*
-          Nothing yet — said only once the query has answered, and said as what to do.
+            /*
+          Nothing yet — and said as what to do.
 
           The connect handles appear on a selected card's edges and nowhere else, so the gesture is
           easy to miss; this is the moment somebody is looking at a selected card and wondering.
+
+          No `Loaded` check of its own any more: the gate above only reaches here once the query has
+          answered, where before this was the only thing standing between a card and the claim that
+          it was connected to nothing.
         */
-        else: {
-          type: '$if',
-          props: {
-            condition: { $: 'local.connectionsLoaded' },
-            then: {
+            else: {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
               children: ['Not connected to anything yet. Drag from one of its edges to another card.'],

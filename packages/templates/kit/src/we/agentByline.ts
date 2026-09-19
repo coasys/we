@@ -66,6 +66,19 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
       */
       ...(opts.compact ? { fontSize: '200' } : { fontWeight: 'semibold' }),
       ...(opts.nameColor && { color: opts.nameColor }),
+      /*
+        A name is one word and must stay on one line.
+
+        Typography here defaults to `overflow-wrap: anywhere`, which is right for a URL or a DID and
+        wrong for this: it drops the element's min-content width to a single character, so any row
+        that runs short of space breaks the name one letter per line rather than shortening it. A
+        byline is the most squeezed row there is — a face, a name, a time and a pair of controls, in
+        a panel — so it is where that shows.
+
+        Cut with an ellipsis instead, which is what a name too long for its row should do.
+      */
+      whiteSpace: 'nowrap',
+      truncate: true,
     },
     children: [{ $: `${as}.name` }],
   };
@@ -108,7 +121,13 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
             type: 'Row',
             // Closer together when compact: at `300` the face, the name and the time read as three
             // things on a line rather than one byline.
-            props: { ay: 'center', gap: opts.compact ? '200' : '300' },
+            /*
+              `minWidth: 0` so the name above can actually be cut. A flex item is never asked to be
+              narrower than its content by default, so without this the ellipsis never arrives and
+              the row simply overflows — or, with the wrap default this file now overrides, the name
+              falls apart a letter at a time.
+            */
+            props: { ay: 'center', gap: opts.compact ? '200' : '300', minWidth: '0' },
             children: [avatar, name, ...time, ...(opts.children ?? [])],
           },
     ],
