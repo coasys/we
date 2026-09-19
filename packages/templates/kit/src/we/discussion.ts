@@ -220,8 +220,9 @@ function replyBody(
                   {
                     type: '$if',
                     props: {
-                      condition: { $: `count(${as}.comments)` },
-                      else: { type: 'Column', props: { width: '24px', flexShrink: '0' } },
+                      // Folded only. Open, the caret moves into the gutter below the face, where
+                      // the line it belongs to starts — see the body row.
+                      condition: { $: `(${collapsed}) && count(${as}.comments)` },
                       then: {
                         type: 'we-tooltip',
                         props: { content: { $: `(${collapsed}) ? 'Show this branch' : 'Hide this branch'` } },
@@ -248,7 +249,7 @@ function replyBody(
                     },
                   } as SchemaNode,
                 ]
-              : [{ type: 'Column', props: { width: '24px', flexShrink: '0' } } as SchemaNode]),
+              : []),
             agentByline({
               did: { $: `${as}.author` },
               timestamp: { $: `${as}.createdAt` },
@@ -372,17 +373,69 @@ function replyBody(
           keeps its place rather than being rebuilt, and a fold is a thing you undo.
         */
         {
-          type: '$animate',
-          props: {
-            condition: { $: `!(${collapsed})` },
-            enterTransition: { type: 'reveal', duration: 200 },
-          },
+          /*
+            The comment itself, hung under the face rather than under the caret.
+
+            The gutter is the width of an `xs` avatar and carries the byline's own gap, so the words
+            start exactly where the name above them does — a hanging indent from a person, which is
+            what a comment is. It holds the caret while the branch is open: the caret is the head of
+            the line that runs down past these words and beside the replies, so it belongs at the
+            top of that line rather than beside the face.
+
+            Empty but present for a reply with no branch, because the alignment is about the face
+            above, not about having something to fold.
+          */
+          type: 'Row',
+          props: { width: '100%', gap: '200', ay: 'stretch' },
           children: [
             {
               type: 'Column',
-              props: { width: '100%', gap: '100' },
+              props: { width: '24px', flexShrink: '0', ax: 'center', gap: '100' },
+              children: foldable
+                ? [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `!(${collapsed}) && count(${as}.comments)` },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { content: 'Hide this branch' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'bare',
+                                size: 'xs',
+                                square: true,
+                                color: 'text-faint',
+                                label: 'Fold this branch',
+                                onClick: [{ $setLocal: 'pressedControl', value: true }, foldToggle(as)],
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'caret-down' } }],
+                            },
+                          ],
+                        },
+                      },
+                    } as SchemaNode,
+                  ]
+                : [],
+            },
+            {
+              type: 'Column',
+              props: { flex: '1', minWidth: '0' },
               children: [
-                /*
+                {
+                  type: '$animate',
+                  props: {
+                    condition: { $: `!(${collapsed})` },
+                    enterTransition: { type: 'reveal', duration: 200 },
+                  },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { width: '100%', gap: '100' },
+                      children: [
+                        /*
                   The words, flush with the face above them — and the press that opens the actions.
 
                   `rootClass` rather than a wrapper: `.we-block-content` pads every paragraph on all
@@ -392,35 +445,35 @@ function replyBody(
                   horizontal padding off and quarters the vertical; see `blocks.scss`, where the graph
                   card's equivalent lives beside it.
                 */
-                {
-                  type: 'Column',
-                  props: {
-                    width: '100%',
-                    cursor: 'pointer',
-                    onClick: {
-                      $setLocal: OPEN,
-                      value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` },
-                    },
-                  },
-                  children: [
-                    {
-                      type: 'BlockRenderer',
-                      props: {
-                        editorState: { $: `${as}.editorState` },
-                        rootClass: 'we-block-content--compact',
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: `local.${OPEN} == ${as}.id` },
-                    then: {
-                      type: 'Row',
-                      props: { gap: '300', ay: 'center', wrap: true, width: '100%' },
-                      children: [
-                        /*
+                        {
+                          type: 'Column',
+                          props: {
+                            width: '100%',
+                            cursor: 'pointer',
+                            onClick: {
+                              $setLocal: OPEN,
+                              value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` },
+                            },
+                          },
+                          children: [
+                            {
+                              type: 'BlockRenderer',
+                              props: {
+                                editorState: { $: `${as}.editorState` },
+                                rootClass: 'we-block-content--compact',
+                              },
+                            },
+                          ],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: `local.${OPEN} == ${as}.id` },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '300', ay: 'center', wrap: true, width: '100%' },
+                              children: [
+                                /*
                           Every reaction the community offers, on the reply itself.
 
                           The same controls the record gets, `inline` so they share the line with
@@ -432,22 +485,26 @@ function replyBody(
                           section already hoists, and each reply's signals from the `include` the
                           thread's own query already carries.
                         */
-                        signalsSection({ record: as, as: `${as}Sig`, inline: true, size: 'xs' }),
-                        // Whether this reply may be answered. Unconditional where the caller named no
-                        // rule: a `$if` that can only ever be true is a node to build, resolve and
-                        // walk on every reply at every level, for an answer the expansion already
-                        // knows.
-                        ...(fractal
-                          ? [
-                              {
-                                type: '$if',
-                                props: { condition: { $: fractal }, then: replyButton(as) },
-                              } as SchemaNode,
-                            ]
-                          : [replyButton(as)]),
+                                signalsSection({ record: as, as: `${as}Sig`, inline: true, size: 'xs' }),
+                                // Whether this reply may be answered. Unconditional where the caller named no
+                                // rule: a `$if` that can only ever be true is a node to build, resolve and
+                                // walk on every reply at every level, for an answer the expansion already
+                                // knows.
+                                ...(fractal
+                                  ? [
+                                      {
+                                        type: '$if',
+                                        props: { condition: { $: fractal }, then: replyButton(as) },
+                                      } as SchemaNode,
+                                    ]
+                                  : [replyButton(as)]),
+                              ],
+                            },
+                          },
+                        },
                       ],
                     },
-                  },
+                  ],
                 },
               ],
             },

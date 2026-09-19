@@ -377,8 +377,15 @@ describe('contracts call sites depend on', () => {
       if (n.type === '$animate' && condition?.includes('collapsedReplies')) folds += 1;
     });
     expect(declarations).toBe(1);
-    // A caret and a rail, at each of the three levels.
-    expect(toggles).toBe(6);
+    /*
+      Three per level: the caret in the byline, the caret in the gutter, and the rail.
+
+      Two carets because the control moves with the state rather than staying put. Folded, it sits
+      before the face, where it is the only thing left of the comment; open, it moves under the face
+      to head the line running past the words and down beside the replies. Only one is ever drawn —
+      each is gated on the fold — but both are in the tree, and both write the same id.
+    */
+    expect(toggles).toBe(9);
     // Each level folds twice: the reply's own words, and the branch under it.
     expect(folds).toBeGreaterThanOrEqual(6);
   });
