@@ -463,3 +463,58 @@ describe('executeQueryIR — bounded traversal', () => {
     expect(ids(rows).sort()).toEqual(['x', 'y']);
   });
 });
+
+describe('executeQueryIR — level walk', () => {
+  /** Four top-level replies, four under each, four under each of those: 4 + 16 + 64. */
+  const wide: InMemoryDataset = {
+    tables: {
+      Comment: (() => {
+        const rows: { id: string; parentId: string }[] = [];
+        for (let a = 0; a < 4; a++) {
+          rows.push({ id: `a${a}`, parentId: 'root' });
+          for (let b = 0; b < 4; b++) {
+            rows.push({ id: `b${a}${b}`, parentId: `a${a}` });
+            for (let c = 0; c < 4; c++) rows.push({ id: `c${a}${b}${c}`, parentId: `b${a}${b}` });
+          }
+        }
+        return rows;
+      })(),
+    },
+    relations: {
+      Comment: { comments: { target: 'Comment', cardinality: 'many', foreignKey: 'parentId' } },
+    },
+  };
+
+  const walk = (levels: number[]) =>
+    ids(
+      executeQueryIR(
+        { irVersion: 1, entity: 'Comment', scope: { via: 'comments', anchorId: 'root', anchor: 'Comment', levels } },
+        wide,
+      ),
+    ) as string[];
+
+  it('bounds the breadth of each depth', () => {
+    const got = walk([3, 2, 1]);
+    expect(got.filter((id) => id.startsWith('a'))).toHaveLength(3);
+    expect(got.filter((id) => id.startsWith('b'))).toHaveLength(6);
+    expect(got.filter((id) => id.startsWith('c'))).toHaveLength(6);
+  });
+
+  /** Per anchor, not per level: two under EACH parent, not the first two the table held. */
+  it('spreads each level’s limit across every parent', () => {
+    const got = walk([3, 2]);
+    for (let a = 0; a < 3; a++) {
+      expect(got.filter((id) => id.startsWith(`b${a}`))).toHaveLength(2);
+    }
+  });
+
+  it('stops at the depth it was given', () => {
+    expect(walk([2])).toEqual(['a0', 'a1']);
+  });
+
+  it('ends when the tree does, however many levels are asked for', () => {
+    const got = walk([10, 10, 10, 10, 10]);
+    expect(got).toHaveLength(4 + 16 + 64);
+    expect(new Set(got).size).toBe(got.length);
+  });
+});

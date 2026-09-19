@@ -243,7 +243,7 @@ export const ad4mCapabilities: AdapterCapabilities = {
   scope: true, // drill-down via `parent`
   // The executor's `Scope::Traverse`: several anchors in one query, `+` paths, inbound term
   // order, and a per-anchor slice applied between selecting ids and hydrating them.
-  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true },
+  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true, levelWalk: true },
   include: { supported: true }, // nested include is a core ORM feature
   aggregate: ['count'], // count projections only; sum/min/max/avg → compute-up
   sort: { multiKey: false, byRelationPath: true, byAggregate: true }, // single sort key only (#867)
@@ -275,7 +275,12 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
 
   // The plain drill-down stays exactly as it was: one anchor, one step outward, and the `{ id,
   // predicate }` shape every existing query already sends.
-  const bounded = Array.isArray(scope.anchorId) || scope.transitive || scope.direction === 'in' || scope.limitPerAnchor;
+  const bounded =
+    Array.isArray(scope.anchorId) ||
+    scope.transitive ||
+    scope.direction === 'in' ||
+    scope.limitPerAnchor !== undefined ||
+    scope.levels !== undefined;
   if (!bounded) return { id: scope.anchorId, predicate: prop.predicate };
 
   // Anything more is the executor's traverse form, which names its anchors as `ids`. An empty list
@@ -287,6 +292,7 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
     ...(scope.transitive ? { transitive: true } : {}),
     ...(scope.direction === 'in' ? { direction: 'in' } : {}),
     ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),
+    ...(scope.levels !== undefined ? { levels: scope.levels } : {}),
   };
 }
 

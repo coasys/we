@@ -39,7 +39,7 @@ export const inMemoryCapabilities: AdapterCapabilities = {
   // All four, because in memory they are a filter and a loop — and the reference implementation
   // earns its keep precisely by answering what the real backend answers, so a store's tests are
   // about the store rather than about which backend is underneath.
-  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true },
+  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true, levelWalk: true },
   include: { supported: true },
   aggregate: ['count'],
   sort: { multiKey: true, byRelationPath: true, byAggregate: true },

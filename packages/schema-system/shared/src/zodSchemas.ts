@@ -86,6 +86,7 @@ const zQuery = z.object({
       transitive: z.boolean().optional(),
       direction: z.enum(['out', 'in']).optional(),
       limitPerAnchor: z.number().int().positive().optional(),
+      levels: z.array(z.number().int().positive()).optional(),
     })
     .optional(),
   subscribe: z.boolean().optional(),

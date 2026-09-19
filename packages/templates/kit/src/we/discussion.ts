@@ -80,13 +80,14 @@ export interface DiscussionSectionOptions {
   /** Levels drawn before the thread offers to re-root. Defaults to 3, as `commentThread` does. */
   depth?: number;
   /**
-   * At most this many replies under each parent, below the first level.
+   * How many replies to fetch at each depth, per parent — `[10, 5, 3]` by default.
    *
-   * Absent, every reply at every drawn level is fetched. Set it and one branch that attracted three
-   * hundred replies cannot crowd out the rest of the conversation — the thread stays the shape of
-   * the discussion rather than the shape of its loudest corner.
+   * The thread is one question the backend walks depth by depth, so the bound applies at every
+   * level rather than to the total: one branch that attracted three hundred replies cannot crowd
+   * out the rest of the conversation, and the thread stays the shape of the discussion rather than
+   * the shape of its loudest corner.
    */
-  perLevel?: number;
+  perLevel?: number[];
   /** What the composer's heading says. Defaults to "Reply". */
   title?: string;
 }

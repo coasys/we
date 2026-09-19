@@ -82,28 +82,20 @@ export interface CommentThreadOptions {
   /** Indent per level, as a space token. Defaults to `'400'`. Ignored when `collapsible` — the gutter indents. */
   indent?: string;
   /**
-   * At most this many replies under each parent, per level.
+   * How many replies to fetch at each depth, per parent — `[10, 5, 3]` by default.
    *
-   * Absent, every reply at every drawn level is fetched — right for a conversation, wrong for an
-   * argument. Set it and each level asks for the top N under *each* of its parents, so one branch
-   * that attracted three hundred replies cannot crowd out the rest of the thread.
+   * The thread is one question: the backend walks it depth by depth and answers once, so the rows
+   * arrive together instead of a level at a time, and the work is bounded at every depth rather
+   * than by a cap on the total. One branch that attracted three hundred replies cannot crowd out
+   * the rest of the conversation.
    *
-   * Needs a backend declaring `boundedTraversal.perAnchorLimit`; where one does not, the query is
-   * refused rather than silently answering with everything, which would be the opposite of what was
-   * asked for.
+   * The first entry is the top level and there is no per-parent distinction there, since there is
+   * one parent. Levels beyond `depth` are fetched and not drawn, so the list is trimmed to it.
+   *
+   * Needs a backend declaring `boundedTraversal.levelWalk`; where one does not the query is refused
+   * rather than quietly answered some other way.
    */
-  perLevel?: number;
-  /**
-   * Most replies to fetch for the whole thread, when reading it in one go. Defaults to 200.
-   *
-   * Ignored under `perLevel`, where each level is capped per parent instead.
-   *
-   * Safe to truncate because the read is ordered oldest-first and a reply is written after the
-   * thing it replies to: a row's parent is therefore already in the result, and cutting the tail
-   * removes leaves rather than orphaning branches. Peers with skewed clocks can defeat that in
-   * principle; an orphan is dropped rather than drawn at the root.
-   */
-  limit?: number;
+  perLevel?: number[];
   /** Internal: the current level, counted down. */
   level?: number;
 }
@@ -119,11 +111,17 @@ export const descendantCount = (as: string): string => `${as}.$descendants ?? co
 /** Which replies are folded, by id — declared on the outermost thread. See `collapsible`. */
 const COLLAPSED = 'collapsedReplies';
 
-/** The one query a whole-thread read makes, and the local its rows arrive in. */
+/** The one query a thread makes, and the local its rows arrive in. */
 const WHOLE_THREAD = 'threadRows';
 
-/** See {@link CommentThreadOptions.limit}. */
-const DEFAULT_THREAD_LIMIT = 200;
+/**
+ * Replies per parent at each depth, absent a caller's own.
+ *
+ * Narrowing as it descends, the way a conversation does: the top of a thread is what most people
+ * read, and a reply nine deep is being followed by whoever is in that exchange. See
+ * {@link CommentThreadOptions.perLevel}.
+ */
+const DEFAULT_PER_LEVEL = [10, 5, 3];
 
 /**
  * An anchor as an expression, whether it was written as a token or a literal id.
@@ -154,62 +152,32 @@ const THREAD_INCLUDE = {
 } as const;
 
 /**
- * The thread's subscriptions — one query, or one per level.
+ * The thread's one subscription.
  *
- * **Without `perLevel`: one transitive read.** The executor walks the whole subtree and answers
- * once, so the thread arrives together and lives on a single subscription. This is the default
- * because it is what a conversation wants: three sequential round trips to draw five replies is
- * the cost of an ability nobody asked for.
+ * Every shape this has taken is visible in what it is not. A query per *reply* cost a subscription
+ * per row, and the level below cost one per row of that. A query per *level* fixed the count and
+ * left the latency, since each level's anchors are the level above's answer — so three levels were
+ * three sequential round trips and the tree assembled itself on screen. An unbounded transitive
+ * read arrived at once and fetched a whole subtree to draw ten replies of it.
  *
- * **With `perLevel`: one query per level.** Per-parent limits are the thing a single flat read
- * cannot express — a path returns everything below the anchor or nothing — so a thread that needs
- * "the top five under each of these twenty" trades the round trips for the bound. Each level
- * anchors on every id the level above returned, so the cost is per level, never per reply.
- *
- * Either way a row finds its own children through `inReplyTo`, so the rendering is identical and
- * only the number of questions differs.
+ * The backend walks the levels itself, so this is one question: bounded at every depth, answered
+ * once, on one subscription. Rows come back flat and each names its parent, which is what the
+ * levels below filter on.
  */
-function threadQueries(
-  opts: CommentThreadOptions,
-  depth: number,
-  keyFor: (level: number) => string,
-): Record<string, QueryStateField> {
-  const unmuted = { author: { not: { $: 'spaceStore.mutedDids' } } };
-  const anchor = { anchor: 'CollectionBlock', via: 'comments' };
-
-  if (opts.perLevel === undefined) {
-    return {
-      [WHOLE_THREAD]: {
-        entity: 'CollectionBlock',
-        where: unmuted,
-        scope: { ...anchor, anchorId: opts.anchorId, transitive: true },
-        // Oldest first is what makes the cap safe — see `limit`.
-        order: { createdAt: 'asc' },
-        limit: opts.limit ?? DEFAULT_THREAD_LIMIT,
-        include: { ...THREAD_INCLUDE },
-      },
-    };
-  }
-
-  const queries: Record<string, QueryStateField> = {};
-  for (let level = 1; level <= depth; level++) {
-    queries[keyFor(level)] = {
+function threadQueries(opts: CommentThreadOptions, depth: number): Record<string, QueryStateField> {
+  // Trimmed to the drawn depth: a level nobody renders is a level nobody should pay for.
+  const levels = (opts.perLevel ?? DEFAULT_PER_LEVEL).slice(0, depth);
+  return {
+    [WHOLE_THREAD]: {
       entity: 'CollectionBlock',
-      where: unmuted,
-      scope: {
-        ...anchor,
-        anchorId: level === 1 ? opts.anchorId : { $: `local.${keyFor(level - 1)}.map(r, r.id)` },
-        ...(level > 1 ? { limitPerAnchor: opts.perLevel } : {}),
-      },
-      // A level is not asked until the one above it has answered — its anchors are that answer.
-      // Without this it would ask once with an empty anchor list on mount, which is correct and
-      // still a wasted round trip per level.
-      ...(level > 1 ? { when: { $: `count(local.${keyFor(level - 1)})` } } : {}),
+      where: { author: { not: { $: 'spaceStore.mutedDids' } } },
+      // The `comments` relation, drilled from the anchor. Untyped like `children`, so `scope` is
+      // the only form available — `include` needs a known target class.
+      scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: opts.anchorId, levels },
       order: { createdAt: 'asc' },
       include: { ...THREAD_INCLUDE },
-    };
-  }
-  return queries;
+    },
+  };
 }
 
 /**
@@ -306,23 +274,13 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
   const level = opts.level ?? 1;
   const base = opts.as ?? 'reply';
   const asFor = (l: number) => (l === 1 ? base : `${base}${l}`);
-  const keyFor = (l: number) => `${asFor(l)}Rows`;
   const as = asFor(level);
-  const key = keyFor(level);
   /*
-    The rows this level draws.
-
-    One transitive read puts every reply in one local, so a level is the rows naming this level's
-    parent — the anchor at the top, the reply above otherwise. Read level by level, level 1 is its
-    query's whole answer and the rest filter their own level's.
+    The rows this level draws: those naming this level's parent — the anchor at the top, the reply
+    above otherwise. One read puts every level in one local, so this is a filter rather than a query.
   */
   const parent = level === 1 ? anchorExpr(opts.anchorId) : `${asFor(level - 1)}.id`;
-  const itemsExpr =
-    opts.perLevel === undefined
-      ? `local.${WHOLE_THREAD}.filter(r, r.inReplyTo.id == ${parent})`
-      : level === 1
-        ? `local.${key}`
-        : `local.${key}.filter(r, r.inReplyTo.id == ${parent})`;
+  const itemsExpr = `local.${WHOLE_THREAD}.filter(r, r.inReplyTo.id == ${parent})`;
 
   /** True while this reply is folded. One expression, read by the rail, the fold and the caller. */
   const collapsed = `${as}.id in local.${COLLAPSED}`;
@@ -404,7 +362,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     // The folded ids, declared once at the top so a caret three levels down folds a branch the top
     // level is drawing. An inner declaration would shadow it, and each level would fold only itself.
     ...(opts.collapsible && level === 1 ? { $localState: { [COLLAPSED]: { type: 'array', initial: [] } } } : {}),
-    ...(level === 1 ? { $queries: threadQueries(opts, depth, keyFor) } : {}),
+    ...(level === 1 ? { $queries: threadQueries(opts, depth) } : {}),
     children: [
       {
         type: '$if',

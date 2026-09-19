@@ -48,7 +48,7 @@ const passthroughAdapter: QueryAdapter = (() => {
     // A thread asks each level about every parent on it at once, so an adapter that cannot do that
     // is refused rather than quietly asked about one of them — which is what happens here without
     // this line, and is how the capability gate is meant to behave.
-    boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true },
+    boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true, levelWalk: true },
     include: { supported: true },
     aggregate: ['count'],
     sort: { multiKey: true, byRelationPath: true, byAggregate: true },
@@ -95,15 +95,15 @@ afterEach(() => {
 });
 
 describe('a thread in a panel', () => {
-  it('reads the whole thread in one transitive query, and draws every level', async () => {
+  it('reads the whole thread in one walked query, and draws every level', async () => {
     const replies: Reply[] = [
       { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: ['r2'] },
       { id: 'r2', parent: 'r1', editorState: null, author: 'did:them', createdAt: '2026-09-02', comments: [] },
     ];
-    /** Every drill-down the thread issues: its anchors, and whether it walked the whole subtree. */
-    const asked: { anchors: string[]; transitive: boolean }[] = [];
+    /** Every drill-down the thread issues: its anchors, and the per-depth limits it asked for. */
+    const asked: { anchors: string[]; levels?: number[] }[] = [];
 
-    /** Everything under `anchors`, to any depth — what a transitive read answers with. */
+    /** Everything under `anchors`, to any depth — what a walked read answers with. */
     const descendantsOf = (anchors: string[]): Reply[] => {
       const out: Reply[] = [];
       let frontier = anchors;
@@ -116,12 +116,13 @@ describe('a thread in a panel', () => {
     };
 
     const collections = {
-      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string | string[]; transitive?: boolean } }) => {
+      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string | string[]; levels?: number[] } }) => {
         const anchor = options.scope?.anchorId;
         const anchors = anchor === undefined ? [] : Array.isArray(anchor) ? anchor : [anchor];
-        const transitive = options.scope?.transitive === true;
-        if (anchor !== undefined) asked.push({ anchors, transitive });
-        const rows = transitive ? descendantsOf(anchors) : replies.filter((r) => anchors.includes(r.parent));
+        const levels = options.scope?.levels;
+        if (anchor !== undefined) asked.push({ anchors, levels });
+        // A walked query answers with the bounded subtree; without levels, a single step.
+        const rows = levels ? descendantsOf(anchors) : replies.filter((r) => anchors.includes(r.parent));
         return {
           // Flat either way, so each row says whose reply it is — which is what the renderer puts
           // the tree back together from.
@@ -178,7 +179,10 @@ describe('a thread in a panel', () => {
       of appearing. A transitive read is one round trip whatever the depth.
     */
     expect(asked).toHaveLength(1);
-    expect(asked[0]).toEqual({ anchors: ['task-1'], transitive: true });
+    expect(asked[0].anchors).toEqual(['task-1']);
+    // Bounded at every depth rather than by a cap on the total — and trimmed to the drawn depth,
+    // since a level nobody renders is a level nobody should pay for.
+    expect(asked[0].levels).toEqual([10, 5, 3]);
 
     /*
       And it is drawn. `$each` renders its first child and drops the rest, so a row built as a list —
@@ -195,43 +199,19 @@ describe('a thread in a panel', () => {
   });
 
   /**
-   * The other strategy, and why it exists: per-parent limits are the one thing a single flat read
-   * cannot express, since a path answers with everything below the anchor or nothing. Asking for
-   * them therefore buys back the round trips — one query per LEVEL, never one per reply.
+   * A caller's own limits reach the backend as the walk's shape.
+   *
+   * There is no second query strategy to choose between any more: the backend walks the levels, so
+   * asking for different breadth at each depth changes one argument rather than the number of
+   * questions.
    */
-  it('asks once per level when per-parent limits are wanted', async () => {
-    const replies: Reply[] = [
-      { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: ['r2'] },
-      { id: 'r2', parent: 'r1', editorState: null, author: 'did:them', createdAt: '2026-09-02', comments: [] },
-    ];
-    const asked: { anchors: string[]; transitive: boolean; limitPerAnchor?: number }[] = [];
-
+  it('passes a caller’s own per-depth limits to the backend', async () => {
+    const asked: { levels?: number[] }[] = [];
     const collections = {
-      query: vi.fn(
-        (
-          _dataset: unknown,
-          options: { scope?: { anchorId?: string | string[]; transitive?: boolean; limitPerAnchor?: number } },
-        ) => {
-          const anchor = options.scope?.anchorId;
-          const anchors = anchor === undefined ? [] : Array.isArray(anchor) ? anchor : [anchor];
-          if (anchor !== undefined) {
-            asked.push({
-              anchors,
-              transitive: options.scope?.transitive === true,
-              limitPerAnchor: options.scope?.limitPerAnchor,
-            });
-          }
-          return {
-            subscribe: () =>
-              Promise.resolve(
-                replies
-                  .filter((r) => anchors.includes(r.parent))
-                  .map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } })),
-              ),
-            dispose: vi.fn(),
-          };
-        },
-      ),
+      query: vi.fn((_dataset: unknown, options: { scope?: { levels?: number[] } }) => {
+        if (options.scope) asked.push({ levels: options.scope.levels });
+        return { subscribe: () => Promise.resolve([]), dispose: vi.fn() };
+      }),
     };
     const empty = { query: vi.fn(() => ({ subscribe: () => Promise.resolve([]), dispose: vi.fn() })) };
 
@@ -249,9 +229,9 @@ describe('a thread in a panel', () => {
 
     const node: SchemaNode = {
       type: '$each',
-      props: { items: [{ id: 'task-1', comments: ['r1'] }], as: 'row' },
+      props: { items: [{ id: 'task-1', comments: [] }], as: 'row' },
       $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
-      children: [discussionSection({ record: 'row', perLevel: 5 })],
+      children: [discussionSection({ record: 'row', perLevel: [4, 2] })],
     };
 
     const host = document.createElement('div');
@@ -263,18 +243,9 @@ describe('a thread in a panel', () => {
     await settled();
     await tick();
     await settled();
-    await tick();
-    await settled();
 
-    // Nothing walks the subtree here — the limit is the point.
-    expect(asked.every((q) => !q.transitive)).toBe(true);
-    const flat = asked.flatMap((q) => q.anchors);
-    expect(flat).toContain('task-1');
-    expect(flat).toContain('r1');
-    // One query per level, so no anchor is ever asked about twice.
-    expect(new Set(flat).size).toBe(flat.length);
-    // And the limit reaches the backend on every level below the first.
-    expect(asked.filter((q) => q.limitPerAnchor === 5).length).toBeGreaterThan(0);
+    expect(asked).toHaveLength(1);
+    expect(asked[0].levels).toEqual([4, 2]);
   });
 
   it("keeps a reply's actions out of the way until the comment is pressed", async () => {
@@ -285,7 +256,14 @@ describe('a thread in a panel', () => {
     ];
     const collections = {
       query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string } }) => ({
-        subscribe: () => Promise.resolve(replies.filter((reply) => reply.parent === options.scope?.anchorId)),
+        // `inReplyTo` is how the thread finds a row's place: one flat answer, each row naming its
+        // parent. A fixture without it renders nothing, whatever rows it returns.
+        subscribe: () =>
+          Promise.resolve(
+            replies
+              .filter((reply) => reply.parent === options.scope?.anchorId)
+              .map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } })),
+          ),
         dispose: vi.fn(),
       })),
     };

@@ -109,6 +109,20 @@ export interface Scope {
    * the backend happened to return first.
    */
   limitPerAnchor?: number;
+  /**
+   * Walk `via` level by level, keeping this many results per anchor at each depth — `[10, 5, 3]` is
+   * "ten replies, five under each of those, three under each of *those*".
+   *
+   * One request, whatever the depth: a backend that supports this does the walk itself, so the
+   * levels cost it local queries rather than costing the caller round trips. Driven from the client
+   * instead, each level is a hop and the tree assembles itself on screen a level at a time.
+   *
+   * Results are flat and breadth-first, as with `transitive` — include the inverse relation to
+   * rebuild the tree. Not combinable with `transitive`, which is the same walk unbounded, and not
+   * expressible with `limitPerAnchor`, which has a single group when the walk starts from one
+   * anchor and so caps the total rather than the breadth at each depth.
+   */
+  levels?: number[];
 }
 
 export interface Aggregation {
@@ -216,6 +230,7 @@ const scopeSchema = z.object({
   transitive: z.boolean().optional(),
   direction: z.enum(['out', 'in']).optional(),
   limitPerAnchor: z.number().int().positive().optional(),
+  levels: z.array(z.number().int().positive()).optional(),
 });
 
 export const queryIRSchema: z.ZodType<QueryIR> = z.object({

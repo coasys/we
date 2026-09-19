@@ -58,6 +58,8 @@ export interface AdapterCapabilities {
     inbound: boolean;
     /** `limitPerAnchor` — top N under each anchor, applied before hydration. */
     perAnchorLimit: boolean;
+    /** `levels` — the backend walks the relation depth by depth and answers once. */
+    levelWalk: boolean;
   };
   include: { supported: boolean; maxDepth?: number };
   /** Aggregate functions supported natively. */
@@ -238,6 +240,17 @@ function analyzeTraversal(scope: Scope, cap: AdapterCapabilities, path: string, 
       path: `${path}.direction`,
       disposition: 'compute-up',
       note: 'no inverse traversal — read the relation forwards and filter',
+    });
+  }
+  if (scope.levels && !bounded?.levelWalk) {
+    // Degradable in principle — ask level by level and use each answer as the next level's anchors —
+    // but that is the client-driven walk this exists to replace, so it is the caller's decision to
+    // make knowingly rather than something to fall back into silently.
+    gaps.push({
+      feature: 'scope.levels',
+      path: `${path}.levels`,
+      disposition: 'unsupported',
+      note: 'no level walk — the caller would have to drive it, one round trip per level',
     });
   }
   if (scope.limitPerAnchor !== undefined && !bounded?.perAnchorLimit) {

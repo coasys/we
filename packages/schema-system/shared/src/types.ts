@@ -435,6 +435,14 @@ export type QueryToken = {
       direction?: 'out' | 'in';
       /** At most this many per anchor — "the top five replies under each of these". Pair with `order`. */
       limitPerAnchor?: number;
+      /**
+       * Walk `via` depth by depth, keeping this many per anchor at each — `[10, 5, 3]`.
+       *
+       * One question for a whole tree: the backend walks it and answers once, so the rows arrive
+       * together rather than a level at a time. Flat and breadth-first, so include the inverse
+       * relation to rebuild the shape.
+       */
+      levels?: number[];
     };
     subscribe?: boolean;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */

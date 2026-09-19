@@ -227,6 +227,33 @@ function scopeRows(rows: Row[], entity: string, scope: Scope, data: InMemoryData
     scope.direction === 'in' ? (r: Row) => anchorSet.has(idOf(r)) : (r: Row) => anchorSet.has(parentOf(r));
 
   let kept: Row[];
+  if (scope.levels && scope.direction !== 'in') {
+    // The walk, level by level: each depth keeps `levels[depth]` rows per anchor, and the anchors
+    // for the next depth are whatever survived this one. Breadth-first, and deduplicated by id so a
+    // node reachable two ways is walked once and a cycle terminates.
+    const seen = new Set<string>();
+    let frontier = anchorSet;
+    kept = [];
+    for (const perAnchor of scope.levels) {
+      if (frontier.size === 0) break;
+      const takenPerAnchor = new Map<string, number>();
+      const next = new Set<string>();
+      for (const r of rows) {
+        const parent = parentOf(r);
+        if (!frontier.has(parent)) continue;
+        const id = idOf(r);
+        if (seen.has(id)) continue;
+        const taken = takenPerAnchor.get(parent) ?? 0;
+        if (taken >= perAnchor) continue;
+        takenPerAnchor.set(parent, taken + 1);
+        seen.add(id);
+        kept.push(r);
+        next.add(id);
+      }
+      frontier = next;
+    }
+    return kept;
+  }
   if (scope.transitive && scope.direction !== 'in') {
     // Walk down a level at a time until nothing new appears. A real graph store answers this with a
     // path expression; in memory the honest equivalent is the loop, and it terminates on the
