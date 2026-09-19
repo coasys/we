@@ -371,7 +371,7 @@ function replyBody(
           children: [
             {
               type: 'Column',
-              props: { width: '24px', flexShrink: '0', ax: 'center', gap: '100' },
+              props: { width: '24px', flexShrink: '0', ax: 'center', gap: '0' },
               children: foldable
                 ? [
                     {
@@ -431,6 +431,7 @@ function replyBody(
                             flex: '1',
                             ax: 'center',
                             label: 'Hide this branch',
+                            r: '0',
                             // Lit with the rest of the line, not on its own — see `railHighlight`.
                             ...railHighlight(),
                             onClick: foldToggle(as),
@@ -672,7 +673,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         more: (as) => ({
           type: 'we-button',
           props: {
-            variant: 'ghost',
+            variant: 'secondary',
             size: 'sm',
             ax: 'start',
             // Re-rooting shows a different list, so how much of the last one was asked for does

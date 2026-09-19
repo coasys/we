@@ -233,7 +233,7 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
       then: {
         type: 'we-button',
         props: {
-          variant: 'ghost',
+          variant: 'secondary',
           size: 'sm',
           ax: 'start',
           // A page more of whatever the caller asked for at the top, so the step matches the shape
@@ -422,6 +422,9 @@ function branchRail(as: string): SchemaNode {
           flex: '1',
           ax: 'center',
           label: 'Hide this branch',
+          // Square, and flush with the segment above. A button's default radius curved both ends of
+          // each half, so the one line showed exactly where it stopped being one.
+          r: '0',
           ...railHighlight(),
           onClick: foldToggle(as),
         },
@@ -491,7 +494,9 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
   const row: SchemaNode = opts.collapsible
     ? {
         type: 'Column',
-        props: { width: '100%', gap: '100' },
+        // No gap: the fold line crosses this seam, and 4px of air through the middle of it was the
+        // other half of why one line looked like two.
+        props: { width: '100%', gap: '0' },
         // Whose fold line the pointer is on. Here rather than deeper because the line's two halves
         // are in different branches of this row, and both have to read the one answer.
         $localState: { [RAIL_HOT]: { type: 'boolean', initial: false } },
