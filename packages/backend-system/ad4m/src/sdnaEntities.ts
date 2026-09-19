@@ -128,6 +128,16 @@ export async function bulkHasSubjectClassLink(
 export interface StoredShape {
   /** `sh://path` of every property the stored shape declares. */
   paths: Set<string>;
+  /**
+   * How many property shapes sit on each path.
+   *
+   * A set of paths cannot tell one property on a predicate from two, and two is a real shape: a
+   * relation and its `reverseOf` inverse are one link read from both ends, so they share a
+   * predicate by construction. `WeNode` gained `inReplyTo` beside `comments` on `we://comment` and
+   * every existing space read as fresh — the set was unchanged — so the new relation never reached
+   * them and the reverse include silently found nothing to hydrate.
+   */
+  pathCounts: Map<string, number>;
   /** Class-level interpretation hint, decoded. */
   classHint?: string;
   /** `sh://path` of the property marked `ad4m://identity`, if any. */
@@ -158,7 +168,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   const entry = (targetClass: string): StoredShape => {
     const existing = shapes.get(targetClass);
     if (existing) return existing;
-    const created: StoredShape = { paths: new Set(), propHints: new Map() };
+    const created: StoredShape = { paths: new Set(), pathCounts: new Map(), propHints: new Map() };
     shapes.set(targetClass, created);
     return created;
   };
@@ -195,7 +205,10 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   ]);
 
   for (const row of pathRows) {
-    if (row.targetClass && row.path) entry(row.targetClass).paths.add(row.path);
+    if (!row.targetClass || !row.path) continue;
+    const shape = entry(row.targetClass);
+    shape.paths.add(row.path);
+    shape.pathCounts.set(row.path, (shape.pathCounts.get(row.path) ?? 0) + 1);
   }
   for (const row of hintRows) {
     if (row.targetClass && row.hint !== undefined) entry(row.targetClass).classHint = decodeHint(row.hint);
@@ -273,7 +286,11 @@ export function clearStoredShapesCache(): void {
  * worth more than the tidiness of a narrow export surface.
  */
 export function declaredShape(model: EntityClass): StoredShape {
-  const out: StoredShape = { paths: new Set(getEntityPredicates(model)), propHints: new Map() };
+  const out: StoredShape = {
+    paths: new Set(getEntityPredicates(model)),
+    pathCounts: new Map(),
+    propHints: new Map(),
+  };
   const generate = (
     model as unknown as {
       generateSHACL?: () => {
@@ -290,6 +307,7 @@ export function declaredShape(model: EntityClass): StoredShape {
     out.classHint = shape?.interpretationHint || undefined;
     for (const property of shape?.properties ?? []) {
       if (!property.path) continue;
+      out.pathCounts.set(property.path, (out.pathCounts.get(property.path) ?? 0) + 1);
       if (property.identity) out.identityPath = property.path;
       if (property.interpretationHint) out.propHints.set(property.path, property.interpretationHint);
     }
@@ -338,6 +356,14 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
 
   const declared = declaredShape(model);
   if ([...declared.paths].some((predicate) => !current.paths.has(predicate))) return true;
+  // A path the stored shape already has, but fewer times than the model now declares — a relation
+  // gaining its inverse. Only when the declared side has counts at all: a model whose SHACL could
+  // not be generated has none, and reading that as "declares nothing" would call every shape fresh.
+  if (declared.pathCounts.size) {
+    for (const [path, count] of declared.pathCounts) {
+      if ((current.pathCounts?.get(path) ?? 0) < count) return true;
+    }
+  }
   if (declared.identityPath !== current.identityPath) return true;
   // Hints are space-owned once customized (see StoredShape.hintsCustomized): a stored hint that
   // differs from the declaration is then the community's tuning, not staleness, and rewriting it
