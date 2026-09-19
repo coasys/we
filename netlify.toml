@@ -1,7 +1,6 @@
-# Deploy-preview build for the `coasys-we` site — a preview of `apps/we-web` per pull
-# request. This file exists so those settings are reviewable in the repo rather than living
-# only in the Netlify UI, where nobody reading the codebase can see them and no change to
-# them shows up in a diff.
+# Build config for the `coasys-we` site — a deploy of `apps/we-web`. This file exists so
+# those settings are reviewable in the repo rather than living only in the Netlify UI,
+# where nobody reading the codebase can see them and no change to them shows up in a diff.
 #
 # NOTE: this file overrides the UI only for the fields it actually declares. Anything it
 # does not mention keeps whatever the UI holds, so a setting is not removed by being left
@@ -23,18 +22,16 @@
   command = "pnpm build"
   publish = "apps/we-web/dist"
 
-# Deploy previews, and only deploy previews, may build @coasys/ad4m from source instead of
-# installing the version `pnpm.overrides` pins.
+# Both production and deploy-preview contexts build @coasys/ad4m from source instead of
+# installing the version `pnpm.overrides` pins. The pin only moves when someone hand-publishes
+# a pre-release tag, so the dev site and previews would otherwise lag behind ad4m by weeks.
 #
-# The distinction is the whole point of putting it here rather than in [build], which covers
-# every context: the pin is a claim about which executor a build requires — VERIFIED_AGAINST_AD4M
-# in @we/backend-ad4m names both the version and the ad4m commit — and the published site has to
-# keep making it, because the people opening it are running whatever executor they installed.
-# A preview is the opposite case: it exists to be tried against an executor somebody has in front
-# of them, which during cross-repo work is a build of ad4m rather than a release.
-#
-# What the script actually does per preview is decided per PR — see its header. Left alone it
-# tracks ad4m `dev`.
+# Which ad4m ref the script builds is decided per deploy — see the script header. Production
+# (the dev branch) always resolves to ad4m `dev`. Previews support per-PR overrides via labels
+# and same-name branch matching.
+[context.production]
+  command = "bash scripts/netlify-build.sh"
+
 [context.deploy-preview]
   command = "bash scripts/netlify-build.sh"
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Netlify deploy-preview build — optionally builds @coasys/ad4m from source and
-# links it into the WE workspace before running the normal build.
+# Netlify build — clones ad4m, builds the TypeScript SDK from source, and links
+# it into the WE workspace before running the normal build.
 #
 # Why: WE's pnpm override pins a published pre-release tag of the SDK, and that
 # tag only moves when somebody hand-publishes one from an ad4m commit. New SDK
 # work — batch RPC endpoints, performance fixes — lands on ad4m's branches well
 # before that happens, so a preview built against the pin cannot exercise it.
 #
-# Which ad4m a preview gets, in the order the answers are consulted:
+# Which ad4m ref to build, in the order the answers are consulted:
 #
 #   1. AD4M_BRANCH in the Netlify UI — site-wide, overrides everything below.
 #   2. A `preview:ad4m@<ref>` label on the pull request. `preview:ad4m@pin` means
@@ -146,11 +146,11 @@ fi
 
 NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
-# --- Say what this preview is -----------------------------------------------
+# --- Say what this build used ------------------------------------------------
 #
-# A page built from "ad4m dev at the time" is otherwise unexplainable a week
-# later, and a tester hitting RPC failures has no way to tell a WE bug from an
-# SDK the executor in front of them does not match. Both halves are written:
+# A page built from "ad4m dev at the time" cannot be diagnosed a week later,
+# and a tester hitting RPC failures has no way to tell a WE bug from an SDK
+# the executor in front of them does not match. Both halves are written:
 # /build-info.json for anything that wants to read it, and a console line for
 # the person who has the page open.
 
