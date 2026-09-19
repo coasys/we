@@ -67,18 +67,20 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
       ...(opts.compact ? { fontSize: '200' } : { fontWeight: 'semibold' }),
       ...(opts.nameColor && { color: opts.nameColor }),
       /*
-        A name is one word and must stay on one line.
+        A name is one word and keeps its width.
 
         Typography here defaults to `overflow-wrap: anywhere`, which is right for a URL or a DID and
-        wrong for this: it drops the element's min-content width to a single character, so any row
-        that runs short of space breaks the name one letter per line rather than shortening it. A
-        byline is the most squeezed row there is — a face, a name, a time and a pair of controls, in
-        a panel — so it is where that shows.
+        wrong for this: it drops the element's min-content width to a single character, so a row
+        short of space breaks the name one letter per line rather than leaving it alone. A byline is
+        the most crowded row in the app — face, name, time and a pair of controls, inside a panel —
+        so it is where that shows.
 
-        Cut with an ellipsis instead, which is what a name too long for its row should do.
+        `normal` is the documented way to opt a box out of breaking, and it is the whole fix. Doing
+        more than this was worse: `truncate` plus a shrinkable row let the name collapse to nothing
+        and the controls ride up over the face, because a flex item allowed to reach zero width
+        will.
       */
-      whiteSpace: 'nowrap',
-      truncate: true,
+      overflowWrap: 'normal',
     },
     children: [{ $: `${as}.name` }],
   };
@@ -121,13 +123,7 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
             type: 'Row',
             // Closer together when compact: at `300` the face, the name and the time read as three
             // things on a line rather than one byline.
-            /*
-              `minWidth: 0` so the name above can actually be cut. A flex item is never asked to be
-              narrower than its content by default, so without this the ellipsis never arrives and
-              the row simply overflows — or, with the wrap default this file now overrides, the name
-              falls apart a letter at a time.
-            */
-            props: { ay: 'center', gap: opts.compact ? '200' : '300', minWidth: '0' },
+            props: { ay: 'center', gap: opts.compact ? '200' : '300' },
             children: [avatar, name, ...time, ...(opts.children ?? [])],
           },
     ],
