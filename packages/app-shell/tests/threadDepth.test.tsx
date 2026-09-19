@@ -95,34 +95,37 @@ afterEach(() => {
 });
 
 describe('a thread in a panel', () => {
-  it('asks each reply for its own replies, and draws them', async () => {
+  it('reads the whole thread in one transitive query, and draws every level', async () => {
     const replies: Reply[] = [
       { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: ['r2'] },
       { id: 'r2', parent: 'r1', editorState: null, author: 'did:them', createdAt: '2026-09-02', comments: [] },
     ];
-    /**
-     * Every drill-down the thread issues, as the set of ids it asked about.
-     *
-     * One entry per QUERY, not per anchor — which is the property worth holding. A level asks about
-     * all of its parents at once, so a thread twenty replies wide still issues one query for the
-     * level below it rather than twenty.
-     */
-    const asked: string[][] = [];
+    /** Every drill-down the thread issues: its anchors, and whether it walked the whole subtree. */
+    const asked: { anchors: string[]; transitive: boolean }[] = [];
+
+    /** Everything under `anchors`, to any depth — what a transitive read answers with. */
+    const descendantsOf = (anchors: string[]): Reply[] => {
+      const out: Reply[] = [];
+      let frontier = anchors;
+      while (frontier.length) {
+        const next = replies.filter((r) => frontier.includes(r.parent) && !out.includes(r));
+        out.push(...next);
+        frontier = next.map((r) => r.id);
+      }
+      return out;
+    };
 
     const collections = {
-      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string | string[] } }) => {
+      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string | string[]; transitive?: boolean } }) => {
         const anchor = options.scope?.anchorId;
         const anchors = anchor === undefined ? [] : Array.isArray(anchor) ? anchor : [anchor];
-        if (anchor !== undefined) asked.push(anchors);
+        const transitive = options.scope?.transitive === true;
+        if (anchor !== undefined) asked.push({ anchors, transitive });
+        const rows = transitive ? descendantsOf(anchors) : replies.filter((r) => anchors.includes(r.parent));
         return {
-          subscribe: () =>
-            Promise.resolve(
-              replies
-                .filter((reply) => anchors.includes(reply.parent))
-                // A multi-anchor answer is flat, so each row says whose reply it is — exactly what
-                // the renderer needs to put it back under the right parent.
-                .map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } })),
-            ),
+          // Flat either way, so each row says whose reply it is — which is what the renderer puts
+          // the tree back together from.
+          subscribe: () => Promise.resolve(rows.map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } }))),
           dispose: vi.fn(),
         };
       }),
@@ -165,18 +168,17 @@ describe('a thread in a panel', () => {
     await tick();
     await settled();
 
-    // The record's own replies, then that reply's — the second is the one nothing ever asked for.
-    const flat = asked.flat();
-    expect(flat).toContain('task-1');
-    expect(flat).toContain('r1');
-
     /*
-      And asked ONCE per level. The fragment used to drill down from each reply's own id, so a level
-      cost a query — and, because these are subscriptions, a live subscription — per row; the level
-      below cost one per row of that. Nothing about the rendering said so, which is why it is pinned
-      here: no level may ask about the same anchor twice.
+      ONE question for the whole conversation.
+
+      This has been wrong in two different directions. It began as a query per *reply*, so a level
+      cost a subscription per row and the level below cost one per row of that. Hoisting it to a
+      query per *level* fixed the count and left the latency: each level anchors on the ids the one
+      above returns, so three levels are three sequential round trips and the thread unfolds instead
+      of appearing. A transitive read is one round trip whatever the depth.
     */
-    expect(new Set(flat).size).toBe(flat.length);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toEqual({ anchors: ['task-1'], transitive: true });
 
     /*
       And it is drawn. `$each` renders its first child and drops the rest, so a row built as a list —
@@ -190,6 +192,89 @@ describe('a thread in a panel', () => {
     expect(html.match(/width: 24px/g) ?? []).not.toHaveLength(0);
     // A branch that can be folded says so, with a caret pointing down while it is open.
     expect(html).toContain('caret-down');
+  });
+
+  /**
+   * The other strategy, and why it exists: per-parent limits are the one thing a single flat read
+   * cannot express, since a path answers with everything below the anchor or nothing. Asking for
+   * them therefore buys back the round trips — one query per LEVEL, never one per reply.
+   */
+  it('asks once per level when per-parent limits are wanted', async () => {
+    const replies: Reply[] = [
+      { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: ['r2'] },
+      { id: 'r2', parent: 'r1', editorState: null, author: 'did:them', createdAt: '2026-09-02', comments: [] },
+    ];
+    const asked: { anchors: string[]; transitive: boolean; limitPerAnchor?: number }[] = [];
+
+    const collections = {
+      query: vi.fn(
+        (
+          _dataset: unknown,
+          options: { scope?: { anchorId?: string | string[]; transitive?: boolean; limitPerAnchor?: number } },
+        ) => {
+          const anchor = options.scope?.anchorId;
+          const anchors = anchor === undefined ? [] : Array.isArray(anchor) ? anchor : [anchor];
+          if (anchor !== undefined) {
+            asked.push({
+              anchors,
+              transitive: options.scope?.transitive === true,
+              limitPerAnchor: options.scope?.limitPerAnchor,
+            });
+          }
+          return {
+            subscribe: () =>
+              Promise.resolve(
+                replies
+                  .filter((r) => anchors.includes(r.parent))
+                  .map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } })),
+              ),
+            dispose: vi.fn(),
+          };
+        },
+      ),
+    };
+    const empty = { query: vi.fn(() => ({ subscribe: () => Promise.resolve([]), dispose: vi.fn() })) };
+
+    const stores = {
+      $getEntity: (name: string) => (name === 'CollectionBlock' ? collections : empty),
+      $currentDataset: () => ({ uuid: 'space' }),
+      $queryAdapter: passthroughAdapter,
+      $me: { did: 'did:me' },
+      $sources: hostSourceBag(),
+      spaceStore: { mutedDids: [], currentSpace: { id: 'space' } },
+      profileStore: { profiles: [] },
+      routeStore: { params: {} },
+      recordStore: { displays: {} },
+    };
+
+    const node: SchemaNode = {
+      type: '$each',
+      props: { items: [{ id: 'task-1', comments: ['r1'] }], as: 'row' },
+      $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
+      children: [discussionSection({ record: 'row', perLevel: 5 })],
+    };
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(
+      () => <RenderSchema node={node} stores={stores as never} registry={componentRegistry as never} />,
+      host,
+    );
+    await settled();
+    await tick();
+    await settled();
+    await tick();
+    await settled();
+
+    // Nothing walks the subtree here — the limit is the point.
+    expect(asked.every((q) => !q.transitive)).toBe(true);
+    const flat = asked.flatMap((q) => q.anchors);
+    expect(flat).toContain('task-1');
+    expect(flat).toContain('r1');
+    // One query per level, so no anchor is ever asked about twice.
+    expect(new Set(flat).size).toBe(flat.length);
+    // And the limit reaches the backend on every level below the first.
+    expect(asked.filter((q) => q.limitPerAnchor === 5).length).toBeGreaterThan(0);
   });
 
   it("keeps a reply's actions out of the way until the comment is pressed", async () => {
