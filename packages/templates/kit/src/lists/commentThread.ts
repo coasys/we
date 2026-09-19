@@ -122,6 +122,27 @@ export const descendantCount = (as: string): string => `${as}.$descendants ?? co
 /** Which replies are folded, by id — declared on the outermost thread. See `collapsible`. */
 const COLLAPSED = 'collapsedReplies';
 
+/** Whether the pointer is anywhere on one reply's fold line. See {@link railHighlight}. */
+const RAIL_HOT = 'railHot';
+
+/**
+ * The props that make a segment of the fold line light up with the rest of it.
+ *
+ * The line is drawn by two fragments — the part beside a comment's words belongs to the reply, the
+ * part beside its replies belongs to the thread — because they sit in different places in the tree.
+ * With `hoverProps` each lit on its own, so a line that reads as one thing highlighted in halves.
+ *
+ * A shared local instead of CSS, since CSS has no way to say "while the pointer is on my sibling".
+ * Declared per row, inside the `$each`, so two replies cannot disagree about whose line is lit.
+ */
+export function railHighlight(): Record<string, unknown> {
+  return {
+    onMouseEnter: { $setLocal: RAIL_HOT, value: true },
+    onMouseLeave: { $setLocal: RAIL_HOT, value: false },
+    bg: { $: `local.${RAIL_HOT} ? 'surface-hover' : ''` },
+  };
+}
+
 /**
  * How many top-level replies to fetch — a local, so "show more" raises it.
  *
@@ -229,6 +250,47 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
         ],
       },
     },
+  };
+}
+
+/**
+ * What the thread shows before its one query has answered.
+ *
+ * An empty `$each` and an unanswered one look identical, so without this a thread that is still
+ * loading asserts "No replies yet" and then contradicts itself. Only at the top level, and only
+ * before the first answer: `local.<name>Loaded` goes true and stays true, so this never returns
+ * once the thread is live.
+ *
+ * Shaped like what is coming — a face, a byline, a line of words — rather than a spinner, so the
+ * column does not jump when the replies land.
+ */
+function threadSkeleton(opts: CommentThreadOptions): SchemaNode {
+  const rows = Math.min(3, (opts.perLevel ?? DEFAULT_PER_LEVEL)[0]);
+  return {
+    type: 'Column',
+    props: { width: '100%', gap: '300', py: '200' },
+    children: Array.from({ length: rows }, () => ({
+      type: 'Column',
+      props: { width: '100%', gap: '100' },
+      children: [
+        {
+          type: 'Row',
+          props: { ay: 'center', gap: '200' },
+          children: [
+            { type: 'we-skeleton', props: { width: '24px', height: '24px' } },
+            { type: 'we-skeleton', props: { width: '96px', height: '12px' } },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { width: '100%', gap: '200' },
+          children: [
+            { type: 'Column', props: { width: '24px', flexShrink: '0' } },
+            { type: 'we-skeleton', props: { width: '100%', height: '12px' } },
+          ],
+        },
+      ],
+    })),
   };
 }
 
@@ -360,7 +422,7 @@ function branchRail(as: string): SchemaNode {
           flex: '1',
           ax: 'center',
           label: 'Hide this branch',
-          hoverProps: { bg: 'surface-hover' },
+          ...railHighlight(),
           onClick: foldToggle(as),
         },
         children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
@@ -430,6 +492,9 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     ? {
         type: 'Column',
         props: { width: '100%', gap: '100' },
+        // Whose fold line the pointer is on. Here rather than deeper because the line's two halves
+        // are in different branches of this row, and both have to read the one answer.
+        $localState: { [RAIL_HOT]: { type: 'boolean', initial: false } },
         children: [
           ...opts.reply(as, collapsed),
           {
@@ -477,20 +542,29 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $: `count(${itemsExpr})` },
+          // Loaded, then counted. Testing the count alone cannot tell "nothing here" from "nothing
+          // yet", and the empty state says the first out loud.
+          condition: { $: level === 1 ? `local.${WHOLE_THREAD}Loaded` : 'true' },
+          else: threadSkeleton(opts),
           then: {
-            type: 'Column',
-            props: { width: '100%', gap: '200' },
-            children: [
-              {
-                type: '$each',
-                props: { items: { $: itemsExpr }, as },
-                children: [row],
+            type: '$if',
+            props: {
+              condition: { $: `count(${itemsExpr})` },
+              then: {
+                type: 'Column',
+                props: { width: '100%', gap: '200' },
+                children: [
+                  {
+                    type: '$each',
+                    props: { items: { $: itemsExpr }, as },
+                    children: [row],
+                  },
+                  truncationNote(opts, level, itemsExpr),
+                ],
               },
-              truncationNote(opts, level, itemsExpr),
-            ],
+              ...(opts.empty && level === 1 && { else: opts.empty }),
+            },
           },
-          ...(opts.empty && level === 1 && { else: opts.empty }),
         },
       },
     ],

@@ -234,3 +234,46 @@ describe('commentThread truncation arithmetic', () => {
     expect(offers({ local, root: '', focus: [], card: { id: 'card-1', comments: ['y', 'z'] } })).toBe(false);
   });
 });
+
+describe('commentThread loading and rail state', () => {
+  const thread = commentThread({
+    anchorId: { $: 'row.id' },
+    collapsible: true,
+    empty: { type: 'we-text', children: ['No replies yet.'] },
+    reply: () => [{ type: 'we-text' }],
+  }) as Node;
+
+  const find = (node: Node, match: (n: Node) => boolean): Node | undefined => {
+    if (match(node)) return node;
+    const props = node.props as { then?: Node; else?: Node } | undefined;
+    for (const child of [...(node.children ?? []), props?.then, props?.else]) {
+      const hit = child && find(child, match);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+
+  /**
+   * An unanswered query and an empty one look identical from a template, so without this the thread
+   * asserts "No replies yet" on its first frame and contradicts itself a moment later.
+   */
+  it('waits for the query to answer before saying a thread is empty', () => {
+    const gate = find(thread, (n) => {
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      return n.type === '$if' && condition === 'local.threadRowsLoaded';
+    });
+    expect(gate).toBeDefined();
+    // And what it shows meanwhile is shaped like what is coming, not a spinner.
+    expect(JSON.stringify((gate!.props as { else?: Node }).else)).toContain('we-skeleton');
+  });
+
+  /**
+   * The fold line is drawn by two fragments and reads as one thing, so it has to light as one. CSS
+   * cannot express "while the pointer is on my sibling", hence a shared local.
+   */
+  it('declares the rail hover state once per row, where both halves can read it', () => {
+    const owner = find(thread, (n) => Boolean(n.$localState && 'railHot' in n.$localState));
+    expect(owner).toBeDefined();
+    expect(JSON.stringify(thread)).toContain("local.railHot ? 'surface-hover' : ''");
+  });
+});

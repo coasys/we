@@ -50,7 +50,7 @@
 import { composerModal, confirmModal, emptyNote } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { commentThread, descendantCount, foldToggle, resetTopLimit } from '../lists/commentThread.ts';
+import { commentThread, descendantCount, foldToggle, railHighlight, resetTopLimit } from '../lists/commentThread.ts';
 import { agentByline } from './agentByline.ts';
 import { signalsSection } from './signals.ts';
 
@@ -431,7 +431,8 @@ function replyBody(
                             flex: '1',
                             ax: 'center',
                             label: 'Hide this branch',
-                            hoverProps: { bg: 'surface-hover' },
+                            // Lit with the rest of the line, not on its own — see `railHighlight`.
+                            ...railHighlight(),
                             onClick: foldToggle(as),
                           },
                           children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
@@ -632,10 +633,17 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                 props: { items: { $: 'local.discussionFocus' }, as: 'focused' },
                 children: [
                   {
-                    // The reply being continued, drawn as itself and marked as the context it is:
-                    // a rule down its left edge, which is what the indent says one level in.
+                    /*
+                      The reply being continued, drawn as itself and marked as the context it is.
+
+                      A tinted card rather than a rule down the left edge, which is what this was: a
+                      vertical line beside a comment is the thread's own vocabulary for a foldable
+                      branch, so the root of a scoped view read as a gutter that did not answer a
+                      press. A fill says "this is the thing you are inside" without borrowing a
+                      meaning that is already taken.
+                    */
                     type: 'Column',
-                    props: { gap: '100', width: '100%', pl: '400', borderLeft: '2px solid border-strong' },
+                    props: { gap: '100', width: '100%', p: '300', r: 'surface', bg: 'surface-sunken' },
                     children: replyBody('focused', 'false', opts, false),
                   },
                 ],
