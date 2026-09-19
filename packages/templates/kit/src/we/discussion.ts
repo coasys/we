@@ -79,6 +79,14 @@ export interface DiscussionSectionOptions {
   fractal?: string;
   /** Levels drawn before the thread offers to re-root. Defaults to 3, as `commentThread` does. */
   depth?: number;
+  /**
+   * At most this many replies under each parent, below the first level.
+   *
+   * Absent, every reply at every drawn level is fetched. Set it and one branch that attracted three
+   * hundred replies cannot crowd out the rest of the conversation — the thread stays the shape of
+   * the discussion rather than the shape of its loudest corner.
+   */
+  perLevel?: number;
   /** What the composer's heading says. Defaults to "Reply". */
   title?: string;
 }
@@ -554,6 +562,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       commentThread({
         anchorId: { $: anchor },
         ...(opts.depth !== undefined && { depth: opts.depth }),
+        ...(opts.perLevel !== undefined && { perLevel: opts.perLevel }),
         collapsible: true,
         // The reply's own box is `replyBody`'s now — it holds whether the pointer is on the comment,
         // which is a fact about the whole comment rather than about any row inside it.
