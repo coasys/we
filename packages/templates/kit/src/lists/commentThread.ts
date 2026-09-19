@@ -96,6 +96,17 @@ export interface CommentThreadOptions {
    * rather than quietly answered some other way.
    */
   perLevel?: number[];
+  /**
+   * How many direct replies the anchor has, as an expression — `count(card.comments)`.
+   *
+   * Only the top level needs telling. Every level below it is drawn under a reply that is itself on
+   * screen, and a row carries its own `comments` ids, so the count is already to hand there.
+   *
+   * Without it the top level cannot tell "ten shown because ten is all there is" from "ten shown
+   * because ten is the limit", and the choice is between offering more that may not exist and
+   * saying nothing when it does.
+   */
+  anchorTotal?: string;
   /** Internal: the current level, counted down. */
   level?: number;
 }
@@ -161,35 +172,38 @@ const THREAD_INCLUDE = {
 } as const;
 
 /**
- * What a level says when it came back full.
+ * What a level says when it is showing fewer replies than exist.
  *
- * Silent truncation is the failure worth avoiding: a thread capped at ten top-level replies looked
- * exactly like a thread with ten. There is no count of "how many were left" to show — asking for
- * one is another query — so this says that there are more and offers the way to them rather than
- * naming a number it would have to invent.
+ * Counted, not guessed. A row carries its own `comments` — the ids of its direct replies — so how
+ * many a level *could* draw is already in hand, and comparing it against how many it *did* is
+ * exact. The first version tested whether a level came back full, which cannot tell "ten shown
+ * because ten is the limit" from "ten shown because ten is all there is", and so offered more that
+ * sometimes revealed nothing. A control that does nothing reads as a bug, and is one.
  *
- * The top level grows in place, because it is the level somebody is reading. A deeper one offers
- * the branch instead: re-rooting there gives it the top level's budget, which is both more room and
- * a better place to read it from. Where the caller has given no way to re-root, a deeper level says
- * nothing — a dead-end note is worse than none.
+ * The top level is the exception, having no row of its own: its total comes from the caller, which
+ * knows what the thread is anchored to. Absent that, it says nothing rather than guessing.
+ *
+ * The top level grows in place, because it is the level being read. A deeper one offers its branch
+ * instead: re-rooting gives it the top level's budget, which is both more room and a better place
+ * to read it from. Where the caller has given no way to re-root, a deeper level stays quiet — a
+ * note leading nowhere is worse than none.
  */
-function truncationNote(
-  opts: CommentThreadOptions,
-  level: number,
-  itemsExpr: string,
-  levelBreadth: string,
-): SchemaNode {
-  const full = `count(${itemsExpr}) >= ${levelBreadth}`;
+function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: string): SchemaNode {
+  const parentAs = level === 2 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level - 1}`;
+  const total = level === 1 ? opts.anchorTotal : `count(${parentAs}.comments)`;
+  const silent: SchemaNode = { type: '$if', props: { condition: { $: 'false' } } };
+  if (!total) return silent;
+
+  const hidden = `${total} - count(${itemsExpr})`;
+  const condition = { $: `${hidden} > 0` };
+
   if (level > 1) {
-    const parentAs = level === 2 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level - 1}`;
-    return opts.more
-      ? { type: '$if', props: { condition: { $: full }, then: opts.more(parentAs) } }
-      : { type: '$if', props: { condition: { $: 'false' } } };
+    return opts.more ? { type: '$if', props: { condition, then: opts.more(parentAs) } } : silent;
   }
   return {
     type: '$if',
     props: {
-      condition: { $: full },
+      condition,
       then: {
         type: 'we-button',
         props: {
@@ -203,7 +217,11 @@ function truncationNote(
             value: { $: `local.${TOP_LIMIT} + ${(opts.perLevel ?? DEFAULT_PER_LEVEL)[0]}` },
           },
         },
-        children: ['Show more replies'],
+        children: [
+          'Show ',
+          { type: 'we-number', props: { value: { $: hidden } } },
+          { $: `plural(${hidden}, ' more reply', ' more replies')` },
+        ],
       },
     },
   };
@@ -342,13 +360,6 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
   */
   const parent = level === 1 ? anchorExpr(opts.anchorId) : `${asFor(level - 1)}.id`;
   const itemsExpr = `local.${WHOLE_THREAD}.filter(r, r.inReplyTo.id == ${parent})`;
-  /*
-    How many this level was allowed. A level that came back full is a level with more behind it —
-    the honest test available without asking again, and it over-offers only when the count lands
-    exactly on the limit.
-  */
-  const breadth = opts.perLevel ?? DEFAULT_PER_LEVEL;
-  const levelBreadth = level === 1 ? `local.${TOP_LIMIT}` : String(breadth[level - 1] ?? 0);
 
   /** True while this reply is folded. One expression, read by the rail, the fold and the caller. */
   const collapsed = `${as}.id in local.${COLLAPSED}`;
@@ -452,7 +463,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
                 props: { items: { $: itemsExpr }, as },
                 children: [row],
               },
-              truncationNote(opts, level, itemsExpr, levelBreadth),
+              truncationNote(opts, level, itemsExpr),
             ],
           },
           ...(opts.empty && level === 1 && { else: opts.empty }),

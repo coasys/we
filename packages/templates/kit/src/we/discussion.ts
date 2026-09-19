@@ -563,6 +563,13 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       commentThread({
         anchorId: { $: anchor },
         ...(opts.depth !== undefined && { depth: opts.depth }),
+        /*
+          How many replies the thread's anchor has — the record's own, or the reply the thread has
+          been re-rooted on, which `discussionFocus` is already fetching for the header. Without it
+          the top level cannot tell a full page from a complete one, and would offer more that
+          sometimes revealed nothing.
+        */
+        anchorTotal: `local.${ROOT} ? count(first(local.discussionFocus).comments) : count(${opts.record}.comments)`,
         ...(opts.perLevel !== undefined && { perLevel: opts.perLevel }),
         collapsible: true,
         // The reply's own box is `replyBody`'s now — it holds whether the pointer is on the comment,

@@ -10,7 +10,13 @@ import { describe, expect, it } from 'vitest';
 
 import { commentThread } from './commentThread.ts';
 
-type Node = { type?: string; props?: Record<string, unknown>; children?: Node[] };
+type Node = {
+  type?: string;
+  props?: Record<string, unknown>;
+  children?: Node[];
+  $queries?: Record<string, { scope: { levels: unknown[] } }>;
+  $localState?: Record<string, { initial?: unknown }>;
+};
 
 /** The `items` expression of each reply level, outermost first. */
 function levelExpressions(node: Node): string[] {
@@ -86,8 +92,10 @@ describe('commentThread row selection', () => {
 describe('commentThread truncation', () => {
   const thread = commentThread({
     anchorId: { $: 'row.id' },
+    anchorTotal: 'count(row.comments)',
     perLevel: [2, 1],
     depth: 2,
+    more: (as) => ({ type: 'we-button', children: [{ $: `${as}.id` }] }),
     reply: () => [{ type: 'we-text' }],
   }) as Node;
 
@@ -107,21 +115,35 @@ describe('commentThread truncation', () => {
   }
 
   it('asks the backend for the top level’s breadth as a local, so it can grow', () => {
-    const scope = (thread.$queries as { threadRows: { scope: { levels: unknown[] } } }).threadRows.scope;
+    const scope = thread.$queries!.threadRows.scope;
     expect(scope.levels[0]).toEqual({ $: 'local.topReplies' });
     // The levels below are fixed: a deeper one is widened by opening the branch, not in place.
     expect(scope.levels[1]).toBe(1);
   });
 
-  it('offers more only when a level came back full', () => {
-    const full = conditions(thread).filter((c) => c.includes('>='));
-    expect(full.length).toBeGreaterThan(0);
-    // The top level measures against the local it raises, not against the number it started at.
-    expect(full.some((c) => c.includes('local.topReplies'))).toBe(true);
+  /**
+   * Counted, not guessed: the offer appears when replies exist that are not drawn, which is exactly
+   * what a reader means by "show more". Testing whether a level came back FULL cannot tell ten of
+   * ten from ten of eleven, so it offered more that sometimes revealed nothing.
+   */
+  it('offers more only when replies exist that are not drawn', () => {
+    const offers = conditions(thread).filter((c) => c.includes('> 0') && c.includes('count('));
+    expect(offers.length).toBeGreaterThan(0);
+    // A deeper level counts its own parent's replies against the rows it drew.
+    expect(offers.some((c) => c.includes('reply.comments'))).toBe(true);
+  });
+
+  it('says nothing at the top level when the caller cannot say how many there are', () => {
+    const withoutTotal = commentThread({
+      anchorId: { $: 'row.id' },
+      perLevel: [1],
+      depth: 1,
+      reply: () => [{ type: 'we-text' }],
+    }) as Node;
+    expect(conditions(withoutTotal).some((c) => c.includes('local.topReplies +'))).toBe(false);
   });
 
   it('starts the local at the caller’s own top-level breadth', () => {
-    const state = thread.$localState as Record<string, { initial?: unknown }>;
-    expect(state.topReplies.initial).toBe(2);
+    expect(thread.$localState!.topReplies.initial).toBe(2);
   });
 });
