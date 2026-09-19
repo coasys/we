@@ -140,6 +140,18 @@ function replyBody(
   const fractal = opts.fractal;
   /** The controls this reply shows: while the pointer is on it, or while it is the open one. */
   const roused = `local.pointerOnReply || local.${OPEN} == ${as}.id`;
+  /** Show this reply's controls, or hide them again. */
+  const openToggle: SchemaProp = { $setLocal: OPEN, value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` } };
+  /*
+    What a press on the byline means, which depends on whether the comment is folded.
+
+    Written out here rather than inline because the folded branch names the fold state, and a reply
+    that cannot fold is rendered outside the scope declaring it — the validator walks both branches
+    of a `$if` and is right to, so the choice is made in TypeScript where the answer is known.
+  */
+  const unfoldOrOpen: SchemaProp = foldable
+    ? { $if: { condition: { $: collapsed }, then: foldToggle(as), else: openToggle } }
+    : openToggle;
   return [
     {
       /*
@@ -196,60 +208,21 @@ function replyBody(
               $if: {
                 condition: { $: 'local.pressedControl' },
                 then: { $setLocal: 'pressedControl', value: false },
-                else: { $setLocal: OPEN, value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` } },
+                /*
+                  Folded, the whole stub is the way back open — the biggest target the row has, and
+                  the only one a touchscreen can offer, since there is no hover to reveal anything
+                  on. It replaces a caret that sat before the face and moved it sideways every time
+                  a branch closed.
+
+                  Open, the same press does what it always did and shows the reply's own controls.
+                  One gesture either way: on a folded comment "open it" and "expand it" are not two
+                  different things to want.
+                */
+                else: unfoldOrOpen,
               },
             },
           },
           children: [
-            /*
-              The caret, at the head of the line and before the face.
-
-              Here rather than under the byline, which is where the rail starts: a caret on a row of
-              its own is a whole row of chrome for one glyph, and on a folded branch it was the only
-              row left. A reply with nothing under it keeps the width and draws no caret, so every
-              byline in a thread starts at the same place.
-            */
-            /*
-              Left out entirely where it cannot fold, rather than gated on a condition that is always
-              false: the validator walks both branches of a `$if`, and rightly — a node referencing a
-              local nothing declares is a mistake whether or not it draws. The slot stays, so a byline
-              with no caret starts where its siblings do.
-            */
-            ...(foldable
-              ? [
-                  {
-                    type: '$if',
-                    props: {
-                      // Folded only. Open, the caret moves into the gutter below the face, where
-                      // the line it belongs to starts — see the body row.
-                      condition: { $: `(${collapsed}) && count(${as}.comments)` },
-                      then: {
-                        type: 'we-tooltip',
-                        props: { content: { $: `(${collapsed}) ? 'Show this branch' : 'Hide this branch'` } },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'bare',
-                              size: 'xs',
-                              square: true,
-                              color: 'text-faint',
-                              label: 'Fold this branch',
-                              onClick: [{ $setLocal: 'pressedControl', value: true }, foldToggle(as)],
-                            },
-                            children: [
-                              {
-                                type: 'we-icon',
-                                props: { name: { $: `(${collapsed}) ? 'caret-right' : 'caret-down'` } },
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                    },
-                  } as SchemaNode,
-                ]
-              : []),
             agentByline({
               did: { $: `${as}.author` },
               timestamp: { $: `${as}.createdAt` },
@@ -268,11 +241,20 @@ function replyBody(
               props: {
                 condition: { $: `(${collapsed}) && count(${as}.comments)` },
                 then: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
+                  // At the end of the line rather than before the face: nothing is inserted to the
+                  // left of the avatar, so folding a branch no longer moves it.
+                  type: 'Row',
+                  props: { ay: 'center', gap: '100' },
                   children: [
-                    { type: 'we-number', props: { value: { $: descendantCount(as) } } },
-                    { $: `plural(${descendantCount(as)}, ' reply', ' replies')` },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        { type: 'we-number', props: { value: { $: descendantCount(as) } } },
+                        { $: `plural(${descendantCount(as)}, ' reply', ' replies')` },
+                      ],
+                    },
+                    { type: 'we-icon', props: { name: 'caret-right', size: 'xs', color: 'text-faint' } },
                   ],
                 },
               },

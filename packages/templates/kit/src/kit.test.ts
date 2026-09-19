@@ -378,12 +378,12 @@ describe('contracts call sites depend on', () => {
     });
     expect(declarations).toBe(1);
     /*
-      Three per level: the caret in the byline, the caret in the gutter, and the rail.
+      Three per level: the byline's own press, the caret in the gutter, and the rail.
 
-      Two carets because the control moves with the state rather than staying put. Folded, it sits
-      before the face, where it is the only thing left of the comment; open, it moves under the face
-      to head the line running past the words and down beside the replies. Only one is ever drawn —
-      each is gated on the fold — but both are in the tree, and both write the same id.
+      The byline is one of them because a folded comment is opened by pressing the stub itself — the
+      biggest target the row has, and the only one a touchscreen can offer, there being no hover to
+      reveal anything on. Open, that same press shows the reply's controls instead, so the handler
+      chooses by the fold state and only one meaning is ever live.
     */
     expect(toggles).toBe(9);
     // Each level folds twice: the reply's own words, and the branch under it.
