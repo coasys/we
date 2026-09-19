@@ -125,11 +125,19 @@ const WHOLE_THREAD = 'threadRows';
 /** See {@link CommentThreadOptions.limit}. */
 const DEFAULT_THREAD_LIMIT = 200;
 
-/** An anchor as an expression, whether it was written as a token or a literal id. */
+/**
+ * An anchor as an expression, whether it was written as a token or a literal id.
+ *
+ * **Parenthesised, always.** The caller's anchor is an arbitrary expression — `discussionSection`
+ * passes a ternary, because the thread can be re-rooted on a reply — and `==` binds tighter than
+ * `?:`. Spliced in bare, `r.inReplyTo.id == a ? a : b` parses as `(r.inReplyTo.id == a) ? a : b`,
+ * so the filter's predicate becomes the ternary's *result*: a non-empty id, which is truthy for
+ * every row. Every descendant then passed the top level's filter and the whole thread drew flat.
+ */
 function anchorExpr(anchorId: AnchorId): string {
   if (anchorId && typeof anchorId === 'object') {
     const token = (anchorId as { $?: unknown }).$;
-    if (typeof token === 'string') return token;
+    if (typeof token === 'string') return `(${token})`;
   }
   return typeof anchorId === 'number' ? String(anchorId) : `'${String(anchorId)}'`;
 }
