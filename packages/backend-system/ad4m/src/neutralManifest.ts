@@ -30,8 +30,14 @@ const SCALAR: Record<EntityManifestProperty['type'], ScalarType> = {
  * Build the neutral `EntityManifest` from the AD4M-side entries. A property is a *typed relation* iff
  * it carries `relatedEntity` (SHACL `sh:class`); everything else is a scalar. Relations whose target
  * isn't among the given entities are dropped (and reported in `warnings`) so the result is always
- * referentially valid. `reverseOf` is intentionally not emitted — WE's SDNA relations are frequently
- * one-directional, and the IR's `scope`/`include` never require the inverse.
+ * referentially valid.
+ *
+ * `reverseOf` is not emitted **on this path**, which is the read direction: SHACL carries the
+ * predicate and the target class, not which end of a pair a relation is, so an inverse read back
+ * out of a foreign perspective would be a guess. The authoring direction is where the answer
+ * exists — a relation declaring `reverseOf` in `@we/entities` generates a `@BelongsTo*` — so a
+ * WeNode knows what it is a comment on while a foreign entity read back from SHACL does not.
+ * Closing that gap means SHACL saying which end owns the link, and nothing consumes the answer yet.
  */
 export function toNeutralManifest(entries: EntityManifestEntry[], opts?: { version?: string }): NeutralManifestResult {
   const warnings: string[] = [];
