@@ -417,7 +417,25 @@ export type QueryToken = {
      * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
      * `via` relation. The adapter resolves `via` to a backend handle (AD4M: → the relation's predicate).
      */
-    scope?: { via: string; anchorId: string | number | Record<string, unknown>; anchor?: string };
+    scope?: {
+      via: string;
+      /**
+       * The anchor, or several of them. A list asks the same question of every anchor in one query,
+       * which is how a level of a tree stays one round trip and one subscription rather than one of
+       * each per parent. An expression answering with a list works — `local.replies.map(r, r.id)`.
+       */
+      anchorId: string | number | Array<string | number> | Record<string, unknown>;
+      anchor?: string;
+      /**
+       * Follow `via` all the way down rather than one step. The result is flat: it says which rows
+       * are under the anchor, never where, so include the inverse relation to rebuild a tree.
+       */
+      transitive?: boolean;
+      /** `'in'` searches among what points *at* the anchor, rather than what it points at. */
+      direction?: 'out' | 'in';
+      /** At most this many per anchor — "the top five replies under each of these". Pair with `order`. */
+      limitPerAnchor?: number;
+    };
     subscribe?: boolean;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
     dataset?: string;

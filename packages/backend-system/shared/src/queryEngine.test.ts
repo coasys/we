@@ -364,3 +364,102 @@ describe('range bounds in the engine', () => {
     expect(ids({ dueDate: { lt: '2027' } })).toEqual(['t1', 't2', 't3']);
   });
 });
+
+/**
+ * Bounded traversal — several anchors, a transitive walk, the inverse direction, and a per-anchor
+ * limit. The reference implementation answers all four, so a store's tests are about the store
+ * rather than about which backend happens to be underneath it.
+ */
+describe('executeQueryIR — bounded traversal', () => {
+  /**
+   * A comment tree, self-referential through `parentId`:
+   *
+   * ```text
+   * root ── c1 ── r1 ── rr1
+   *   │      └─── r2
+   *   ├──── c2
+   *   └──── c3
+   * ```
+   */
+  const tree: InMemoryDataset = {
+    tables: {
+      Comment: [
+        { id: 'c1', parentId: 'root', text: 'one' },
+        { id: 'c2', parentId: 'root', text: 'two' },
+        { id: 'c3', parentId: 'root', text: 'three' },
+        { id: 'r1', parentId: 'c1', text: 'reply one' },
+        { id: 'r2', parentId: 'c1', text: 'reply two' },
+        { id: 'rr1', parentId: 'r1', text: 'deep' },
+      ],
+    },
+    relations: {
+      Comment: { comments: { target: 'Comment', cardinality: 'many', foreignKey: 'parentId' } },
+    },
+  };
+
+  const run = (scope: QueryIR['scope']) => ids(executeQueryIR({ irVersion: 1, entity: 'Comment', scope }, tree));
+
+  it('answers for every anchor in one query', () => {
+    expect(run({ via: 'comments', anchorId: ['c1', 'r1'], anchor: 'Comment' }).sort()).toEqual(['r1', 'r2', 'rr1']);
+  });
+
+  it('walks the whole subtree when transitive, excluding the anchor', () => {
+    expect(run({ via: 'comments', anchorId: 'root', anchor: 'Comment', transitive: true }).sort()).toEqual([
+      'c1',
+      'c2',
+      'c3',
+      'r1',
+      'r2',
+      'rr1',
+    ]);
+  });
+
+  it('stays one step when not transitive', () => {
+    expect(run({ via: 'comments', anchorId: 'root', anchor: 'Comment' }).sort()).toEqual(['c1', 'c2', 'c3']);
+  });
+
+  it('finds the parent when reading inward', () => {
+    expect(run({ via: 'comments', anchorId: 'rr1', anchor: 'Comment', direction: 'in' })).toEqual(['rr1']);
+  });
+
+  /**
+   * Per anchor, not overall: two anchors with a limit of one must give one *each*, where a global
+   * limit of two could legitimately take both from the same anchor.
+   */
+  it('keeps the limit per anchor rather than across the result', () => {
+    const rows = run({ via: 'comments', anchorId: ['root', 'c1'], anchor: 'Comment', limitPerAnchor: 1 });
+    expect(rows).toHaveLength(2);
+    expect(rows).toContain('c1');
+    expect(rows).toContain('r1');
+  });
+
+  /**
+   * The failure worth guarding: an empty anchor list must not read as "no scope" and return the
+   * whole entity. It arises whenever a level reads the ids of the level above and that level is
+   * empty or has not arrived yet.
+   */
+  it('answers with nothing for an empty anchor list', () => {
+    expect(run({ via: 'comments', anchorId: [], anchor: 'Comment' })).toEqual([]);
+  });
+
+  it('terminates on a cycle rather than walking it forever', () => {
+    const cyclic: InMemoryDataset = {
+      tables: {
+        Comment: [
+          { id: 'x', parentId: 'y' },
+          { id: 'y', parentId: 'x' },
+        ],
+      },
+      relations: { Comment: { comments: { target: 'Comment', cardinality: 'many', foreignKey: 'parentId' } } },
+    };
+    const rows = executeQueryIR(
+      {
+        irVersion: 1,
+        entity: 'Comment',
+        scope: { via: 'comments', anchorId: 'x', anchor: 'Comment', transitive: true },
+      },
+      cyclic,
+    );
+    expect(ids(rows).sort()).toEqual(['x', 'y']);
+  });
+});

@@ -77,10 +77,38 @@ export type IncludeMap = Record<string, IncludeSpec | true>;
 export interface Scope {
   /** Relation on the anchor entity whose targets are this query's `entity` (inbound traversal). */
   via: string;
-  /** The anchor instance's id. */
-  anchorId: string | number;
+  /**
+   * The anchor instance's id, or several of them.
+   *
+   * A list asks the same question of every anchor at once, which is what keeps one level of a tree
+   * to one round trip — and, under `live`, to one subscription — instead of one per parent. Twenty
+   * comments asked for their replies separately is twenty of each.
+   */
+  anchorId: string | number | Array<string | number>;
   /** Optional anchor entity type — when present, enables manifest validation of `via`. */
   anchor?: string;
+  /**
+   * Follow `via` as far as it goes rather than one step — every descendant, not every child.
+   *
+   * The result is flat and says nothing about the shape it came from: a backend walking a path
+   * reports which rows are under the anchor and not where any of them sits. Rebuilding a tree needs
+   * the inverse relation included alongside, so each row names its own parent.
+   */
+  transitive?: boolean;
+  /**
+   * `'out'` (the default) reads `anchor --via--> result`. `'in'` reads `result --via--> anchor`:
+   * searching among the things that point *at* the anchor, which `include` of an inverse relation
+   * cannot do because it only hydrates for rows already in hand.
+   */
+  direction?: 'out' | 'in';
+  /**
+   * Keep at most this many results per anchor — "the top five replies under each of these twenty".
+   *
+   * Distinct from `page.limit`, which caps the whole result: a limit of 100 across twenty anchors
+   * can legitimately return all 100 from one of them. Pair it with `sort`, or "top" means whichever
+   * the backend happened to return first.
+   */
+  limitPerAnchor?: number;
 }
 
 export interface Aggregation {
@@ -171,8 +199,11 @@ const aggregationSchema = z.object({
 
 const scopeSchema = z.object({
   via: z.string(),
-  anchorId: z.union([z.string(), z.number()]),
+  anchorId: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]),
   anchor: z.string().optional(),
+  transitive: z.boolean().optional(),
+  direction: z.enum(['out', 'in']).optional(),
+  limitPerAnchor: z.number().int().positive().optional(),
 });
 
 export const queryIRSchema: z.ZodType<QueryIR> = z.object({

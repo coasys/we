@@ -76,8 +76,16 @@ const zQuery = z.object({
   scope: z
     .object({
       via: z.string().min(1),
-      anchorId: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]),
+      anchorId: z.union([
+        z.string(),
+        z.number(),
+        z.array(z.union([z.string(), z.number()])),
+        z.record(z.string(), z.unknown()),
+      ]),
       anchor: z.string().optional(),
+      transitive: z.boolean().optional(),
+      direction: z.enum(['out', 'in']).optional(),
+      limitPerAnchor: z.number().int().positive().optional(),
     })
     .optional(),
   subscribe: z.boolean().optional(),

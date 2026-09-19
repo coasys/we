@@ -241,6 +241,9 @@ export const ad4mCapabilities: AdapterCapabilities = {
   booleanCombinators: true, // OR / AND / NOT in `where` (#868)
   relationFilters: true, // `some` / `none` compile to a SPARQL EXISTS group (#923)
   scope: true, // drill-down via `parent`
+  // The executor's `Scope::Traverse`: several anchors in one query, `+` paths, inbound term
+  // order, and a per-anchor slice applied between selecting ids and hydrating them.
+  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true },
   include: { supported: true }, // nested include is a core ORM feature
   aggregate: ['count'], // count projections only; sum/min/max/avg → compute-up
   sort: { multiKey: false, byRelationPath: true, byAggregate: true }, // single sort key only (#867)
@@ -260,7 +263,7 @@ function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
  * resolver (`resolveParentPredicate`, broken for synced dynamic models). The predicate is available on
  * every relation (WE + synced) via `EntityManifestProperty.predicate`.
  */
-function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id: unknown; predicate: string } {
+function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Record<string, unknown> {
   const entry = scope.anchor ? models.find((m) => m.name === scope.anchor) : undefined;
   const prop = entry?.properties.find((p) => p.name === scope.via);
   if (!prop?.predicate) {
@@ -269,7 +272,22 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id
         `no such relation in the current perspective's model manifest`,
     );
   }
-  return { id: scope.anchorId, predicate: prop.predicate };
+
+  // The plain drill-down stays exactly as it was: one anchor, one step outward, and the `{ id,
+  // predicate }` shape every existing query already sends.
+  const bounded = Array.isArray(scope.anchorId) || scope.transitive || scope.direction === 'in' || scope.limitPerAnchor;
+  if (!bounded) return { id: scope.anchorId, predicate: prop.predicate };
+
+  // Anything more is the executor's traverse form, which names its anchors as `ids`. An empty list
+  // stays an empty list rather than being dropped: "the replies to none of these" answers with
+  // nothing, where omitting the scope would answer with the whole space.
+  return {
+    ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
+    predicate: prop.predicate,
+    ...(scope.transitive ? { transitive: true } : {}),
+    ...(scope.direction === 'in' ? { direction: 'in' } : {}),
+    ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),
+  };
 }
 
 /**
