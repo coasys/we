@@ -308,6 +308,17 @@ export function planQuery(query: QueryIR, cap: AdapterCapabilities): QueryPlan {
         note: `aggregate "${agg.fn}" not native`,
       });
     }
+    // Refused rather than answered one level deep: a count that silently means "direct children"
+    // where the caller asked for "everything below" is a plausible wrong number, and those are the
+    // ones nobody checks.
+    if (agg.transitive && !cap.boundedTraversal?.transitive) {
+      gaps.push({
+        feature: 'aggregate:transitive',
+        path: `aggregate.${i}.transitive`,
+        disposition: 'unsupported',
+        note: 'no path traversal — a one-level count would answer a different question',
+      });
+    }
     if (agg.filter) analyzeFilter(agg.filter, cap, `aggregate.${i}.filter`, gaps);
   });
   if (query.sort) analyzeSort(query.sort, aggregateAliases, cap, 'sort', gaps);

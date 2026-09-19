@@ -121,6 +121,17 @@ export interface Aggregation {
   field?: string;
   /** Filter the related set before aggregating. */
   filter?: Filter;
+  /**
+   * Aggregate over everything reachable through `over`, not just one step.
+   *
+   * What "42 replies" on a collapsed branch means: a reader takes it for the conversation below,
+   * and the direct-child count says 3. A backend that walks the relation as a path answers this in
+   * the read it is already making, grouped per row, so it costs no extra round trip.
+   *
+   * Needs `boundedTraversal.transitive`. Where a backend lacks it the aggregate is refused rather
+   * than answered one level deep, since a plausible wrong number is worse than a missing one.
+   */
+  transitive?: boolean;
 }
 
 // ─── Query ───────────────────────────────────────────────────────────────────────
@@ -195,6 +206,7 @@ const aggregationSchema = z.object({
   fn: z.enum(['count', 'sum', 'min', 'max', 'avg']),
   field: z.string().optional(),
   filter: filterSchema.optional(),
+  transitive: z.boolean().optional(),
 });
 
 const scopeSchema = z.object({
