@@ -50,7 +50,7 @@
 import { composerModal, confirmModal, emptyNote } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { commentThread, foldToggle } from '../lists/commentThread.ts';
+import { commentThread, descendantCount, foldToggle } from '../lists/commentThread.ts';
 import { agentByline } from './agentByline.ts';
 import { signalsSection } from './signals.ts';
 
@@ -261,8 +261,8 @@ function replyBody(
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-faint' },
                   children: [
-                    { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
-                    { $: `plural(count(${as}.comments), ' reply', ' replies')` },
+                    { type: 'we-number', props: { value: { $: descendantCount(as) } } },
+                    { $: `plural(${descendantCount(as)}, ' reply', ' replies')` },
                   ],
                 },
               },
@@ -569,7 +569,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             onClick: { $setLocal: ROOT, value: { $: `${as}.id` } },
           },
           children: [
-            { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
+            { type: 'we-number', props: { value: { $: descendantCount(as) } } },
             ' more in this thread',
             { type: 'we-icon', props: { name: 'arrow-right', size: 'xs' } },
           ],

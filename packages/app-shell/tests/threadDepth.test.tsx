@@ -45,6 +45,10 @@ const passthroughAdapter: QueryAdapter = (() => {
     booleanCombinators: true,
     relationFilters: true,
     scope: true,
+    // A thread asks each level about every parent on it at once, so an adapter that cannot do that
+    // is refused rather than quietly asked about one of them — which is what happens here without
+    // this line, and is how the capability gate is meant to behave.
+    boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true },
     include: { supported: true },
     aggregate: ['count'],
     sort: { multiKey: true, byRelationPath: true, byAggregate: true },
@@ -96,15 +100,29 @@ describe('a thread in a panel', () => {
       { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: ['r2'] },
       { id: 'r2', parent: 'r1', editorState: null, author: 'did:them', createdAt: '2026-09-02', comments: [] },
     ];
-    /** Every drill-down the thread issues, by the id it asked about. */
-    const asked: string[] = [];
+    /**
+     * Every drill-down the thread issues, as the set of ids it asked about.
+     *
+     * One entry per QUERY, not per anchor — which is the property worth holding. A level asks about
+     * all of its parents at once, so a thread twenty replies wide still issues one query for the
+     * level below it rather than twenty.
+     */
+    const asked: string[][] = [];
 
     const collections = {
-      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string } }) => {
+      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string | string[] } }) => {
         const anchor = options.scope?.anchorId;
-        if (anchor !== undefined) asked.push(anchor);
+        const anchors = anchor === undefined ? [] : Array.isArray(anchor) ? anchor : [anchor];
+        if (anchor !== undefined) asked.push(anchors);
         return {
-          subscribe: () => Promise.resolve(replies.filter((reply) => reply.parent === anchor)),
+          subscribe: () =>
+            Promise.resolve(
+              replies
+                .filter((reply) => anchors.includes(reply.parent))
+                // A multi-anchor answer is flat, so each row says whose reply it is — exactly what
+                // the renderer needs to put it back under the right parent.
+                .map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } })),
+            ),
           dispose: vi.fn(),
         };
       }),
@@ -137,13 +155,28 @@ describe('a thread in a panel', () => {
       () => <RenderSchema node={node} stores={stores as never} registry={componentRegistry as never} />,
       host,
     );
+    // Three rounds, one per level: each level's anchors are the level above's answer, so the chain
+    // settles a level at a time rather than all at once.
+    await settled();
+    await tick();
+    await settled();
+    await tick();
     await settled();
     await tick();
     await settled();
 
     // The record's own replies, then that reply's — the second is the one nothing ever asked for.
-    expect(asked).toContain('task-1');
-    expect(asked).toContain('r1');
+    const flat = asked.flat();
+    expect(flat).toContain('task-1');
+    expect(flat).toContain('r1');
+
+    /*
+      And asked ONCE per level. The fragment used to drill down from each reply's own id, so a level
+      cost a query — and, because these are subscriptions, a live subscription — per row; the level
+      below cost one per row of that. Nothing about the rendering said so, which is why it is pinned
+      here: no level may ask about the same anchor twice.
+    */
+    expect(new Set(flat).size).toBe(flat.length);
 
     /*
       And it is drawn. `$each` renders its first child and drops the rest, so a row built as a list —

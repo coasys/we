@@ -24,7 +24,7 @@
  */
 import type { AnchorId } from '@we/schema-kit';
 import { emptyNote } from '@we/schema-kit';
-import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 export interface CommentThreadOptions {
   /** Id of the node being replied to — a post, a block, or a reply one level up. */
@@ -81,12 +81,89 @@ export interface CommentThreadOptions {
   collapsible?: boolean;
   /** Indent per level, as a space token. Defaults to `'400'`. Ignored when `collapsible` — the gutter indents. */
   indent?: string;
+  /**
+   * At most this many replies under each parent, per level.
+   *
+   * Absent, every reply at every drawn level is fetched — right for a conversation, wrong for an
+   * argument. Set it and each level asks for the top N under *each* of its parents, so one branch
+   * that attracted three hundred replies cannot crowd out the rest of the thread.
+   *
+   * Needs a backend declaring `boundedTraversal.perAnchorLimit`; where one does not, the query is
+   * refused rather than silently answering with everything, which would be the opposite of what was
+   * asked for.
+   */
+  perLevel?: number;
   /** Internal: the current level, counted down. */
   level?: number;
 }
 
+/**
+ * How many replies are under this one, all the way down.
+ *
+ * Falls back to the direct-child count where the backend cannot walk a path, which reads low rather
+ * than wrong — a thread that says "2 more" over nine is unhelpful; one that says nothing is worse.
+ */
+export const descendantCount = (as: string): string => `${as}.$descendants ?? count(${as}.comments)`;
+
 /** Which replies are folded, by id — declared on the outermost thread. See `collapsible`. */
 const COLLAPSED = 'collapsedReplies';
+
+/**
+ * One query per LEVEL, declared together at the top of the thread.
+ *
+ * The obvious shape is one query per reply — each row drilling down from its own id — and it is
+ * what this fragment did. It reads well and scales badly: a level of twenty replies is twenty
+ * queries and, because these are subscriptions, twenty live subscriptions; the level below it is a
+ * hundred. The count is set by how *wide* the thread is, which is the one thing a popular thread
+ * has a lot of.
+ *
+ * A level asked as a single question costs one of each, however wide it gets. Each query anchors on
+ * every id the level above returned — `anchorId` takes a list — and each row then picks its own
+ * children out of the answer by the parent they name. That is what `inReplyTo` is for, and why it
+ * had to exist: the result of a multi-anchor query is flat, so without each row naming its parent
+ * there is no way to tell whose reply is whose.
+ *
+ * `when` holds a level back until the one above it has answered. Without it the scope would resolve
+ * to an empty anchor list on the first frame — correctly answering "no rows", but answering, which
+ * costs a round trip per level on every mount and briefly draws an empty thread under a full one.
+ */
+function levelQueries(
+  opts: CommentThreadOptions,
+  depth: number,
+  keyFor: (level: number) => string,
+): Record<string, QueryStateField> {
+  const queries: Record<string, QueryStateField> = {};
+  for (let level = 1; level <= depth; level++) {
+    const key = keyFor(level);
+    queries[key] = {
+      entity: 'CollectionBlock',
+      where: { author: { not: { $: 'spaceStore.mutedDids' } } },
+      // The `comments` relation, drilled from the anchor. Untyped like `children`, so `scope` is
+      // the only form available — `include` needs a known target class.
+      scope: {
+        anchor: 'CollectionBlock',
+        via: 'comments',
+        anchorId: level === 1 ? opts.anchorId : { $: `local.${keyFor(level - 1)}.map(r, r.id)` },
+        ...(level > 1 && opts.perLevel !== undefined ? { limitPerAnchor: opts.perLevel } : {}),
+      },
+      ...(level > 1 ? { when: { $: `count(local.${keyFor(level - 1)})` } } : {}),
+      order: { createdAt: 'asc' },
+      // `inReplyTo` on every level but the first, whose parent is the anchor and therefore known.
+      // It is the inverse of `comments` — one link read backwards — so it writes nothing and costs
+      // one batched query for the whole level.
+      include: {
+        signals: true,
+        // What a folded branch or a depth limit says is below it. Transitive, because "3 more in
+        // this thread" above nine replies is a number nobody can act on — and it is free here: the
+        // projection is already grouped per row and already asked of the whole level at once.
+        $descendants: { from: 'comments', count: true, transitive: true },
+        // The parent each row names. Level one's is the anchor and therefore already known.
+        ...(level === 1 ? {} : { inReplyTo: true }),
+      },
+    };
+  }
+  return queries;
+}
 
 /**
  * Fold or unfold one reply — the handler behind a caret, wherever the caller draws one.
@@ -180,8 +257,11 @@ function branchRail(as: string): SchemaNode {
 export function commentThread(opts: CommentThreadOptions): SchemaNode {
   const depth = opts.depth ?? 3;
   const level = opts.level ?? 1;
-  const as = level === 1 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level}`;
-  const key = `${as}Rows`;
+  const base = opts.as ?? 'reply';
+  const asFor = (l: number) => (l === 1 ? base : `${base}${l}`);
+  const keyFor = (l: number) => `${asFor(l)}Rows`;
+  const as = asFor(level);
+  const key = keyFor(level);
 
   /** True while this reply is folded. One expression, read by the rail, the fold and the caller. */
   const collapsed = `${as}.id in local.${COLLAPSED}`;
@@ -203,7 +283,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-faint' },
                   children: [
-                    { type: 'we-number', props: { value: { $: `count(${as}.comments)` } } },
+                    { type: 'we-number', props: { value: { $: descendantCount(as) } } },
                     ' more in this thread',
                   ],
                 },
@@ -263,17 +343,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     // The folded ids, declared once at the top so a caret three levels down folds a branch the top
     // level is drawing. An inner declaration would shadow it, and each level would fold only itself.
     ...(opts.collapsible && level === 1 ? { $localState: { [COLLAPSED]: { type: 'array', initial: [] } } } : {}),
-    $queries: {
-      [key]: {
-        entity: 'CollectionBlock',
-        where: { author: { not: { $: 'spaceStore.mutedDids' } } },
-        // The `comments` relation, drilled from the anchor. Untyped like `children`, so `scope` is
-        // the only form available — `include` needs a known target class.
-        scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: opts.anchorId },
-        order: { createdAt: 'asc' },
-        include: { signals: true },
-      },
-    },
+    ...(level === 1 ? { $queries: levelQueries(opts, depth, keyFor) } : {}),
     children: [
       {
         type: '$if',
@@ -285,7 +355,15 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
             children: [
               {
                 type: '$each',
-                props: { items: { $: `local.${key}` }, as },
+                // Level 1 is the whole answer to its query. Every level below it is one query for
+                // the *level*, so a row picks out its own children by the parent each reply names.
+                props: {
+                  items:
+                    level === 1
+                      ? { $: `local.${key}` }
+                      : { $: `local.${key}.filter(r, r.inReplyTo.id == ${asFor(level - 1)}.id)` },
+                  as,
+                },
                 children: [row],
               },
             ],
@@ -309,11 +387,11 @@ export function replyCount(anchor: string): SchemaNode {
         type: 'Row',
         props: { gap: '100', ay: 'center' },
         children: [
-          { type: 'we-number', props: { value: { $: `count(${anchor}.comments)` }, shorten: true } },
+          { type: 'we-number', props: { value: { $: descendantCount(anchor) }, shorten: true } },
           {
             type: 'we-text',
             props: { variant: 'footnote', color: 'text-faint' },
-            children: [{ $: `plural(count(${anchor}.comments), 'reply', 'replies')` }],
+            children: [{ $: `plural(${descendantCount(anchor)}, 'reply', 'replies')` }],
           },
         ],
       },

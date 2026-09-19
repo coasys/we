@@ -1829,21 +1829,16 @@ const reactionsSection: SchemaNode = {
 /**
  * The whole conversation, counted — not the top of it.
  *
- * `count(row.comments)` is what the record itself can answer, and it is the first level only: a
- * thread of one reply carrying nine answers read "1". A caption over a conversation should count the
- * conversation, so this adds the levels the panel actually draws.
+ * `count(row.comments)` is the first level only: a thread of one reply carrying nine answers reads
+ * "1", and a caption over a conversation should count the conversation.
  *
- * Three, and no more, because there is no fourth to be had: the query language cannot walk a subtree
- * — each level is another hop — so a true descendant total is not expressible at any price. Level
- * one comes off the record, level two off each reply's own `comments` ids (which arrive with the
- * row, un-included), and level three off the grandchildren the `include` hydrates. Past that the
- * thread re-roots, and the count of what is down there belongs to the branch you follow.
+ * This used to add up the three levels the panel draws, by hand, because a subtree could not be
+ * walked — each level was another hop, so a true descendant total was not expressible at any price
+ * and the number was right only as far down as it had been written. `$descendants` is a transitive
+ * count projection: one number, every level, no extra query. It falls back to the record's own
+ * count where the backend cannot walk a path, which reads low rather than wrong.
  */
-const REPLY_TOTAL = [
-  'count(row.comments)',
-  ' + sum(local.cardReplies.map(r, count(r.comments)))',
-  ' + sum(local.cardReplies.map(r, sum(r.comments.map(c, count(c.comments)))))',
-].join('');
+const REPLY_TOTAL = 'first(local.card).$descendants ?? count(row.comments)';
 
 /** The thread, and the way into it. */
 const discussion: SchemaNode = {
@@ -1925,7 +1920,17 @@ const inspectorPanel: SchemaNode = {
         that was true declares no such relation and the query would be refused outright rather than
         answering without it — it becomes a node again the next time it is edited.
       */
-      include: { signals: true },
+      include: {
+        signals: true,
+        /*
+          The whole conversation under this card, as one number.
+
+          A count projection is already asked of every row at once and already grouped per row, so
+          `transitive` costs one character in the emitted path and no extra round trip. Without it
+          this is the direct replies only, which is not what a reader takes "42 replies" to mean.
+        */
+        $descendants: { from: 'comments', count: true, transitive: true },
+      },
       /*
         Not until there is an id to ask about — which is what kept the panel showing a record
         nobody had selected.
@@ -1998,21 +2003,6 @@ const inspectorPanel: SchemaNode = {
       it up again on every click to save nothing.
     */
     signalTypes: { entity: 'SignalType', subscribe: true },
-    /*
-      The selected record's replies, one level hydrated — what the Discussion caption counts past its
-      own first level. See `REPLY_TOTAL`.
-
-      A second subscription over rows the thread below is also reading, which is the price of a
-      caption that counts more than the record can answer for itself: the thread's own queries live
-      inside the fragment, where a heading above it cannot see them. `include` on `comments` rather
-      than a third query, since a hydrated grandchild carries its own ids and that is the third level.
-    */
-    cardReplies: {
-      entity: 'CollectionBlock',
-      scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: { $: CARD_ID } },
-      include: { comments: true },
-      when: { $: CARD_ID },
-    },
   },
   children: [
     panelHeader({

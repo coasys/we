@@ -1890,6 +1890,7 @@ export const contextData: ContextData = {
       fields: [],
       relations: [
         { name: 'comments', kind: 'HasMany', predicate: 'we://comment' },
+        { name: 'inReplyTo', kind: 'HasOne', predicate: 'we://comment' },
         { name: 'signals', kind: 'HasMany', predicate: 'we://signal', target: 'Signal' },
         { name: 'participants', kind: 'HasMany', predicate: 'we://participants' },
         { name: 'calls', kind: 'HasMany', predicate: 'we://call' },

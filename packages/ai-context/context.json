@@ -5357,6 +5357,11 @@
           "predicate": "we://comment"
         },
         {
+          "name": "inReplyTo",
+          "kind": "HasOne",
+          "predicate": "we://comment"
+        },
+        {
           "name": "signals",
           "kind": "HasMany",
           "predicate": "we://signal",
