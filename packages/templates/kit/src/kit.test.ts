@@ -407,8 +407,10 @@ describe('contracts call sites depend on', () => {
     walk(weDomain.discussionSection, (n) => {
       const props = (n.props ?? {}) as Record<string, unknown>;
       const opacity = (props.opacity as { $?: string } | undefined)?.$;
-      // The first level's — the walk reaches reply2 and reply3 after it.
-      if (n.type === 'Row' && opacity?.includes('reply.id') && !controls) controls = props;
+      // The controls' own fade, not the byline's: a folded stub fades too, and it is the row the
+      // walk meets first. The first level's, since the walk reaches reply2 and reply3 after it.
+      const isControls = opacity?.includes('pointerOnReply') && opacity.includes('reply.id');
+      if (n.type === 'Row' && isControls && !controls) controls = props;
     });
     // Roused by either: the pointer anywhere on the comment, or the comment being the open one —
     // so a thread opened by touch, which has no hover, still shows what it can do.

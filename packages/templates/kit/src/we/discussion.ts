@@ -203,6 +203,13 @@ function replyBody(
             gap: '200',
             width: '100%',
             cursor: 'pointer',
+            /*
+              Folded, the stub steps back — it stands for something put away rather than being the
+              thing itself. Faded rather than greyed, and back to full strength under the pointer,
+              so it reads as closed rather than as unavailable.
+            */
+            opacity: { $: `(${collapsed}) ? 0.65 : 1` },
+            hoverProps: { opacity: 1 },
             onClick: {
               $if: {
                 condition: { $: 'local.pressedControl' },
@@ -678,7 +685,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             variant: 'bare',
             size: 'sm',
             ax: 'start',
-            color: 'text-muted',
+            color: 'text-faint',
             hoverProps: { color: 'text' },
             py: '100',
             // Re-rooting shows a different list, so how much of the last one was asked for does

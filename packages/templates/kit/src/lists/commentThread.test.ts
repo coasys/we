@@ -260,11 +260,18 @@ describe('commentThread loading and rail state', () => {
   it('waits for the query to answer before saying a thread is empty', () => {
     const gate = find(thread, (n) => {
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
-      return n.type === '$if' && condition === 'local.threadRowsLoaded';
+      return n.type === '$if' && Boolean(condition?.startsWith('local.threadRowsLoaded'));
     });
     expect(gate).toBeDefined();
     // And what it shows meanwhile is shaped like what is coming, not a spinner.
     expect(JSON.stringify((gate!.props as { else?: Node }).else)).toContain('we-skeleton');
+    /*
+      It also waits again when the thread is re-rooted. `Loaded` is true for good once the first
+      answer lands, so it cannot say that the rows in hand are the PREVIOUS anchor's — and rows that
+      exist while none of them belong to anyone on screen are exactly that.
+    */
+    const condition = (gate!.props as { condition: { $: string } }).condition.$;
+    expect(condition).toContain('!count(local.threadRows)');
   });
 
   /**

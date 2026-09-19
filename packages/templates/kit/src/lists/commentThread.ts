@@ -237,7 +237,7 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
           variant: 'bare',
           size: 'sm',
           ax: 'start',
-          color: 'text-muted',
+          color: 'text-faint',
           hoverProps: { color: 'text' },
           py: '100',
           // A page more of whatever the caller asked for at the top, so the step matches the shape
@@ -554,9 +554,22 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          // Loaded, then counted. Testing the count alone cannot tell "nothing here" from "nothing
-          // yet", and the empty state says the first out loud.
-          condition: { $: level === 1 ? `local.${WHOLE_THREAD}Loaded` : 'true' },
+          /*
+            Ready, then counted. Testing the count alone cannot tell "nothing here" from "nothing
+            yet", and the empty state says the first out loud.
+
+            Two ways to be not-ready. The first is the obvious one: nothing has answered yet.
+            The second is that something has, but for a different question — re-rooting the thread
+            re-anchors the query, and `Loaded` is true for good once the first answer lands, so it
+            cannot say that the rows in hand are the previous anchor's. Rows that exist and belong
+            to nobody on screen are exactly that, and it is the only moment they can occur.
+          */
+          condition: {
+            $:
+              level === 1
+                ? `local.${WHOLE_THREAD}Loaded && (count(${itemsExpr}) || !count(local.${WHOLE_THREAD}))`
+                : 'true',
+          },
           else: threadSkeleton(opts),
           then: {
             type: '$if',

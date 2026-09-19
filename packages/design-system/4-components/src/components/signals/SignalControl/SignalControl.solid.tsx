@@ -41,7 +41,7 @@ function aggregateFor(type: SignalTypeData): SignalAggregate {
  * the number is the loudest thing in a control that is meant to be a footnote. 11px is the step the
  * scale does not have.
  */
-const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '11px', sm: '200', md: '' };
+const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '10px', sm: '100', md: '' };
 
 export function SignalControl(props: SignalControlProps) {
   const size = () => props.size ?? 'md';
@@ -106,14 +106,28 @@ export function SignalControl(props: SignalControlProps) {
         {/* Toggle */}
         <Match when={props.signalType.mode === 'toggle'}>
           <Row class="signal-control__toggle" ay="center" gap={gap()}>
+            {/*
+              The glyph IS the control — no fill behind it, no padding around it.
+
+              A `primary` button turned a reaction into a pressed key, which reads as heavier than
+              the sentence it is about; and a ghost's padding left the icon floating in a box twice
+              its size. `bare` takes both off, so what is drawn is the mark itself and it can be
+              read at a glance in a row of them.
+
+              Filled at both states, and coloured rather than outlined-then-filled: an outline that
+              becomes a fill changes the SHAPE on press, which reads as the icon being swapped. The
+              colour carries "mine", and the shape stays put.
+            */}
             <we-button
-              variant={value() ? 'primary' : 'ghost'}
+              variant="bare"
               size={size()}
-              square
+              p="0"
               disabled={isDisabled()}
+              color={value() ? 'accent-text' : 'text-faint'}
+              hoverProps={{ color: value() ? 'accent-text' : 'text-muted' }}
               onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
             >
-              <we-icon name={props.signalType.icon} />
+              <we-icon name={props.signalType.icon} weight="fill" />
             </we-button>
             <we-number class="signal-control__count" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
           </Row>
