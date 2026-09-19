@@ -40,7 +40,7 @@ export { channelRail } from './lists/channelRail.ts';
 export type { ChannelRailOptions } from './lists/channelRail.ts';
 export { collectionFeed } from './lists/collectionFeed.ts';
 export type { CollectionFeedOptions } from './lists/collectionFeed.ts';
-export { commentThread, descendantCount, noReplies, replyCount } from './lists/commentThread.ts';
+export { commentThread, descendantCount, noReplies, replyCount, resetTopLimit } from './lists/commentThread.ts';
 export type { CommentThreadOptions } from './lists/commentThread.ts';
 export { mediaGrid } from './lists/mediaGrid.ts';
 export type { MediaGridOptions } from './lists/mediaGrid.ts';

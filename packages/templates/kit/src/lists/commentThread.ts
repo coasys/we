@@ -260,6 +260,22 @@ function threadQueries(opts: CommentThreadOptions, depth: number): Record<string
 }
 
 /**
+ * Put the top level's breadth back to where it started.
+ *
+ * Exported for the same reason {@link foldToggle} is: the control that needs it belongs to the
+ * caller. A thread that re-roots onto a reply is showing a different list, and "show me more of
+ * this one" was about the list somebody was reading — not a standing preference to carry into every
+ * branch they open afterwards. Reddit and every threaded reader work this way, and the alternative
+ * compounds: open three branches after expanding once and each fetches the expanded number.
+ *
+ * Pass the same `perLevel` the thread was given, so the reset lands on the caller's own starting
+ * point rather than this fragment's default.
+ */
+export function resetTopLimit(perLevel?: number[]): SchemaProp {
+  return { $setLocal: TOP_LIMIT, value: (perLevel ?? DEFAULT_PER_LEVEL)[0] };
+}
+
+/**
  * Fold or unfold one reply — the handler behind a caret, wherever the caller draws one.
  *
  * Exported because the caret does not belong to this fragment. It reads best at the head of the

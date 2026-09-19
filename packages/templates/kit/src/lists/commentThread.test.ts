@@ -8,7 +8,7 @@
 import { evaluateExpression, listFunctions, parseExpression } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { commentThread } from './commentThread.ts';
+import { commentThread, resetTopLimit } from './commentThread.ts';
 
 type Node = {
   type?: string;
@@ -145,5 +145,30 @@ describe('commentThread truncation', () => {
 
   it('starts the local at the caller’s own top-level breadth', () => {
     expect(thread.$localState!.topReplies.initial).toBe(2);
+  });
+});
+
+/**
+ * "Show me more of this" is about the list in front of you, not a preference to carry into every
+ * branch opened afterwards — which is how Reddit and every threaded reader behave, and the
+ * alternative compounds: expand once, open three branches, and each fetches the expanded number.
+ */
+describe('resetTopLimit', () => {
+  it('returns to the caller’s own starting breadth, not the fragment’s default', () => {
+    expect(resetTopLimit([4, 2])).toEqual({ $setLocal: 'topReplies', value: 4 });
+  });
+
+  it('falls back to the default breadth when the caller named none', () => {
+    expect(resetTopLimit()).toEqual({ $setLocal: 'topReplies', value: 10 });
+  });
+
+  it('writes the same local the thread declares and grows', () => {
+    const thread = commentThread({
+      anchorId: { $: 'row.id' },
+      perLevel: [4, 2],
+      reply: () => [{ type: 'we-text' }],
+    }) as Node;
+    const reset = resetTopLimit([4, 2]) as { $setLocal: string };
+    expect(thread.$localState![reset.$setLocal].initial).toBe(4);
   });
 });

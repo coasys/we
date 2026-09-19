@@ -50,7 +50,7 @@
 import { composerModal, confirmModal, emptyNote } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { commentThread, descendantCount, foldToggle } from '../lists/commentThread.ts';
+import { commentThread, descendantCount, foldToggle, resetTopLimit } from '../lists/commentThread.ts';
 import { agentByline } from './agentByline.ts';
 import { signalsSection } from './signals.ts';
 
@@ -539,6 +539,12 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                   variant: 'ghost',
                   size: 'sm',
                   ax: 'start',
+                  /*
+                    No reset here, and not only because this button sits outside the thread's own
+                    scope: going back is returning to a list you were already reading, and entering
+                    the branch reset it on the way in. Resetting again would be resetting twice for
+                    one journey.
+                  */
                   onClick: { $setLocal: ROOT, value: '' },
                 },
                 children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back to the whole thread'],
@@ -583,7 +589,9 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             variant: 'ghost',
             size: 'sm',
             ax: 'start',
-            onClick: { $setLocal: ROOT, value: { $: `${as}.id` } },
+            // Re-rooting shows a different list, so how much of the last one was asked for does
+            // not carry across — see `resetTopLimit`.
+            onClick: [{ $setLocal: ROOT, value: { $: `${as}.id` } }, resetTopLimit(opts.perLevel)],
           },
           children: [
             { type: 'we-number', props: { value: { $: descendantCount(as) } } },
