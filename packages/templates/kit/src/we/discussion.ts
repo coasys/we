@@ -250,11 +250,17 @@ function replyBody(
                   // At the end of the line rather than before the face: nothing is inserted to the
                   // left of the avatar, so folding a branch no longer moves it.
                   type: 'Row',
-                  props: { ay: 'center', gap: '100' },
+                  props: { ay: 'center', gap: '100', flexShrink: '0' },
                   children: [
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-faint' },
+                      props: {
+                        variant: 'footnote',
+                        color: 'text-faint',
+                        // "1 reply" is three words that mean one thing; the wrap default would set
+                        // it a letter per line the moment the row ran short.
+                        whiteSpace: 'nowrap',
+                      },
                       children: [
                         { type: 'we-number', props: { value: { $: descendantCount(as) } } },
                         { $: `plural(${descendantCount(as)}, ' reply', ' replies')` },

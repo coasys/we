@@ -51,6 +51,7 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
   const avatar: SchemaNode = {
     type: 'we-avatar',
     props: {
+      flexShrink: '0',
       size: opts.avatarSize ?? (opts.compact ? 'xs' : 'sm'),
       image: { $: `${as}.avatar` },
       hash: { $: `${as}.did` },
@@ -75,12 +76,19 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
         the most crowded row in the app — face, name, time and a pair of controls, inside a panel —
         so it is where that shows.
 
-        `normal` is the documented way to opt a box out of breaking, and it is the whole fix. Doing
-        more than this was worse: `truncate` plus a shrinkable row let the name collapse to nothing
-        and the controls ride up over the face, because a flex item allowed to reach zero width
-        will.
+        Opting out of that is necessary and not sufficient: freed from breaking mid-word the name
+        still wraps BETWEEN words, because the row really is short of space. So the name is the one
+        thing in the byline allowed to give, and it gives by being cut rather than by folding.
+
+        The earlier attempt did half of this — it let the row shrink without saying which child
+        absorbed it, so everything collapsed at once and the controls rode up over the face. What
+        makes it safe is the other half: every other item in the row refuses to shrink, so there is
+        exactly one place for the deficit to land.
       */
       overflowWrap: 'normal',
+      whiteSpace: 'nowrap',
+      truncate: true,
+      minWidth: '0',
     },
     children: [{ $: `${as}.name` }],
   };
@@ -90,6 +98,10 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
           {
             type: 'we-timestamp',
             props: {
+              // Never shrinks: a time is short and fixed, so letting it give would only move the
+              // deficit somewhere that cannot absorb it.
+              flexShrink: '0',
+              whiteSpace: 'nowrap',
               value: opts.timestamp,
               relative: true,
               color: 'text-muted',
@@ -123,7 +135,10 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
             type: 'Row',
             // Closer together when compact: at `300` the face, the name and the time read as three
             // things on a line rather than one byline.
-            props: { ay: 'center', gap: opts.compact ? '200' : '300' },
+            // `minWidth: 0` so the row may be asked to be narrower than its content, which is what
+            // lets the name inside it be cut. Without it a flex item is never asked, and the
+            // ellipsis never arrives.
+            props: { ay: 'center', gap: opts.compact ? '200' : '300', minWidth: '0' },
             children: [avatar, name, ...time, ...(opts.children ?? [])],
           },
     ],
