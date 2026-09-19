@@ -233,9 +233,13 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
       then: {
         type: 'we-button',
         props: {
-          variant: 'secondary',
+          // Words rather than a button — see the matching control in `discussionSection`.
+          variant: 'bare',
           size: 'sm',
           ax: 'start',
+          color: 'text-muted',
+          hoverProps: { color: 'text' },
+          py: '100',
           // A page more of whatever the caller asked for at the top, so the step matches the shape
           // of the thread rather than a number chosen here.
           onClick: {
@@ -263,6 +267,9 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
  *
  * Shaped like what is coming — a face, a byline, a line of words — rather than a spinner, so the
  * column does not jump when the replies land.
+ *
+ * `control-surface` rather than the primitive's own default: it fills with `surface-sunken`, which
+ * is what an inspector panel is already painted in, so the placeholders were there and invisible.
  */
 function threadSkeleton(opts: CommentThreadOptions): SchemaNode {
   const rows = Math.min(3, (opts.perLevel ?? DEFAULT_PER_LEVEL)[0]);
@@ -277,8 +284,8 @@ function threadSkeleton(opts: CommentThreadOptions): SchemaNode {
           type: 'Row',
           props: { ay: 'center', gap: '200' },
           children: [
-            { type: 'we-skeleton', props: { width: '24px', height: '24px' } },
-            { type: 'we-skeleton', props: { width: '96px', height: '12px' } },
+            { type: 'we-skeleton', props: { width: '24px', height: '24px', bg: 'control-surface' } },
+            { type: 'we-skeleton', props: { width: '96px', height: '12px', bg: 'control-surface' } },
           ],
         },
         {
@@ -286,7 +293,7 @@ function threadSkeleton(opts: CommentThreadOptions): SchemaNode {
           props: { width: '100%', gap: '200' },
           children: [
             { type: 'Column', props: { width: '24px', flexShrink: '0' } },
-            { type: 'we-skeleton', props: { width: '100%', height: '12px' } },
+            { type: 'we-skeleton', props: { width: '100%', height: '12px', bg: 'control-surface' } },
           ],
         },
       ],

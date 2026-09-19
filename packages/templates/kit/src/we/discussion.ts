@@ -375,68 +375,64 @@ function replyBody(
               children: foldable
                 ? [
                     {
+                      /*
+                        The caret and its line, as one control.
+
+                        Two buttons, because a caret is a glyph and a line is a column — but one
+                        tooltip over both and one highlight across both, so what reads as a single
+                        affordance behaves as one. The tooltip wraps them rather than sitting on the
+                        caret, which is what let a press on the line say nothing.
+                      */
                       type: '$if',
                       props: {
                         condition: { $: `!(${collapsed}) && count(${as}.comments)` },
                         then: {
                           type: 'we-tooltip',
-                          props: { content: 'Hide this branch' },
+                          props: { content: 'Hide this branch', flex: '1', width: '100%' },
                           children: [
                             {
-                              type: 'we-button',
-                              props: {
-                                variant: 'bare',
-                                size: 'xs',
-                                square: true,
-                                color: 'text-faint',
-                                label: 'Fold this branch',
-                                /*
-                                  No `pressedControl` here, unlike the controls in the byline.
+                              type: 'Column',
+                              props: { width: '100%', flex: '1', ax: 'center' },
+                              children: [
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'bare',
+                                    size: 'xs',
+                                    width: '100%',
+                                    r: '0',
+                                    color: 'text-faint',
+                                    label: 'Fold this branch',
+                                    ...railHighlight(),
+                                    onClick: foldToggle(as),
+                                  },
+                                  children: [{ type: 'we-icon', props: { name: 'caret-down' } }],
+                                },
+                                {
+                                  /*
+                                    The rest of the line, beside the words.
 
-                                  That mark exists because a schema cannot stop an event
-                                  propagating: a button inside the byline row has to tell the row
-                                  the press was already spoken for. This caret sits in the gutter,
-                                  which is not inside that row, so the row never hears it — and
-                                  setting the mark left it set, so the next press on the byline was
-                                  swallowed clearing it and a folded branch took two clicks to open.
-                                */
-                                onClick: foldToggle(as),
-                              },
-                              children: [{ type: 'we-icon', props: { name: 'caret-down' } }],
+                                    `commentThread` draws the rail beside the REPLIES; this is the
+                                    segment above it, running from the caret down past however many
+                                    paragraphs the comment has. Without it a tall comment left the
+                                    caret stranded at the top and the line starting under the text.
+                                  */
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'bare',
+                                    width: '100%',
+                                    flex: '1',
+                                    ax: 'center',
+                                    r: '0',
+                                    label: 'Fold this branch',
+                                    ...railHighlight(),
+                                    onClick: foldToggle(as),
+                                  },
+                                  children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
+                                },
+                              ],
                             },
                           ],
-                        },
-                      },
-                    } as SchemaNode,
-                    /*
-                      The rest of the line, beside the words.
-
-                      `commentThread` draws the rail beside the REPLIES; this is the segment above
-                      it, running from the caret down past however many paragraphs the comment has.
-                      Without it a tall comment left the caret stranded at the top and the line
-                      starting somewhere below the text.
-
-                      A control, like the rail it continues: the whole line folds the branch, so the
-                      two segments behave as the one line they read as.
-                    */
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: `!(${collapsed}) && count(${as}.comments)` },
-                        then: {
-                          type: 'we-button',
-                          props: {
-                            variant: 'bare',
-                            width: '100%',
-                            flex: '1',
-                            ax: 'center',
-                            label: 'Hide this branch',
-                            r: '0',
-                            // Lit with the rest of the line, not on its own — see `railHighlight`.
-                            ...railHighlight(),
-                            onClick: foldToggle(as),
-                          },
-                          children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
                         },
                       },
                     } as SchemaNode,
@@ -673,9 +669,18 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         more: (as) => ({
           type: 'we-button',
           props: {
-            variant: 'secondary',
+            /*
+              Words, not a button. This is the foot of a list rather than an action beside it, and
+              both a fill and a ghost's padding made it a block sitting under the conversation. Bare
+              keeps the button — the role, the keyboard, the disabled state — and takes the
+              appearance off, so what is left is a line of text that brightens under the pointer.
+            */
+            variant: 'bare',
             size: 'sm',
             ax: 'start',
+            color: 'text-muted',
+            hoverProps: { color: 'text' },
+            py: '100',
             // Re-rooting shows a different list, so how much of the last one was asked for does
             // not carry across — see `resetTopLimit`.
             onClick: [{ $setLocal: ROOT, value: { $: `${as}.id` } }, resetTopLimit(opts.perLevel)],
