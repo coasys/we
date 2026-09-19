@@ -456,7 +456,10 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     type: 'Column',
     props: {
       width: '100%',
-      gap: '300',
+      // Snug on purpose: a conversation is a run of short lines, and at a post's spacing a thread
+      // reads as a column of separate things rather than as people answering each other. The byline
+      // already separates one comment from the next — it does not need a band of air as well.
+      gap: '200',
       ...(level > 1 && !opts.collapsible && { pl: opts.indent ?? '400' }),
     },
     // The folded ids, declared once at the top so a caret three levels down folds a branch the top
@@ -477,7 +480,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
           condition: { $: `count(${itemsExpr})` },
           then: {
             type: 'Column',
-            props: { width: '100%', gap: '300' },
+            props: { width: '100%', gap: '200' },
             children: [
               {
                 type: '$each',

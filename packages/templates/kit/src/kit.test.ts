@@ -378,14 +378,19 @@ describe('contracts call sites depend on', () => {
     });
     expect(declarations).toBe(1);
     /*
-      Three per level: the byline's own press, the caret in the gutter, and the rail.
+      Four per level: the byline's own press, the caret, the line beside the words, and the rail
+      beside the replies.
 
       The byline is one of them because a folded comment is opened by pressing the stub itself — the
       biggest target the row has, and the only one a touchscreen can offer, there being no hover to
       reveal anything on. Open, that same press shows the reply's controls instead, so the handler
       chooses by the fold state and only one meaning is ever live.
+
+      The line is two controls rather than one because it is drawn by two fragments: the segment
+      beside the words belongs to the reply, the segment beside the replies belongs to the thread.
+      They read as one line and behave as one — a press anywhere along it folds the branch.
     */
-    expect(toggles).toBe(9);
+    expect(toggles).toBe(12);
     // Each level folds twice: the reply's own words, and the branch under it.
     expect(folds).toBeGreaterThanOrEqual(6);
   });

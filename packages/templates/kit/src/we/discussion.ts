@@ -170,7 +170,6 @@ function replyBody(
       props: {
         width: '100%',
         gap: '100',
-        py: '100',
         onMouseEnter: { $setLocal: 'pointerOnReply', value: true },
         onMouseLeave: { $setLocal: 'pointerOnReply', value: false },
       },
@@ -391,11 +390,51 @@ function replyBody(
                                 square: true,
                                 color: 'text-faint',
                                 label: 'Fold this branch',
-                                onClick: [{ $setLocal: 'pressedControl', value: true }, foldToggle(as)],
+                                /*
+                                  No `pressedControl` here, unlike the controls in the byline.
+
+                                  That mark exists because a schema cannot stop an event
+                                  propagating: a button inside the byline row has to tell the row
+                                  the press was already spoken for. This caret sits in the gutter,
+                                  which is not inside that row, so the row never hears it — and
+                                  setting the mark left it set, so the next press on the byline was
+                                  swallowed clearing it and a folded branch took two clicks to open.
+                                */
+                                onClick: foldToggle(as),
                               },
                               children: [{ type: 'we-icon', props: { name: 'caret-down' } }],
                             },
                           ],
+                        },
+                      },
+                    } as SchemaNode,
+                    /*
+                      The rest of the line, beside the words.
+
+                      `commentThread` draws the rail beside the REPLIES; this is the segment above
+                      it, running from the caret down past however many paragraphs the comment has.
+                      Without it a tall comment left the caret stranded at the top and the line
+                      starting somewhere below the text.
+
+                      A control, like the rail it continues: the whole line folds the branch, so the
+                      two segments behave as the one line they read as.
+                    */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `!(${collapsed}) && count(${as}.comments)` },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            width: '100%',
+                            flex: '1',
+                            ax: 'center',
+                            label: 'Hide this branch',
+                            hoverProps: { bg: 'surface-hover' },
+                            onClick: foldToggle(as),
+                          },
+                          children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
                         },
                       },
                     } as SchemaNode,
