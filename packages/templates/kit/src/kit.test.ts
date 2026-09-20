@@ -5,7 +5,6 @@ import { buildValidationContext, type SchemaNode, validateSemantic } from '@we/s
 import { describe, expect, it } from 'vitest';
 
 import {
-  activitySummary,
   adminSection,
   agentByline,
   attributeRow,
@@ -31,7 +30,7 @@ import {
   recordCard,
   recordFormModal,
   sectionCard,
-  signalsSection,
+  signalDisplay,
   statChip,
   taskBoard,
 } from './index.ts';
@@ -213,11 +212,11 @@ const weDomain: Record<string, SchemaNode> = {
     social: true,
   }),
   'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
-  signalsSection: signalsSection({ record: 'row' }),
+  'signalDisplay (full)': signalDisplay({ record: 'row' }),
   discussionSection: discussionSection({ record: 'row' }),
   'discussionSection (flat)': discussionSection({ record: 'row', fractal: "routeStore.params.threads != 'flat'" }),
-  activitySummary: activitySummary({ record: 'card' }),
-  'activitySummary (no replies)': activitySummary({ record: 'card', replies: false }),
+  'signalDisplay (compact)': signalDisplay({ record: 'card', mode: 'compact', as: 'cardSig' }),
+  'signalDisplay (total)': signalDisplay({ record: 'card', mode: 'total', as: 'cardTot' }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
   marketplaceList: marketplaceList({
     entity: 'Template',
@@ -277,11 +276,11 @@ describe('every expansion is a valid schema fragment', () => {
     'composerModal',
     'composerModal (unguarded)',
     'peopleFilter',
-    'signalsSection',
+    'signalDisplay (full)',
     'discussionSection',
     'discussionSection (flat)',
-    'activitySummary',
-    'activitySummary (no replies)',
+    'signalDisplay (compact)',
+    'signalDisplay (total)',
   ]);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
@@ -337,13 +336,13 @@ describe('contracts call sites depend on', () => {
     expect(eventOf(portable['field (textarea)'], 'we-textarea')).toHaveProperty('onInput');
   });
 
-  it('signalsSection offers every type, so the first reaction in a space can be given', () => {
+  it('signalDisplay at full offers every type, so the first reaction in a space can be given', () => {
     // The bug this fragment exists for: a feed row draws a control only where somebody has already
     // reacted, so a type a community just defined is unreachable from every surface at once. A
     // detail panel has the room, and must not inherit that rule — no count guard between the
     // `$each` over the offered types and the control it draws.
     const conditions: string[] = [];
-    walk(weDomain.signalsSection, (n) => {
+    walk(weDomain['signalDisplay (full)'], (n) => {
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
       if (condition) conditions.push(condition);
     });
@@ -674,24 +673,45 @@ describe('contracts call sites depend on', () => {
     expect(plain.$queries?.pool?.include).toBeUndefined();
   });
 
-  it('activitySummary says nothing about a record nobody has touched', () => {
-    // A column of zeroes down a board asserts nothing and costs a line on every card, so every
-    // count it draws sits behind a guard on that same count.
-    const conditions: string[] = [];
-    walk(weDomain.activitySummary, (n) => {
-      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
-      if (condition) conditions.push(condition);
+  it('a compact display says nothing about a type nobody has used here', () => {
+    /*
+      A column of zeroes down a board asserts nothing and costs a line on every card, which is what
+      `showUnused` decides — and `compact` defaults it off. So the types it draws are the ones
+      somebody has actually reacted with, which is a filter on that same count rather than a guard
+      wrapped round a drawn zero.
+
+      `full` is the other way round on purpose: a type a community defined and nobody has used yet
+      is exactly the one that needs a control, and hiding it leaves a vocabulary unreachable.
+    */
+    const items: string[] = [];
+    walk(weDomain['signalDisplay (compact)'], (n) => {
+      const each = (n.props as { items?: { $?: string } } | undefined)?.items?.$;
+      if (each) items.push(each);
     });
-    expect(conditions).toContain('count(card.comments)');
-    expect(conditions.some((c) => c.startsWith('count(filter(card.signals'))).toBe(true);
+    expect(items.some((e) => e.includes('count(filter(card.signals'))).toBe(true);
+
+    const full: string[] = [];
+    walk(weDomain['signalDisplay (full)'], (n) => {
+      const each = (n.props as { items?: { $?: string } } | undefined)?.items?.$;
+      if (each) full.push(each);
+    });
+    // Every offered type, with no "has anybody used it" test in the way.
+    expect(full.some((e) => e.includes('count(filter(row.signals'))).toBe(false);
   });
 
-  it('activitySummary leaves the reply count out where the thread is on screen anyway', () => {
-    let mentionsComments = false;
-    walk(weDomain['activitySummary (no replies)'], (n) => {
-      if (JSON.stringify(n.props ?? {}).includes('comments')) mentionsComments = true;
+  it('a total is people, not values — one number for a whole vocabulary', () => {
+    /*
+      Summing values across types is not a number: seven likes plus three stars plus two downvotes
+      answers nothing. `signalTally` with no type counts records, which is "twelve people reacted"
+      — the only honest thing one mark standing for a whole vocabulary can say.
+    */
+    let total: string | undefined;
+    walk(weDomain['signalDisplay (total)'], (n) => {
+      const count = (n.props as { count?: { $?: string } } | undefined)?.count?.$;
+      if (count?.startsWith('signalTally(') && !total) total = count;
     });
-    expect(mentionsComments).toBe(false);
+    expect(total, 'no total on a `total` display').toBeTruthy();
+    expect(total).not.toContain('type:');
   });
 
   it('confirmModal clears its flag from every exit: close, cancel, and success', () => {

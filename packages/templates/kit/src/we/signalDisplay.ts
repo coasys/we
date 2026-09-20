@@ -82,6 +82,18 @@ export interface SignalDisplayOptions {
 /** Local holding whether this record's reactions modal is up. Declared on the fragment's own root. */
 const MODAL_OPEN = 'signalsModalOpen';
 
+/**
+ * The options with every default already applied.
+ *
+ * Every helper below takes this rather than the caller's options, and that is not tidiness. The
+ * mode's default was applied at the entry point while `typesShown` read `opts.mode` directly — so a
+ * caller writing `signalDisplay({ record })`, which means `full`, was answered as though the mode
+ * were unset, and `full` hid the unused types it exists to show. Every panel in the app called it
+ * that way. Resolving once is what makes a default a default everywhere rather than in the one
+ * place that remembered to ask.
+ */
+type Resolved = SignalDisplayOptions & { mode: NonNullable<SignalDisplayOptions['mode']>; as: string };
+
 /** One type's signals here, less the ones from agents this reader has muted. */
 const forType = (record: string, as: string) =>
   `filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } })`;
@@ -99,10 +111,9 @@ const mineOfType = (record: string, as: string) =>
  * `filter(…, {}, max)` keeps the first N — the same limit the overflow counts against, so the two
  * cannot disagree about which marks are shown.
  */
-function typesShown(opts: SignalDisplayOptions, as: string, limit?: number): string {
+function typesShown(opts: Resolved, limit?: number): string {
   const used = `${OFFERED_SIGNAL_TYPES}.filter(t, count(filter(${opts.record}.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } })))`;
   const all = (opts.showUnused ?? opts.mode === 'full') ? OFFERED_SIGNAL_TYPES : used;
-  void as;
   return limit === undefined ? all : `filter(${all}, {}, ${limit})`;
 }
 
@@ -153,7 +164,7 @@ function meaning(as: string, children: SchemaNode[]): SchemaNode {
 }
 
 /** One type's real control, as the panel and the popover both draw it. */
-function control(opts: SignalDisplayOptions, as: string): SchemaNode {
+function control(opts: Resolved, as: string): SchemaNode {
   return {
     type: 'SignalControl',
     props: {
@@ -184,7 +195,7 @@ function control(opts: SignalDisplayOptions, as: string): SchemaNode {
  * `we-popover` owns whether it is open — a click on its trigger toggles it — so this needs no local
  * and two marks on one row cannot disagree about which is showing.
  */
-function mark(opts: SignalDisplayOptions, as: string): SchemaNode {
+function mark(opts: Resolved, as: string): SchemaNode {
   const pressable = !opts.readOnly;
   const markNode = (press: boolean): SchemaNode => ({
     type: 'CountMark',
@@ -248,7 +259,7 @@ function mark(opts: SignalDisplayOptions, as: string): SchemaNode {
  * and the reason this mode exists: a type a community defined and nobody has used yet is exactly the
  * one that needs a control, and hiding it leaves a vocabulary unreachable from every surface at once.
  */
-function fullRow(opts: SignalDisplayOptions, as: string): SchemaNode {
+function fullRow(opts: Resolved, as: string): SchemaNode {
   return {
     /*
       Wrapping, and a floor under its height.
@@ -268,7 +279,7 @@ function fullRow(opts: SignalDisplayOptions, as: string): SchemaNode {
     children: [
       {
         type: '$each',
-        props: { items: { $: typesShown(opts, as) }, as },
+        props: { items: { $: typesShown(opts) }, as },
         children: [meaning(as, [control(opts, as)])],
       },
     ],
@@ -276,16 +287,16 @@ function fullRow(opts: SignalDisplayOptions, as: string): SchemaNode {
 }
 
 /** A row of marks, and a way to the rest. */
-function compactRow(opts: SignalDisplayOptions, as: string): SchemaNode {
+function compactRow(opts: Resolved, as: string): SchemaNode {
   const limit = opts.max ?? 4;
-  const hidden = `count(${typesShown(opts, as)}) - ${limit}`;
+  const hidden = `count(${typesShown(opts)}) - ${limit}`;
   return {
     type: 'Row',
     props: { gap: opts.size === 'md' ? '500' : '300', ay: 'center', wrap: true },
     children: [
       {
         type: '$each',
-        props: { items: { $: typesShown(opts, as, limit) }, as },
+        props: { items: { $: typesShown(opts, limit) }, as },
         children: [mark(opts, as)],
       },
       /*
@@ -328,7 +339,7 @@ function compactRow(opts: SignalDisplayOptions, as: string): SchemaNode {
  * The glyph is deliberately not any type's. Borrowing one would claim the number was that type's,
  * and on a space whose first reaction is a heart the total would read as a like count.
  */
-function totalMark(opts: SignalDisplayOptions): SchemaNode {
+function totalMark(opts: Resolved): SchemaNode {
   return {
     type: 'CountMark',
     props: {
@@ -349,7 +360,7 @@ function totalMark(opts: SignalDisplayOptions): SchemaNode {
  * one record cannot reopen holding another's. `signalsModalOpen` is declared on this fragment's own
  * root, which inside an `$each` means one per row.
  */
-function modal(opts: SignalDisplayOptions, as: string): SchemaNode {
+function modal(opts: Resolved, as: string): SchemaNode {
   return {
     type: '$if',
     props: {
@@ -376,9 +387,10 @@ function modal(opts: SignalDisplayOptions, as: string): SchemaNode {
  * behalf *here* — a space is given a `like` when it is created, which is where a default belongs,
  * and a space that has since retired everything should not have one conjured back by a renderer.
  */
-export function signalDisplay(opts: SignalDisplayOptions): SchemaNode {
-  const as = opts.as ?? 'sig';
-  const mode = opts.mode ?? 'full';
+export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
+  const as = options.as ?? 'sig';
+  const mode = options.mode ?? 'full';
+  const opts: Resolved = { ...options, mode, as };
   const body = mode === 'full' ? fullRow(opts, as) : mode === 'compact' ? compactRow(opts, as) : totalMark(opts);
 
   return {

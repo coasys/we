@@ -50,7 +50,7 @@ import { field, formModal } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { peopleFilter } from './peopleFilter.ts';
-import { activitySummary } from './signals.ts';
+import { signalDisplay } from './signalDisplay.ts';
 import {
   answerButton,
   suggestedChanges,
@@ -419,7 +419,45 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
             children: [
               // First in the group, so the counts sit left of anything that can be pressed — they are
               // the one thing here that is a reading rather than a control.
-              ...(opts.social ? [activitySummary({ record: as, as: `${as}Sum` })] : []),
+              /*
+                What people have made of this card, as a reading rather than a control.
+
+                `compact` and `readOnly`: a board card is dragged, so a row of live controls on it is
+                furniture competing with the gesture the card exists for — and the counts are the
+                part somebody scanning a column actually wants. Used types only, which is what
+                `compact` does by default; the card's own page has them all.
+
+                The reply count that used to sit beside these went with `activitySummary`. It is a
+                count of comments rather than of reactions, and a fragment named for signals has no
+                business carrying one — the card draws it itself, with the same mark the feed uses.
+              */
+              ...(opts.social
+                ? [
+                    signalDisplay({
+                      record: as,
+                      as: `${as}Sum`,
+                      mode: 'compact',
+                      size: 'xs',
+                      readOnly: true,
+                      inline: true,
+                    }),
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `count(${as}.comments)` },
+                        then: {
+                          type: 'CountMark',
+                          props: {
+                            icon: 'chat-circle',
+                            count: { $: `count(${as}.comments)` },
+                            size: 'xs',
+                            label: 'Comments',
+                          },
+                        },
+                      },
+                    } as SchemaNode,
+                  ]
+                : []),
               /*
                 Keep and Discard, on the card, where the work is — the same two the canvas offers and
                 the same actions behind them. Neither asks first: keeping writes what was proposed,
