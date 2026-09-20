@@ -96,6 +96,16 @@ function box(el: Element) {
     // A mark drawn as a filled box — a rule, a bar, a swatch — carries its colour here rather than
     // in `color`, and a case that reads only the foreground sees nothing change.
     background: cs.backgroundColor,
+    /*
+      What the content wants, against what the box gives it.
+      
+      The difference is the only way to see text that does not fit. A box constrained by a width or
+      a `max-width` measures the same whether its content wrapped into it or ran straight out of it,
+      so a case comparing boxes cannot tell a laid-out line from an overflowing one — which is how
+      an assertion about wrapping passed against the very `nowrap` it was written to catch.
+    */
+    scrollW: el.scrollWidth,
+    scrollH: el.scrollHeight,
     // Both spellings: a native control carries the attribute, a layout element carries the ARIA
     // one, and `disabledProps` keys off the second.
     disabled: el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true',
@@ -117,9 +127,12 @@ function measure(selector: string) {
  * defaults for every one of them and a case reading the host concludes that nothing is applied.
  * That is not a detail of one component: it is how every `DesignSystemElement` is built, so a
  * harness that cannot see through a shadow root cannot check a visual prop at all.
+ *
+ * `part` names which box — most primitives draw into `base`, an overlay into its own. `nth` picks
+ * among several of the same element, since a case comparing two of a thing is a common question.
  */
-function measurePart(selector: string, part = 'base') {
-  const host = document.querySelector(selector);
+function measurePart(selector: string, part = 'base', nth = 0) {
+  const host = document.querySelectorAll(selector)[nth];
   const el = host?.shadowRoot?.querySelector(`[part='${part}']`);
   return el ? box(el) : null;
 }

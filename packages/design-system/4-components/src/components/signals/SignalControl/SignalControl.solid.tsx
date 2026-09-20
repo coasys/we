@@ -3,36 +3,9 @@ export type * from './SignalControl.types';
 import { createSignal, For, Match, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
+import { SIGNAL_GLYPH_WEIGHT, tallySignals } from '../aggregate';
 import { CountMark } from '../CountMark/CountMark.solid';
-import type { SignalAggregate, SignalControlProps, SignalTypeData } from './SignalControl.types';
-
-/** The aggregate a mode's control is asking for, where the type names none. */
-const AGGREGATE_FOR_MODE: Record<SignalTypeData['mode'], SignalAggregate> = {
-  toggle: 'count',
-  vote: 'sum',
-  rating: 'mean',
-  slider: 'mean',
-};
-
-/**
- * How this type's signals are read as one number.
- *
- * The type's own choice wins, which is the point — `median` is a real answer to "what do people
- * think of this", and it was silently drawn as a mean for as long as this component decided by mode
- * alone. Two exceptions, both the same shape: **an aggregate that cannot express what the control is
- * drawing is ignored.** A rating drawn as a count is a number of voters where the stars say a score,
- * and a vote drawn as a count is three people agreeing and three disagreeing reported as six.
- *
- * Those two are not hypothetical. `aggregate` defaults to `count` in the manifest and no form has
- * ever asked for it, so every type a community has made so far carries `count` whatever its mode —
- * obeying that literally would turn every existing rating into a headcount on upgrade.
- */
-function aggregateFor(type: SignalTypeData): SignalAggregate {
-  const fallback = AGGREGATE_FOR_MODE[type.mode] ?? 'count';
-  if (!type.aggregate) return fallback;
-  if (type.aggregate === 'count' && type.mode !== 'toggle') return fallback;
-  return type.aggregate;
-}
+import type { SignalControlProps } from './SignalControl.types';
 
 /**
  * The count's type size for each control size — one step behind the glyph, as a caption is.
@@ -87,26 +60,7 @@ export function SignalControl(props: SignalControlProps) {
    *
    * 0 with nothing to read, which is what an untouched control shows.
    */
-  const aggregate = () => {
-    if (props.preview) return previewValue() ?? 0;
-    const sigs = props.signals ?? [];
-    if (sigs.length === 0) return 0;
-    const values = sigs.map((s) => s.value);
-    const round = (n: number) => Math.round(n * 10) / 10;
-    switch (aggregateFor(props.signalType)) {
-      case 'count':
-        return values.filter((v) => v !== 0).length;
-      case 'sum':
-        return values.reduce((acc, v) => acc + v, 0);
-      case 'median': {
-        const sorted = [...values].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        return round(sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
-      }
-      default:
-        return round(values.reduce((acc, v) => acc + v, 0) / values.length);
-    }
-  };
+  const aggregate = () => (props.preview ? (previewValue() ?? 0) : tallySignals(props.signalType, props.signals ?? []));
 
   return (
     <div class={`signal-control ${props.class || ''}`} style={props.styles}>
@@ -140,7 +94,7 @@ export function SignalControl(props: SignalControlProps) {
               disabled={isDisabled()}
               onClick={() => signal(value() !== null && value()! > 0 ? 0 : 1)}
             >
-              <we-icon name={props.signalType.icon} />
+              <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
             </we-button>
             <we-number class="signal-control__count" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             <we-button
@@ -150,7 +104,7 @@ export function SignalControl(props: SignalControlProps) {
               disabled={isDisabled()}
               onClick={() => signal(value() !== null && value()! < 0 ? 0 : -1)}
             >
-              <we-icon name={props.signalType.iconSecondary || props.signalType.icon} />
+              <we-icon name={props.signalType.iconSecondary || props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
             </we-button>
           </Row>
         </Match>
@@ -189,13 +143,21 @@ export function SignalControl(props: SignalControlProps) {
                       onClick={isDisabled() ? undefined : handleClick}
                     >
                       {/* Background (empty) icon — muted colour via CSS */}
-                      <we-icon name={props.signalType.icon} size={size() === 'md' ? 'sm' : 'xs'} />
+                      <we-icon
+                        name={props.signalType.icon}
+                        weight={SIGNAL_GLYPH_WEIGHT}
+                        size={size() === 'md' ? 'sm' : 'xs'}
+                      />
                       {/* Foreground (filled) icon — primary colour via CSS, clipped to fraction */}
                       <span
                         class="signal-icon-stack__fill"
                         style={{ 'clip-path': `inset(0 ${(1 - fraction()) * 100}% 0 0)` }}
                       >
-                        <we-icon name={props.signalType.icon} size={size() === 'md' ? 'sm' : 'xs'} />
+                        <we-icon
+                          name={props.signalType.icon}
+                          weight={SIGNAL_GLYPH_WEIGHT}
+                          size={size() === 'md' ? 'sm' : 'xs'}
+                        />
                       </span>
                     </span>
                   );
@@ -220,7 +182,7 @@ export function SignalControl(props: SignalControlProps) {
           <Row class="signal-control__slider" ay="center" gap={gap()}>
             {/* Community mean shown on the left */}
             <we-number class="signal-control__agg" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
-            <we-icon name={props.signalType.icon} />
+            <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
             <we-slider
               min={props.signalType.rangeMin}
               max={props.signalType.rangeMax}

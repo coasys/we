@@ -197,6 +197,62 @@ const countControls = (): Scenario => ({
 });
 
 /**
+ * A tooltip carrying a name and a description, which is what a signal type has to say.
+ *
+ * The bubble was `white-space: nowrap` with no cap, so a sentence came out as one line as wide as
+ * the sentence — in a 320px panel, a tooltip wider than the app. A phrase must still not wrap,
+ * though, so the two cases are mounted together: only measuring both says the cap bites where it
+ * should and nowhere else.
+ */
+const richTooltip = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '400', width: '100%' },
+    children: [
+      {
+        type: 'we-tooltip',
+        props: { content: 'Delete this reply', placement: 'bottom', open: true },
+        children: [{ type: 'we-button', props: { variant: 'ghost', label: 'phrase' }, children: ['Phrase'] }],
+      },
+      {
+        type: 'we-tooltip',
+        props: { placement: 'bottom', open: true },
+        children: [
+          {
+            type: 'we-button',
+            props: { variant: 'ghost', label: 'sentence' },
+            children: ['Sentence'],
+          },
+          {
+            // A native element carries the slot assignment — a layer-4 component receives `slot` as
+            // a prop and drops it, and the content then lands beside the trigger as visible chrome.
+            type: 'div',
+            slot: 'content',
+            children: [
+              {
+                type: 'Column',
+                props: { gap: '100', textAlign: 'left' },
+                children: [
+                  { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Insightful'] },
+                  {
+                    type: 'we-text',
+                    props: { variant: 'footnote' },
+                    children: [
+                      'For a comment that changed how somebody was thinking about the problem, rather than one that was merely correct.',
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * Two nested boxes, each of which varies by state. The smallest shape the design system's
  * `--we-ds-*` indirection can be wrong about.
  *
@@ -231,6 +287,7 @@ export const scenarios: Record<string, () => Scenario> = {
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
   'cards:counts': countControls,
+  'tooltip:rich': richTooltip,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
 };

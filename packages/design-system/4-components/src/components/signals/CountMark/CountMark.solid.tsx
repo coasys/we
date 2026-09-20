@@ -1,6 +1,7 @@
 export type * from './CountMark.types';
 
 import { Row } from '../../../frameworks/solid';
+import { SIGNAL_GLYPH_WEIGHT } from '../aggregate';
 import type { CountMarkProps } from './CountMark.types';
 
 /**
@@ -71,12 +72,8 @@ export function CountMark(props: CountMarkProps) {
         label={props.label || ''}
         onClick={() => props.onPress?.()}
       >
-        {/*
-          Filled at both states, and coloured rather than outlined-then-filled: an outline that
-          becomes a fill changes the SHAPE on press, which reads as the glyph being swapped. The
-          colour carries "mine", and the shape stays put.
-        */}
-        <we-icon name={props.icon} weight="fill" size={glyph()} />
+        {/* Filled, like every signal glyph — see `SIGNAL_GLYPH_WEIGHT`. */}
+        <we-icon name={props.icon} weight={SIGNAL_GLYPH_WEIGHT} size={glyph()} />
       </we-button>
       {/*
         `prop:fontSize`, not `fontSize`. A camelCase prop with a computed value on a `we-*` element

@@ -22,6 +22,7 @@ import { calendarMonth, calendarMonths, monthLabel, yearLabel } from './calendar
 import { formatJson } from './formatJson';
 import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
+import { signalTally } from './signalTally';
 
 export interface HostSource {
   /** The name a template calls. */
@@ -91,6 +92,13 @@ export const hostSources: readonly HostSource[] = [
     example:
       "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })",
     fn: involvementMenu,
+  },
+  {
+    name: 'signalTally',
+    params: ['options'],
+    doc: "What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).",
+    example: 'signalTally({ signals: row.signals, type: sig })',
+    fn: signalTally,
   },
   {
     name: 'formatJson',

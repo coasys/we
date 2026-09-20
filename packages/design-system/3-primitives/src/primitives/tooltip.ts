@@ -59,7 +59,31 @@ const CSS_STYLES = css`
     overflow: visible;
     /* Component styles */
     z-index: var(--we-z-tooltip);
-    white-space: nowrap;
+    /*
+      A phrase never breaks; anything longer is allowed to.
+
+      nowrap is right for what a tooltip usually is — "Delete this reply" folding onto two lines
+      would be worse than wide. It is wrong the moment the bubble carries a sentence: a signal type
+      says what a community means by it, and under nowrap that came out as one line as wide as the
+      description, which in a 320px panel is a tooltip wider than the app.
+
+      So the cap does the deciding. width: max-content still shrink-wraps a phrase, and max-width
+      only bites once the content is longer than the cap — at which point normal lets it wrap into
+      the column the cap defines. Nothing a caller writes changes: a short string is drawn exactly
+      as it was.
+
+      280px rather than a layout token, because the layout tokens are page measures: the smallest,
+      xs, is 420px, which is most of a docked panel and far too wide for an aside. A variable so a
+      caller with a genuinely longer aside can say so, which is cheaper than a prop nobody sets.
+
+      overflow-wrap under it for the one thing a cap cannot handle: a single token longer than the
+      column — a URL, a DID — which would otherwise push the bubble past it.
+
+      (No backticks in here: this is a tagged template literal, and one ends the string.)
+    */
+    max-width: var(--we-tooltip-max-width, 280px);
+    white-space: normal;
+    overflow-wrap: anywhere;
     font-size: var(--we-font-size-200, 14px);
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
