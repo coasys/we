@@ -50,6 +50,19 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
    * transport — a personal space has nobody to share with.
    */
   collaborate?: string;
+  /**
+   * The gutter beside each block — its settings button and its dragger. On by default.
+   *
+   * Turn it off where the composer is a LINE rather than a document: a reply at the foot of a
+   * thread, a caption, anything narrow enough that a 50px strip of chrome beside two words is most
+   * of what you can see. Almost nothing is lost by it — block types are still reachable by typing
+   * `/`, and reordering matters to a page with sections in a way it does not to a sentence
+   * answering somebody — while what is gained is that the composer looks like an input.
+   *
+   * It hides the chrome, not the capability: the document is the same shape, so a reply written
+   * here is a composition like any other and opens in a full composer with its handles intact.
+   */
+  handles?: boolean;
 };
 
 /**

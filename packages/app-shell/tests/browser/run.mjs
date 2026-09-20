@@ -133,6 +133,7 @@ async function main() {
       const api = {
         measure: (sel) => page.evaluate((s) => window.__harness.measure(s), sel),
         measureAll: (sel) => page.evaluate((s) => window.__harness.measureAll(s), sel),
+        measurePart: (sel, part) => page.evaluate((a) => window.__harness.measurePart(...a), [sel, part]),
         measureText: (text, sel) => page.evaluate((a) => window.__harness.measureText(...a), [text, sel]),
         pageColor: () => page.evaluate(() => window.__harness.pageColor()),
         // A state a case can put the page into. `hoverProps` is a whole code path — the values move

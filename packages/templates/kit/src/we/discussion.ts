@@ -790,13 +790,22 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                   border: '1px solid border',
                   r: 'surface',
                   p: '300',
-                  // Clears the composer's own left gutter, where the slash-command affordance sits.
-                  pl: '700',
                 },
                 children: [
                   {
                     type: 'BlockComposer',
                     props: {
+                      /*
+                        No gutter. A reply is a line, not a page: a 50px strip of chrome beside two
+                        words was most of what the box had to show, and it made an input that was
+                        meant to be unremarkable look like an editor somebody had embedded.
+
+                        What it costs is nearly nothing — `/` still reaches every block type, and
+                        reordering matters to a document with sections in a way it does not to a
+                        sentence answering somebody. What a reply IS does not change: it is the same
+                        composition, and it opens in a full composer, handles and all, when edited.
+                      */
+                      handles: false,
                       onDirtyChange: { $setLocal: COMPOSER_DIRTY, value: { $: 'event' } },
                       onReady: { $setLocal: COMPOSER_SAVE, value: { $: 'event.save' } },
                       onSave: [

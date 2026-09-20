@@ -35,5 +35,15 @@ export async function check({ measure, measureAll }, width) {
   if (!send) problems.push('no Reply button under the composer');
   else if (!send.disabled) problems.push('Reply is offered on an empty composer');
 
+  /*
+    No block gutter.
+
+    `handles: false` is what makes this read as an input rather than an embedded editor: the strip
+    is 50px, which in a 280px panel is most of what there is to see. The capability is not gone —
+    `/` still reaches every block type — so this asserts the chrome is absent, not the feature.
+  */
+  const handles = await measureAll('.we-block-handle');
+  if (handles.length) problems.push(`${handles.length} block handle(s) beside a reply composer`);
+
   return problems;
 }

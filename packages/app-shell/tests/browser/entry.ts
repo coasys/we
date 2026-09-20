@@ -105,6 +105,21 @@ function measure(selector: string) {
   return el ? box(el) : null;
 }
 
+/**
+ * The box a primitive actually paints — `[part='base']` inside its shadow root.
+ *
+ * Most design-system props do not land on the host. `color`, `opacity`, `bg`, the borders and the
+ * radii are all declared on `[part='base']`, so `getComputedStyle` on a `we-button` reports the
+ * defaults for every one of them and a case reading the host concludes that nothing is applied.
+ * That is not a detail of one component: it is how every `DesignSystemElement` is built, so a
+ * harness that cannot see through a shadow root cannot check a visual prop at all.
+ */
+function measurePart(selector: string, part = 'base') {
+  const host = document.querySelector(selector);
+  const el = host?.shadowRoot?.querySelector(`[part='${part}']`);
+  return el ? box(el) : null;
+}
+
 /** Every element matching, so a case can assert about a row of siblings. */
 function measureAll(selector: string) {
   return [...document.querySelectorAll(selector)].map(box);
@@ -167,6 +182,7 @@ injectDSInteropStyles();
   mount,
   measure,
   measureAll,
+  measurePart,
   measureText,
   chain,
   pageColor,

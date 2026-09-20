@@ -305,7 +305,14 @@ export function BlockComposer(props: Props) {
     <Column class="we-block-composer-wrapper" width={width} ax={props.ax} ay={props.ay}>
       <div ref={mountEl} class="we-block-composer-mount" />
       <Show when={view()}>
-        <BlockHandles ctx={ctx} />
+        {/*
+          The gutter is opt-out, not conditional on anything the composer can work out for itself:
+          whether a 50px strip beside each block is worth its room is a question about the surface,
+          and only the caller knows how wide that is. See `handles` on the props.
+        */}
+        <Show when={props.handles !== false}>
+          <BlockHandles ctx={ctx} />
+        </Show>
         <MentionMenu ctx={ctx} />
         <FormattingToolbar ctx={ctx} linkPrompt={linkPrompt} setLinkPrompt={setLinkPrompt} />
         <Show when={!props.onReady}>

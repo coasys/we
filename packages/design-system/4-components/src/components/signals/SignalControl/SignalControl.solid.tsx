@@ -142,21 +142,24 @@ export function SignalControl(props: SignalControlProps) {
               p="0"
               disabled={isDisabled()}
               /*
-                Quiet at rest, and one step MORE present under the pointer.
+                Quiet at rest, and MORE present under the pointer.
 
-                The pair used to run the other way — `neutral-400` resting and `neutral-300` on
-                hover — which acknowledged the pointer by receding. That is backwards in both
-                polarities, not just the one it was noticed in: a lower scale position is nearer the
-                background whichever way the ramp runs, because the background moves with it. In a
-                dark theme it showed up as a heart that was too bright until you reached for it and
-                then went dim.
+                The pair used to run the other way — `neutral-400` resting, `neutral-300` on hover —
+                which acknowledged the pointer by receding. That is backwards in both polarities,
+                not just the one it was noticed in: a lower scale position is nearer the background
+                whichever way the ramp runs, because the background moves with it.
 
-                A scale position rather than a role, which is the exception the guidance allows: the
-                unreacted glyph is a mark on the page rather than a foreground with a meaning, and
-                `text-faint` — the quietest role there is, and `neutral-400` exactly — still read as
-                something to attend to with the shape filled. Reacted is the accent at full strength:
-                `accent-text` is tuned for legible prose, and a 16px glyph wants the saturated step
-                rather than a readable one.
+                A scale position rather than a role, which is the exception the guidance allows —
+                and the reason is worth keeping, because it is also the reason this control and the
+                comments count beside it in the cards feed are NOT written the same way. `text-faint`
+                is the quietest foreground the system has and it is still too loud here: a 16px glyph
+                at `weight="fill"` is solid ink, where the role was tuned for the strokes of text. So
+                this wants a rung below the role set's floor, and a scale position is the only way to
+                say that. The schema beside it cannot — `role-audit` refuses a scale position in a
+                template, correctly — so it uses the roles and sits one step louder.
+
+                Reacted is the accent at full strength: `accent-text` is tuned for legible prose, and
+                a 16px glyph wants the saturated step rather than a readable one.
               */
               color={value() ? 'primary-500' : 'neutral-300'}
               prop:hoverProps={{ color: value() ? 'primary-500' : 'neutral-400' }}

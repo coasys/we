@@ -45,13 +45,15 @@ export async function check(api) {
 }
 
 /**
- * How far a colour stands out from what it is painted on, 0..1.
+ * How far a box stands out from what it is painted on, 0..1.
  *
  * Distance rather than lightness, because "brighter" is not the rule — the rule is "more present",
- * and in a dark theme that means lighter while in a light theme it means darker. A scale position
- * is monotonic in this whichever way the ramp runs, since the background moves with it.
+ * and in a dark theme that means lighter while in a light theme it means darker.
+ *
+ * Opacity counts, and has to: holding a colour back is one of the two ways this control gets
+ * quieter, and a comparison reading only the colour would call a pure-opacity hover "no response".
  */
-const presence = (color, bg) => {
+const presence = ({ color, opacity }, bg) => {
   const lum = (c) => {
     const [r, g, b] = c
       .match(/[\d.]+/g)
@@ -62,7 +64,7 @@ const presence = (color, bg) => {
       });
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   };
-  return Math.abs(lum(color) - lum(bg));
+  return Math.abs(lum(color) - lum(bg)) * Number(opacity);
 };
 
 /**
@@ -73,16 +75,23 @@ const presence = (color, bg) => {
  * noticed in — "too bright at rest, then it goes dark when I hover" is the dark-theme rendering of
  * a pair written the wrong way round.
  */
-async function checkHover({ measure, hover, pageColor }) {
+async function checkHover({ measurePart, hover, pageColor }) {
   const bg = await pageColor();
-  const rest = await measure('we-icon');
+  // The button's own painted box: `color` and `opacity` are declared on `[part='base']`, so the
+  // host reports the defaults for both and the icon inside inherits a composite of neither.
+  const rest = await measurePart('we-button');
   await hover('we-button');
-  const hovered = await measure('we-icon');
+  const hovered = await measurePart('we-button');
   if (!rest || !hovered) return ['no glyph to hover'];
 
-  if (rest.color === hovered.color) return ['the glyph does not respond to the pointer at all'];
-  if (presence(hovered.color, bg) <= presence(rest.color, bg)) {
-    return [`hovering makes the glyph recede: ${rest.color} at rest, ${hovered.color} under the pointer`];
+  const before = presence(rest, bg);
+  const after = presence(hovered, bg);
+  if (after === before) return ['the glyph does not respond to the pointer at all'];
+  if (after < before) {
+    return [
+      `hovering makes the glyph recede: ${rest.color} at ${rest.opacity} resting, ` +
+        `${hovered.color} at ${hovered.opacity} under the pointer`,
+    ];
   }
   return [];
 }

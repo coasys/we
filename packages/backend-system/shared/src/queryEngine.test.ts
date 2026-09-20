@@ -518,3 +518,46 @@ describe('executeQueryIR — level walk', () => {
     expect(new Set(got).size).toBe(got.length);
   });
 });
+
+/**
+ * "Nothing I answer to" — the shape a feed of top-level posts is asked for.
+ *
+ * A self-referential to-one, which is the case the earlier quantifier tests do not reach: both a
+ * post and a reply are the same entity, and what separates them is whether the relation resolves.
+ * WE's feed turned every comment in a space into a post of its own for want of exactly this clause,
+ * so the test is about a relation pointing at its own table rather than about `none` in general.
+ */
+describe('a quantifier over a self-referential relation', () => {
+  const thread: InMemoryDataset = {
+    tables: {
+      Node: [
+        { id: 'p1', text: 'a post' },
+        { id: 'p2', text: 'another post' },
+        { id: 'c1', parentId: 'p1', text: 'a reply' },
+        { id: 'c2', parentId: 'c1', text: 'a reply to a reply' },
+      ],
+    },
+    relations: {
+      Node: {
+        comments: { target: 'Node', cardinality: 'many', foreignKey: 'parentId' },
+        inReplyTo: { target: 'Node', cardinality: 'one', foreignKey: 'parentId' },
+      },
+    },
+  };
+
+  const run = (filter: QueryIR['filter']) =>
+    ids(executeQueryIR({ irVersion: 1, entity: 'Node', filter } as QueryIR, thread) as { id: unknown }[]);
+
+  it('keeps only what answers nothing', () => {
+    expect(run({ rel: 'inReplyTo', op: 'none' })).toEqual(['p1', 'p2']);
+  });
+
+  it('and the same clause inverted finds every reply, at any depth', () => {
+    expect(run({ rel: 'inReplyTo', op: 'some' })).toEqual(['c1', 'c2']);
+  });
+
+  it('round-trips through the flat spelling a schema writes', () => {
+    const { ir } = compileQuery({ entity: 'Node', where: { inReplyTo: { none: {} } } });
+    expect(ids(executeQueryIR(ir, thread) as { id: unknown }[])).toEqual(['p1', 'p2']);
+  });
+});

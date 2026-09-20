@@ -5,6 +5,7 @@ import {
   cardList,
   cardShell,
   composerModal,
+  discussionSection,
   emptyState,
   HAS_OFFERED_SIGNAL_TYPES,
   OFFERED_SIGNAL_TYPES,
@@ -47,7 +48,26 @@ export const postsList: SchemaNode = {
         cardList({
           query: {
             entity: 'CollectionBlock',
-            where: { type: 'root', textContent: { contains: { $: 'local.searchText' } } },
+            /*
+              Top-level posts only.
+
+              A reply is written by the same `createPost` a post is, and `kind` is stored ALONGSIDE
+              `type: 'root'` rather than instead of it — deliberately, so reads keyed on `type` did
+              not need backfilling when `kind` arrived. The consequence nobody had met until threads
+              could be written from anywhere: every comment in the space turned up in the feed as a
+              post of its own.
+
+              Asked as "has nothing it answers" rather than as `kind != 'reply'`. A post made before
+              `kind` existed carries no value for it, and on AD4M a `!=` over an unbound value
+              excludes the row — so the obvious spelling would have emptied the feed of everything
+              written before this autumn. `inReplyTo` is the reverse of `comments`, and `none` is
+              native on both backends.
+            */
+            where: {
+              type: 'root',
+              inReplyTo: { none: {} },
+              textContent: { contains: { $: 'local.searchText' } },
+            },
             // Space-wide unless the route names an anchor, in which case this is that container's own
             // posts. See `anchorScope` — an unresolved anchor is dropped rather than matching nothing.
             scope: anchorScope(),
@@ -77,6 +97,15 @@ export const postsList: SchemaNode = {
                 },
                 count: true,
               },
+              /*
+                The whole conversation, not the replies directly under the post.
+
+                `transitive` walks the subtree, so the number beside the icon is what expanding
+                actually reveals once branches are opened. Counting direct children would say "2"
+                over a thread of forty. It rides in the read already being made, so a feed of twenty
+                posts pays nothing for it.
+              */
+              $commentCount: { from: 'comments', count: true, transitive: true },
             },
           },
           as: 'post',
@@ -106,6 +135,8 @@ export const postsList: SchemaNode = {
               // and did nothing.
               localState: {
                 editPostOpen: { type: 'boolean', initial: false },
+                /** Whether this post's conversation is showing. Per card, so several can be open. */
+                commentsOpen: { type: 'boolean', initial: false },
               },
               header: [
                 {
@@ -258,32 +289,106 @@ export const postsList: SchemaNode = {
                   },
                 },
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $: HAS_OFFERED_SIGNAL_TYPES },
-                    then: {
-                      type: 'Row',
-                      props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
-                      children: [
-                        {
-                          type: '$each',
-                          props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
+                  /*
+                    What people have made of this post: the reactions, then the conversation.
+
+                    The row is no longer gated on the community having defined a reaction type —
+                    only the reactions inside it are. Gating the whole row hid the way into the
+                    comments of every space that had not got round to naming a signal, which is
+                    most of them on the first day.
+                  */
+                  type: 'Row',
+                  props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: HAS_OFFERED_SIGNAL_TYPES },
+                        then: {
+                          type: 'Row',
+                          props: { ay: 'center', gap: '700' },
                           children: [
                             {
-                              type: 'SignalControl',
-                              props: {
-                                signalType: { $: 'sig' },
-                                signals: { $: 'filter(post.signals, { signalTypeId: sig.id })' },
-                                myDid: { $: 'me.did' },
-                                onSignal: {
-                                  $action: 'spaceStore.upsertSignal',
-                                  args: [{ $: 'post.id' }, { $: 'sig.id' }, { $: 'arg' }],
+                              type: '$each',
+                              props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
+                              children: [
+                                {
+                                  type: 'SignalControl',
+                                  props: {
+                                    signalType: { $: 'sig' },
+                                    signals: { $: 'filter(post.signals, { signalTypeId: sig.id })' },
+                                    myDid: { $: 'me.did' },
+                                    onSignal: {
+                                      $action: 'spaceStore.upsertSignal',
+                                      args: [{ $: 'post.id' }, { $: 'sig.id' }, { $: 'arg' }],
+                                    },
+                                  },
                                 },
-                              },
+                              ],
                             },
                           ],
                         },
+                      },
+                    },
+                    {
+                      /*
+                        Drawn as a reaction is, because it is read as one: a glyph, a count beside
+                        it, and no fill. Same 16px mark and 12px digits as `SignalControl` at `xs`,
+                        so "what people did with this" reads as one row rather than as two controls
+                        from different places.
+
+                        Roles, where the control beside it uses scale positions — and the two are
+                        therefore a step apart at rest. That is deliberate rather than an oversight.
+                        `text-faint` is the quietest foreground the system has and a filled glyph at
+                        it is still a shade louder than the hearts want, so `SignalControl` reaches
+                        below the role set's floor; it is a component, and `role-audit` only walks
+                        schemas. This is a schema, and a scale position in a template is exactly what
+                        that audit exists to refuse: it freezes the colour into one theme's idea of
+                        which greys are quiet. If the two ever have to match exactly, the fix is a
+                        role below `text-faint` rather than an exemption here.
+
+                        Lit while the conversation is open, which is the one thing a reaction does
+                        not have to say: a reaction is a fact about the record and this is a state
+                        of the page.
+                      */
+                      type: 'we-button',
+                      props: {
+                        variant: 'bare',
+                        size: 'xs',
+                        p: '0',
+                        gap: '100',
+                        color: { $: "local.commentsOpen ? 'accent-text' : 'text-faint'" },
+                        hoverProps: { color: { $: "local.commentsOpen ? 'accent-text' : 'text-muted'" } },
+                        label: 'Show the conversation',
+                        onClick: { $toggleLocal: 'commentsOpen' },
+                      },
+                      children: [
+                        { type: 'we-icon', props: { name: 'chat-circle', size: '16px' } },
+                        { type: 'we-number', props: { value: { $: 'post.$commentCount ?? 0' }, fontSize: '100' } },
                       ],
+                    },
+                  ],
+                },
+                {
+                  /*
+                    The same thread the workshop's inspector draws, in the feed.
+
+                    `$if` rather than `$animate`, and the difference is twenty subscriptions: an
+                    `$animate` keeps its child mounted, so every post in the feed would walk its own
+                    conversation on first paint whether or not anybody opened it. The cost of
+                    unmounting is a half-written reply lost on collapse, which is a deliberate press.
+                  */
+                  type: '$if',
+                  props: {
+                    condition: { $: 'local.commentsOpen' },
+                    enterTransition: [
+                      { type: 'reveal', duration: 250 },
+                      { type: 'fade', duration: 150 },
+                    ],
+                    then: {
+                      type: 'Column',
+                      props: { width: '100%', mt: '200', pt: '300', borderTop: '1px solid border' },
+                      children: [discussionSection({ record: 'post' })],
                     },
                   },
                 },
