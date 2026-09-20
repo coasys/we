@@ -104,8 +104,24 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
               whiteSpace: 'nowrap',
               value: opts.timestamp,
               relative: true,
-              color: 'text-muted',
-              ...(opts.compact && { fontSize: '200', relativeStyle: 'narrow' }),
+              /*
+                Compact is the TRANSCRIPT's stamp, to the value: `100` and `text-faint`, where a
+                byline over a post is `text-muted` at the size of the name beside it.
+
+                The two surfaces are the same thing — a line of conversation with who said it and
+                when — and they sat a size and a role apart, so a comment's time read as part of its
+                byline where an utterance's reads as a coordinate you skim past. A time on a line of
+                talk is the second kind. `@we/module-transcribe`'s `Panel.schema.ts` is where those
+                values are chosen and why; this follows it rather than restating the reasoning.
+
+                `relative` stays true here, which the transcript makes conditional: its rows are
+                minutes apart within one meeting, so a clock is the useful coordinate and "6 days
+                ago" on every row is the same string forty times. A thread is not one sitting, and a
+                reply's distance from now is the thing worth reading.
+              */
+              ...(opts.compact
+                ? { fontSize: '100', color: 'text-faint', relativeStyle: 'narrow' }
+                : { color: 'text-muted' }),
             },
           },
         ]

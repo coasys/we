@@ -22,7 +22,18 @@ const AUTHOR = 'Alexandra Whitfield';
 /** The fold stub, which reads as one thing and came apart a letter per line. */
 const STUB = '1 reply';
 
-export async function check({ measureText, measureAll }, width) {
+/**
+ * The transcript's stamp, as pixels — `100` and `text-faint` resolved.
+ *
+ * That the two surfaces AGREE is asserted in `tests/conversationStamp.test.ts`, which compares both
+ * declarations and so fails whichever side moves. This is the other half: that the declaration
+ * arrives. A `fontSize` on a `we-*` element has now twice been written and never applied, so
+ * "both say `100`" and "both draw 12px" are different claims and only one of them is about a
+ * reader's screen.
+ */
+const TRANSCRIPT_STAMP = { fontSize: '12px', color: 'oklch(0.685 0.01134 288)' };
+
+export async function check({ measureText, measureAll, measurePart }, width) {
   const problems = [];
 
   const author = await measureText(AUTHOR);
@@ -51,6 +62,45 @@ export async function check({ measureText, measureAll }, width) {
       problems.push(
         `byline items overlap at ${width}px: "${here.text}" starts at ${here.x}, "${prev.text}" ends at ${prev.x + prev.w}`,
       );
+    }
+  }
+
+  /*
+    The time reads as a coordinate, not as part of the byline.
+
+    It was `200` and `text-muted` — the size of the name beside it — where the transcript draws the
+    same thing at `100` and `text-faint`. Both surfaces are a line of conversation with who said it
+    and when, and a time on a line of talk is something skimmed past to find a moment.
+  */
+  const stamp = await measurePart('we-timestamp');
+  if (!stamp) problems.push('no time in the byline');
+  else {
+    /*
+      And its text sits in the middle of its own box, which is what puts it on the name's line.
+
+      `ay: center` centres BOXES, so a row of mixed sizes only reads as level while each box is the
+      size of the text in it. The time's was not: a design-system `fontSize` lands on `[part='base']`
+      and the host keeps whatever it inherited, so an inline host struck an 18px line box for a 16px
+      font around 14px of text. The row centred the box, the text hung a pixel low inside it, and
+      the byline read as though it had been assembled by hand.
+
+      Stated as base-against-host rather than time-against-name, because that is where the defect
+      is: the outer box was centred correctly the whole time, which is why comparing the two hosts
+      says nothing.
+    */
+    const host = (await measureAll('we-timestamp'))[0];
+    const mid = (b) => b.y + b.h / 2;
+    // Half a pixel: boxes are measured rounded, so a real misalignment lands on a whole one.
+    if (host && Math.abs(mid(stamp) - mid(host)) > 0.5) {
+      problems.push(`the time's text sits ${(mid(stamp) - mid(host)).toFixed(1)}px off the centre of its own box`);
+    }
+  }
+  if (stamp) {
+    if (stamp.fontSize !== TRANSCRIPT_STAMP.fontSize) {
+      problems.push(`the time is ${stamp.fontSize}, where the transcript draws ${TRANSCRIPT_STAMP.fontSize}`);
+    }
+    if (stamp.color !== TRANSCRIPT_STAMP.color) {
+      problems.push(`the time is ${stamp.color}, where the transcript draws ${TRANSCRIPT_STAMP.color}`);
     }
   }
 

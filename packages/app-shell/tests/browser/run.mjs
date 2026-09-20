@@ -141,6 +141,12 @@ async function main() {
         // out of the inline style into custom properties for a stylesheet to resolve — so a case
         // that never hovers is not testing it.
         hover: (sel) => page.hover(sel),
+        // Some states are only reachable by using the thing — a folded branch, an opened row. A
+        // case that cannot press anything can only ever judge a first paint.
+        click: async (sel) => {
+          await page.click(sel);
+          await page.waitForTimeout(120);
+        },
       };
       const problems = (await mod.check(api, width)) ?? [];
       const label = `${mod.name} @ ${width}px`;

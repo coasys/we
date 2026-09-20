@@ -473,7 +473,16 @@ describe('contracts call sites depend on', () => {
     expect(props.get('we-text')?.fontSize).toBe('200');
     // A name shouting over the sentence under it, once per reply, is what the weight would be here.
     expect(props.get('we-text')?.fontWeight).toBeUndefined();
-    expect(props.get('we-timestamp')?.fontSize).toBe('200');
+    /*
+      The time drops FURTHER than the name — it is the transcript's stamp, not a smaller byline.
+
+      Both surfaces are a line of conversation with who said it and when, and a time on one is a
+      coordinate you skim past to find a moment rather than part of the heading. That the two
+      actually agree is asserted where both are in scope, in app-shell's `conversationStamp.test.ts`;
+      here it is only that compact means something different for the time than for the name.
+    */
+    expect(props.get('we-timestamp')?.fontSize).toBe('100');
+    expect(props.get('we-timestamp')?.color).toBe('text-faint');
     expect(props.get('we-timestamp')?.relativeStyle).toBe('narrow');
     expect(props.get('Row')?.gap).toBe('200');
     expect(props.get('Row')?.width).toBeUndefined();
@@ -486,6 +495,10 @@ describe('contracts call sites depend on', () => {
     expect(plain.get('we-text')?.fontWeight).toBe('semibold');
     expect(plain.get('we-text')?.fontSize).toBeUndefined();
     expect(plain.get('we-timestamp')?.relativeStyle).toBeUndefined();
+    // A byline over a post keeps the louder role: it heads a piece of content rather than a line
+    // of talk, and its time is read as part of that heading.
+    expect(plain.get('we-timestamp')?.color).toBe('text-muted');
+    expect(plain.get('we-timestamp')?.fontSize).toBeUndefined();
   });
 
   it('a reply offers every reaction the community has, and Reply after them', () => {

@@ -36,6 +36,21 @@ const styles = css`
     --we-timestamp-host-display: inline;
     --we-timestamp-display: inline;
     display: var(--we-timestamp-host-display);
+    /*
+      The host takes the same size as its text, and that is an alignment fix rather than a cosmetic
+      one.
+
+      A design-system fontSize lands on [part='base'], inside the shadow root — the host keeps
+      whatever it inherited. For a BLOCK host that costs nothing, but this one is inline, so its
+      line box was struck for a 16px font while the text inside it was 12px: an 18px box holding
+      14px of text, which sat low in it. In a byline centred by box that put the time a pixel under
+      the name and made the row look as though it had been assembled by hand.
+
+      Falls back to inherit, so a timestamp that sets no size is exactly as it was.
+
+      (No backticks in here: this is a tagged template literal, and one ends the string.)
+    */
+    font-size: var(--we-timestamp-font-size, inherit);
     flex-shrink: 0;
     white-space: nowrap;
   }

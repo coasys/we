@@ -88,6 +88,7 @@ function box(el: Element) {
     // Type size decides where a line breaks and how tall a row is, and both of the DS's size props
     // reach an element through a custom property — so "did the size arrive" is a measurement.
     fontSize: cs.fontSize,
+    fontWeight: cs.fontWeight,
     lineHeight: cs.lineHeight,
     // Resolved, so a case can compare two states of the same element without knowing the theme's
     // ramp direction — which is the only way to assert "more present" rather than "lighter".

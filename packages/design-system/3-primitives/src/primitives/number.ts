@@ -15,6 +15,14 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 const styles = css`
   :host {
     --we-number-host-display: inline-flex;
+    /*
+      Sized with its own digits — see the same rule on we-timestamp for why.
+
+      A design-system fontSize reaches [part='base'] and not the host, and an inline-level host's
+      baseline comes from its own strut. Without this a count beside a mark sits on a line struck
+      for the inherited size rather than for the digits in it.
+    */
+    font-size: var(--we-number-font-size, inherit);
     font-variant-numeric: tabular-nums;
   }
 `;
