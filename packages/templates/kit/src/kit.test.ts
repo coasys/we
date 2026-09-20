@@ -428,6 +428,39 @@ describe('contracts call sites depend on', () => {
     expect(controls?.ml).toBeUndefined();
   });
 
+  it('a thread that is still fetching more replies refuses a second press, and says so', () => {
+    /*
+      There is no "the query is running" signal to read — `local.<name>Loaded` latches true after
+      the first answer — so the note infers it from the two numbers already on screen: the limit it
+      asked for against what has arrived. Both the refusal and the wheel hang off the SAME
+      expression, which is the part worth pinning: two spellings of "in flight" is how a button ends
+      up spinning forever while still taking clicks.
+    */
+    let button: Record<string, unknown> | undefined;
+    walk(weDomain.discussionSection, (n) => {
+      const children = (n.children ?? []) as unknown[];
+      const showsACount = children.some((c) => typeof c === 'string' && c === 'Show ');
+      if (n.type === 'we-button' && showsACount && !button) button = n as Record<string, unknown>;
+    });
+    expect(button, 'no "Show N more replies" control in the thread').toBeTruthy();
+
+    const props = button!.props as Record<string, unknown>;
+    const pending = (props.disabled as { $?: string })?.$;
+    expect(pending, 'the control takes presses while it is fetching').toBeTruthy();
+    // Asked-for against arrived. The note only renders while the level is full, so this cannot
+    // stick: a level showing everything it has hides the whole control.
+    expect(pending).toContain('local.topReplies >');
+
+    const spinner = (button!.children as Record<string, unknown>[]).find(
+      (c) => (c.props as { then?: { type?: string } } | undefined)?.then?.type === 'we-spinner',
+    );
+    expect(spinner, 'no spinner on the control').toBeTruthy();
+    expect((spinner!.props as { condition?: { $?: string } }).condition?.$).toBe(pending);
+    // After the words. The button's own `loading` puts its wheel before the label, which is right
+    // for "Save" and wrong for a line of text whose count is the thing that changes.
+    expect((spinner!.props as { then?: { slot?: string } }).then?.slot).toBe('end');
+  });
+
   it('a compact byline drops the face, the name and the time a step — and only those', () => {
     // A reply's byline sits above two lines of text and under another reply; at a post's weight it
     // competes with the words it introduces. The row stays as wide as its words: seventeen other

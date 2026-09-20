@@ -106,6 +106,19 @@ export const postsList: SchemaNode = {
                 posts pays nothing for it.
               */
               $commentCount: { from: 'comments', count: true, transitive: true },
+              /*
+                Whether THIS agent is in the conversation, for the same reason a reaction knows
+                whether it is yours: the glyph carries "mine" and it needs an answer to carry.
+
+                Transitive like the total, so answering somebody four levels down counts — a
+                conversation you are in is one you are in, wherever in it you spoke.
+              */
+              $myComments: {
+                from: 'comments',
+                where: { author: { $: 'me.did' } },
+                count: true,
+                transitive: true,
+              },
             },
           },
           as: 'post',
@@ -337,6 +350,13 @@ export const postsList: SchemaNode = {
                         so "what people did with this" reads as one row rather than as two controls
                         from different places.
 
+                        Filled, and coloured by whether you are IN the conversation rather than by
+                        whether it is open. That is the heart's rule one concept along: a reaction
+                        goes accent when it is yours, and a thread you have answered in is the same
+                        kind of fact about you. Whether the thread is expanded needs no colour — the
+                        conversation appearing underneath says so, and two meanings on one channel
+                        is how a control stops meaning either.
+
                         Roles, where the control beside it uses scale positions — and the two are
                         therefore a step apart at rest. That is deliberate rather than an oversight.
                         `text-faint` is the quietest foreground the system has and a filled glyph at
@@ -347,23 +367,29 @@ export const postsList: SchemaNode = {
                         which greys are quiet. If the two ever have to match exactly, the fix is a
                         role below `text-faint` rather than an exemption here.
 
-                        Lit while the conversation is open, which is the one thing a reaction does
-                        not have to say: a reaction is a fact about the record and this is a state
-                        of the page.
+                        The colour is on the ROW, not on the button, so the digits follow the mark —
+                        they sit outside the target, and `bare` inherits. The same arrangement
+                        `SignalControl` uses, for the same reason.
                       */
-                      type: 'we-button',
+                      type: 'Row',
                       props: {
-                        variant: 'bare',
-                        size: 'xs',
-                        p: '0',
+                        ay: 'center',
                         gap: '100',
-                        color: { $: "local.commentsOpen ? 'accent-text' : 'text-faint'" },
-                        hoverProps: { color: { $: "local.commentsOpen ? 'accent-text' : 'text-muted'" } },
-                        label: 'Show the conversation',
-                        onClick: { $toggleLocal: 'commentsOpen' },
+                        color: { $: "post.$myComments ? 'accent-text' : 'text-faint'" },
+                        hoverProps: { color: { $: "post.$myComments ? 'accent-text' : 'text-muted'" } },
                       },
                       children: [
-                        { type: 'we-icon', props: { name: 'chat-circle', size: '16px' } },
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            size: 'xs',
+                            p: '0',
+                            label: 'Show the conversation',
+                            onClick: { $toggleLocal: 'commentsOpen' },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'chat-circle', weight: 'fill', size: '16px' } }],
+                        },
                         { type: 'we-number', props: { value: { $: 'post.$commentCount ?? 0' }, fontSize: '100' } },
                       ],
                     },

@@ -735,7 +735,11 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             ax: 'start',
             color: 'text-faint',
             hoverProps: { color: 'text' },
-            py: '100',
+            // Asymmetric on purpose: this line belongs to the branch ABOVE it and was sitting on
+            // the last reply's words. The space over it is what makes it read as the foot of that
+            // branch rather than as another line of it.
+            pt: '300',
+            pb: '100',
             // Re-rooting shows a different list, so how much of the last one was asked for does
             // not carry across — see `resetTopLimit`.
             onClick: [{ $setLocal: ROOT, value: { $: `${as}.id` } }, resetTopLimit(opts.perLevel)],
@@ -789,7 +793,6 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                   bg: 'surface',
                   border: '1px solid border',
                   r: 'surface',
-                  p: '300',
                 },
                 children: [
                   {

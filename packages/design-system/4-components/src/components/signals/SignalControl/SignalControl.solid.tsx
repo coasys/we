@@ -123,7 +123,42 @@ export function SignalControl(props: SignalControlProps) {
       <Switch>
         {/* Toggle */}
         <Match when={props.signalType.mode === 'toggle'}>
-          <Row class="signal-control__toggle" ay="center" gap={gap()}>
+          <Row
+            class="signal-control__toggle"
+            ay="center"
+            gap={gap()}
+            /*
+              The colour is on the ROW, so the mark and its count are one thing.
+
+              Quiet at rest, and MORE present under the pointer. The pair used to run the other way
+              — `neutral-400` resting, `neutral-300` on hover — which acknowledged the pointer by
+              receding. That is backwards in both polarities, not just the one it was noticed in: a
+              lower scale position is nearer the background whichever way the ramp runs, because the
+              background moves with it.
+
+              Here rather than on the button, and that is what makes the digits follow. They sit
+              OUTSIDE the button — they are not part of the target — so a colour on the button left
+              them at the inherited text colour, black beside a faint grey mark, and a hover
+              brightened one of the two. `bare` is the appearance-free variant and inherits its
+              colour, so putting the pair up here gets the glyph, the number and both states from
+              one place. Hovering anywhere on the row lights both, which is also the truer reading:
+              a reaction and its tally are one thing to look at.
+
+              A scale position rather than a role, which is the exception the guidance allows — and
+              the reason is worth keeping, because it is also the reason this control and the
+              comments count beside it in the cards feed are NOT written the same way. `text-faint`
+              is the quietest foreground the system has and it is still too loud here: a 16px glyph
+              at `weight="fill"` is solid ink, where the role was tuned for the strokes of text. So
+              this wants a rung below the role set's floor, and a scale position is the only way to
+              say it. The schema beside it cannot — `role-audit` refuses a scale position in a
+              template, correctly — so it uses the roles and sits one step louder.
+
+              Reacted is the accent at full strength: `accent-text` is tuned for legible prose, and
+              a 16px glyph wants the saturated step rather than a readable one.
+            */
+            color={value() ? 'primary-500' : 'neutral-300'}
+            hoverProps={{ color: value() ? 'primary-500' : 'neutral-400' }}
+          >
             {/*
               The glyph IS the control — no fill behind it, no padding around it.
 
@@ -141,28 +176,7 @@ export function SignalControl(props: SignalControlProps) {
               size={size()}
               p="0"
               disabled={isDisabled()}
-              /*
-                Quiet at rest, and MORE present under the pointer.
-
-                The pair used to run the other way — `neutral-400` resting, `neutral-300` on hover —
-                which acknowledged the pointer by receding. That is backwards in both polarities,
-                not just the one it was noticed in: a lower scale position is nearer the background
-                whichever way the ramp runs, because the background moves with it.
-
-                A scale position rather than a role, which is the exception the guidance allows —
-                and the reason is worth keeping, because it is also the reason this control and the
-                comments count beside it in the cards feed are NOT written the same way. `text-faint`
-                is the quietest foreground the system has and it is still too loud here: a 16px glyph
-                at `weight="fill"` is solid ink, where the role was tuned for the strokes of text. So
-                this wants a rung below the role set's floor, and a scale position is the only way to
-                say that. The schema beside it cannot — `role-audit` refuses a scale position in a
-                template, correctly — so it uses the roles and sits one step louder.
-
-                Reacted is the accent at full strength: `accent-text` is tuned for legible prose, and
-                a 16px glyph wants the saturated step rather than a readable one.
-              */
-              color={value() ? 'primary-500' : 'neutral-300'}
-              prop:hoverProps={{ color: value() ? 'primary-500' : 'neutral-400' }}
+              // Colour comes from the row — see the note there.
               onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
             >
               <we-icon name={props.signalType.icon} weight="fill" size={GLYPH_SIZE[size()]} />

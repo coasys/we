@@ -226,6 +226,22 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
   if (level > 1) {
     return opts.more ? { type: '$if', props: { condition, then: opts.more(parentAs) } } : silent;
   }
+  /*
+    Whether the backend is still answering a press — derived, not stored.
+
+    Pressing this raises the top level's limit, which changes the walk and re-runs the query; the
+    rows arrive whenever they arrive, and on a slow space that is long enough for the press to look
+    ignored. There is no "the query is running" signal to read: `local.<name>Loaded` latches true
+    after the first answer and never goes back.
+
+    So it is inferred from the two numbers already on screen. Inside this note `hidden > 0`, which
+    means the level is full — so what has arrived is exactly the limit that was asked for, and the
+    limit being LARGER than what has arrived can only mean the answer is still coming. It cannot
+    stick: the same condition that hides the note when everything is shown also stops this being
+    read. No flag to clear, and nothing to leave set if a query fails.
+  */
+  const pending = `local.${TOP_LIMIT} > count(${itemsExpr})`;
+
   return {
     type: '$if',
     props: {
@@ -237,9 +253,14 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
           variant: 'bare',
           size: 'sm',
           ax: 'start',
+          gap: '200',
           color: 'text-faint',
           hoverProps: { color: 'text' },
           py: '100',
+          // Refuses a second press while the first is in flight. A list that grows by a page per
+          // press is exactly the control somebody presses again when nothing happens, and the
+          // second press would ask for two pages.
+          disabled: { $: pending },
           // A page more of whatever the caller asked for at the top, so the step matches the shape
           // of the thread rather than a number chosen here.
           onClick: {
@@ -251,6 +272,21 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
           'Show ',
           { type: 'we-number', props: { value: { $: hidden } } },
           { $: `plural(${hidden}, ' more reply', ' more replies')` },
+          /*
+            After the words, in the button's `end` slot.
+
+            `we-button`'s own `loading` prop puts its spinner BEFORE the label, which is right for a
+            button whose label is an action — "Save" with the work starting to its left. This is a
+            line of text reporting a count, and the count is what changes when the press lands, so
+            the wheel belongs where the sentence ends.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: pending },
+              then: { type: 'we-spinner', slot: 'end', props: { size: 'xs' } },
+            },
+          },
         ],
       },
     },

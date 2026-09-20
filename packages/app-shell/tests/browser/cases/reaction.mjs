@@ -11,7 +11,7 @@ export const scenario = 'signals:reaction';
 export const widths = [320];
 
 export async function check(api) {
-  const { measure } = api;
+  const { measure, measurePart } = api;
   const problems = [];
 
   const glyph = await measure('we-icon');
@@ -39,6 +39,19 @@ export async function check(api) {
   // Close enough to read as one thing. A mark and how many, not a glyph and then a number.
   const gap = count.x - (glyph.x + glyph.w);
   if (gap > 6) problems.push(`the glyph and its count are ${gap}px apart — they read as two things`);
+
+  /*
+    The digits are the same colour as the mark.
+
+    They sit outside the button, so a colour set on the control left them at the inherited text
+    colour — near-black beside a faint grey glyph — and the hover lit one of the two. The pair is
+    one thing to look at, so it is coloured in one place.
+  */
+  const mark = await measurePart('we-button');
+  const digits = await measurePart('we-number');
+  if (mark && digits && mark.color !== digits.color) {
+    problems.push(`the count is ${digits.color} beside a ${mark.color} mark`);
+  }
 
   problems.push(...(await checkHover(api)));
   return problems;
