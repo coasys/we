@@ -86,6 +86,37 @@ const reactionControl = (): Scenario => ({
 });
 
 /**
+ * The inspector's provenance line: a glyph, a sentence, and a time that belongs in the sentence.
+ *
+ * "Added by you · 3 days ago" broke onto two rows with the panel half empty, which is the shape of
+ * a BLOCK-level box sitting in a run of text rather than of a row running out of room — and the
+ * difference between those two is invisible in the markup, because both are a `we-timestamp` inside
+ * a `we-text`. Mounted at a width where there is plainly enough space, so a break is a verdict.
+ */
+const provenanceLine = (): Scenario => ({
+  node: {
+    type: 'Row',
+    props: { gap: '100', ay: 'start', width: '100%' },
+    children: [
+      {
+        type: 'Row',
+        props: { fontSize: '100', height: '1lh', ay: 'center', flexShrink: '0' },
+        children: [{ type: 'we-icon', props: { name: 'pencil-simple-line', size: 'xs', color: 'text-faint' } }],
+      },
+      {
+        type: 'we-text',
+        props: { variant: 'footnote', color: 'text-faint', flex: '1', minWidth: '0' },
+        children: [
+          'Added by you \u00b7 ',
+          { type: 'we-timestamp', props: { value: '2026-09-17T09:00:00Z', relative: true, fontSize: '100' } },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * Two nested boxes, each of which varies by state. The smallest shape the design system's
  * `--we-ds-*` indirection can be wrong about.
  *
@@ -119,5 +150,6 @@ const nestedInteractive = (): Scenario => ({
 export const scenarios: Record<string, () => Scenario> = {
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
+  'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
 };

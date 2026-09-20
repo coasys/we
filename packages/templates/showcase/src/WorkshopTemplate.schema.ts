@@ -894,6 +894,16 @@ const EMPTY_COUNT = `count(${EMPTY_FIELDS})`;
  */
 const HAS_EDITABLE_FIELDS = `count(recordStore.displays[${CARD_TYPE}].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json'])))`;
 
+/**
+ * Whether the selected RECORD is a composed document — the header's reading of {@link COMPOSED}.
+ *
+ * The same question one scope up: `COMPOSED` asks it of the `$each`'s row, and the header has no
+ * row, so it asks the query. Both exist because editing a note and editing a task are one control
+ * in the header and two different actions underneath — a note's substance is a document and opens
+ * in the composer, where a task's is a set of fields and unlocks in place.
+ */
+const COMPOSED_CARD = 'first(local.card).editorState';
+
 /** Whether the selected thing is a drawn connection rather than a card. */
 const IS_RELATIONSHIP = `${CARD_TYPE} == 'Relationship'`;
 
@@ -1084,10 +1094,12 @@ const COMPOSED = 'row.editorState';
  * than on the ground — what is wanted here is a card, since the strip above is a description of the
  * record and this is the record itself.
  *
- * The composer beside it is the other half: with the content on screen, the pencil in the header —
- * which edits declared fields, and for a note means its title and description — is the wrong tool
- * for the thing somebody is now looking at. Its own button, attached to the content, opening the
- * same composer the canvas's double-click does and saving through the same reconcile.
+ * The composer below it is opened from the HEADER'S pencil, like every other kind of record — see
+ * the note on `aside` in `inspectorPanel`. It used to have a button of its own down here, on the
+ * grounds that the header's pencil meant "unlock the declared fields" and a note has none; the cost
+ * was that "how do I change this" had two answers depending on what was selected, and the one in
+ * the corner was where people looked. It is the same composer the canvas's double-click opens, and
+ * it saves through the same reconcile.
  */
 const composedContent: SchemaNode = {
   type: '$if',
@@ -1108,20 +1120,6 @@ const composedContent: SchemaNode = {
             overflow: 'hidden',
           },
           children: [{ type: 'BlockRenderer', props: { editorState: { $: COMPOSED } } }],
-        },
-        {
-          type: 'Row',
-          props: { ax: 'start' },
-          children: [
-            {
-              type: 'we-button',
-              props: { size: 'sm', variant: 'ghost', gap: '200', onClick: { $setLocal: 'noteOpen', value: true } },
-              children: [
-                { type: 'we-icon', props: { name: 'pencil-simple' } },
-                { type: 'we-text', props: { variant: 'footnote' }, children: ['Edit note'] },
-              ],
-            },
-          ],
         },
         // No `$if` of its own: the fragment mounts only while `noteOpen` is set, which is what
         // resets the editor between one note and the next.
@@ -1917,8 +1915,18 @@ const inspectorPanel: SchemaNode = {
   /*
     Whether the fields are controls or values — the pencil in the header. Ephemeral and per panel:
     it is a mode of looking, not a fact about the record, and it drops when the panel is rebuilt.
+
+    `noteOpen` is the other half of that same pencil, for a record whose substance is a document.
+    Declared HERE rather than inside the `$each` — where it used to sit, with the button that opened
+    it — because the header is outside the loop and a `$setLocal` only reaches a field an ancestor
+    of the BUTTON declared. It loses the per-record reset the inner scope gave it, which costs
+    nothing: the composer is modal, so the selection cannot change under it, and every way out of it
+    sets the flag false.
   */
-  $localState: { editing: { type: 'boolean', initial: false } },
+  $localState: {
+    editing: { type: 'boolean', initial: false },
+    noteOpen: { type: 'boolean', initial: false },
+  },
   $queries: {
     /*
       The record itself, by id. `limit: 1` because an id names one thing — the list is the shape a
@@ -2030,10 +2038,22 @@ const inspectorPanel: SchemaNode = {
     panelHeader({
       title: 'Inspector',
       /*
-        Unlock editing, in the header where a mode belongs. The inspector already shows every value
-        a record has, so it is the surface that edits them; a separate form would show the same
-        fields a second time. Offered only while a record is loaded and its model has a field worth
-        editing — a note's content is not one, and is edited where it is shown. Lit while it is on.
+        Edit, in the header where a mode belongs, for every kind of record the panel can open.
+
+        One control, two things underneath, and that is the point. A record whose substance is a set
+        of FIELDS unlocks in place: the inspector already shows every value it has, so it is the
+        surface that edits them and a separate form would show the same rows a second time. A
+        composed document — a note — has no fields to unlock; its substance is a document, and it
+        opens in the composer.
+
+        It used to be one control and a half. The pencil was gated on the model declaring an
+        editable field, so a note never had one, and its own "Edit note" button sat under the
+        content instead — which meant "how do I change this" had two answers depending on what you
+        had selected, and the one in the corner was the one people looked for first. A note is now
+        edited from the same place as everything else, and the button below it is gone.
+
+        Lit while the field mode is on; a note's press opens a modal, so there is no lasting state
+        for it to show.
       */
       aside: {
         type: 'Row',
@@ -2042,21 +2062,34 @@ const inspectorPanel: SchemaNode = {
           {
             type: '$if',
             props: {
-              condition: { $: `count(local.card) && ${HAS_EDITABLE_FIELDS}` },
+              condition: { $: `count(local.card) && (${HAS_EDITABLE_FIELDS} || ${COMPOSED_CARD})` },
               then: {
                 type: 'we-tooltip',
-                props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
+                props: {
+                  content: {
+                    $: `${COMPOSED_CARD} ? 'Edit this note' : (local.editing ? 'Done editing' : 'Edit this record')`,
+                  },
+                },
                 children: [
                   {
                     type: 'we-button',
                     props: {
                       size: 'sm',
                       square: true,
-                      variant: { $: "local.editing ? 'secondary' : 'ghost'" },
-                      onClick: { $toggleLocal: 'editing' },
+                      variant: { $: `!(${COMPOSED_CARD}) && local.editing ? 'secondary' : 'ghost'` },
+                      onClick: {
+                        $if: {
+                          condition: { $: COMPOSED_CARD },
+                          then: { $setLocal: 'noteOpen', value: true },
+                          else: { $toggleLocal: 'editing' },
+                        },
+                      },
                     },
                     children: [
-                      { type: 'we-icon', props: { name: { $: "local.editing ? 'check' : 'pencil-simple'" } } },
+                      {
+                        type: 'we-icon',
+                        props: { name: { $: `!(${COMPOSED_CARD}) && local.editing ? 'check' : 'pencil-simple'` } },
+                      },
                     ],
                   },
                 ],
@@ -2159,8 +2192,6 @@ const inspectorPanel: SchemaNode = {
                       opened to add something to *this* one.
                     */
                     showEmpty: { type: 'boolean', initial: false },
-                    /** The composer, open on this note's own document — see `composedContent`. */
-                    noteOpen: { type: 'boolean', initial: false },
                   },
                   children: [
                     /*

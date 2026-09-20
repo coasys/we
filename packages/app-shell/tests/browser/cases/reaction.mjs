@@ -22,7 +22,18 @@ export async function check({ measure }) {
   if (count.h >= glyph.h) problems.push(`the count (${count.h}px) is not a step behind the glyph (${glyph.h}px)`);
   // And it is still a number somebody can read: a size that failed to arrive at all shows up as
   // *too big*, so the floor is what catches the day this is overcorrected instead.
-  if (count.h < 8 || count.w < 4) problems.push(`the count is ${count.w}x${count.h} — too small to read`);
+  if (count.h < 10 || count.w < 5) problems.push(`the count is ${count.w}x${count.h} — too small to read`);
+
+  /*
+    They sit on the same centre line.
+
+    `ay: 'center'` centres the BOXES, and the two boxes are different heights — so this drifts
+    whenever either size changes, which is exactly what happened the first time the count's size
+    reached the screen at all. A pixel of tolerance, since a line box and a glyph box round
+    differently.
+  */
+  const drift = Math.abs(count.y + count.h / 2 - (glyph.y + glyph.h / 2));
+  if (drift > 1) problems.push(`the count's centre is ${drift.toFixed(1)}px off the glyph's`);
 
   return problems;
 }

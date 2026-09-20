@@ -36,13 +36,14 @@ function aggregateFor(type: SignalTypeData): SignalAggregate {
 /**
  * The count's type size for each control size — one step behind the glyph, as a caption is.
  *
- * `xs` is a length rather than a token because the scale stops at `100` (12px): equal to the glyph
- * would make the digits the loudest thing in a control meant to read as a footnote, and 11px is the
- * step the scale does not have.
+ * Tokens, now that the glyph states its own size: `100` is 12px against a 16px heart, which is the
+ * caption ratio. It was `10px` — a raw length, chosen when the glyph was whatever an `xs` button
+ * drew and the scale's smallest step would have equalled it. That number was never on screen to be
+ * judged (see the note on `prop:fontSize` below), and the first time it was, it was too small.
  *
- * **Passed as `prop:fontSize`, and that prefix is load-bearing** — see the note on the glyph below.
+ * **Passed as `prop:fontSize`, and that prefix is load-bearing.**
  */
-const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '10px', sm: '100', md: '' };
+const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '100', sm: '200', md: '' };
 
 /**
  * The glyph's size for each control size.
