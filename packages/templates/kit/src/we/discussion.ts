@@ -270,37 +270,79 @@ function replyBody(
               nameColor: 'text-muted',
             }),
             /*
-              What a folded branch says instead of itself.
+              What a folded comment says instead of itself — a line of what it said.
 
-              Direct replies, not descendants: `count` reads the relation this reply holds, and the
-              query language cannot walk a subtree — so "3 replies" is true where "3" as a total
-              would be a guess. Beside the time, where the rest of the line's facts are.
+              The stub used to be the reply count alone, which answered the wrong half: it told you
+              how much was hidden below and nothing about the comment you had put away. On a
+              childless comment — foldable since the caret stopped being gated on having replies —
+              it would have said nothing at all, so you could collapse something and be given no
+              hint what it was.
+
+              `textContent` is the composition flattened to a line, which the record already carries
+              for search and for a drag chip. Truncated rather than wrapped: the stub is one row, and
+              a folded comment that reflows to three lines is not folded.
+
+              Empty for a comment that is only a picture, which is honest — there is no line of it to
+              show — and the byline beside it still says whose it is.
             */
             {
               type: '$if',
               props: {
-                condition: { $: `(${collapsed}) && count(${as}.comments)` },
+                condition: { $: collapsed },
                 then: {
                   // At the end of the line rather than before the face: nothing is inserted to the
-                  // left of the avatar, so folding a branch no longer moves it.
+                  // left of the avatar, so folding no longer moves it.
                   type: 'Row',
-                  props: { ay: 'center', gap: '100', flexShrink: '0' },
+                  props: { ay: 'center', gap: '200', flex: '1', minWidth: '0' },
                   children: [
                     {
                       type: 'we-text',
                       props: {
                         variant: 'footnote',
                         color: 'text-faint',
-                        // "1 reply" is three words that mean one thing; the wrap default would set
-                        // it a letter per line the moment the row ran short.
+                        flex: '1',
+                        minWidth: '0',
+                        truncate: true,
+                        // The one item on this row allowed to give up space, and it gives by being
+                        // cut — the byline's own rule, for the same reason. See `agentByline`.
+                        overflowWrap: 'normal',
                         whiteSpace: 'nowrap',
                       },
-                      children: [
-                        { type: 'we-number', props: { value: { $: descendantCount(as) } } },
-                        { $: `plural(${descendantCount(as)}, ' reply', ' replies')` },
-                      ],
+                      children: [{ $: `${as}.textContent` }],
                     },
-                    { type: 'we-icon', props: { name: 'caret-right', size: 'xs', color: 'text-faint' } },
+                    /*
+                      And how much is under it, where there is anything.
+
+                      Descendants rather than direct replies: what is being hidden is the whole
+                      branch, and "3" for a comment holding thirty is the wrong number to decide
+                      whether to open it with. `$descendants` is a transitive projection the thread's
+                      own query already carries.
+                    */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `count(${as}.comments)` },
+                        then: {
+                          type: 'we-text',
+                          props: {
+                            variant: 'footnote',
+                            color: 'text-faint',
+                            flexShrink: '0',
+                            // "1 reply" is three words that mean one thing; the wrap default would
+                            // set it a letter per line the moment the row ran short.
+                            whiteSpace: 'nowrap',
+                          },
+                          children: [
+                            { type: 'we-number', props: { value: { $: descendantCount(as) } } },
+                            { $: `plural(${descendantCount(as)}, ' reply', ' replies')` },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      type: 'we-icon',
+                      props: { name: 'caret-right', size: 'xs', color: 'text-faint', flexShrink: '0' },
+                    },
                   ],
                 },
               },
@@ -425,25 +467,41 @@ function replyBody(
                 ? [
                     {
                       /*
-                        The caret and its line, as one control.
+                        The caret, on every comment — and the line only where there is a branch.
 
-                        Two buttons, because a caret is a glyph and a line is a column — but one
-                        tooltip over both and one highlight across both, so what reads as a single
-                        affordance behaves as one. The tooltip wraps them rather than sitting on the
-                        caret, which is what let a press on the line say nothing.
+                        They used to be one control gated on having replies, which made folding
+                        something you could do to *some* comments: the affordance people looked for
+                        on a long comment was missing exactly where the comment was worth putting
+                        away, and present on a two-word one that happened to be answered. The
+                        machinery never had that limit — `collapsed` gates the comment's own words
+                        as well as its subtree, so a childless comment folded perfectly well and
+                        simply had no way to ask.
+
+                        The LINE does not generalise with it. It is this thread's vocabulary for
+                        "there is a branch below here" — the head of a rail that runs past these
+                        words and down beside the replies — so beside a childless comment it would
+                        draw a rail to nothing, which is a worse lie than no affordance at all.
+
+                        So: two conditions, not one. The tooltip and the highlight still wrap
+                        whatever is there, which is what keeps a press on the line saying the same
+                        thing as a press on the caret.
                       */
-                      type: '$if',
+                      type: 'we-tooltip',
                       props: {
-                        condition: { $: `!(${collapsed}) && count(${as}.comments)` },
-                        then: {
-                          type: 'we-tooltip',
-                          props: { content: 'Hide this branch', flex: '1', width: '100%' },
+                        content: { $: `count(${as}.comments) ? 'Hide this branch' : 'Fold this comment'` },
+                        flex: '1',
+                        width: '100%',
+                      },
+                      children: [
+                        {
+                          type: 'Column',
+                          props: { width: '100%', flex: '1', ax: 'center' },
                           children: [
                             {
-                              type: 'Column',
-                              props: { width: '100%', flex: '1', ax: 'center' },
-                              children: [
-                                {
+                              type: '$if',
+                              props: {
+                                condition: { $: `!(${collapsed})` },
+                                then: {
                                   type: 'we-button',
                                   props: {
                                     variant: 'bare',
@@ -451,21 +509,32 @@ function replyBody(
                                     width: '100%',
                                     r: '0',
                                     color: 'text-faint',
-                                    label: 'Fold this branch',
+                                    label: {
+                                      $: `count(${as}.comments) ? 'Fold this branch' : 'Fold this comment'`,
+                                    },
                                     ...railHighlight(),
                                     onClick: foldToggle(as),
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'caret-down' } }],
                                 },
-                                {
-                                  /*
-                                    The rest of the line, beside the words.
+                              },
+                            },
+                            {
+                              /*
+                                The rest of the line, beside the words.
 
-                                    `commentThread` draws the rail beside the REPLIES; this is the
-                                    segment above it, running from the caret down past however many
-                                    paragraphs the comment has. Without it a tall comment left the
-                                    caret stranded at the top and the line starting under the text.
-                                  */
+                                `commentThread` draws the rail beside the REPLIES; this is the
+                                segment above it, running from the caret down past however many
+                                paragraphs the comment has. Without it a tall comment left the
+                                caret stranded at the top and the line starting under the text.
+
+                                Its own condition now, which is the split: a comment with nothing
+                                under it gets the caret and no rail.
+                              */
+                              type: '$if',
+                              props: {
+                                condition: { $: `!(${collapsed}) && count(${as}.comments)` },
+                                then: {
                                   type: 'we-button',
                                   props: {
                                     variant: 'bare',
@@ -479,11 +548,11 @@ function replyBody(
                                   },
                                   children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
                                 },
-                              ],
+                              },
                             },
                           ],
                         },
-                      },
+                      ],
                     } as SchemaNode,
                   ]
                 : [],

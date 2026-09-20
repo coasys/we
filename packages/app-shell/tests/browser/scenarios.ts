@@ -32,18 +32,51 @@ const discussionThread = (): Scenario => ({
     $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
     children: [discussionSection({ record: 'row' })],
   },
+  /*
+    `comments` is seeded on each row as well as being derivable from `parentId`, and that is a
+    fidelity fix rather than belt and braces.
+
+    On AD4M a relation's own ids arrive whether or not the query included it — a relation IS a link,
+    so reading `count(row.comments)` costs nothing and every thread does it. The in-memory engine
+    resolves a declared relation on demand and leaves no ids on the row, so `count` read zero, the
+    nested level never rendered, and the harness quietly showed a one-reply thread while asserting
+    about it. Seeded here so a scenario matches what the app is handed.
+  */
   tables: {
     SignalType: [],
     CollectionBlock: [
-      { id: 'card-1', parentId: null, author: 'did:me', createdAt: '2026-09-01T09:00:00Z' },
+      { id: 'card-1', parentId: null, author: 'did:me', createdAt: '2026-09-01T09:00:00Z', comments: ['r1'] },
       /*
         The reply is the VIEWER'S OWN, which is what puts the edit and delete controls on the line —
         they are gated on `author == me.did`, and faded rather than unmounted, so they take their
         room whether or not the pointer is anywhere near. A thread of other people's replies is the
         uncrowded case and says nothing about the crowded one.
       */
-      { id: 'r1', parentId: 'card-1', author: 'did:me', createdAt: '2026-09-01T10:00:00Z', editorState: null },
-      { id: 'r2', parentId: 'r1', author: 'did:them', createdAt: '2026-09-01T11:00:00Z', editorState: null },
+      {
+        id: 'r1',
+        parentId: 'card-1',
+        author: 'did:me',
+        createdAt: '2026-09-01T10:00:00Z',
+        editorState: null,
+        textContent: 'A reply with something under it',
+        comments: ['r2'],
+      },
+      /*
+        Childless, and the reason this scenario has a third row: folding is offered on every comment
+        now, and the one worth checking is the one that has nothing to fold BUT itself.
+
+        `textContent` is what the folded stub shows — the composition flattened to a line, which the
+        record already carries for search and for a drag chip.
+      */
+      {
+        id: 'r2',
+        parentId: 'r1',
+        author: 'did:them',
+        createdAt: '2026-09-01T11:00:00Z',
+        editorState: null,
+        textContent: 'A reply with nothing under it at all',
+        comments: [],
+      },
     ],
   },
   relations: {

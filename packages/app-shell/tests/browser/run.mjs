@@ -141,10 +141,22 @@ async function main() {
         // out of the inline style into custom properties for a stylesheet to resolve — so a case
         // that never hovers is not testing it.
         hover: (sel) => page.hover(sel),
+        /*
+          How many of something there are, through Playwright's own engine rather than the page's.
+
+          `measureAll` runs `querySelectorAll` inside the document, which does not cross a shadow
+          boundary — so it cannot see anything a primitive renders internally, and an `aria-label` is
+          exactly that: `we-button` puts it on the inner `<button>` rather than reflecting it to the
+          host. Playwright's CSS engine pierces open shadow roots, so a case can count and press the
+          thing a screen reader would name.
+        */
+        count: (sel) => page.locator(sel).count(),
         // Some states are only reachable by using the thing — a folded branch, an opened row. A
         // case that cannot press anything can only ever judge a first paint.
         click: async (sel) => {
-          await page.click(sel);
+          // Seconds, not Playwright's default half-minute. A selector that matches nothing is a
+          // case's own mistake or the very absence it is testing for, and both want saying quickly.
+          await page.click(sel, { timeout: 3000 });
           await page.waitForTimeout(120);
         },
       };

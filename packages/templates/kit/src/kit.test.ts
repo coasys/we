@@ -461,6 +461,53 @@ describe('contracts call sites depend on', () => {
     expect((spinner!.props as { then?: { slot?: string } }).then?.slot).toBe('end');
   });
 
+  it('offers the fold on every comment, and the rail only where there is a branch', () => {
+    /*
+      Folding used to be gated on having been replied to, so the affordance was missing exactly
+      where a comment was worth collapsing — a long one nobody had answered — and present on a
+      two-word one that somebody had. The machinery never had that limit: `collapsed` gates a
+      comment's own words as well as its subtree.
+
+      The RAIL does not generalise with it, and that is what this pins. It is the thread's
+      vocabulary for "there is a branch below here", so beside a childless comment it would draw a
+      line to nothing. The caret's condition must be the looser of the two.
+    */
+    const conditions: string[] = [];
+    walk(weDomain.discussionSection, (n) => {
+      const props = (n.props ?? {}) as { condition?: { $?: string }; then?: SchemaNode };
+      const then = props.then as { props?: { label?: unknown }; type?: string } | undefined;
+      const label = then?.props?.label;
+      const says = typeof label === 'string' ? label : ((label as { $?: string })?.$ ?? '');
+      if (then?.type === 'we-button' && says.includes('Fold this')) conditions.push(props.condition?.$ ?? '');
+    });
+
+    // The caret, then its line — in that order, since the caret is drawn above the rail.
+    const [caret, rail] = conditions;
+    expect(caret, 'no fold control in the gutter').toBeTruthy();
+    expect(caret).not.toContain('comments');
+    expect(rail, 'no rail under the caret').toBeTruthy();
+    expect(rail).toContain('count(reply.comments)');
+  });
+
+  it('says what a folded comment was, not only how much is under it', () => {
+    /*
+      The stub used to be the reply count alone, which answered the wrong half — and on a childless
+      comment, now that those fold too, it would have said nothing at all. `textContent` is the
+      composition flattened to a line, which the record already carries.
+    */
+    let stub: Record<string, unknown> | undefined;
+    walk(weDomain.discussionSection, (n) => {
+      const children = (n.children ?? []) as { $?: string }[];
+      if (n.type === 'we-text' && children.some((c) => c?.$ === 'reply.textContent') && !stub) {
+        stub = (n.props ?? {}) as Record<string, unknown>;
+      }
+    });
+    expect(stub, 'a folded comment says nothing about itself').toBeTruthy();
+    // One row: a folded comment that reflows to three lines is not folded.
+    expect(stub!.truncate).toBe(true);
+    expect(stub!.whiteSpace).toBe('nowrap');
+  });
+
   it('a compact byline drops the face, the name and the time a step — and only those', () => {
     // A reply's byline sits above two lines of text and under another reply; at a post's weight it
     // competes with the words it introduces. The row stays as wide as its words: seventeen other
