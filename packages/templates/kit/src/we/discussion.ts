@@ -204,19 +204,14 @@ function replyBody(
             width: '100%',
             cursor: 'pointer',
             /*
-              Folded, the stub steps back — it stands for something put away rather than being the
-              thing itself. Faded rather than greyed, and back to full strength under the pointer,
-              so it reads as closed rather than as unavailable.
+              Not dimmed when folded.
 
-              The pointer is read from the local this comment already keeps, NOT from `hoverProps`.
-              A state bag moves every one of an element's layout declarations out of its inline
-              style and into `--we-ds-*` custom properties for the stylesheet to resolve — which is
-              sound, and is how hover works everywhere — but it is a different code path for the
-              most crowded row in the app, and this row lost its layout to it: the name vanished and
-              the controls came to rest on top of the face. An expression over state already being
-              tracked costs nothing and leaves the row's own styles alone.
+              It read as unavailable rather than as closed, which is the opposite of what a folded
+              branch is: the stub is the way back in, and the biggest target the row has. The caret
+              and the "3 replies" beside it already say the branch is shut, and they say it without
+              making the name and the face harder to read — which are the two things somebody scans
+              a folded thread FOR.
             */
-            opacity: { $: `(${collapsed}) && !local.pointerOnReply ? 0.65 : 1` },
             onClick: {
               $if: {
                 condition: { $: 'local.pressedControl' },
