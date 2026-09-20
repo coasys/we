@@ -3003,6 +3003,13 @@ export const contextData: ContextData = {
       example: 'signalTally({ signals: row.signals, type: sig })',
     },
     {
+      name: 'reactions',
+      params: ['options'],
+      doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
+      example:
+        'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })',
+    },
+    {
       name: 'formatJson',
       params: ['options'],
       doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.',

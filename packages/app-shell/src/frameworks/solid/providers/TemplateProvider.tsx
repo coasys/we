@@ -9,6 +9,8 @@ import { provideChromeBag, provideTemplateBag } from '@shared/registries/templat
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 
+import { signalOptimism } from '../../../shared/signalOptimism';
+
 /** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
 const idOf = (entry: unknown): string =>
   typeof entry === 'string' ? entry : String((entry as { id?: unknown } | null)?.id ?? '');
@@ -541,6 +543,23 @@ export default function TemplateProvider() {
       const view = sources.involvement({ ...given, pending: involvementOptimism.overlay() });
       queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
       return view;
+    },
+    /*
+      A record's reactions, with this agent's own newest answer in it — the same two halves again.
+
+      The rows reported are the ones the overlay was applied OVER, which is what the record's
+      subscription actually says, so a hold is released the moment the data has overtaken it rather
+      than when the write's promise settles.
+    */
+    reactions: (options: unknown) => {
+      const given = (options ?? {}) as { signals?: unknown; record?: unknown; me?: unknown };
+      const list = sources.reactions({ ...given, pending: signalOptimism.overlay() });
+      if (typeof given.record === 'string' && typeof given.me === 'string') {
+        queueMicrotask(() =>
+          signalOptimism.settleFromSignals(given.record as string, given.me as string, given.signals),
+        );
+      }
+      return list;
     },
   };
 

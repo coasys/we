@@ -119,6 +119,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { signalOptimism } from '../../../shared/signalOptimism';
 import { useAppStore } from './AppStore';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
@@ -2508,6 +2509,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     const myDid = session.me()?.did;
     if (!p || !myDid) return;
 
+    /*
+      Drawn on the press, before anything is read.
+
+      A reaction is the worst case there is for the round trip: it is a press-and-see control, and
+      the answer comes back through a subscription about a second later — with a further 250ms of
+      the executor's own debounce under that. Held here, the glyph fills and the count moves on the
+      click; `reactions` is where the hold meets the list every surface draws from.
+    */
+    signalOptimism.hold(nodeId, signalTypeId, value);
+
     const existing = await Signal.findOne(p, {
       parent: { id: nodeId, predicate: 'we://signal' },
       where: { signalTypeId, author: myDid },
@@ -2539,9 +2550,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       Zero is a delete rather than a stored 0, which is what makes a withdrawn reaction absent
       everywhere rather than a row every count has to remember to exclude.
     */
-    if (existing) await existing.delete();
-    if (value === 0) return;
-    await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+    try {
+      if (existing) await existing.delete();
+      if (value !== 0) {
+        await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+      }
+      // The write is back. Not a release — what retires a hold is the data moving — but it ends the
+      // hold's exemption from what the next draw says. See `@we/optimism`.
+      signalOptimism.done(nodeId, signalTypeId);
+    } catch (error) {
+      // What is on screen is a lie the moment the write is refused.
+      signalOptimism.release(nodeId, signalTypeId);
+      console.error('SpaceStore: could not record that reaction', error);
+      toastService.error('Could not record that reaction.');
+    }
   }
 
   // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
@@ -3249,6 +3271,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     void datasetStore.currentDataset()?.id;
     // A hold is a promise about records on the screen being left; see `involvementOptimism.reset`.
     involvementOptimism.reset();
+    signalOptimism.reset();
     void loadInvolvementTypes();
   });
 

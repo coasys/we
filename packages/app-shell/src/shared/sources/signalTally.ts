@@ -47,3 +47,48 @@ export function signalTally(options: unknown): number {
   }
   return tallySignals(type as never, rows as never);
 }
+
+/**
+ * A record's reactions with this agent's own newest answer in place, whether or not it has been read
+ * back yet.
+ *
+ * The overlay every reaction surface draws through. A reaction is a press-and-see control, and the
+ * write it makes is answered by a subscription a second later — so without this the glyph stays
+ * unfilled, the count stays put, and the press reads as having failed. `signalOptimism` holds what
+ * was written; this is where the holds meet the list.
+ *
+ * The **list**, rather than the count, because everything a surface draws comes off it: the tally
+ * reads it for the number, the mark reads it for whether the reaction is yours, and the control
+ * reads it for which star to fill. Overlaying the list is what makes all three agree by
+ * construction — overlay the count alone and the heart sits unfilled beside a number that moved,
+ * which reads as somebody else's reaction arriving rather than as your own registering.
+ *
+ * Returns the **same array** when nothing is held for this record and type, which is the ordinary
+ * case on every frame: a fresh array per call would defeat every identity check downstream and
+ * re-render each mark on every push.
+ *
+ * Total, like every function an expression can call.
+ */
+export function reactions(options: unknown): unknown[] {
+  const { signals, record, type, me, pending } = (options ?? {}) as {
+    signals?: unknown;
+    record?: unknown;
+    type?: unknown;
+    me?: unknown;
+    pending?: unknown;
+  };
+  const rows = Array.isArray(signals) ? signals : [];
+  if (!Array.isArray(pending) || typeof record !== 'string' || typeof type !== 'string' || typeof me !== 'string') {
+    return rows;
+  }
+  const held = (pending as { record?: unknown; type?: unknown; value?: unknown }[]).find(
+    (entry) => entry?.record === record && entry?.type === type,
+  );
+  if (!held || typeof held.value !== 'number') return rows;
+
+  // This agent's stored reaction of this type goes, whatever it says — the held one stands in for
+  // it, so changing a rating does not count twice and withdrawing one does not leave it behind.
+  const others = rows.filter((row) => (row as { author?: unknown } | null)?.author !== me);
+  // Zero is a withdrawal, which is how `upsertSignal` spells one: nothing is added back.
+  return held.value === 0 ? others : [...others, { author: me, signalTypeId: type, value: held.value }];
+}

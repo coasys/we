@@ -112,16 +112,41 @@ const NEW_TYPE_OPEN = 'signalTypeFormOpen';
  */
 type Resolved = SignalDisplayOptions & { mode: NonNullable<SignalDisplayOptions['mode']>; as: string };
 
-/** One type's signals here, less the ones from agents this reader has muted. */
+/**
+ * One type's signals here, less the ones from agents this reader has muted — and with this agent's
+ * own newest answer in place whether or not it has been read back yet.
+ *
+ * Through `reactions`, which is the overlay every reaction surface draws from. A press writes a
+ * record and the subscription answers about a second later, with the executor's own 250ms debounce
+ * under that; without the overlay the glyph stays unfilled and the count stays put, and the press
+ * reads as having failed.
+ *
+ * Wrapped HERE rather than at each use, so the number, the mark's "is this mine", and the control's
+ * filled star all come off one list and cannot disagree — which is exactly what happened when only
+ * the count was overlaid and the heart sat unfilled beside a number that had moved.
+ */
 const forType = (record: string, as: string) =>
-  `filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } })`;
+  `reactions({ signals: filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } }), record: ${record}.id, type: ${as}.id, me: me.did })`;
 
-/** Everything on the record, less muted authors — what the single total counts. */
+/**
+ * Everything on the record, less muted authors — what the single total counts.
+ *
+ * Not overlaid, and that is not an oversight. `reactions` stands in for this agent's answer for ONE
+ * type; a total spans every type at once, so there is no single hold that answers for it. The number
+ * it shows is how many people reacted at all, which a press only changes when it is somebody's first
+ * reaction of any kind on that record — the rarest case, and the one where being a round trip late
+ * costs least. Overlaying it properly means holding per record as well as per type, which is a
+ * second mechanism for a number nobody is watching that closely.
+ */
 const everything = (record: string) => `filter(${record}.signals, { author: { not: spaceStore.mutedDids } })`;
 
-/** Whether this agent has reacted with this type. What makes a mark read as "mine". */
-const mineOfType = (record: string, as: string) =>
-  `count(filter(${record}.signals, { signalTypeId: ${as}.id, author: me.did }))`;
+/**
+ * Whether this agent has reacted with this type. What makes a mark read as "mine".
+ *
+ * Off the overlaid list, not the raw one: a heart that fills a second after its count moves reads
+ * as somebody else's reaction arriving rather than as your own registering.
+ */
+const mineOfType = (record: string, as: string) => `count(filter(${forType(record, as)}, { author: me.did }))`;
 
 /**
  * The types this display draws, which is the whole of what `showUnused` decides.
