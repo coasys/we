@@ -141,7 +141,9 @@ async function main() {
         // A state a case can put the page into. `hoverProps` is a whole code path — the values move
         // out of the inline style into custom properties for a stylesheet to resolve — so a case
         // that never hovers is not testing it.
-        hover: (sel) => page.hover(sel),
+        // `nth` because a control can be several elements that share a name — a fold is a caret and
+        // a line, and which of them answers the pointer is exactly the sort of thing worth asking.
+        hover: (sel, nth = 0) => page.locator(sel).nth(nth).hover({ timeout: 3000 }),
         /*
           How many of something there are, through Playwright's own engine rather than the page's.
 
