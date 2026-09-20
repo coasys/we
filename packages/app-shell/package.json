@@ -15,7 +15,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "test:browser": "node tests/browser/run.mjs"
   },
   "bin": {
     "we-seed": "./dist/seed/cli.js"
@@ -90,7 +91,9 @@
     "@we/backend-inmemory": "workspace:*",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "esbuild": "^0.28.2",
     "jsdom": "^30.0.1",
+    "playwright-core": "^1.56.0",
     "tsup": "^8.5.1",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
