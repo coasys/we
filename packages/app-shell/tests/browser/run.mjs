@@ -120,6 +120,11 @@ async function main() {
         measure: (sel) => page.evaluate((s) => window.__harness.measure(s), sel),
         measureAll: (sel) => page.evaluate((s) => window.__harness.measureAll(s), sel),
         measureText: (text, sel) => page.evaluate((a) => window.__harness.measureText(...a), [text, sel]),
+        pageColor: () => page.evaluate(() => window.__harness.pageColor()),
+        // A state a case can put the page into. `hoverProps` is a whole code path — the values move
+        // out of the inline style into custom properties for a stylesheet to resolve — so a case
+        // that never hovers is not testing it.
+        hover: (sel) => page.hover(sel),
       };
       const problems = (await mod.check(api, width)) ?? [];
       const label = `${mod.name} @ ${width}px`;

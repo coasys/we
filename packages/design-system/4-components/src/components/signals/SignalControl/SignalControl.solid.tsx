@@ -58,8 +58,13 @@ const GLYPH_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs
 
 export function SignalControl(props: SignalControlProps) {
   const size = () => props.size ?? 'md';
-  /** The gap between the glyph and its count, closed up as the control shrinks. */
-  const gap = () => (size() === 'md' ? '300' : '200');
+  /**
+   * The gap between the glyph and its count, closed up as the control shrinks.
+   *
+   * `100` below `md`, not `200`: the two are one thing being read — a mark and how many — and at a
+   * thread's weight a wider gap set them apart as a glyph and then a number.
+   */
+  const gap = () => (size() === 'md' ? '300' : '100');
   const [previewValue, setPreviewValue] = createSignal<number | null>(null);
   /** Draft value while the slider thumb is being dragged — not persisted until release */
   const [sliderDraft, setSliderDraft] = createSignal<number | null>(null);
@@ -137,14 +142,24 @@ export function SignalControl(props: SignalControlProps) {
               p="0"
               disabled={isDisabled()}
               /*
+                Quiet at rest, and one step MORE present under the pointer.
+
+                The pair used to run the other way — `neutral-400` resting and `neutral-300` on
+                hover — which acknowledged the pointer by receding. That is backwards in both
+                polarities, not just the one it was noticed in: a lower scale position is nearer the
+                background whichever way the ramp runs, because the background moves with it. In a
+                dark theme it showed up as a heart that was too bright until you reached for it and
+                then went dim.
+
                 A scale position rather than a role, which is the exception the guidance allows: the
                 unreacted glyph is a mark on the page rather than a foreground with a meaning, and
-                the faintest text role still read as something to attend to when filled. Reacted is
-                the accent at full strength — `accent-text` is tuned for legible prose, and a 16px
-                glyph wants the saturated step rather than a readable one.
+                `text-faint` — the quietest role there is, and `neutral-400` exactly — still read as
+                something to attend to with the shape filled. Reacted is the accent at full strength:
+                `accent-text` is tuned for legible prose, and a 16px glyph wants the saturated step
+                rather than a readable one.
               */
-              color={value() ? 'primary-500' : 'neutral-400'}
-              prop:hoverProps={{ color: value() ? 'primary-500' : 'neutral-300' }}
+              color={value() ? 'primary-500' : 'neutral-300'}
+              prop:hoverProps={{ color: value() ? 'primary-500' : 'neutral-400' }}
               onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
             >
               <we-icon name={props.signalType.icon} weight="fill" size={GLYPH_SIZE[size()]} />

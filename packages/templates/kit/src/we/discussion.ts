@@ -63,12 +63,18 @@ const DELETING = 'discussionDeleting';
 /** The reply being rewritten, or empty. The same trick again — one composer serves every level. */
 const EDITING = 'discussionEditing';
 /**
- * The reply whose actions are showing, or empty — one at a time.
+ * The replies whose actions are showing, by id.
  *
- * An id rather than a flag per row, for the reason the fold is a set of ids: rows come from a
+ * Ids rather than a flag per row, for the reason the fold is a set of ids: rows come from a
  * subscription, so a boolean on the row is lost the moment anybody replies anywhere and the query
- * answers again. One at a time rather than a set, because the row is about what you are answering
- * and a thread with six of them open is the furniture this hides in the first place.
+ * answers again.
+ *
+ * A SET rather than one at a time, which is the change. The single-id version read the row as "what
+ * you are answering", and on that reading one open row is right — but it is not what the row turned
+ * out to be for. Opening a reply is mostly how you find out what people made of it, and with one
+ * slot that is a question you can only ask about one comment at a time: opening the next one closed
+ * the counts you were comparing it against. The furniture argument still holds for a thread left
+ * wide open, and the answer to that is that every row closes with a second press on itself.
  */
 const OPEN = 'discussionOpen';
 
@@ -138,10 +144,10 @@ function replyBody(
   foldable = true,
 ): SchemaNode[] {
   const fractal = opts.fractal;
-  /** The controls this reply shows: while the pointer is on it, or while it is the open one. */
-  const roused = `local.pointerOnReply || local.${OPEN} == ${as}.id`;
+  /** The controls this reply shows: while the pointer is on it, or while it is one of the open ones. */
+  const roused = `local.pointerOnReply || ${as}.id in local.${OPEN}`;
   /** Show this reply's controls, or hide them again. */
-  const openToggle: SchemaProp = { $setLocal: OPEN, value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` } };
+  const openToggle: SchemaProp = { $toggleLocalIn: OPEN, value: { $: `${as}.id` } };
   /*
     What a press on the byline means, which depends on whether the comment is folded.
 
@@ -484,10 +490,7 @@ function replyBody(
                           props: {
                             width: '100%',
                             cursor: 'pointer',
-                            onClick: {
-                              $setLocal: OPEN,
-                              value: { $: `local.${OPEN} == ${as}.id ? '' : ${as}.id` },
-                            },
+                            onClick: openToggle,
                           },
                           children: [
                             {
@@ -502,7 +505,7 @@ function replyBody(
                         {
                           type: '$if',
                           props: {
-                            condition: { $: `local.${OPEN} == ${as}.id` },
+                            condition: { $: `${as}.id in local.${OPEN}` },
                             then: {
                               type: 'Row',
                               props: { gap: '300', ay: 'center', wrap: true, width: '100%' },
@@ -581,7 +584,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       [ROOT]: { type: 'string', initial: '' },
       [DELETING]: { type: 'string', initial: '' },
       [EDITING]: { type: 'string', initial: '' },
-      [OPEN]: { type: 'string', initial: '' },
+      [OPEN]: { type: 'array', initial: [] },
     },
     $queries: {
       /*

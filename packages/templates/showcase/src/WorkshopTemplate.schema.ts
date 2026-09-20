@@ -1864,7 +1864,23 @@ const REPLY_TOTAL = 'first(local.card).$descendants ?? count(row.comments)';
 const discussion: SchemaNode = {
   type: 'Column',
   props: { gap: '200', pt: '200', borderTop: '1px solid border', width: '100%' },
-  children: [sectionCaption('Discussion', REPLY_TOTAL), discussionSection({ record: 'row', fractal: FRACTAL_THREADS })],
+  children: [
+    sectionCaption('Discussion', REPLY_TOTAL),
+    /*
+      Six levels, tapering.
+
+      The kit's default is three at [10, 5, 3], which is right for a card in a feed and short for a
+      panel somebody has opened deliberately: this is the surface where a conversation is being read
+      rather than glanced at. The taper is the point — breadth where the thread is widest and a
+      narrow tail below, so one branch that attracted three hundred replies cannot crowd out the
+      rest, and the walk stays the shape of the discussion rather than the shape of its loudest
+      corner. Still one question to the backend, however many levels: the bound applies per level,
+      not to the total.
+
+      Past the sixth, the branch says how much more it is holding and re-roots the thread there.
+    */
+    discussionSection({ record: 'row', fractal: FRACTAL_THREADS, perLevel: [10, 5, 3, 3, 2, 2], depth: 6 }),
+  ],
 };
 
 /**

@@ -10,7 +10,8 @@ export const name = 'reaction at xs';
 export const scenario = 'signals:reaction';
 export const widths = [320];
 
-export async function check({ measure }) {
+export async function check(api) {
+  const { measure } = api;
   const problems = [];
 
   const glyph = await measure('we-icon');
@@ -35,5 +36,53 @@ export async function check({ measure }) {
   const drift = Math.abs(count.y + count.h / 2 - (glyph.y + glyph.h / 2));
   if (drift > 1) problems.push(`the count's centre is ${drift.toFixed(1)}px off the glyph's`);
 
+  // Close enough to read as one thing. A mark and how many, not a glyph and then a number.
+  const gap = count.x - (glyph.x + glyph.w);
+  if (gap > 6) problems.push(`the glyph and its count are ${gap}px apart — they read as two things`);
+
+  problems.push(...(await checkHover(api)));
   return problems;
+}
+
+/**
+ * How far a colour stands out from what it is painted on, 0..1.
+ *
+ * Distance rather than lightness, because "brighter" is not the rule — the rule is "more present",
+ * and in a dark theme that means lighter while in a light theme it means darker. A scale position
+ * is monotonic in this whichever way the ramp runs, since the background moves with it.
+ */
+const presence = (color, bg) => {
+  const lum = (c) => {
+    const [r, g, b] = c
+      .match(/[\d.]+/g)
+      .slice(0, 3)
+      .map((n) => {
+        const v = Number(n) / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  return Math.abs(lum(color) - lum(bg));
+};
+
+/**
+ * The glyph acknowledges the pointer by becoming MORE present, not less.
+ *
+ * It used to do the opposite: `neutral-400` at rest and `neutral-300` on hover, which recedes
+ * towards the background. That is wrong in both polarities and was reported from the one it was
+ * noticed in — "too bright at rest, then it goes dark when I hover" is the dark-theme rendering of
+ * a pair written the wrong way round.
+ */
+async function checkHover({ measure, hover, pageColor }) {
+  const bg = await pageColor();
+  const rest = await measure('we-icon');
+  await hover('we-button');
+  const hovered = await measure('we-icon');
+  if (!rest || !hovered) return ['no glyph to hover'];
+
+  if (rest.color === hovered.color) return ['the glyph does not respond to the pointer at all'];
+  if (presence(hovered.color, bg) <= presence(rest.color, bg)) {
+    return [`hovering makes the glyph recede: ${rest.color} at rest, ${hovered.color} under the pointer`];
+  }
+  return [];
 }

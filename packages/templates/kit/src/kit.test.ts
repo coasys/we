@@ -409,15 +409,20 @@ describe('contracts call sites depend on', () => {
       const opacity = (props.opacity as { $?: string } | undefined)?.$;
       // The controls' own fade, not the byline's: a folded stub fades too, and it is the row the
       // walk meets first. The first level's, since the walk reaches reply2 and reply3 after it.
-      // The controls' own fade: roused by the pointer OR by this being the open comment. The byline
+      // The controls' own fade: roused by the pointer OR by this being one of the open comments. The
       // reads `pointerOnReply` too — a folded stub fades and comes back under the pointer — so the
       // open-comment half is what tells them apart.
-      const isControls = opacity?.includes('pointerOnReply') && opacity.includes('discussionOpen == reply.id');
+      // Named `reply` specifically: the scoped-root row (`focused`) carries the same contract and is
+      // reached first, so a looser test would silently stop asserting about the thread's own levels.
+      const isControls = opacity?.includes('pointerOnReply') && opacity.includes('reply.id in local.discussionOpen');
       if (n.type === 'Row' && isControls && !controls) controls = props;
     });
-    // Roused by either: the pointer anywhere on the comment, or the comment being the open one —
-    // so a thread opened by touch, which has no hover, still shows what it can do.
-    expect(controls?.opacity).toEqual({ $: '(local.pointerOnReply || local.discussionOpen == reply.id) ? 1 : 0' });
+    // Roused by either: the pointer anywhere on the comment, or the comment being one of the open
+    // ones — so a thread opened by touch, which has no hover, still shows what it can do.
+    //
+    // A SET of open ids, not one: opening a reply is mostly how you find out what people made of
+    // it, and with one slot that is a question you can only ask about one comment at a time.
+    expect(controls?.opacity).toEqual({ $: '(local.pointerOnReply || reply.id in local.discussionOpen) ? 1 : 0' });
     expect(controls?.focusProps).toEqual({ opacity: 1 });
     // Left-aligned: the pair sits after the time rather than at the far edge.
     expect(controls?.ml).toBeUndefined();

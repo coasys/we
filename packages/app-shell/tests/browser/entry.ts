@@ -89,6 +89,9 @@ function box(el: Element) {
     // reach an element through a custom property — so "did the size arrive" is a measurement.
     fontSize: cs.fontSize,
     lineHeight: cs.lineHeight,
+    // Resolved, so a case can compare two states of the same element without knowing the theme's
+    // ramp direction — which is the only way to assert "more present" rather than "lighter".
+    color: cs.color,
     text: (el.textContent ?? '').trim().slice(0, 80),
   };
 }
@@ -146,6 +149,11 @@ function chain(text: string) {
   return out;
 }
 
+/** What the page is painted on, for a case asking whether a colour stands out from it. */
+function pageColor(): string {
+  return getComputedStyle(document.body).backgroundColor;
+}
+
 /** The mounted tree as markup — what a failing assertion is looked at through. */
 function html(): string {
   return document.getElementById('mount')?.innerHTML ?? '';
@@ -158,6 +166,7 @@ injectDSInteropStyles();
   measureAll,
   measureText,
   chain,
+  pageColor,
   html,
   scenarios: Object.keys(scenarios),
 };
