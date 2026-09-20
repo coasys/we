@@ -18,8 +18,21 @@ const USED = 3;
 /** Of the offered, the ones whose control IS a mark — `Like` and the unused `Spark`. */
 const TOGGLES = 2;
 
-export async function check({ measureAll, measurePart, count }) {
+export async function check({ measureAll, measurePart, measureControl, count }) {
   const problems = [];
+
+  /*
+    Compact keeps a way to what it is hiding, and it is on screen before it is needed.
+
+    `Spark` is offered here and nobody has used it, so `compact` does not draw it — on the promise
+    that the sheet is how the rest are reached. That door used to be the `+N` overflow and nothing
+    else, which meant it appeared only once a FIFTH type was in use: with four offered and three
+    used, exactly this scenario, the row drew three marks and no way to give a fourth kind of
+    reaction. A mode that hides a vocabulary needs something to open it, at every count.
+  */
+  const door = await measureControl('React with something else');
+  if (!door) problems.push('compact hides a type nobody has used with no way to reach it');
+  else if (!door.w || !door.h) problems.push('the way into the sheet has no box, so it cannot be pressed');
 
   const marks = await measureAll('.count-mark');
   const controls = await measureAll('.signal-control');

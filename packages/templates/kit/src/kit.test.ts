@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, type SchemaNode, validateSemantic } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  evaluateExpression,
+  listFunctions,
+  parseExpression,
+  type SchemaNode,
+  validateSemantic,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -235,6 +242,46 @@ const weDomain: Record<string, SchemaNode> = {
     card: { mode: 'compact' },
   }),
 };
+
+/** The offered types, as `signalTypes.ts` spells them — repeated here so a drift shows up as a test. */
+const OFFERED = 'filter(local.signalTypes, { retired: { not: true } })';
+
+/**
+ * The condition on the `$if` guarding whatever opens the reactions sheet, or undefined for none.
+ *
+ * Found by where it leads rather than by what it says: the door has been a `+N`, and is now a plus
+ * that sometimes carries one, so anything matching its label or its children would pass while the
+ * door itself was wrong. What makes a node the door is that pressing it sets `signalsModalOpen`.
+ */
+function doorCondition(display: SchemaNode): string | undefined {
+  let found: string | undefined;
+  const search = (node: unknown, guard: string | undefined): void => {
+    if (Array.isArray(node)) return node.forEach((n) => search(n, guard));
+    if (!node || typeof node !== 'object') return;
+    const record = node as Record<string, unknown>;
+    if (record.$setLocal === 'signalsModalOpen' && record.value === true && !found) found = guard;
+    const props = (record.props ?? {}) as Record<string, unknown>;
+    const own = record.type === '$if' ? (props.condition as { $?: string } | undefined)?.$ : undefined;
+    for (const [key, value] of Object.entries({ ...record, ...props })) {
+      if (key === 'condition' || key === 'props') continue;
+      // A `$if`'s own condition scopes only what it renders, which is `then` (and `else`).
+      search(value, key === 'then' || key === 'else' ? (own ?? guard) : guard);
+    }
+  };
+  search(display, undefined);
+  return found;
+}
+
+/** Answer an expression against a made-up world, using the real library. */
+function evaluate(source: string, roots: Record<string, unknown>): unknown {
+  return evaluateExpression(parseExpression(source), {
+    root: (name: string) => ({ bound: name in roots, value: roots[name] }),
+    call: (name: string, args: unknown[]) => {
+      const fn = listFunctions().find((f) => f.name === name);
+      return fn ? fn.impl(args, { context: {}, stores: {} }) : undefined;
+    },
+  });
+}
 
 /** Depth-first over nodes, props and operator tokens alike. */
 function walk(value: unknown, visit: (node: Record<string, unknown>) => void): void {
@@ -697,6 +744,70 @@ describe('contracts call sites depend on', () => {
     });
     // Every offered type, with no "has anybody used it" test in the way.
     expect(full.some((e) => e.includes('count(filter(row.signals'))).toBe(false);
+  });
+
+  it('a compact display has a way into the sheet before anybody has reacted', () => {
+    /*
+      The half that `showUnused: false` is only honest with.
+
+      `compact` hides every type nobody has used here, on the promise that the rest are reachable
+      through the sheet. The door into that sheet was the `+N` overflow and nothing else, so it
+      appeared only once FIVE types were already in use: on a comment with one reaction, or none,
+      the row rendered marks nobody could add to, or rendered nothing at all. A mode that hides a
+      vocabulary with no way to open it is a mode that loses the vocabulary.
+
+      Asserted by evaluating the condition rather than by matching its text, because what matters is
+      what it answers in the state the regression lived in. The old overflow test is evaluated
+      beside it, and is false there — which is the bug, written out.
+    */
+    const condition = doorCondition(weDomain['signalDisplay (compact)']);
+    expect(condition, 'no way into the reactions sheet from a compact display').toBeTruthy();
+
+    const world = (used: number, offered: number) => ({
+      local: { signalTypes: Array.from({ length: offered }, (_, i) => ({ id: `t${i}`, retired: false })) },
+      card: { signals: Array.from({ length: used }, (_, i) => ({ signalTypeId: `t${i}`, author: 'did:them' })) },
+      spaceStore: { mutedDids: [] },
+      me: { did: 'did:me' },
+    });
+
+    // Nothing reacted with yet, one type offered: the door is the only thing on the row.
+    expect(evaluate(condition!, world(0, 1))).toBe(true);
+    // One of three used — the two nobody has reached for are still reachable.
+    expect(evaluate(condition!, world(1, 3))).toBe(true);
+    // Everything offered is already on the row, so there is nothing behind the door.
+    expect(evaluate(condition!, world(2, 2))).toBe(false);
+
+    // What it used to be, in the state that mattered.
+    expect(evaluate(`count(${OFFERED}) - 4 > 0`, world(1, 3))).toBe(false);
+  });
+
+  it('a read-only compact display opens nothing', () => {
+    // `readOnly` is for a card that is dragged rather than operated. A plus that opens a sheet is a
+    // control, and the marks beside it are already inert.
+    const inert = signalDisplay({ record: 'card', mode: 'compact', as: 'cardSig', readOnly: true });
+    expect(doorCondition(inert)).toBeUndefined();
+  });
+
+  it('the vocabulary can be extended from where it was found short', () => {
+    /*
+      Somebody reaches the full row — in an inspector, or through the sheet — because they went
+      looking for a reaction and did not find it. Sending them to Settings → Vocabulary to answer
+      that means leaving the thing they were reacting to.
+
+      It is the vocabulary section's own form, not a smaller one: a second form would be a second
+      idea of what a reaction type is, and the modes carry range, step and a secondary icon a quick
+      add would drop. And it is gated as that section gates it, since defining a reaction names
+      something every member will then see.
+    */
+    let creates = 0;
+    let gated = false;
+    walk(weDomain['signalDisplay (full)'], (n) => {
+      if (n.$action === 'spaceStore.createSignalType') creates += 1;
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (condition === 'spaceStore.canAdministerCurrentSpace') gated = true;
+    });
+    expect(creates, 'no way to define a reaction type from the full row').toBe(1);
+    expect(gated, 'anybody could define a reaction type').toBe(true);
   });
 
   it('a total is people, not values — one number for a whole vocabulary', () => {

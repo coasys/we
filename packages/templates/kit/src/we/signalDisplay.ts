@@ -1,5 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
 
+import { createSignalTypeModal } from './signalTypeForm.ts';
 import { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './signalTypes.ts';
 
 /**
@@ -25,6 +26,11 @@ import { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './signalTypes.ts
  * second reaction would be a layout changing under the reader with no author's decision behind it;
  * crowding is answered by `max` and an overflow into the modal, which keeps the shape the author
  * chose.
+ *
+ * Every mode that hides anything carries a way to the rest — `total` is one press, and `compact`
+ * grows a plus the moment there is a type it is not drawing. That is not a nicety: `compact`
+ * defaults `showUnused` off, so without it a community's vocabulary is hidden by a display with
+ * nothing to open it.
  *
  * ## Why a fragment and not a component
  *
@@ -56,7 +62,7 @@ export interface SignalDisplayOptions {
    * Defaults to true in `full` and false elsewhere, which is the split the surfaces want: a panel
    * is where a community's vocabulary should be discoverable, and a card is not the place to learn
    * that six kinds of reaction exist. Where it is off, the modal is how the rest are reached — which
-   * is why `total` and `compact` both lead there.
+   * is why `total` and `compact` both lead there, at every count and not only when crowded.
    */
   showUnused?: boolean;
   /**
@@ -65,10 +71,13 @@ export interface SignalDisplayOptions {
    */
   readOnly?: boolean;
   /**
-   * Marks before the rest become a `+N` into the modal, in `compact`. Defaults to 4.
+   * Marks before the rest go behind the plus, in `compact`. Defaults to 4.
    *
    * This rather than switching mode on type count: an author picked `compact` because of the room
    * the surface has, and that does not stop being true when a community names a fifth reaction.
+   *
+   * The plus is there whether or not this limit bites — it is how an unused type is reached too —
+   * and carries the number only when marks were really dropped. See `compactRow`.
    */
   max?: number;
   /** Context key bound per signal type. Defaults to `'sig'`; change it inside another `$each`. */
@@ -81,6 +90,16 @@ export interface SignalDisplayOptions {
 
 /** Local holding whether this record's reactions modal is up. Declared on the fragment's own root. */
 const MODAL_OPEN = 'signalsModalOpen';
+
+/**
+ * The same, for the form that defines a new reaction type.
+ *
+ * Declared on the root beside `MODAL_OPEN` rather than inside the sheet, because the button that
+ * sets it is in `fullRow` — which renders both inside the sheet and, in `full` mode, on its own.
+ * A `$setLocal` with no declaring ancestor warns and no-ops: the button renders, takes the click,
+ * and does nothing.
+ */
+const NEW_TYPE_OPEN = 'signalTypeFormOpen';
 
 /**
  * The options with every default already applied.
@@ -282,6 +301,56 @@ function fullRow(opts: Resolved, as: string): SchemaNode {
         props: { items: { $: typesShown(opts) }, as },
         children: [meaning(as, [control(opts, as)])],
       },
+      /*
+        And a way to mean something the community has no reaction for yet.
+
+        This row is where somebody arrives having looked for the reaction they wanted and not found
+        it — directly, in an inspector, or through the sheet, which is this row with room. That is
+        the moment the vocabulary is felt to be short, so it is where the answer belongs; Settings →
+        Vocabulary is the other way to the same form and it is the wrong one here, since it means
+        leaving the thing you were reacting to in order to describe how you wanted to react to it.
+
+        The same form as that section's, through `createSignalTypeModal`, rather than a smaller one
+        written for this surface. A second form would be a second idea of what a reaction type is,
+        and the modes carry range, step and a secondary icon that a "quick add" would quietly drop —
+        which is how a community ends up with a rating that is secretly a toggle.
+
+        Gated as that section gates it: defining a reaction names something every member will then
+        see, so it is an administrator's act wherever it is done from. A member without the right
+        sees the reactions and no plus, which is exactly what they see in Settings.
+      */
+      ...(opts.readOnly
+        ? []
+        : [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+                then: {
+                  type: 'we-tooltip',
+                  props: { content: 'New reaction type' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'bare',
+                        size: opts.size === 'xs' ? 'xs' : 'sm',
+                        color: 'text-faint',
+                        hoverProps: { color: 'text' },
+                        label: 'New reaction type',
+                        onClick: { $setLocal: NEW_TYPE_OPEN, value: true },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'plus' } }],
+                    },
+                    createSignalTypeModal({
+                      open: { $: `local.${NEW_TYPE_OPEN}` },
+                      close: { $setLocal: NEW_TYPE_OPEN, value: false },
+                    }),
+                  ],
+                },
+              },
+            } as SchemaNode,
+          ]),
     ],
   };
 }
@@ -289,7 +358,10 @@ function fullRow(opts: Resolved, as: string): SchemaNode {
 /** A row of marks, and a way to the rest. */
 function compactRow(opts: Resolved, as: string): SchemaNode {
   const limit = opts.max ?? 4;
-  const hidden = `count(${typesShown(opts)}) - ${limit}`;
+  /** Marks the `max` dropped — a number worth showing, because those reactions are really there. */
+  const overflow = `count(${typesShown(opts)}) - ${limit}`;
+  /** Anything the community offers that this row is not drawing: unused types, and the overflow. */
+  const offstage = `count(${OFFERED_SIGNAL_TYPES}) - count(${typesShown(opts, limit)})`;
   return {
     type: 'Row',
     props: { gap: opts.size === 'md' ? '500' : '300', ay: 'center', wrap: true },
@@ -300,30 +372,59 @@ function compactRow(opts: Resolved, as: string): SchemaNode {
         children: [mark(opts, as)],
       },
       /*
-        The rest, as a door rather than as a wrap.
+        The way to everything this row is not showing — and the reason `compact` is allowed to hide
+        anything at all.
 
-        A sixth mark does not make a card unreadable on its own — a row of nine does, and a surface
-        that chose `compact` chose it for the room it has. `+N` keeps the shape the author picked
-        and puts the remainder exactly where every other "there is more" in this fragment puts it.
+        This used to appear only when `max` had dropped a mark, which meant a surface needed FIVE
+        types already in use before it offered a way in. On a comment with one reaction, or none,
+        the row rendered nothing at all: a mode whose whole premise is "the rest are reached through
+        the modal" had no door to the modal, so a reader could press the reactions that happened to
+        be there and could not give a different one. `showUnused: false` was hiding a vocabulary
+        with nothing to open it.
+
+        So the door is present whenever anything is offstage — a type nobody has used here yet, or a
+        mark `max` dropped — and it is the same door either way, since "give a different reaction"
+        and "see the other reactions" land in the same sheet.
+
+        The plus is what it always says; the number appears only when there is an honest one to
+        show. Marks dropped by `max` are reactions people really gave, so `+3` counts those; unused
+        types are not a count of anything, so they add nothing to it and a bare plus reads as
+        "react with something else" rather than claiming three more people are in there.
+
+        Not under `readOnly`: a card that is dragged rather than operated has no business opening a
+        sheet, and the marks beside this are already inert.
       */
-      {
-        type: '$if',
-        props: {
-          condition: { $: `${hidden} > 0` },
-          then: {
-            type: 'we-button',
-            props: {
-              variant: 'bare',
-              size: opts.size === 'md' ? 'sm' : 'xs',
-              color: 'text-faint',
-              hoverProps: { color: 'text' },
-              label: 'Show every reaction',
-              onClick: { $setLocal: MODAL_OPEN, value: true },
-            },
-            children: [{ $: `'+' + ${hidden}` }],
-          },
-        },
-      },
+      ...(opts.readOnly
+        ? []
+        : [
+            {
+              type: '$if',
+              props: {
+                condition: { $: `${offstage} > 0` },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'bare',
+                    size: opts.size === 'md' ? 'sm' : 'xs',
+                    color: 'text-faint',
+                    hoverProps: { color: 'text' },
+                    label: 'React with something else',
+                    onClick: { $setLocal: MODAL_OPEN, value: true },
+                  },
+                  children: [
+                    { type: 'we-icon', props: { name: 'plus' } },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `${overflow} > 0` },
+                        then: { type: 'we-text', children: [{ $: overflow }] },
+                      },
+                    },
+                  ],
+                },
+              },
+            } as SchemaNode,
+          ]),
     ],
   };
 }
@@ -403,7 +504,12 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
         props: { ...(opts.inline ? {} : { width: '100%' }) },
         // Per display: inside an `$each` this is created per row, so two records cannot disagree
         // about whose reactions are open.
-        ...(mode === 'full' ? {} : { $localState: { [MODAL_OPEN]: { type: 'boolean', initial: false } } }),
+        $localState: {
+          ...(mode === 'full' ? {} : { [MODAL_OPEN]: { type: 'boolean', initial: false } }),
+          // Declared in every mode: `fullRow` carries the button that sets it, and `fullRow` is
+          // both what `full` renders and what the sheet holds.
+          [NEW_TYPE_OPEN]: { type: 'boolean', initial: false },
+        },
         children: mode === 'full' ? [body] : [body, modal(opts, as)],
       },
     },

@@ -1443,8 +1443,29 @@ describe('the workshop’s canvas', () => {
       '"$action":"recordStore.updateRecordField","args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
     );
     expect(inspector).not.toContain('saveRecord');
-    // Typed controls commit on change, never on input — a keystroke is not a write.
-    expect(inspector).not.toContain('"onInput"');
+    /*
+      Typed controls commit on change, never on input — a keystroke is not a write to a record
+      everybody else is reading.
+
+      Asked of the handlers rather than of the panel's text. It used to be `not.toContain("onInput")`
+      over the whole serialisation, which held only while the inspector contained nothing but the
+      record editor: the reactions row now carries the form that defines a new signal type, and that
+      form types into its own `$localState` behind a Save button, which is the shape a draft SHOULD
+      have. The coarse version read a correct form as the defect it was written about.
+    */
+    const writesOnInput: string[] = [];
+    const seek = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(seek);
+      if (!value || typeof value !== 'object') return;
+      for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+        if (key === 'onInput' && JSON.stringify(inner).includes('updateRecordField')) {
+          writesOnInput.push(JSON.stringify(inner));
+        }
+        seek(inner);
+      }
+    };
+    seek(JSON.parse(inspector));
+    expect(writesOnInput).toEqual([]);
     // A closed set of values is a select over what the model declares.
     expect(inspector).toContain('field.options.map(o, { label: o, value: o })');
   });

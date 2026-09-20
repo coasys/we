@@ -84,6 +84,8 @@ export {
 } from './we/signalTypes.ts';
 export { signalDisplay } from './we/signalDisplay.ts';
 export type { SignalDisplayOptions } from './we/signalDisplay.ts';
+export { createSignalTypeModal } from './we/signalTypeForm.ts';
+export type { CreateSignalTypeModalOptions } from './we/signalTypeForm.ts';
 export { discussionSection } from './we/discussion.ts';
 export type { DiscussionSectionOptions } from './we/discussion.ts';
 export {
