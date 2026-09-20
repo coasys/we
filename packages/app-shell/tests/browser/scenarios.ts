@@ -36,7 +36,13 @@ const discussionThread = (): Scenario => ({
     SignalType: [],
     CollectionBlock: [
       { id: 'card-1', parentId: null, author: 'did:me', createdAt: '2026-09-01T09:00:00Z' },
-      { id: 'r1', parentId: 'card-1', author: 'did:them', createdAt: '2026-09-01T10:00:00Z', editorState: null },
+      /*
+        The reply is the VIEWER'S OWN, which is what puts the edit and delete controls on the line —
+        they are gated on `author == me.did`, and faded rather than unmounted, so they take their
+        room whether or not the pointer is anywhere near. A thread of other people's replies is the
+        uncrowded case and says nothing about the crowded one.
+      */
+      { id: 'r1', parentId: 'card-1', author: 'did:me', createdAt: '2026-09-01T10:00:00Z', editorState: null },
       { id: 'r2', parentId: 'r1', author: 'did:them', createdAt: '2026-09-01T11:00:00Z', editorState: null },
     ],
   },
@@ -49,13 +55,47 @@ const discussionThread = (): Scenario => ({
   stores: {
     profileStore: {
       profiles: [
-        { did: 'did:them', name: 'Alexandra Whitfield', avatar: '' },
-        { did: 'did:me', name: 'James', avatar: '' },
+        { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
+        // Two words, and long enough that the row genuinely runs short inside a panel. A name that
+        // fits is a name that proves nothing.
+        { did: 'did:me', name: 'Alexandra Whitfield', avatar: '' },
       ],
     },
   },
 });
 
+/**
+ * Two nested boxes, each of which varies by state. The smallest shape the design system's
+ * `--we-ds-*` indirection can be wrong about.
+ *
+ * `hoverProps` moves the outer row's ordinary props out of its inline style into custom properties,
+ * and custom properties inherit — so the inner row, which also has a state bag and so reads the
+ * same vars, used to pick up `--we-ds-width: 100%` from its ancestor and fill the line. Nothing in
+ * either row's own declaration says anything about its width.
+ *
+ * Deliberately not a fragment: this is a fact about the interop stylesheet, and stating it in
+ * fourteen nodes is what keeps the next reader from thinking it is about comment threads.
+ */
+const nestedInteractive = (): Scenario => ({
+  node: {
+    type: 'Row',
+    props: { width: '100%', ay: 'center', gap: '200', hoverProps: { opacity: 1 } },
+    children: [
+      { type: 'we-text', children: ['A name beside it'] },
+      {
+        type: 'Row',
+        props: { gap: '100', ay: 'center', flexShrink: '0', focusProps: { opacity: 1 } },
+        children: [
+          { type: 'we-button', props: { variant: 'ghost', size: 'sm', square: true }, children: ['A'] },
+          { type: 'we-button', props: { variant: 'ghost', size: 'sm', square: true }, children: ['B'] },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, () => Scenario> = {
   'discussion:thread': discussionThread,
+  'ds:nested-interactive': nestedInteractive,
 };

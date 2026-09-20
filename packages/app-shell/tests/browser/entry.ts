@@ -72,10 +72,8 @@ function mount(name: string, width: number): void {
   );
 }
 
-/** A box and the handful of computed values a layout assertion actually reads. */
-function measure(selector: string) {
-  const el = document.querySelector(selector);
-  if (!el) return null;
+/** The box a schema node drew, and the handful of computed values a layout assertion reads. */
+function box(el: Element) {
   const r = el.getBoundingClientRect();
   const cs = getComputedStyle(el);
   return {
@@ -91,12 +89,57 @@ function measure(selector: string) {
   };
 }
 
+/** The first element matching, or null. */
+function measure(selector: string) {
+  const el = document.querySelector(selector);
+  return el ? box(el) : null;
+}
+
 /** Every element matching, so a case can assert about a row of siblings. */
 function measureAll(selector: string) {
-  return [...document.querySelectorAll(selector)].map((el) => {
-    const r = el.getBoundingClientRect();
-    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
-  });
+  return [...document.querySelectorAll(selector)].map(box);
+}
+
+/**
+ * The element carrying exactly this text.
+ *
+ * An assertion about a person's name should not be spelled as a selector for the props the fix
+ * happened to add — `we-text[truncate]` finds nothing on a tree where the name is not truncated, so
+ * the regression it exists to catch reports as "nothing rendered". What the reader sees is a word,
+ * so that is what the case names.
+ */
+function measureText(text: string, selector = '*') {
+  const hits = [...document.querySelectorAll(selector)].filter((el) => (el.textContent ?? '').trim() === text);
+  // The innermost one: a wrapper's text is its child's, and the child is the box that was laid out.
+  const el = hits.findLast((candidate) => !hits.some((other) => other !== candidate && candidate.contains(other)));
+  return el ? box(el) : null;
+}
+
+/**
+ * An element and every box above it, outermost last.
+ *
+ * "The name wrapped" is never the whole story — something above it decided how much room it had,
+ * and reading the chain is how that is found without scrolling through a page of markup.
+ */
+function chain(text: string) {
+  const hit = document.evaluate(`//*[normalize-space(text())=${JSON.stringify(text)}]`, document, null, 9, null)
+    .singleNodeValue as Element | null;
+  /** What a `display: contents` wrapper resolves to: the boxes that actually lay out. */
+  const laidOut = (el: Element): Element[] =>
+    [...el.children].flatMap((kid) => (getComputedStyle(kid).display === 'contents' ? laidOut(kid) : [kid]));
+
+  const out: (ReturnType<typeof box> & { tag: string; kids: string[] })[] = [];
+  for (let el = hit; el && el.id !== 'mount'; el = el.parentElement) {
+    if (getComputedStyle(el).display === 'contents') continue;
+    out.push({
+      tag: el.tagName.toLowerCase(),
+      ...box(el),
+      // A box's siblings are usually the answer: an item is narrow because something beside it is
+      // wide, and the schema's `display: contents` wrappers hide which items those actually are.
+      kids: laidOut(el).map((k) => `${k.tagName.toLowerCase()} ${Math.round(k.getBoundingClientRect().width)}w`),
+    });
+  }
+  return out;
 }
 
 /** The mounted tree as markup — what a failing assertion is looked at through. */
@@ -109,6 +152,8 @@ injectDSInteropStyles();
   mount,
   measure,
   measureAll,
+  measureText,
+  chain,
   html,
   scenarios: Object.keys(scenarios),
 };

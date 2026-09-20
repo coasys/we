@@ -119,9 +119,20 @@ async function main() {
       const api = {
         measure: (sel) => page.evaluate((s) => window.__harness.measure(s), sel),
         measureAll: (sel) => page.evaluate((s) => window.__harness.measureAll(s), sel),
+        measureText: (text, sel) => page.evaluate((a) => window.__harness.measureText(...a), [text, sel]),
       };
       const problems = (await mod.check(api, width)) ?? [];
       const label = `${mod.name} @ ${width}px`;
+      if (process.env.WE_BROWSER_CHAIN) {
+        const rows = await page.evaluate((t) => window.__harness.chain(t), process.env.WE_BROWSER_CHAIN);
+        console.log(`  chain above "${process.env.WE_BROWSER_CHAIN}" at ${width}px:`);
+        for (const r of rows) console.log(`      ${r.tag} ${r.w}x${r.h} @${r.x},${r.y} — [${r.kids.join(', ')}]`);
+      }
+      if (process.env.WE_BROWSER_MEASURE) {
+        const rows = await api.measureAll(process.env.WE_BROWSER_MEASURE);
+        console.log(`  ${process.env.WE_BROWSER_MEASURE} at ${width}px:`);
+        for (const r of rows) console.log(`      ${r.w}x${r.h} @${r.x},${r.y} ${r.display} "${r.text}"`);
+      }
       if (process.env.WE_BROWSER_DUMP && problems.length) {
         console.log(await page.evaluate(() => window.__harness.html()));
       }
