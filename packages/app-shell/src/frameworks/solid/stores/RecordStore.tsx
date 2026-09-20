@@ -47,13 +47,13 @@ import {
 } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
+import { createOptimism, keyOf, sameValue } from '@we/optimism';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
 import { hostSlot } from '../../../shared/hostSlot';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
-import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
 import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
   asEntityName,
@@ -173,6 +173,16 @@ async function drawnPlacement(
   }
   return drawn;
 }
+
+/**
+ * Field patches waiting to be seen in a read, keyed by the record they were written to.
+ *
+ * The shape a DRAWER takes, which is all this is now: the holds themselves live per field in
+ * `@we/optimism` (a card's colour and its size are written by different gestures and settle at
+ * different times, so holding them together means one retires the other). This is assembled from
+ * them for the graph host, which draws a node from one patch.
+ */
+export type PendingWrites = Record<string, Record<string, unknown>>;
 
 export interface RecordStore {
   /**
@@ -1287,15 +1297,65 @@ export function RecordStoreProvider(props: ParentProps) {
   /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
   const CARD_STYLE_FIELDS = ['width', 'height', 'contentScale', 'rotation', 'z', 'color', 'cardShape'] as const;
 
-  const [pendingCardStyle, setPendingCardStyle] = createSignal<PendingWrites>({});
+  /*
+    A card's presentation, held per FIELD rather than per record.
 
-  const hold = (nodeId: string, patch: Record<string, unknown>) =>
-    setPendingCardStyle((current) => holdPending(current, nodeId, patch));
-  const drop = (nodeId: string) => setPendingCardStyle((current) => dropPending(current, nodeId));
+    A card's colour and its size are written by different gestures that land at different times, so
+    holding them together means one settling retires the other — the key is `<nodeId>\0<field>`, and
+    each answers for itself. The patch-per-record shape survives only as {@link pendingCardStyle},
+    which is what the graph host draws from.
+  */
+  const cardStyle = createOptimism<unknown>(createSignal, { same: sameValue });
 
+  const hold = (nodeId: string, patch: Record<string, unknown>) => {
+    for (const [field, value] of Object.entries(patch)) cardStyle.hold(keyOf(nodeId, field), value);
+  };
+  const done = (nodeId: string, patch: Record<string, unknown>) => {
+    for (const field of Object.keys(patch)) cardStyle.done(keyOf(nodeId, field));
+  };
+  const drop = (nodeId: string, patch?: Record<string, unknown>) => {
+    const fields = patch ? Object.keys(patch) : fieldsHeldFor(nodeId);
+    for (const field of fields) cardStyle.release(keyOf(nodeId, field));
+  };
+
+  const fieldsHeldFor = (nodeId: string): string[] =>
+    Object.keys(cardStyle.holds())
+      .filter((key) => key.startsWith(`${nodeId}\u0000`))
+      .map((key) => key.slice(nodeId.length + 1));
+
+  /** The holds a drawer takes: record → field → value, with anything expired already gone. */
+  const pendingCardStyle: Accessor<PendingWrites> = () => {
+    const out: PendingWrites = {};
+    for (const key of Object.keys(cardStyle.holds())) {
+      const split = key.indexOf('\u0000');
+      const nodeId = key.slice(0, split);
+      const field = key.slice(split + 1);
+      // `toDraw` needs what the data says, and the caller here has no view of it — passing the held
+      // value asks only "is this still live", which is the backstop and the in-flight rule.
+      const held = cardStyle.holds()[key];
+      const live = cardStyle.toDraw(key, held.before ?? held.value);
+      if (live === undefined) continue;
+      out[nodeId] = { ...out[nodeId], [field]: live };
+    }
+    return out;
+  };
+
+  /*
+    What the graph reports is AGREEMENT — the records whose own data already says what was written —
+    because that comparison happens in the graph's own field space, where both halves are mapped
+    already. So a reported record is one whose observed value equals the held one, which is the rule
+    the core drops an entry on.
+
+    What is not reported, and so is not covered, is a peer moving a card's colour to a THIRD value:
+    the graph never says "this disagrees", only "this agrees". Such a hold stands until the backstop
+    rather than retiring on the push that overtook it. That is exactly what it did before, so nothing
+    regresses — but it is the one place the canvas is still short of what the board and involvements
+    get, and closing it means the graph reporting observed values rather than a verdict.
+  */
   function confirmPending(recordIds: readonly string[]): void {
-    if (!Object.keys(pendingCardStyle()).length) return;
-    setPendingCardStyle((current) => dropAllPending(current, recordIds));
+    if (!cardStyle.inFlight()) return;
+    const agreed = new Set(recordIds);
+    cardStyle.settle((key, entry) => (agreed.has(key.slice(0, key.indexOf('\u0000'))) ? entry.value : undefined));
   }
 
   /**
@@ -1314,13 +1374,16 @@ export function RecordStoreProvider(props: ParentProps) {
     try {
       const already = await drawnPlacement(dataset.handle, { id: canvas, predicate: PREDICATES.CHILDREN }, nodeId);
       if (!already) {
-        drop(nodeId);
+        drop(nodeId, patch);
         toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
         return;
       }
       await Placement.update(dataset.handle, already.id, patch);
+      // The write is back, so the hold stops being exempt from what the next draw says — see
+      // `BoardDeps.done` for why that is not the same as releasing it.
+      done(nodeId, patch);
     } catch (error) {
-      drop(nodeId);
+      drop(nodeId, patch);
       console.error('RecordStore: styling a card on a canvas failed', error);
       toastService.error('Could not save that.');
     }
@@ -1538,7 +1601,9 @@ export function RecordStoreProvider(props: ParentProps) {
   function previewCardStyle(nodeId: string, field: string, value: unknown): void {
     const scalar = cardStyleValue(field, value);
     if (scalar === undefined || !nodeId) return;
-    hold(nodeId, { [field]: scalar });
+    // A preview, not a write — nothing is coming back for it, so counting one would leave the hold
+    // exempt from judgement until the backstop. See `preview` in `@we/optimism`.
+    cardStyle.preview(keyOf(nodeId, field), scalar);
   }
 
   async function setCardStyle(canvas: string, nodeId: string, field: string, value: unknown): Promise<void> {

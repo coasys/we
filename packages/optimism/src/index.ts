@@ -153,6 +153,22 @@ export function hold<V>(holds: Holds<V>, key: string, value: V, now = Date.now()
 }
 
 /**
+ * Show a value with no write behind it — a slider reporting while it is being dragged.
+ *
+ * The distinction rule 4 forces. A hold counts a write it is waiting to hear back from; a preview is
+ * waiting for nothing, so counting one would leave the entry permanently exempt from judgement and
+ * standing until the backstop. A drag emits continuously, so that is not a corner case: it is every
+ * slider in the app holding its last frame for ten seconds after the real write had landed.
+ *
+ * Keeps whatever is in flight — a preview arriving over a real write does not cancel it — and clears
+ * the baseline, since the value being stood in for has changed.
+ */
+export function preview<V>(holds: Holds<V>, key: string, value: V, now = Date.now()): Holds<V> {
+  const entry = holds[key];
+  return { ...holds, [key]: { value, at: now, writing: entry?.writing ?? 0 } };
+}
+
+/**
  * A write for this key has returned successfully.
  *
  * The hold stays — rule 1 — but stops being exempt from judgement once the last write is back, and
@@ -275,6 +291,8 @@ export interface Optimism<V> {
   holds: () => Holds<V>;
   /** Note a write going out. */
   hold: (key: string, value: V) => void;
+  /** Show a value with no write behind it — see {@link preview}. */
+  preview: (key: string, value: V) => void;
   /** A write returned successfully — see {@link done}. */
   done: (key: string) => void;
   /** A write failed — see {@link release}. */
@@ -312,6 +330,7 @@ export function createOptimism<V>(signal: SignalFactory, rules: Rules<V>): Optim
   return {
     holds,
     hold: (key, value) => update((current) => hold(current, key, value)),
+    preview: (key, value) => update((current) => preview(current, key, value)),
     done: (key) => update((current) => done(current, key)),
     release: (key) => update((current) => release(current, key)),
     forget: (key) => update((current) => forget(current, key)),

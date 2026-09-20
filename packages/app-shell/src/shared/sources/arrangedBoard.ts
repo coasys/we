@@ -97,7 +97,7 @@ export interface ArrangedBoardOptions {
   /** The community's states, for a heading's name, icon and colour where the column has none. */
   states?: StateRow[] | null;
   /**
-   * Arrangements written and not yet seen come back — see `shapes/pendingOrder`.
+   * Arrangements written and not yet seen come back — see `@we/optimism`.
    *
    * Applied to the **inputs** rather than to the answers below, which is the whole reason this is
    * three lines rather than a second pass over every field. `contents`, `unplaced`, `available` and

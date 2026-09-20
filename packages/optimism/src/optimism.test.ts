@@ -14,6 +14,7 @@ import {
   hold,
   type Holds,
   keyOf,
+  preview,
   reconcile,
   release,
   type Rules,
@@ -221,5 +222,31 @@ describe('the holder over injected reactivity', () => {
     optimism.hold('a', 'x');
     optimism.reset();
     expect(optimism.inFlight()).toBe(false);
+  });
+});
+
+describe('a preview, which has no write behind it', () => {
+  it('does not count as one, so it can still settle', () => {
+    /*
+      A slider emits continuously as it is dragged. Counted as writes, those holds would leave the
+      entry permanently exempt from judgement — nothing is coming back to decrement them — so every
+      slider in the app would stand on its last frame until the backstop expired, ten seconds after
+      the real write had landed and agreed.
+    */
+    let holds = preview<string>({}, 'card', 'red');
+    holds = preview(holds, 'card', 'amber');
+    expect(holds.card.writing).toBe(0);
+    expect(holds.card.value).toBe('amber');
+
+    holds = reconcile(holds, sawOnly('card', 'amber'), value);
+    expect(holds.card).toBeUndefined();
+  });
+
+  it('does not cancel a real write it arrives over', () => {
+    let holds = hold<string>({}, 'card', 'red');
+    holds = preview(holds, 'card', 'amber');
+    expect(holds.card.writing).toBe(1);
+    // And the baseline goes, because what is being stood in for has changed.
+    expect(holds.card.before).toBeUndefined();
   });
 });

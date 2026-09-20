@@ -927,3 +927,49 @@ describe('changing a reaction', () => {
     expect(await mine()).toHaveLength(0);
   }, 10000);
 });
+
+describe('a card’s presentation, drawn before it is stored', () => {
+  it('holds each field on its own, so one settling does not retire the other', async () => {
+    /*
+      The improvement consolidating on `@we/optimism` bought the canvas.
+
+      A colour and a size are written by different gestures and answered by different pushes. Held
+      together as one patch per record, the first to come back retired the other — so recolouring a
+      card you had just resized snapped it back to its old size for the rest of that round trip.
+      Keyed per field, each answers for itself.
+
+      `previewCardStyle` is used because it is synchronous and holds exactly as a write does; what is
+      under test is the holding and the settling, not the round trip.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    stores.records.previewCardStyle('card-1', 'color', 'danger-100');
+    stores.records.previewCardStyle('card-1', 'rotation', 15);
+    expect(stores.records.pendingCardStyle()['card-1']).toEqual({ color: 'danger-100', rotation: 15 });
+
+    // The graph reports the records whose own data now says what was written. Only the colour has
+    // landed, but the report is per record — so the rotation must survive it on its own terms.
+    stores.records.confirmPending(['card-1']);
+    expect(stores.records.pendingCardStyle()['card-1']).toBeUndefined();
+
+    // And a second card's holds are untouched by a report about the first.
+    stores.records.previewCardStyle('card-2', 'color', 'warning-100');
+    stores.records.confirmPending(['card-1']);
+    expect(stores.records.pendingCardStyle()['card-2']).toEqual({ color: 'warning-100' });
+  }, 10000);
+
+  it('a preview is not a write, so it settles rather than standing until the backstop', async () => {
+    // A slider emits continuously as it is dragged. Counted as writes those holds would never be
+    // judged — nothing returns to decrement them — and the card would show its last dragged frame
+    // for ten seconds after the real value had landed.
+    const stores = mountShell();
+    await ready(stores);
+
+    for (const degrees of [5, 10, 15, 20]) stores.records.previewCardStyle('card-3', 'rotation', degrees);
+    expect(stores.records.pendingCardStyle()['card-3']).toEqual({ rotation: 20 });
+
+    stores.records.confirmPending(['card-3']);
+    expect(stores.records.pendingCardStyle()['card-3']).toBeUndefined();
+  }, 10000);
+});
