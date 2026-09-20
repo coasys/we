@@ -76,7 +76,12 @@ export type { PeopleFilterOptions } from './we/peopleFilter.ts';
 export { peopleRow } from './we/peopleRow.ts';
 export { typePicker, typePickerLists } from './we/typePicker.ts';
 export type { TypePickerOptions } from './we/typePicker.ts';
-export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
+export {
+  DEFAULT_SIGNAL_TYPE,
+  HAS_OFFERED_SIGNAL_TYPES,
+  LIKE_COUNT_TYPE,
+  OFFERED_SIGNAL_TYPES,
+} from './we/signalTypes.ts';
 export { activitySummary, signalsSection } from './we/signals.ts';
 export { signalDisplay } from './we/signalDisplay.ts';
 export type { SignalDisplayOptions } from './we/signalDisplay.ts';

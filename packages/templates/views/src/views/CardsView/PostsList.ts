@@ -7,6 +7,7 @@ import {
   composerModal,
   discussionSection,
   emptyState,
+  LIKE_COUNT_TYPE,
   recordLink,
   signalDisplay,
 } from '@we/template-kit';
@@ -92,7 +93,7 @@ export const postsList: SchemaNode = {
                   which type `like` is.
                 */
                 where: {
-                  signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
+                  signalTypeId: { $: `${LIKE_COUNT_TYPE}.id` },
                 },
                 count: true,
               },

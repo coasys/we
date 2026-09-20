@@ -106,6 +106,7 @@ import {
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker } from '@we/schema-shared';
+import { DEFAULT_SIGNAL_TYPE } from '@we/template-kit';
 import {
   Accessor,
   createContext,
@@ -1619,6 +1620,30 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Write to own dataset
       const spaceRecord = await addSpaceToDataset(spaceHandle, spaceData, locationData);
       trace('space', 'created', { id: spaceRecord.id });
+
+      /*
+        One reaction to start with, so a new space is not mute.
+
+        A community names its own vocabulary and nothing here decides what it should be — but
+        arriving with NONE is not neutrality, it is a blank: every reaction surface in the app draws
+        nothing, and the only way to learn that a space names its own is to find Settings →
+        Vocabulary unprompted. A like is the one starting point nobody has to be taught, and it is
+        adapted or retired in two presses.
+
+        It pays off in code that already exists. The cards feed resolves the slug for its
+        `$likeCount` projection and for sorting by it; in a fresh space that quietly counted nothing.
+        Both sides read `DEFAULT_SIGNAL_TYPE`, since two files naming the same string is how they
+        come apart.
+
+        At creation, which is the only place a default belongs. Not on read: a space that has since
+        retired everything must not have a heart conjured back by a renderer, and `setSignalTypeRetired`
+        exists precisely so a type can be withdrawn without stranding the signals given with it.
+      */
+      await SignalType.create(spaceHandle, { ...DEFAULT_SIGNAL_TYPE }).catch((error: unknown) => {
+        // A space with no reaction is worse than a space, and a space nobody could create is worse
+        // than both. Reported rather than thrown: everything above this has already been written.
+        console.error('createSpace: could not seed the default signal type', error);
+      });
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
