@@ -7,9 +7,8 @@ import {
   composerModal,
   discussionSection,
   emptyState,
-  HAS_OFFERED_SIGNAL_TYPES,
-  OFFERED_SIGNAL_TYPES,
   recordLink,
+  signalDisplay,
 } from '@we/template-kit';
 
 export const postsList: SchemaNode = {
@@ -313,36 +312,19 @@ export const postsList: SchemaNode = {
                   type: 'Row',
                   props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
                   children: [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: HAS_OFFERED_SIGNAL_TYPES },
-                        then: {
-                          type: 'Row',
-                          props: { ay: 'center', gap: '700' },
-                          children: [
-                            {
-                              type: '$each',
-                              props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
-                              children: [
-                                {
-                                  type: 'SignalControl',
-                                  props: {
-                                    signalType: { $: 'sig' },
-                                    signals: { $: 'filter(post.signals, { signalTypeId: sig.id })' },
-                                    myDid: { $: 'me.did' },
-                                    onSignal: {
-                                      $action: 'spaceStore.upsertSignal',
-                                      args: [{ $: 'post.id' }, { $: 'sig.id' }, { $: 'arg' }],
-                                    },
-                                  },
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      },
-                    },
+                    /*
+                      Every reaction the community offers, as its own control.
+
+                      `full` — the mode's default — because a feed row is wide and a post is the
+                      thing a space is mostly about: this is where a community's newest reaction
+                      should be reachable without opening anything. A card on a canvas gets
+                      `compact` for the opposite reason.
+
+                      Through the fragment rather than written out here, which is what stops this
+                      drifting from the same controls in the inspector: it was written out, and the
+                      comment count beside it came out a different size and colour twice.
+                    */
+                    signalDisplay({ record: 'post', inline: true }),
                     {
                       /*
                         The same control the reactions beside it are drawn with.

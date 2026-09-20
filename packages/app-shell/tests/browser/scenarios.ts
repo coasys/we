@@ -6,7 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import type { SchemaNode } from '@we/schema-shared';
-import { discussionSection, signalsSection } from '@we/template-kit';
+import { discussionSection, signalDisplay } from '@we/template-kit';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -115,9 +115,20 @@ const discussionThread = (): Scenario => ({
 const reactionControl = (): Scenario => ({
   node: {
     type: '$each',
-    props: { items: [{ id: 'card-1', signals: [] }], as: 'row' },
+    /*
+      A signal on the record, because `compact` draws the types somebody has USED.
+
+      Seeded on the row rather than as a table: on AD4M a relation's own rows arrive with the
+      record, and the in-memory engine resolves a declared relation on demand and leaves nothing on
+      it — the same fidelity gap the thread scenarios hit. A reaction row with no reactions is also
+      not the row worth measuring.
+    */
+    props: {
+      items: [{ id: 'card-1', signals: [{ signalTypeId: 'st-like', value: 1, author: 'did:them' }] }],
+      as: 'row',
+    },
     $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
-    children: [signalsSection({ record: 'row', inline: true, size: 'xs' })],
+    children: [signalDisplay({ record: 'row', mode: 'compact', inline: true, size: 'xs' })],
   },
   tables: {
     SignalType: [
@@ -168,14 +179,25 @@ const provenanceLine = (): Scenario => ({
 const countControls = (): Scenario => ({
   node: {
     type: '$each',
-    props: { items: [{ id: 'card-1', signals: [], $commentCount: 3, $myComments: 0 }], as: 'row' },
+    props: {
+      items: [
+        {
+          id: 'card-1',
+          // Used, so `compact` draws it — see the reaction scenario for why it is seeded here.
+          signals: [{ signalTypeId: 'st-like', value: 1, author: 'did:them' }],
+          $commentCount: 3,
+          $myComments: 0,
+        },
+      ],
+      as: 'row',
+    },
     $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
     children: [
       {
         type: 'Row',
         props: { ay: 'center', gap: '700' },
         children: [
-          signalsSection({ record: 'row', inline: true }),
+          signalDisplay({ record: 'row', mode: 'compact', inline: true }),
           {
             type: 'CountMark',
             props: {
@@ -253,6 +275,83 @@ const richTooltip = (): Scenario => ({
 });
 
 /**
+ * A record with a whole vocabulary on it, drawn at each of the three densities.
+ *
+ * One of each kind that behaves differently: a toggle, whose control IS a mark and so presses
+ * straight through; a rating, whose five stars ARE the reading and cannot be collapsed to one press;
+ * and a vote, which has two ends. Plus a type nobody has used, which is the whole of what
+ * `showUnused` decides.
+ *
+ * The three modes are mounted together on purpose. Each is easy to get right alone and the point is
+ * that they differ — a `compact` that quietly drew everything, or a `total` that drew a count per
+ * type, would pass any assertion written about it in isolation.
+ */
+const vocabulary = (): Scenario => {
+  const signals = [
+    { signalTypeId: 'st-like', value: 1, author: 'did:them' },
+    { signalTypeId: 'st-like', value: 1, author: 'did:me' },
+    { signalTypeId: 'st-stars', value: 5, author: 'did:them' },
+    { signalTypeId: 'st-stars', value: 4, author: 'did:me' },
+    { signalTypeId: 'st-vote', value: 1, author: 'did:them' },
+    { signalTypeId: 'st-vote', value: -1, author: 'did:me' },
+  ];
+  const modes = ['total', 'compact', 'full'] as const;
+  return {
+    node: {
+      type: '$each',
+      props: { items: [{ id: 'card-1', signals }], as: 'row' },
+      $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
+      /*
+        One child, holding the three.
+
+        `$each` renders its FIRST child and drops the rest — the same trap `threadDepth` records,
+        where a row built as a list lost every level below the first without a word. Three modes as
+        three children showed only `total`, and every assertion about the other two would have been
+        about an empty tree.
+      */
+      children: [
+        {
+          type: 'Column',
+          props: { width: '100%', gap: '400' },
+          children: modes.map((mode) => ({
+            type: 'Column',
+            props: { width: '100%', p: '200' },
+            children: [signalDisplay({ record: 'row', mode, as: `sig${mode}` })],
+          })),
+        },
+      ],
+    },
+    tables: {
+      SignalType: [
+        {
+          id: 'st-like',
+          name: 'Like',
+          slug: 'like',
+          description: 'The ordinary yes — you read it and you are glad it is here.',
+          icon: 'heart',
+          mode: 'toggle',
+          rangeMin: 0,
+          rangeMax: 1,
+        },
+        { id: 'st-stars', name: 'Rating', slug: 'rating', icon: 'star', mode: 'rating', rangeMin: 0, rangeMax: 5 },
+        {
+          id: 'st-vote',
+          name: 'Vote',
+          slug: 'vote',
+          icon: 'arrow-fat-up',
+          iconSecondary: 'arrow-fat-down',
+          mode: 'vote',
+          rangeMin: -1,
+          rangeMax: 1,
+        },
+        // Offered and unused: `full` shows it, `compact` and `total` do not.
+        { id: 'st-spark', name: 'Spark', slug: 'spark', icon: 'lightning', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
+      ],
+    },
+  };
+};
+
+/**
  * Two nested boxes, each of which varies by state. The smallest shape the design system's
  * `--we-ds-*` indirection can be wrong about.
  *
@@ -288,6 +387,7 @@ export const scenarios: Record<string, () => Scenario> = {
   'signals:reaction': reactionControl,
   'cards:counts': countControls,
   'tooltip:rich': richTooltip,
+  'signals:vocabulary': vocabulary,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
 };

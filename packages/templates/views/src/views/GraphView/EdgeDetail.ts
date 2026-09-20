@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, discussionSection, signalsSection } from '@we/template-kit';
+import { agentByline, discussionSection, signalDisplay } from '@we/template-kit';
 
 /**
  * A drawn connection, opened.
@@ -43,7 +43,7 @@ const close = { $setLocal: 'selectedEdge', value: null };
  * disagreed about whether a community's newest reaction existed — and the workshop's inspector,
  * arriving later, had neither.
  */
-const signals: SchemaNode = signalsSection({ record: 'link' });
+const signals: SchemaNode = signalDisplay({ record: 'link' });
 
 /**
  * The thread.

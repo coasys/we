@@ -59,7 +59,7 @@ import {
   resetTopLimit,
 } from '../lists/commentThread.ts';
 import { agentByline } from './agentByline.ts';
-import { signalsSection } from './signals.ts';
+import { signalDisplay } from './signalDisplay.ts';
 
 /** The reply the MODAL composer is open on, or empty. Holds the answer rather than a flag. */
 const REPLY_TO = 'discussionReplyTo';
@@ -600,18 +600,29 @@ function replyBody(
                               props: { gap: '300', ay: 'center', wrap: true, width: '100%' },
                               children: [
                                 /*
-                          Every reaction the community offers, on the reply itself.
+                          What people have made of this reply, at a reply's weight.
 
-                          The same controls the record gets, `inline` so they share the line with
-                          "Reply" rather than taking it, and `xs` because a reaction is drawn at the
-                          weight of the thing it is about. This was a read-only summary, which was the
-                          wrong half of the pair: a count you cannot add to is a scoreboard, and a
-                          thread is the one place where the thing being answered is somebody's
-                          sentence. It costs nothing new — the types come from the subscription the
-                          section already hoists, and each reply's signals from the `include` the
-                          thread's own query already carries.
+                          `compact`, so each kind the community uses is one mark and its own number:
+                          a toggle presses straight through and anything with a real control — a
+                          rating, a vote, a slider — opens it in a popover. A row of full controls
+                          under every reply is a column of furniture between one sentence and the
+                          next, which is the whole reason the modes exist.
+
+                          Used types only, which is `compact`'s default. A thread is not where a
+                          community's vocabulary should be learned; the `+N` and the modal are, and
+                          the inspector above shows all of them.
+
+                          It costs nothing new — the types come from the subscription the section
+                          already hoists, and each reply's signals from the `include` the thread's
+                          own query already carries.
                         */
-                                signalsSection({ record: as, as: `${as}Sig`, inline: true, size: 'xs' }),
+                                signalDisplay({
+                                  record: as,
+                                  as: `${as}Sig`,
+                                  mode: 'compact',
+                                  inline: true,
+                                  size: 'xs',
+                                }),
                                 // Whether this reply may be answered. Unconditional where the caller named no
                                 // rule: a `$if` that can only ever be true is a node to build, resolve and
                                 // walk on every reply at every level, for an answer the expansion already

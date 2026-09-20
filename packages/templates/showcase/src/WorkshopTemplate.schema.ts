@@ -58,7 +58,6 @@ import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/sc
 // `field` and `formModal` through the template kit rather than `@we/schema-kit`: this package
 // depends on the former, which re-exports them, and on the latter not at all.
 import {
-  activitySummary,
   anchorScope,
   answerButton,
   CHANGED,
@@ -74,7 +73,7 @@ import {
   peopleFilter,
   peopleRow,
   recordFormModal,
-  signalsSection,
+  signalDisplay,
   suggestedChanges,
   SUGGESTIONS_HIDDEN,
   suggestionsToggle,
@@ -1817,7 +1816,7 @@ const connectionsSection: SchemaNode = {
  *
  * Because a canvas card is clipped and a board card is dragged. Both are previews the size of a
  * postcard, and a row of controls on each is furniture competing with the gesture the card exists
- * for — so the cards carry counts (`activitySummary`) and the panel carries the controls. That split
+ * for — so the cards carry counts (`signalDisplay` at `compact`) and the panel carries the controls,
  * is the whole reason this panel is worth opening: it already shows every field a record holds, and
  * what the community *thinks* of the record is the part it was missing.
  *
@@ -1833,7 +1832,7 @@ const reactionsSection: SchemaNode = {
   props: { gap: '100', pt: '200', borderTop: '1px solid border', width: '100%' },
   children: [
     sectionCaption('Reactions'),
-    signalsSection({
+    signalDisplay({
       record: 'row',
       /*
         A space arrives with no reactions at all — nothing seeds a heart on a community's behalf, and
@@ -1956,7 +1955,7 @@ const inspectorPanel: SchemaNode = {
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
       /*
-        The reactions, hydrated — what `signalsSection` filters by type.
+        The reactions, hydrated — what `signalDisplay` filters by type.
 
         Safe for a type this template was not written for, which is the question worth asking of an
         `include` on a query whose entity is an expression: every model a community defines extends
@@ -4398,7 +4397,7 @@ const eventList: SchemaNode = {
                       that shares its records. Counts only: pressing the row opens the event in the
                       inspector, which is where a reaction is given and the thread is read.
                     */
-                    activitySummary({ record: 'event' }),
+                    signalDisplay({ record: 'event', mode: 'compact', size: 'xs', readOnly: true, inline: true }),
                     // What a pass suggests changing about an agreed event, as old → new.
                     suggestedChanges({ record: 'event', collapseAfter: 3 }),
                   ],

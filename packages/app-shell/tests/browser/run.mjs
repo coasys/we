@@ -154,6 +154,7 @@ async function main() {
           thing a screen reader would name.
         */
         count: (sel) => page.locator(sel).count(),
+        html: () => page.evaluate(() => window.__harness.html()),
         // Some states are only reachable by using the thing — a folded branch, an opened row. A
         // case that cannot press anything can only ever judge a first paint.
         click: async (sel) => {
