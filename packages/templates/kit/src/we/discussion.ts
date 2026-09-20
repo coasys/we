@@ -806,6 +806,13 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                         composition, and it opens in a full composer, handles and all, when edited.
                       */
                       handles: false,
+                      /*
+                        And it does not take the cursor. This composer mounts when the thread does,
+                        which is whenever a card is selected — so the cursor landed in the reply box
+                        a beat after the click, while the conversation above it was still arriving.
+                        A modal keeps the focus: it is on screen because somebody asked for it.
+                      */
+                      autoFocus: false,
                       onDirtyChange: { $setLocal: COMPOSER_DIRTY, value: { $: 'event' } },
                       onReady: { $setLocal: COMPOSER_SAVE, value: { $: 'event.save' } },
                       onSave: [

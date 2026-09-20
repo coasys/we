@@ -136,6 +136,7 @@ async function main() {
         measurePart: (sel, part) => page.evaluate((a) => window.__harness.measurePart(...a), [sel, part]),
         measureText: (text, sel) => page.evaluate((a) => window.__harness.measureText(...a), [text, sel]),
         pageColor: () => page.evaluate(() => window.__harness.pageColor()),
+        focused: () => page.evaluate(() => window.__harness.focused()),
         // A state a case can put the page into. `hoverProps` is a whole code path — the values move
         // out of the inline style into custom properties for a stylesheet to resolve — so a case
         // that never hovers is not testing it.

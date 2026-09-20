@@ -273,10 +273,19 @@ export function BlockComposer(props: Props) {
 
     props.onReady?.({ save });
 
-    // Focus after the next frame so the modal/DOM is fully settled.
-    requestAnimationFrame(() => {
-      if (!v.isDestroyed) v.focus();
-    });
+    /*
+      Focus after the next frame so the modal/DOM is fully settled.
+
+      Skipped entirely where the caller says this composer is part of a page rather than something
+      somebody opened — see `autoFocus`. The frame's delay is what made the old behaviour read
+      badly inline: the cursor arrived a beat after the click that selected the card, so it looked
+      less like a focused input than like the app starting to type.
+    */
+    if (props.autoFocus !== false) {
+      requestAnimationFrame(() => {
+        if (!v.isDestroyed) v.focus();
+      });
+    }
 
     onCleanup(() => {
       document.removeEventListener('mousedown', onMouseDown, true);

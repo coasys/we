@@ -167,6 +167,20 @@ function chain(text: string) {
   return out;
 }
 
+/**
+ * What holds the cursor, as a tag and a class — piercing shadow roots on the way down.
+ *
+ * `document.activeElement` stops at the host of whatever component has focus, so a composer inside
+ * one reads as the component rather than as its editor. A case asking "did anything take the
+ * cursor" needs the innermost answer.
+ */
+function focused(): string {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  if (!el || el === document.body) return '';
+  return `${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ').join('.') : ''}`;
+}
+
 /** What the page is painted on, for a case asking whether a colour stands out from it. */
 function pageColor(): string {
   return getComputedStyle(document.body).backgroundColor;
@@ -186,6 +200,7 @@ injectDSInteropStyles();
   measureText,
   chain,
   pageColor,
+  focused,
   html,
   scenarios: Object.keys(scenarios),
 };

@@ -51,6 +51,20 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
    */
   collaborate?: string;
   /**
+   * Whether the composer takes focus when it mounts. On by default.
+   *
+   * On is right for a composer somebody OPENED: a modal is on screen because it was asked for, and
+   * making the reader click again to start typing is a step that answers nothing.
+   *
+   * Off is right for a composer that is simply PART of a page. An inline reply box at the foot of a
+   * thread mounts when the thread does — so selecting a card on a canvas put a blinking cursor in
+   * the inspector's reply box while the conversation above it was still loading, which reads as the
+   * app having decided you wanted to write something.
+   *
+   * Nothing else changes: clicking the editor focuses it, as clicking any editor does.
+   */
+  autoFocus?: boolean;
+  /**
    * The gutter beside each block — its settings button and its dragger. On by default.
    *
    * Turn it off where the composer is a LINE rather than a document: a reply at the foot of a

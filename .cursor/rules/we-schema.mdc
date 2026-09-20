@@ -1457,7 +1457,7 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, handles?: boolean
+  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
 - BlockRenderer (DesignSystemElement)
   Props: editorState?: EditorStateInput, perspective?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay

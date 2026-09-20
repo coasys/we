@@ -10,7 +10,7 @@ export const name = 'reply composer';
 export const scenario = 'discussion:thread';
 export const widths = [280, 420];
 
-export async function check({ measure, measureAll }, width) {
+export async function check({ measure, measureAll, focused }, width) {
   const problems = [];
 
   const mount = await measure('.we-block-composer-mount');
@@ -44,6 +44,20 @@ export async function check({ measure, measureAll }, width) {
   */
   const handles = await measureAll('.we-block-handle');
   if (handles.length) problems.push(`${handles.length} block handle(s) beside a reply composer`);
+
+  /*
+    And it has not taken the cursor.
+
+    This composer mounts whenever the thread does — which on a canvas is whenever a card is
+    selected — so autofocus put a blinking cursor in the reply box a beat after the click, while the
+    conversation above it was still arriving. A modal keeps its autofocus: it is on screen because
+    somebody asked for it. Asserted after the mount has settled, since the focus it used to take
+    arrived a frame late, which is exactly what made it read as the app starting to type.
+  */
+  const holder = await focused();
+  if (holder.includes('composer') || holder.includes('ProseMirror')) {
+    problems.push(`the reply composer took the cursor on mount (${holder})`);
+  }
 
   return problems;
 }

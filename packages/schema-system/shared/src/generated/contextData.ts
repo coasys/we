@@ -769,6 +769,7 @@ export const contextData: ContextData = {
         { name: 'onDirtyChange', type: '((dirty: boolean) => void)', optional: true },
         { name: 'mentions', type: 'MentionCandidate[]', optional: true },
         { name: 'collaborate', type: 'string', optional: true },
+        { name: 'autoFocus', type: 'boolean', optional: true },
         { name: 'handles', type: 'boolean', optional: true },
       ],
       source: 'components',
