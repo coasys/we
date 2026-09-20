@@ -27,7 +27,7 @@ export function TaskDisplay(props: TaskDisplayProps) {
       <Column gap="100" flex="1">
         <we-text
           variant="label"
-          textDecoration={isDone() ? 'line-through' : 'none'}
+          prop:textDecoration={isDone() ? 'line-through' : 'none'}
           color={isDone() ? 'neutral-400' : undefined}
         >
           {props.title || 'Untitled Task'}

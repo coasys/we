@@ -6,7 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import type { SchemaNode } from '@we/schema-shared';
-import { discussionSection } from '@we/template-kit';
+import { discussionSection, signalsSection } from '@we/template-kit';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -65,6 +65,27 @@ const discussionThread = (): Scenario => ({
 });
 
 /**
+ * One reaction at the size a thread draws it — the glyph and its count, side by side.
+ *
+ * Both are a size somebody chose and neither can be judged from the source: `we-icon`'s size inside
+ * a `we-button` comes from the button's own `--we-context-icon-size`, and the count's comes from a
+ * `fontSize` the component passes down. Whether either arrives is a question about the rendered box.
+ */
+const reactionControl = (): Scenario => ({
+  node: {
+    type: '$each',
+    props: { items: [{ id: 'card-1', signals: [] }], as: 'row' },
+    $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
+    children: [signalsSection({ record: 'row', inline: true, size: 'xs' })],
+  },
+  tables: {
+    SignalType: [
+      { id: 'st-like', name: 'Like', slug: 'like', icon: 'heart', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
+    ],
+  },
+});
+
+/**
  * Two nested boxes, each of which varies by state. The smallest shape the design system's
  * `--we-ds-*` indirection can be wrong about.
  *
@@ -97,5 +118,6 @@ const nestedInteractive = (): Scenario => ({
 
 export const scenarios: Record<string, () => Scenario> = {
   'discussion:thread': discussionThread,
+  'signals:reaction': reactionControl,
   'ds:nested-interactive': nestedInteractive,
 };

@@ -190,10 +190,10 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         px={metrics().px}
         py={metrics().py}
         gap={metrics().gap}
-        fontSize={metrics().fontSize}
+        prop:fontSize={metrics().fontSize}
       >
         {leading(getItem)}
-        <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
+        <we-text prop:fontSize={metrics().fontSize}>{getItem().label}</we-text>
         <Show when={getItem().selected}>
           <we-icon name="check" size="xs" weight="bold" color="accent" ml="auto" />
         </Show>
@@ -213,10 +213,10 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         px={metrics().px}
         py={metrics().py}
         gap={metrics().gap}
-        fontSize={metrics().fontSize}
+        prop:fontSize={metrics().fontSize}
       >
         {leading(getItem)}
-        <we-text fontSize={metrics().fontSize}>{getItem().label}</we-text>
+        <we-text prop:fontSize={metrics().fontSize}>{getItem().label}</we-text>
         <Show when={checked()}>
           <we-icon name="check" size="xs" weight="bold" color="accent" ml="auto" />
         </Show>

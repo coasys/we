@@ -135,7 +135,7 @@ export function Select(allProps: SelectProps) {
             // chain here, because naming one corner sent the other three to a hardcoded 0 — fixed
             // at the source in `getRadiusValues`, so the workaround is gone.
             rl={props.label ? '0' : undefined}
-            borderLeft={props.label ? 'none' : undefined}
+            prop:borderLeft={props.label ? 'none' : undefined}
           >
             <Show when={selectedOption()?.icon}>
               <we-icon name={selectedOption()!.icon!} />

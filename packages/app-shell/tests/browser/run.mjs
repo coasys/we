@@ -131,7 +131,8 @@ async function main() {
       if (process.env.WE_BROWSER_MEASURE) {
         const rows = await api.measureAll(process.env.WE_BROWSER_MEASURE);
         console.log(`  ${process.env.WE_BROWSER_MEASURE} at ${width}px:`);
-        for (const r of rows) console.log(`      ${r.w}x${r.h} @${r.x},${r.y} ${r.display} "${r.text}"`);
+        for (const r of rows)
+          console.log(`      ${r.w}x${r.h} @${r.x},${r.y} ${r.display} font=${r.fontSize}/${r.lineHeight} "${r.text}"`);
       }
       if (process.env.WE_BROWSER_DUMP && problems.length) {
         console.log(await page.evaluate(() => window.__harness.html()));

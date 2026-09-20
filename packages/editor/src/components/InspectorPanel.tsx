@@ -328,7 +328,7 @@ function TreeNode(props: TreeNodeProps) {
           whiteSpace="nowrap"
           styles={{ 'text-overflow': 'ellipsis' }}
           color={isSelected() ? 'primary-700' : isSpecial() ? 'primary-500' : 'neutral-700'}
-          fontWeight={isSelected() ? '600' : '400'}
+          prop:fontWeight={isSelected() ? '600' : '400'}
         >
           {props.node.type ?? '(root)'}
         </we-text>
@@ -1010,7 +1010,7 @@ function InlineSpaceInput(props: {
         }}
       >
         <we-text
-          fontWeight={props.value ? '500' : '400'}
+          prop:fontWeight={props.value ? '500' : '400'}
           color={textColor()}
           fontSize="10px"
           minWidth="22px"

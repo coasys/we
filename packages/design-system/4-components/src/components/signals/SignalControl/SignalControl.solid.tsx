@@ -36,12 +36,24 @@ function aggregateFor(type: SignalTypeData): SignalAggregate {
 /**
  * The count's type size for each control size — one step behind the glyph, as a caption is.
  *
- * `xs` is a length rather than a token because the scale stops at `100` (12px), which is also what
- * an `xs` button draws its glyph at: equal sizes, and the digits read heavier than the outline, so
- * the number is the loudest thing in a control that is meant to be a footnote. 11px is the step the
- * scale does not have.
+ * `xs` is a length rather than a token because the scale stops at `100` (12px): equal to the glyph
+ * would make the digits the loudest thing in a control meant to read as a footnote, and 11px is the
+ * step the scale does not have.
+ *
+ * **Passed as `prop:fontSize`, and that prefix is load-bearing** — see the note on the glyph below.
  */
 const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '10px', sm: '100', md: '' };
+
+/**
+ * The glyph's size for each control size.
+ *
+ * Stated rather than inherited from the button. A `we-icon` nested in a sized primitive takes its
+ * size from that primitive's `--we-context-icon-size`, which draws an `xs` button's glyph at 12px —
+ * right for an icon that labels a button, and too small for a mark that IS the control: at 12px the
+ * heart in a comment thread reads as punctuation rather than as something to press. `md` keeps the
+ * inherited size, where the button is big enough for the rule to be right.
+ */
+const GLYPH_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '16px', sm: '18px', md: '' };
 
 export function SignalControl(props: SignalControlProps) {
   const size = () => props.size ?? 'md';
@@ -131,12 +143,23 @@ export function SignalControl(props: SignalControlProps) {
                 glyph wants the saturated step rather than a readable one.
               */
               color={value() ? 'primary-500' : 'neutral-400'}
-              hoverProps={{ color: value() ? 'primary-500' : 'neutral-300' }}
+              prop:hoverProps={{ color: value() ? 'primary-500' : 'neutral-300' }}
               onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
             >
-              <we-icon name={props.signalType.icon} weight="fill" />
+              <we-icon name={props.signalType.icon} weight="fill" size={GLYPH_SIZE[size()]} />
             </we-button>
-            <we-number class="signal-control__count" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
+            {/*
+              `prop:fontSize`, not `fontSize` — the prefix is the difference between this working and
+              doing nothing, and every `we-number` below carries it for the same reason.
+
+              A camelCase prop with a COMPUTED value compiles to a lowercased property assignment,
+              `el.fontsize = …`. Lit's reactive property is `fontSize`, so the value lands on an
+              expando nobody reads and the element keeps the size it inherited. A literal
+              (`fontSize="400"`) compiles to an attribute instead and works, which is why this fails
+              only where the value is worked out — and fails silently, since the generated types are
+              satisfied either way and there is nothing to see in the markup.
+            */}
+            <we-number class="signal-control__count" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
           </Row>
         </Match>
 
@@ -152,7 +175,7 @@ export function SignalControl(props: SignalControlProps) {
             >
               <we-icon name={props.signalType.icon} />
             </we-button>
-            <we-number class="signal-control__count" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
+            <we-number class="signal-control__count" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             <we-button
               variant={value() !== null && value()! < 0 ? 'primary' : 'ghost'}
               size={size()}
@@ -169,7 +192,7 @@ export function SignalControl(props: SignalControlProps) {
         <Match when={props.signalType.mode === 'rating'}>
           <Row class="signal-control__rating" ay="center" gap="400">
             {/* Community mean */}
-            <we-number class="signal-control__agg" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
+            <we-number class="signal-control__agg" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             {/* Icon row: one icon per integer step between rangeMin and rangeMax */}
             <Row class="signal-control__rating-icons" ay="center" gap="100">
               <For
@@ -229,7 +252,7 @@ export function SignalControl(props: SignalControlProps) {
         <Match when={props.signalType.mode === 'slider'}>
           <Row class="signal-control__slider" ay="center" gap={gap()}>
             {/* Community mean shown on the left */}
-            <we-number class="signal-control__agg" fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
+            <we-number class="signal-control__agg" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             <we-icon name={props.signalType.icon} />
             <we-slider
               min={props.signalType.rangeMin}

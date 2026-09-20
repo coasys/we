@@ -85,6 +85,10 @@ function box(el: Element) {
     whiteSpace: cs.whiteSpace,
     overflowWrap: cs.overflowWrap,
     opacity: cs.opacity,
+    // Type size decides where a line breaks and how tall a row is, and both of the DS's size props
+    // reach an element through a custom property — so "did the size arrive" is a measurement.
+    fontSize: cs.fontSize,
+    lineHeight: cs.lineHeight,
     text: (el.textContent ?? '').trim().slice(0, 80),
   };
 }

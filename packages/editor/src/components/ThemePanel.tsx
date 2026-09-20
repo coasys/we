@@ -662,7 +662,7 @@ export function ThemePanel() {
     };
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth={labelWidth} fontSize="300" color="text-muted">
+        <we-text prop:minWidth={labelWidth} fontSize="300" color="text-muted">
           {label}
         </we-text>
         <we-select
