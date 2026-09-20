@@ -58,26 +58,35 @@ export const signalOptimism = {
     }),
 
   /**
-   * Report what one record's stored reactions say about the holds on it.
+   * Report what one record's stored reactions **of one type** say about the hold on that pair.
    *
-   * **A record whose reactions have not arrived reports nothing.** An absent or empty list read as
-   * data says this agent has not reacted — so a hold for a *withdrawal* reads as already agreed
-   * with and one for a reaction reads as overtaken, and either way the mark falls back to rows that
-   * do not have the write in them yet. The same rule `involvementOptimism.settleFromRows` records,
-   * and the same cost: on a record nobody has reacted to, a withdrawal stands until the backstop,
-   * drawing what was written, which is also what the data says.
+   * ## The type is not optional, and leaving it out was a bug
+   *
+   * Every surface asks `reactions` per type — the list it is handed is already
+   * `filter(record.signals, { signalTypeId: … })` — so a draw is evidence about ONE type and says
+   * nothing whatever about the others. Reported per record instead, a draw of the star control
+   * answered "this agent has no like", which for a *withdrawal* hold (whose value is 0) reads as
+   * already agreed with, so the hold was dropped on the spot and the heart came back on until the
+   * real data caught up. An addition survived the same report, because 0 is not 1 and it merely took
+   * a baseline — which is why un-liking flashed and liking never did.
+   *
+   * ## A record whose reactions have not arrived reports nothing
+   *
+   * An absent or empty list read as data says this agent has not reacted, with the same consequence
+   * one type along. The same rule `involvementOptimism.settleFromRows` records, and the same cost:
+   * where nobody has reacted with that type at all, a withdrawal stands until the backstop, drawing
+   * what was written — which is also what the data says.
    */
-  settleFromSignals(record: string, me: string, signals: unknown): void {
-    if (!record || !me || !Array.isArray(signals) || !signals.length) return;
-    const mine = new Map<string, number>();
-    for (const row of signals as { author?: unknown; signalTypeId?: unknown; value?: unknown }[]) {
-      if (row?.author !== me || typeof row.signalTypeId !== 'string') continue;
-      mine.set(row.signalTypeId, typeof row.value === 'number' ? row.value : 0);
-    }
+  settleFromSignals(record: string, type: string, me: string, signals: unknown): void {
+    if (!record || !type || !me || !Array.isArray(signals) || !signals.length) return;
+    const mine = (signals as { author?: unknown; signalTypeId?: unknown; value?: unknown }[]).find(
+      (row) => row?.author === me && row?.signalTypeId === type,
+    );
+    const observed = typeof mine?.value === 'number' ? mine.value : 0;
     optimism.settle((k) => {
-      const [held, type] = parts(k);
-      // Only about the record that was drawn — another record's holds are not this list's business.
-      return held === record ? (mine.get(type) ?? 0) : undefined;
+      const [heldRecord, heldType] = parts(k);
+      // This pair only. Every other hold is about something this list was never asked about.
+      return heldRecord === record && heldType === type ? observed : undefined;
     });
   },
 

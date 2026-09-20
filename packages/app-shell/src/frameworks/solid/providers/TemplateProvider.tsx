@@ -552,11 +552,24 @@ export default function TemplateProvider() {
       than when the write's promise settles.
     */
     reactions: (options: unknown) => {
-      const given = (options ?? {}) as { signals?: unknown; record?: unknown; me?: unknown };
+      const given = (options ?? {}) as { signals?: unknown; record?: unknown; type?: unknown; me?: unknown };
       const list = sources.reactions({ ...given, pending: signalOptimism.overlay() });
-      if (typeof given.record === 'string' && typeof given.me === 'string') {
+      /*
+        Reported for the PAIR this call was about, never for the record.
+
+        The list handed in is one type's — every surface asks per type — so it is evidence about that
+        type and nothing else. Read as evidence about the record it said "no reaction of any kind",
+        which dropped a withdrawal hold the instant any other type on the same record drew: the heart
+        came back on until the real data caught up. See `settleFromSignals`.
+      */
+      if (typeof given.record === 'string' && typeof given.type === 'string' && typeof given.me === 'string') {
         queueMicrotask(() =>
-          signalOptimism.settleFromSignals(given.record as string, given.me as string, given.signals),
+          signalOptimism.settleFromSignals(
+            given.record as string,
+            given.type as string,
+            given.me as string,
+            given.signals,
+          ),
         );
       }
       return list;

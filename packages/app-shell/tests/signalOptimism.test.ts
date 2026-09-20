@@ -30,11 +30,13 @@ describe('a reaction in flight', () => {
     signalOptimism.done('post-1', 'st-like');
 
     // The draw the press itself caused, made from rows that still say nothing — the baseline.
-    signalOptimism.settleFromSignals('post-1', me, [{ author: 'did:them', signalTypeId: 'st-like', value: 1 }]);
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [
+      { author: 'did:them', signalTypeId: 'st-like', value: 1 },
+    ]);
     expect(held()).toMatchObject({ value: 1 });
 
     // The push that answered.
-    signalOptimism.settleFromSignals('post-1', me, [
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [
       { author: 'did:them', signalTypeId: 'st-like', value: 1 },
       { author: me, signalTypeId: 'st-like', value: 1 },
     ]);
@@ -49,14 +51,14 @@ describe('a reaction in flight', () => {
     */
     signalOptimism.hold('post-1', 'st-like', 1);
     signalOptimism.done('post-1', 'st-like');
-    signalOptimism.settleFromSignals('post-1', me, []);
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, []);
     expect(held()).toMatchObject({ value: 1 });
   });
 
   it('says nothing about a record it was not asked about', () => {
     signalOptimism.hold('post-1', 'st-like', 1);
     signalOptimism.done('post-1', 'st-like');
-    signalOptimism.settleFromSignals('post-2', me, [{ author: me, signalTypeId: 'st-like', value: 1 }]);
+    signalOptimism.settleFromSignals('post-2', 'st-like', me, [{ author: me, signalTypeId: 'st-like', value: 1 }]);
     expect(held()).toMatchObject({ value: 1 });
   });
 
@@ -64,10 +66,12 @@ describe('a reaction in flight', () => {
     // A zero is a delete, so what proves it landed is this agent having no row of that type.
     signalOptimism.hold('post-1', 'st-like', 0);
     signalOptimism.done('post-1', 'st-like');
-    signalOptimism.settleFromSignals('post-1', me, [{ author: me, signalTypeId: 'st-like', value: 1 }]);
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [{ author: me, signalTypeId: 'st-like', value: 1 }]);
     expect(held()).toMatchObject({ value: 0 });
 
-    signalOptimism.settleFromSignals('post-1', me, [{ author: 'did:them', signalTypeId: 'st-like', value: 1 }]);
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [
+      { author: 'did:them', signalTypeId: 'st-like', value: 1 },
+    ]);
     expect(held()).toBeUndefined();
   });
 
@@ -78,8 +82,41 @@ describe('a reaction in flight', () => {
     signalOptimism.done('post-1', 'st-star');
 
     // The like lands; the star has not. One settling must not retire the other.
-    signalOptimism.settleFromSignals('post-1', me, [{ author: me, signalTypeId: 'st-like', value: 1 }]);
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [{ author: me, signalTypeId: 'st-like', value: 1 }]);
     expect(held()).toBeUndefined();
     expect(signalOptimism.overlay().find((entry) => entry.type === 'st-star')).toMatchObject({ value: 4 });
+  });
+
+  it('a withdrawal is not retired by another type drawing beside it', () => {
+    /*
+      What un-liking actually did: the heart went off on the press, came back on a moment later, and
+      finally went off when the data caught up.
+
+      Every surface asks `reactions` per type, so the list a draw reports is already filtered to one
+      — and read as evidence about the RECORD it says "this agent has not reacted at all". For a
+      withdrawal, whose held value is 0, that is the hold's own value, so it read as already agreed
+      with and was dropped on the spot by whichever other type happened to draw. An addition survived
+      the identical report, because 0 is not 1 and it merely took a baseline; that asymmetry is why
+      liking looked instant and un-liking flashed.
+    */
+    signalOptimism.hold('post-1', 'st-like', 0);
+    signalOptimism.done('post-1', 'st-like');
+
+    // The star control draws. Its list says nothing about the like — including nothing about its
+    // absence, which is the part that was being read as an answer.
+    signalOptimism.settleFromSignals('post-1', 'st-star', me, [
+      { author: 'did:them', signalTypeId: 'st-star', value: 5 },
+    ]);
+    expect(held()).toMatchObject({ value: 0 });
+
+    // The like's own list still carries the row, so the withdrawal is still standing in for it.
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [{ author: me, signalTypeId: 'st-like', value: 1 }]);
+    expect(held()).toMatchObject({ value: 0 });
+
+    // And goes when that row does.
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [
+      { author: 'did:them', signalTypeId: 'st-like', value: 1 },
+    ]);
+    expect(held()).toBeUndefined();
   });
 });
