@@ -3622,6 +3622,11 @@ export const contextData: ContextData = {
       members: [
         { name: 'lastError', kind: 'state', doc: 'Why the last vote could not be recorded, or empty.' },
         {
+          name: 'pendingVote',
+          kind: 'state',
+          doc: 'This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.',
+        },
+        {
           name: 'revealBeforeVoting',
           kind: 'state',
           doc: 'Whether a poll shows its counts before this agent has voted — the community’s setting here.',
@@ -3651,8 +3656,9 @@ export const contextData: ContextData = {
         {
           name: 'tally',
           params: ['options'],
-          doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).',
-          example: 'tally({ votes: local.votes, options: block.options })',
+          doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).',
+          example:
+            'tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })',
         },
       ],
       views: [{ id: 'polls', name: 'Polls', segment: 'polls' }],

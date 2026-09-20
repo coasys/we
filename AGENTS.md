@@ -3369,6 +3369,7 @@ Ask the space a question and watch the answer arrive.
 Needs: kernels records.
 - State (read in an expression as `modules.polls.<name>`):
   - lastError — Why the last vote could not be recorded, or empty.
+  - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
   - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
   - voting — The id of the poll a vote is being written for, or empty.
 - Actions (`{ "$action": "modules.polls.<name>" }`):
@@ -3376,7 +3377,7 @@ Needs: kernels records.
 - Parts: `polls.pollCard`, `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
 - Functions:
-  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).  e.g. tally({ votes: local.votes, options: block.options })
+  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
 - Views (sections a space enables): `polls` "Polls" at /polls
 - Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
 - Entities (queryable with $query):
