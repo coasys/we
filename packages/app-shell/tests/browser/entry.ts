@@ -93,6 +93,9 @@ function box(el: Element) {
     // Resolved, so a case can compare two states of the same element without knowing the theme's
     // ramp direction — which is the only way to assert "more present" rather than "lighter".
     color: cs.color,
+    // A mark drawn as a filled box — a rule, a bar, a swatch — carries its colour here rather than
+    // in `color`, and a case that reads only the foreground sees nothing change.
+    background: cs.backgroundColor,
     // Both spellings: a native control carries the attribute, a layout element carries the ARIA
     // one, and `disabledProps` keys off the second.
     disabled: el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true',

@@ -70,12 +70,21 @@ const CSS_STYLES = css`
     color: var(--we-role-on-inverse);
     border-radius: var(--we-border-radius, 4px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
+    /*
+      Never takes the pointer, open or closed.
+
+      It used to become pointer-events: auto once open, which is the pattern for a tooltip holding
+      something to interact with — a link, a button. This one holds a string. What it bought was
+      nothing and what it cost was the control underneath: hover a thing, the bubble appears over
+      part of it, and the click that follows lands on the bubble. Found on a comment's fold, where
+      the target is a tall column and the bubble sits across it, and the press simply did not
+      arrive.
+    */
     pointer-events: none;
   }
 
   :host([open]) [part='tooltip'] {
     display: block;
-    pointer-events: auto;
   }
 
   [part='arrow'],

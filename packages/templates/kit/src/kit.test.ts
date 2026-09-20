@@ -378,8 +378,9 @@ describe('contracts call sites depend on', () => {
     });
     expect(declarations).toBe(1);
     /*
-      Four per level: the byline's own press, the caret, the line beside the words, and the rail
-      beside the replies.
+      Three per level: the byline's own press, the line beside the words, and the rail beside the
+      replies. It was four while a caret sat above the line, and that caret is gone — it said "this
+      folds" at rest and said it twice, since a folded comment's stub carries one already.
 
       The byline is one of them because a folded comment is opened by pressing the stub itself — the
       biggest target the row has, and the only one a touchscreen can offer, there being no hover to
@@ -388,9 +389,10 @@ describe('contracts call sites depend on', () => {
 
       The line is two controls rather than one because it is drawn by two fragments: the segment
       beside the words belongs to the reply, the segment beside the replies belongs to the thread.
-      They read as one line and behave as one — a press anywhere along it folds the branch.
+      They read as one line and behave as one — a press anywhere along it folds the branch, and both
+      halves thicken on the same hover.
     */
-    expect(toggles).toBe(12);
+    expect(toggles).toBe(9);
     // Each level folds twice: the reply's own words, and the branch under it.
     expect(folds).toBeGreaterThanOrEqual(6);
   });
@@ -461,7 +463,7 @@ describe('contracts call sites depend on', () => {
     expect((spinner!.props as { then?: { slot?: string } }).then?.slot).toBe('end');
   });
 
-  it('offers the fold, and its line, on every comment', () => {
+  it('offers the fold on every comment, as a line and no caret', () => {
     /*
       Folding used to be gated on having been replied to, so the affordance was missing exactly
       where a comment is worth collapsing — a long one nobody has answered — and present on a
@@ -482,10 +484,9 @@ describe('contracts call sites depend on', () => {
       const says = typeof label === 'string' ? label : ((label as { $?: string })?.$ ?? '');
       if (n.type === 'we-button' && says.includes('Fold this')) gutter.push(says);
     });
-    // The caret and its line, on the first reply — both named the same, because they are one
-    // affordance and two names for it reads as two controls.
-    expect(gutter.length).toBeGreaterThanOrEqual(2);
-    expect(gutter[0]).toBe(gutter[1]);
+    // One control per comment, named for what folding it takes with it: a branch's answers, or a
+    // leaf's words. No caret — see the note above.
+    expect(gutter.length).toBeGreaterThanOrEqual(1);
     expect(gutter[0]).toContain("count(reply.comments) ? 'Fold this branch' : 'Fold this comment'");
   });
 

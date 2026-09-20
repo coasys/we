@@ -135,6 +135,30 @@ const RAIL_HOT = 'railHot';
  * A shared local instead of CSS, since CSS has no way to say "while the pointer is on my sibling".
  * Declared per row, inside the `$each`, so two replies cannot disagree about whose line is lit.
  */
+/**
+ * The rule itself — one drawing, used by both segments of the line.
+ *
+ * A hairline is a mark, not a control, and nothing about 1px of `border` says it can be pressed. So
+ * it answers the pointer: thicker, and on the role for the edge of an interactive box rather than
+ * the one for an ordinary divider. That is what took over from the caret that used to sit above it
+ * — the caret said "this folds" at rest and said it twice, since a folded comment's stub carries
+ * one already; the line says it on approach, which is when it is being asked.
+ *
+ * Both segments read `railHot`, so the part beside the words and the part beside the replies
+ * thicken together. They are one line and were only ever drawn in two places because they sit in
+ * different places in the tree.
+ */
+export function railLine(): SchemaNode {
+  return {
+    type: 'Column',
+    props: {
+      width: { $: `local.${RAIL_HOT} ? '2px' : '1px'` },
+      height: '100%',
+      bg: { $: `local.${RAIL_HOT} ? 'border-hover' : 'border'` },
+    },
+  };
+}
+
 export function railHighlight(): Record<string, unknown> {
   return {
     onMouseEnter: { $setLocal: RAIL_HOT, value: true },
@@ -471,7 +495,7 @@ function branchRail(as: string): SchemaNode {
           ...railHighlight(),
           onClick: foldToggle(as),
         },
-        children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
+        children: [railLine()],
       },
     ],
   };

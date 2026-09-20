@@ -50,7 +50,14 @@
 import { composerModal, confirmModal, emptyNote } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { commentThread, descendantCount, foldToggle, railHighlight, resetTopLimit } from '../lists/commentThread.ts';
+import {
+  commentThread,
+  descendantCount,
+  foldToggle,
+  railHighlight,
+  railLine,
+  resetTopLimit,
+} from '../lists/commentThread.ts';
 import { agentByline } from './agentByline.ts';
 import { signalsSection } from './signals.ts';
 
@@ -114,16 +121,6 @@ export interface DiscussionSectionOptions {
   /** What the composer's heading says. Defaults to "Reply". */
   title?: string;
 }
-
-/**
- * What the fold control is called, which depends on what is under it.
- *
- * One expression for the caret and the line, because they are one affordance and a screen reader
- * reading two names for it would be reading two controls.
- */
-const FOLD_LABEL = (as: string): SchemaProp => ({
-  $: `count(${as}.comments) ? 'Fold this branch' : 'Fold this comment'`,
-});
 
 /** The button that opens the composer on one reply — the thing flat mode withholds. */
 function replyButton(as: string): SchemaNode {
@@ -470,34 +467,43 @@ function replyBody(
           children: [
             {
               type: 'Column',
-              // `mt` is the gap the parent gave up so the words could sit closer to the name — the
-              // caret keeps the distance it had. See the note on the parent's `gap`.
-              props: { width: '24px', flexShrink: '0', ax: 'center', gap: '0', mt: '100' },
+              // Flush with the top of the words. The `mt` that used to be here was the gap the
+              // parent gave up so the words could sit closer to the name, restored so the CARET
+              // kept its distance; with the caret gone the line should start where what it folds
+              // starts. See the note on the parent's `gap`.
+              props: { width: '24px', flexShrink: '0', ax: 'center', gap: '0' },
               children: foldable
                 ? [
                     {
                       /*
-                        The fold control: a caret and the line beside the words it folds.
+                        The fold control: the line beside the words it folds. No caret.
 
-                        Both on every comment. It used to be gated on having been replied to, which
-                        made folding something you could do to *some* comments — missing exactly
-                        where a comment is worth putting away, a long one nobody has answered, and
-                        present on a two-word one that somebody had. The machinery never had that
-                        limit: `collapsed` gates a comment's own words as well as its subtree.
+                        On every comment. It used to be gated on having been replied to, which made
+                        folding something you could do to *some* comments — missing exactly where a
+                        comment is worth putting away, a long one nobody has answered, and present
+                        on a two-word one that somebody had. The machinery never had that limit:
+                        `collapsed` gates a comment's own words as well as its subtree.
 
-                        The line generalises WITH the caret, which took a second go to see. It looks
-                        like the thread's "there is a branch below here" mark and it is not — that is
-                        `branchRail` in `commentThread`, a different segment beside the REPLIES,
-                        which exists only where there are some. This one runs from the caret down
-                        past this comment's own paragraphs, so it traces exactly what the caret
-                        folds. On a childless comment that is the comment itself, which is now
-                        foldable, so the line belongs there too. Gating it left a caret with nothing
-                        under it and the fold's extent unmarked.
+                        The line is not the thread's "there is a branch below here" mark, which is
+                        what gating it assumed. That is `branchRail` in `commentThread`, a different
+                        segment beside the REPLIES. This one runs from the top of the words down
+                        past them and traces exactly what the caret folds — on a childless comment,
+                        the comment.
 
-                        Two buttons, because a caret is a glyph and a line is a column — but one
-                        tooltip over both and one highlight across both, so what reads as a single
-                        affordance behaves as one. The tooltip wraps them rather than sitting on the
-                        caret, which is what let a press on the line say nothing.
+                        ## Why there is no caret above it
+
+                        There was, and it was the same glyph saying something the folded state
+                        already says better: a folded comment's stub carries a `caret-right` at the
+                        end of its byline, which is "this is closed, press to open" in the place
+                        that means it. A second caret over an OPEN comment restates that where it
+                        does not apply, and floated above the line rather than reading as part of
+                        it. The line alone is the open state; the stub's caret is the closed one.
+
+                        What the caret was doing for discoverability the hover does instead: the
+                        rule thickens and takes the interactive-edge role on approach (see
+                        `railLine`), and the target is the whole 24px column rather than the
+                        hairline — which is also what keeps this usable by touch, where there is no
+                        hover to reveal anything and the byline's own press is already taken.
                       */
                       type: '$if',
                       props: {
@@ -507,7 +513,7 @@ function replyBody(
                             No `flex` or `width` here: `we-tooltip` is `display: contents`, so it
                             generates no box and layout props on it do nothing — the primitive says
                             so out loud in development, which is how these were found. They belong
-                            on the Column inside, which already carries them.
+                            on the button inside, which carries them.
                           */
                           type: 'we-tooltip',
                           props: {
@@ -515,45 +521,26 @@ function replyBody(
                           },
                           children: [
                             {
-                              type: 'Column',
-                              props: { width: '100%', flex: '1', ax: 'center' },
-                              children: [
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    variant: 'bare',
-                                    size: 'xs',
-                                    width: '100%',
-                                    r: '0',
-                                    color: 'text-faint',
-                                    label: FOLD_LABEL(as),
-                                    ...railHighlight(),
-                                    onClick: foldToggle(as),
-                                  },
-                                  children: [{ type: 'we-icon', props: { name: 'caret-down' } }],
+                              type: 'we-button',
+                              props: {
+                                variant: 'bare',
+                                width: '100%',
+                                flex: '1',
+                                ax: 'center',
+                                // Square, and flush with the segment below: a button's default
+                                // radius curved both ends of each half, so the one line showed
+                                // exactly where it stopped being one.
+                                r: '0',
+                                // What a screen reader gets, and it depends on what is under the
+                                // comment: folding a branch takes its answers with it, folding a
+                                // leaf takes only its words.
+                                label: {
+                                  $: `count(${as}.comments) ? 'Fold this branch' : 'Fold this comment'`,
                                 },
-                                {
-                                  /*
-                                    The rest of the line, beside the words.
-
-                                    Runs from the caret down past however many paragraphs the
-                                    comment has. Without it a tall comment left the caret stranded
-                                    at the top with nothing marking how far the fold reaches.
-                                  */
-                                  type: 'we-button',
-                                  props: {
-                                    variant: 'bare',
-                                    width: '100%',
-                                    flex: '1',
-                                    ax: 'center',
-                                    r: '0',
-                                    label: FOLD_LABEL(as),
-                                    ...railHighlight(),
-                                    onClick: foldToggle(as),
-                                  },
-                                  children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
-                                },
-                              ],
+                                ...railHighlight(),
+                                onClick: foldToggle(as),
+                              },
+                              children: [railLine()],
                             },
                           ],
                         },

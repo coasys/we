@@ -16,7 +16,7 @@ export const widths = [420];
 /** What the scenario's childless reply says, and so what its stub should show. */
 const CHILDLESS = 'A reply with nothing under it at all';
 
-export async function check({ count, measureAll, measureText, click }) {
+export async function check({ count, measureAll, measureControl, measureText, hover, click }) {
   const problems = [];
 
   /*
@@ -30,23 +30,49 @@ export async function check({ count, measureAll, measureText, click }) {
   */
   const onBranch = await count('button[aria-label="Fold this branch"]');
   const onLeaf = await count('button[aria-label="Fold this comment"]');
-  if (onBranch !== 2) problems.push(`the branch's gutter has ${onBranch} pieces, expected the caret and its line`);
+  if (onBranch !== 1) problems.push(`the branch's gutter is ${onBranch} controls, expected one`);
   // Returning rather than carrying on: everything below presses this control, and a press on
   // something absent reports as a timeout rather than as the thing that is missing.
-  if (onLeaf !== 2) return [...problems, `the childless comment's gutter has ${onLeaf} pieces, expected 2`];
+  if (onLeaf !== 1) return [...problems, `${onLeaf} childless comments offer a fold, expected 1`];
 
   /*
-    And each line has something to run beside.
+    And it is a column you can hit, not a hairline.
+
+    The caret that used to sit above the line was doing the work of saying "this folds"; without it
+    the rule has to, and a 1px mark neither announces itself nor can be pressed. The target is the
+    whole 24px gutter — which is also what keeps this usable by touch, where there is no hover to
+    reveal anything and the byline's own press is already taken by the reply's controls.
+  */
+  const target = await measureControl('Fold this comment');
+  if (target && (target.w < 20 || target.h < 8)) {
+    problems.push(`the fold target is ${target.w}x${target.h} — a hairline rather than a column`);
+  }
+
+  /*
+    It answers the pointer, and both segments of the line answer together.
+
+    They are one line drawn in two places — beside the words, and beside the replies — because they
+    sit in different places in the tree, so they share `railHot` rather than each lighting on its
+    own hover.
+  */
+  const rules = async () => (await measureAll('we-button div')).filter((b) => b.w >= 1 && b.w <= 4);
+  const rest = await rules();
+  await hover('button[aria-label^="Fold this"]', 0);
+  const hot = await rules();
+  if (rest.length !== 3) problems.push(`${rest.length} gutter rules, expected one per comment and one rail`);
+  if (hot[0]?.w <= rest[0]?.w) problems.push('the rule does not thicken under the pointer');
+  if (hot[1]?.w !== hot[0]?.w) problems.push('the line lights in halves — the two segments disagree');
+  if (hot[0]?.background === rest[0]?.background) problems.push('the rule does not change colour under the pointer');
+
+  /*
+    And each rule has something to run beside.
 
     `flex: 1` down the side of the comment's words, so it measures whatever that column is tall —
-    which means a line that is present but zero looks exactly like one that is not drawn, and only a
-    rendered box tells them apart. Three here: one beside each comment's own paragraphs, and the
-    thread's own rail beside the replies.
+    which means a rule that is present but zero looks exactly like one that is not drawn, and only a
+    rendered box tells them apart.
   */
-  const rules = (await measureAll('we-button div')).filter((b) => b.w === 1);
-  if (rules.length !== 3) problems.push(`${rules.length} gutter lines, expected one per comment and one rail`);
-  for (const rule of rules) {
-    if (rule.h < 8) problems.push(`a gutter line is ${rule.h}px tall — it has nothing to run beside`);
+  for (const rule of rest) {
+    if (rule.h < 8) problems.push(`a gutter rule is ${rule.h}px tall — it has nothing to run beside`);
   }
 
   // And folding it leaves a stub that says what was put away, rather than an anonymous byline.

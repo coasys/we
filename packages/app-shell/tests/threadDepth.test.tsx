@@ -194,8 +194,14 @@ describe('a thread in a panel', () => {
     // The rail's column, under the author's face: an `xs` avatar wide, so the line falls under the
     // middle of it and a reply's own face starts where that author's name does.
     expect(html.match(/width: 24px/g) ?? []).not.toHaveLength(0);
-    // A branch that can be folded says so, with a caret pointing down while it is open.
-    expect(html).toContain('caret-down');
+    /*
+      And an open comment says it can be folded — with the rule down its gutter, not with a caret.
+
+      The caret is gone: it said "this folds" at rest and said it twice, since a folded comment's
+      stub carries a `caret-right` already. The rule is the open state, and what the caret was doing
+      for discoverability the hover does instead. So the mark to look for is the line's own fill.
+    */
+    expect(html).toContain('background-color: var(--we-role-border)');
   });
 
   /**
