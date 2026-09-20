@@ -54,8 +54,25 @@ import { commentThread, descendantCount, foldToggle, railHighlight, resetTopLimi
 import { agentByline } from './agentByline.ts';
 import { signalsSection } from './signals.ts';
 
-/** The reply the composer is open on, or empty. Holds the answer rather than a flag — see above. */
+/** The reply the MODAL composer is open on, or empty. Holds the answer rather than a flag. */
 const REPLY_TO = 'discussionReplyTo';
+/**
+ * The inline composer's identity, bumped to throw it away and mount a fresh one.
+ *
+ * A modal resets by unmounting, which is most of why the composer was one. An inline composer never
+ * unmounts, so after a reply is written it would go on holding the words that were just posted. The
+ * counter is rendered through a one-item `$each`, which maps to `<For>` — a primitive that changes
+ * value is a different item, so the old composer is removed and a new one built. That is the whole
+ * reset, and it is a fact about `<For>` rather than a trick: the alternative was a `clear()` on
+ * `BlockComposer`, which is a component change to serve one call site.
+ */
+const COMPOSER_KEY = 'discussionComposerKey';
+/** Whether the inline composer holds anything worth posting — from `onDirtyChange`. */
+const COMPOSER_DIRTY = 'discussionComposerDirty';
+/** The inline composer's save function, handed over once by `onReady`. See `composerModal`. */
+const COMPOSER_SAVE = 'discussionComposerSave';
+/** A reply written inline is in flight. */
+const COMPOSER_BUSY = 'discussionComposerBusy';
 /** The reply the thread is currently rooted at, or empty for the record itself. */
 const ROOT = 'discussionRoot';
 /** The reply whose delete is being confirmed, or empty. The same trick `REPLY_TO` uses. */
@@ -585,6 +602,10 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       [DELETING]: { type: 'string', initial: '' },
       [EDITING]: { type: 'string', initial: '' },
       [OPEN]: { type: 'array', initial: [] },
+      [COMPOSER_KEY]: { type: 'number', initial: 0 },
+      [COMPOSER_DIRTY]: { type: 'boolean', initial: false },
+      [COMPOSER_SAVE]: { type: 'function', initial: null },
+      [COMPOSER_BUSY]: { type: 'boolean', initial: false },
     },
     $queries: {
       /*
@@ -651,14 +672,30 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                     /*
                       The reply being continued, drawn as itself and marked as the context it is.
 
-                      A tinted card rather than a rule down the left edge, which is what this was: a
-                      vertical line beside a comment is the thread's own vocabulary for a foldable
-                      branch, so the root of a scoped view read as a gutter that did not answer a
-                      press. A fill says "this is the thing you are inside" without borrowing a
-                      meaning that is already taken.
+                      `accent-muted` rather than `surface-sunken`. Sunken is `page` minus 0.035 of
+                      lightness, and the panel this sits in paints `page` — so the card the whole
+                      scoped view hangs off was three and a half percent different from its
+                      background and read as nothing at all. A tint is also the truer answer: this
+                      is the SELECTED thing, which is what `accent-muted` is for, where sunken means
+                      a well cut into a surface.
+
+                      The rule down the left edge is back, in the accent and at 3px. It was taken
+                      off once because a vertical line beside a comment is the thread's own
+                      vocabulary for a foldable branch — but the fold's line is a hairline in a 24px
+                      gutter OUTSIDE the comment, and this is a thick coloured edge ON the card.
+                      Nobody is going to press it expecting a fold, and the pair together — tint and
+                      edge — is what makes the anchor legible above a list of replies that are all
+                      the same shape as it.
                     */
                     type: 'Column',
-                    props: { gap: '100', width: '100%', p: '300', r: 'surface', bg: 'surface-sunken' },
+                    props: {
+                      gap: '100',
+                      width: '100%',
+                      p: '300',
+                      r: 'surface',
+                      bg: 'accent-muted',
+                      borderLeft: '3px solid accent',
+                    },
                     children: replyBody('focused', 'false', opts, false),
                   },
                 ],
@@ -714,22 +751,102 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
       /*
         Replying to what the thread is rooted at — the record, or the reply being continued.
 
-        The same anchor the thread reads, so "Reply" always means "reply to the thing above these
-        replies" wherever the reader has got to. Below the thread rather than above it, where the
-        conversation ends and a new line goes.
+        The same anchor the thread reads, so a reply written here always answers "the thing above
+        these replies" wherever the reader has got to. Below the thread rather than above it, where
+        the conversation ends and a new line goes.
+
+        ## Inline here, a modal for a reply to a reply
+
+        Adding to the conversation is the common case and should cost nothing: a button that opens a
+        modal to type one sentence is a door in front of a doorway. So the composer is simply here,
+        and somebody can start typing.
+
+        Answering one particular reply, four levels down, keeps the modal — and the reason is the
+        width rather than the interaction. A nested composer inherits its row's indent, which in a
+        320px panel leaves too little to write in; made full-width instead, it is no longer beside
+        the thing it answers and needs a label saying what it is replying to, at which point it is a
+        modal with worse manners. The modal also lets ONE composer serve every depth, which is why
+        `REPLY_TO` holds an id rather than a flag — a composer per reply row is a real editor per
+        reply row.
       */
       {
-        type: 'Row',
-        props: { gap: '300', width: '100%' },
+        type: 'Column',
+        props: { gap: '200', width: '100%' },
         children: [
           {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              size: 'sm',
-              onClick: { $setLocal: REPLY_TO, value: { $: anchor } },
-            },
-            children: [{ type: 'we-icon', props: { name: 'chat-circle' } }, 'Reply'],
+            /*
+              One item, whose value is the composer's identity — see `COMPOSER_KEY`. `$each` is
+              `<For>`, so bumping the number throws this composer away and builds a fresh one, which
+              is how an inline composer gets the reset a modal gets by closing.
+            */
+            type: '$each',
+            props: { items: { $: `[local.${COMPOSER_KEY}]` }, as: 'composerKey' },
+            children: [
+              {
+                type: 'Column',
+                props: {
+                  width: '100%',
+                  bg: 'surface',
+                  border: '1px solid border',
+                  r: 'surface',
+                  p: '300',
+                  // Clears the composer's own left gutter, where the slash-command affordance sits.
+                  pl: '700',
+                },
+                children: [
+                  {
+                    type: 'BlockComposer',
+                    props: {
+                      onDirtyChange: { $setLocal: COMPOSER_DIRTY, value: { $: 'event' } },
+                      onReady: { $setLocal: COMPOSER_SAVE, value: { $: 'event.save' } },
+                      onSave: [
+                        { $setLocal: COMPOSER_BUSY, value: true },
+                        {
+                          $action: 'spaceStore.createPost',
+                          // The tree first: `createPost(json, options)`. `we://comment` rather than
+                          // `we://children` — a reply answers the thing rather than becoming part
+                          // of it, which is what lets a reply be a composition with children.
+                          args: [
+                            { $: 'arg' },
+                            { kind: 'reply', parentId: { $: anchor }, predicate: 'we://comment' } as SchemaProp,
+                          ],
+                          onSuccess: [
+                            { $setLocal: COMPOSER_KEY, value: { $: `local.${COMPOSER_KEY} + 1` } },
+                            { $setLocal: COMPOSER_DIRTY, value: false },
+                          ],
+                          onFinally: [{ $setLocal: COMPOSER_BUSY, value: false }],
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: 'Row',
+            props: { gap: '300', ax: 'end', width: '100%' },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  variant: 'primary',
+                  size: 'sm',
+                  /*
+                    Present and refusing, rather than absent until there is something to post.
+
+                    A button that appears once you start typing moves everything under it on the
+                    first keystroke, in a panel that is usually already scrolled — and it cannot be
+                    found by somebody looking for how to send. Disabled says the same thing without
+                    changing the height of the page.
+                  */
+                  disabled: { $: `!local.${COMPOSER_DIRTY} || local.${COMPOSER_BUSY}` },
+                  loading: { $: `local.${COMPOSER_BUSY}` },
+                  onClick: { $callLocal: COMPOSER_SAVE },
+                },
+                children: ['Reply'],
+              },
+            ],
           },
         ],
       },

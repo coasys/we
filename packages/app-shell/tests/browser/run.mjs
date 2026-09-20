@@ -15,6 +15,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { compile } from 'sass';
 import { chromium } from 'playwright-core';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -65,10 +66,23 @@ async function main() {
     '/themes/': join(ROOT, 'packages/design-system/2-themes/dist'),
   };
 
+  /*
+    The app's own global stylesheet, compiled rather than restated.
+
+    It is three rules and one of them is `* { box-sizing: border-box }`, which decides whether a
+    padded box is its stated width or that width plus its padding — so without it every measurement
+    of anything with padding is wrong, and wrong in the direction that invents overflow. The
+    harness read a composer as 41px wider than the panel it was in until this was loaded, which is
+    a bug in the harness reported as a bug in the app: the worst kind for a tool whose whole job is
+    to be believed.
+  */
+  const shell = compile(join(ROOT, 'packages/app-shell/src/shared/index.scss')).css;
+
   const server = createServer((req, res) => {
     const url = (req.url ?? '/').split('?')[0];
     const send = (body, type) => res.writeHead(200, { 'content-type': type }).end(body);
     if (url === '/' || url === '/index.html') return send(html, MIME['.html']);
+    if (url === '/shell.css') return send(shell, MIME['.css']);
     if (url === '/entry.bundle.js') return send(js, MIME['.js']);
     for (const [prefix, dir] of Object.entries(DIRS)) {
       if (!url.startsWith(prefix)) continue;

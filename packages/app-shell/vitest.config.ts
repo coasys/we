@@ -96,6 +96,9 @@ export default defineConfig({
           alias,
           globals: true,
           environment: 'jsdom',
+          // Observers jsdom lacks — see the file. Only this project needs them: it is the one that
+          // renders components, and a component that measures itself reaches for them on mount.
+          setupFiles: ['./tests/jsdomGaps.ts'],
           include: SOLID_TESTS,
         },
       },

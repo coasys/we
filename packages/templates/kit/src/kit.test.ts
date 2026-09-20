@@ -542,11 +542,22 @@ describe('contracts call sites depend on', () => {
       if (condition) conditions.push(condition);
     });
     expect(conditions).toContain("routeStore.params.threads != 'flat'");
+    /*
+      The record's own way in is the INLINE composer at the foot, which writes straight to
+      `createPost` rather than opening the modal — so this looks for the write, not for
+      `discussionReplyTo`. The modal is what a reply to a REPLY still uses, and flat is exactly the
+      mode that withholds those.
+    */
     let recordReply = false;
     walk(weDomain['discussionSection (flat)'], (n) => {
-      const value = (n as { $setLocal?: string; value?: { $?: string } }).value;
-      if ((n as { $setLocal?: string }).$setLocal === 'discussionReplyTo' && value?.$?.includes('row.id')) {
-        recordReply = true;
+      const props = (n.props ?? {}) as Record<string, unknown>;
+      for (const handler of Object.values(props)) {
+        for (const step of Array.isArray(handler) ? handler : [handler]) {
+          const call = step as { $action?: string; args?: unknown[] } | undefined;
+          if (call?.$action !== 'spaceStore.createPost') continue;
+          const parent = (call.args?.[1] as { parentId?: { $?: string } } | undefined)?.parentId?.$;
+          if (parent?.includes('row.id')) recordReply = true;
+        }
       }
     });
     expect(recordReply).toBe(true);
