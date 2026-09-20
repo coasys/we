@@ -55,6 +55,7 @@ export {
 } from '../../components/feedback/Toast/Toast.solid';
 
 // Signals
+export { CountMark, type CountMarkProps } from '../../components/signals/CountMark/CountMark.solid';
 export {
   SignalControl,
   type SignalControlProps,

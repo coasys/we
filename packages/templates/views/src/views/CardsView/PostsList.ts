@@ -345,53 +345,31 @@ export const postsList: SchemaNode = {
                     },
                     {
                       /*
-                        Drawn as a reaction is, because it is read as one: a glyph, a count beside
-                        it, and no fill. Same 16px mark and 12px digits as `SignalControl` at `xs`,
-                        so "what people did with this" reads as one row rather than as two controls
-                        from different places.
+                        The same control the reactions beside it are drawn with.
 
-                        Filled, and coloured by whether you are IN the conversation rather than by
-                        whether it is open. That is the heart's rule one concept along: a reaction
-                        goes accent when it is yours, and a thread you have answered in is the same
-                        kind of fact about you. Whether the thread is expanded needs no colour — the
-                        conversation appearing underneath says so, and two meanings on one channel
-                        is how a control stops meaning either.
+                        A glyph and a count, coloured by whether you are IN the conversation rather
+                        than by whether it is expanded — the heart's rule one concept along, and the
+                        thread appearing underneath already says it is open. Two meanings on one
+                        channel is how a control stops meaning either.
 
-                        Roles, where the control beside it uses scale positions — and the two are
-                        therefore a step apart at rest. That is deliberate rather than an oversight.
-                        `text-faint` is the quietest foreground the system has and a filled glyph at
-                        it is still a shade louder than the hearts want, so `SignalControl` reaches
-                        below the role set's floor; it is a component, and `role-audit` only walks
-                        schemas. This is a schema, and a scale position in a template is exactly what
-                        that audit exists to refuse: it freezes the colour into one theme's idea of
-                        which greys are quiet. If the two ever have to match exactly, the fix is a
-                        role below `text-faint` rather than an exemption here.
+                        Through `CountMark` rather than written out here, and that is the point: it
+                        WAS written out here, and it came out a different size and a different
+                        colour from the hearts it sits beside, twice. A schema cannot match them —
+                        the resting colour is a scale position, which `role-audit` refuses in a
+                        template and is right to — so the drawing belongs somewhere both callers can
+                        name. See `CountMark` for the whole of that argument.
 
-                        The colour is on the ROW, not on the button, so the digits follow the mark —
-                        they sit outside the target, and `bare` inherits. The same arrangement
-                        `SignalControl` uses, for the same reason.
+                        No `size`, so `md` — like the `SignalControl`s on this row, which pass none
+                        either. That was the other half of the mismatch.
                       */
-                      type: 'Row',
+                      type: 'CountMark',
                       props: {
-                        ay: 'center',
-                        gap: '100',
-                        color: { $: "post.$myComments ? 'accent-text' : 'text-faint'" },
-                        hoverProps: { color: { $: "post.$myComments ? 'accent-text' : 'text-muted'" } },
+                        icon: 'chat-circle',
+                        count: { $: 'post.$commentCount ?? 0' },
+                        mine: { $: 'post.$myComments > 0' },
+                        label: 'Show the conversation',
+                        onPress: { $toggleLocal: 'commentsOpen' },
                       },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'bare',
-                            size: 'xs',
-                            p: '0',
-                            label: 'Show the conversation',
-                            onClick: { $toggleLocal: 'commentsOpen' },
-                          },
-                          children: [{ type: 'we-icon', props: { name: 'chat-circle', weight: 'fill', size: '16px' } }],
-                        },
-                        { type: 'we-number', props: { value: { $: 'post.$commentCount ?? 0' }, fontSize: '100' } },
-                      ],
                     },
                   ],
                 },

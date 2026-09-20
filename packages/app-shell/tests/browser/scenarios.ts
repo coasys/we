@@ -117,6 +117,45 @@ const provenanceLine = (): Scenario => ({
 });
 
 /**
+ * The two count controls on a post card, side by side, at the size the feed draws them.
+ *
+ * A reaction and a comment count are the same object — a filled mark and how many — and they were
+ * written in two languages, so they came out at different sizes, in different colours, answering
+ * the pointer differently. Twice. `CountMark` is what both are now drawn with; this is the
+ * assertion that says so in pixels rather than by reading two files.
+ */
+const countControls = (): Scenario => ({
+  node: {
+    type: '$each',
+    props: { items: [{ id: 'card-1', signals: [], $commentCount: 3, $myComments: 0 }], as: 'row' },
+    $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
+    children: [
+      {
+        type: 'Row',
+        props: { ay: 'center', gap: '700' },
+        children: [
+          signalsSection({ record: 'row', inline: true }),
+          {
+            type: 'CountMark',
+            props: {
+              icon: 'chat-circle',
+              count: { $: 'row.$commentCount' },
+              mine: { $: 'row.$myComments > 0' },
+              label: 'Show the conversation',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  tables: {
+    SignalType: [
+      { id: 'st-like', name: 'Like', slug: 'like', icon: 'heart', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
+    ],
+  },
+});
+
+/**
  * Two nested boxes, each of which varies by state. The smallest shape the design system's
  * `--we-ds-*` indirection can be wrong about.
  *
@@ -150,6 +189,7 @@ const nestedInteractive = (): Scenario => ({
 export const scenarios: Record<string, () => Scenario> = {
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
+  'cards:counts': countControls,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
 };

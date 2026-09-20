@@ -3,6 +3,7 @@ export type * from './SignalControl.types';
 import { createSignal, For, Match, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
+import { CountMark } from '../CountMark/CountMark.solid';
 import type { SignalAggregate, SignalControlProps, SignalTypeData } from './SignalControl.types';
 
 /** The aggregate a mode's control is asking for, where the type names none. */
@@ -36,25 +37,14 @@ function aggregateFor(type: SignalTypeData): SignalAggregate {
 /**
  * The count's type size for each control size — one step behind the glyph, as a caption is.
  *
- * Tokens, now that the glyph states its own size: `100` is 12px against a 16px heart, which is the
- * caption ratio. It was `10px` — a raw length, chosen when the glyph was whatever an `xs` button
- * drew and the scale's smallest step would have equalled it. That number was never on screen to be
- * judged (see the note on `prop:fontSize` below), and the first time it was, it was too small.
+ * For the modes that still draw their own count. The toggle's went with it to {@link CountMark},
+ * which holds the same table for the same reason: `100` is 12px against a 16px mark, the caption
+ * ratio.
  *
- * **Passed as `prop:fontSize`, and that prefix is load-bearing.**
+ * **Passed as `prop:fontSize`, and that prefix is load-bearing** — a camelCase prop with a computed
+ * value on a `we-*` element compiles to a lowercased property assignment Lit never reads.
  */
 const COUNT_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '100', sm: '200', md: '' };
-
-/**
- * The glyph's size for each control size.
- *
- * Stated rather than inherited from the button. A `we-icon` nested in a sized primitive takes its
- * size from that primitive's `--we-context-icon-size`, which draws an `xs` button's glyph at 12px —
- * right for an icon that labels a button, and too small for a mark that IS the control: at 12px the
- * heart in a comment thread reads as punctuation rather than as something to press. `md` keeps the
- * inherited size, where the button is big enough for the rule to be right.
- */
-const GLYPH_SIZE: Record<NonNullable<SignalControlProps['size']>, string> = { xs: '16px', sm: '18px', md: '' };
 
 export function SignalControl(props: SignalControlProps) {
   const size = () => props.size ?? 'md';
@@ -121,79 +111,23 @@ export function SignalControl(props: SignalControlProps) {
   return (
     <div class={`signal-control ${props.class || ''}`} style={props.styles}>
       <Switch>
-        {/* Toggle */}
+        {/*
+          Toggle — a mark and how many, which is `CountMark`.
+
+          Delegated rather than drawn here, because the cards feed draws the same thing beside it in
+          a schema and the two drifted twice: different sizes, different colours, a different answer
+          to the pointer. See `CountMark` for why a template cannot simply match this.
+        */}
         <Match when={props.signalType.mode === 'toggle'}>
-          <Row
+          <CountMark
             class="signal-control__toggle"
-            ay="center"
-            gap={gap()}
-            /*
-              The colour is on the ROW, so the mark and its count are one thing.
-
-              Quiet at rest, and MORE present under the pointer. The pair used to run the other way
-              — `neutral-400` resting, `neutral-300` on hover — which acknowledged the pointer by
-              receding. That is backwards in both polarities, not just the one it was noticed in: a
-              lower scale position is nearer the background whichever way the ramp runs, because the
-              background moves with it.
-
-              Here rather than on the button, and that is what makes the digits follow. They sit
-              OUTSIDE the button — they are not part of the target — so a colour on the button left
-              them at the inherited text colour, black beside a faint grey mark, and a hover
-              brightened one of the two. `bare` is the appearance-free variant and inherits its
-              colour, so putting the pair up here gets the glyph, the number and both states from
-              one place. Hovering anywhere on the row lights both, which is also the truer reading:
-              a reaction and its tally are one thing to look at.
-
-              A scale position rather than a role, which is the exception the guidance allows — and
-              the reason is worth keeping, because it is also the reason this control and the
-              comments count beside it in the cards feed are NOT written the same way. `text-faint`
-              is the quietest foreground the system has and it is still too loud here: a 16px glyph
-              at `weight="fill"` is solid ink, where the role was tuned for the strokes of text. So
-              this wants a rung below the role set's floor, and a scale position is the only way to
-              say it. The schema beside it cannot — `role-audit` refuses a scale position in a
-              template, correctly — so it uses the roles and sits one step louder.
-
-              Reacted is the accent at full strength: `accent-text` is tuned for legible prose, and
-              a 16px glyph wants the saturated step rather than a readable one.
-            */
-            color={value() ? 'primary-500' : 'neutral-300'}
-            hoverProps={{ color: value() ? 'primary-500' : 'neutral-400' }}
-          >
-            {/*
-              The glyph IS the control — no fill behind it, no padding around it.
-
-              A `primary` button turned a reaction into a pressed key, which reads as heavier than
-              the sentence it is about; and a ghost's padding left the icon floating in a box twice
-              its size. `bare` takes both off, so what is drawn is the mark itself and it can be
-              read at a glance in a row of them.
-
-              Filled at both states, and coloured rather than outlined-then-filled: an outline that
-              becomes a fill changes the SHAPE on press, which reads as the icon being swapped. The
-              colour carries "mine", and the shape stays put.
-            */}
-            <we-button
-              variant="bare"
-              size={size()}
-              p="0"
-              disabled={isDisabled()}
-              // Colour comes from the row — see the note there.
-              onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
-            >
-              <we-icon name={props.signalType.icon} weight="fill" size={GLYPH_SIZE[size()]} />
-            </we-button>
-            {/*
-              `prop:fontSize`, not `fontSize` — the prefix is the difference between this working and
-              doing nothing, and every `we-number` below carries it for the same reason.
-
-              A camelCase prop with a COMPUTED value compiles to a lowercased property assignment,
-              `el.fontsize = …`. Lit's reactive property is `fontSize`, so the value lands on an
-              expando nobody reads and the element keeps the size it inherited. A literal
-              (`fontSize="400"`) compiles to an attribute instead and works, which is why this fails
-              only where the value is worked out — and fails silently, since the generated types are
-              satisfied either way and there is nothing to see in the markup.
-            */}
-            <we-number class="signal-control__count" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
-          </Row>
+            icon={props.signalType.icon}
+            count={aggregate()}
+            mine={Boolean(value())}
+            size={size()}
+            disabled={isDisabled()}
+            onPress={() => signal(value() ? 0 : props.signalType.rangeMax)}
+          />
         </Match>
 
         {/* Vote */}

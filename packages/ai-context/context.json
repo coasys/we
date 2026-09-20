@@ -2746,6 +2746,57 @@
       "source": "components"
     },
     {
+      "name": "CountMark",
+      "props": [
+        {
+          "name": "icon",
+          "type": "string",
+          "optional": false
+        },
+        {
+          "name": "count",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "mine",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\"",
+          "optional": true
+        },
+        {
+          "name": "onPress",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "Record<string, string | number>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "DropdownMenu",
       "description": "Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.",
       "props": [

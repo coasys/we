@@ -1,0 +1,8 @@
+// ── CountMark ──────────────────────────────────────────────────────────────────
+
+// min-width: 1ch (= the width of "0" in the current font) holds the counter steady when it goes
+// between 0 and 1, so pressing a reaction does not shift the row beside it. tabular-nums in
+// we-number handles the multi-digit case.
+.count-mark__count {
+  min-width: 1ch;
+}

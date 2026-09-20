@@ -192,7 +192,16 @@ function replyBody(
       type: 'Column',
       props: {
         width: '100%',
-        gap: '100',
+        /*
+          No gap between the byline and what is under it, and the gutter puts its own back.
+
+          The words wanted to sit closer to the name than the caret does: a byline is a heading for
+          the sentence beneath it, and a gap that reads as right beside a 24px control reads as a
+          hole beside a line of text. One gap here could not say both — it is the space above the
+          Row, and the caret and the words are in the same Row — so it goes to nothing and the
+          gutter column restates it. See `mt` there.
+        */
+        gap: '0',
         onMouseEnter: { $setLocal: 'pointerOnReply', value: true },
         onMouseLeave: { $setLocal: 'pointerOnReply', value: false },
       },
@@ -409,7 +418,9 @@ function replyBody(
           children: [
             {
               type: 'Column',
-              props: { width: '24px', flexShrink: '0', ax: 'center', gap: '0' },
+              // `mt` is the gap the parent gave up so the words could sit closer to the name — the
+              // caret keeps the distance it had. See the note on the parent's `gap`.
+              props: { width: '24px', flexShrink: '0', ax: 'center', gap: '0', mt: '100' },
               children: foldable
                 ? [
                     {
