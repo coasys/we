@@ -142,6 +142,24 @@ function measureText(text: string, selector = '*') {
 }
 
 /**
+ * The box of a control named by its accessible label.
+ *
+ * An icon-only button has no text to find it by, and `we-button` does not reflect `label` to an
+ * attribute — it puts `aria-label` on the inner `<button>`, inside the shadow root, where
+ * `querySelectorAll` cannot reach. So this looks through each host's shadow root and answers with
+ * the HOST's box, which is the one the row laid out.
+ *
+ * Named after what a screen reader would call it, which is the right way to address a control that
+ * has deliberately been left wordless.
+ */
+function measureControl(label: string, selector = 'we-button') {
+  for (const host of document.querySelectorAll(selector)) {
+    if (host.shadowRoot?.querySelector(`[aria-label="${label}"]`)) return box(host);
+  }
+  return null;
+}
+
+/**
  * An element and every box above it, outermost last.
  *
  * "The name wrapped" is never the whole story — something above it decided how much room it had,
@@ -198,6 +216,7 @@ injectDSInteropStyles();
   measure,
   measureAll,
   measurePart,
+  measureControl,
   measureText,
   chain,
   pageColor,

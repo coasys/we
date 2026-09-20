@@ -503,11 +503,15 @@ function replyBody(
                       props: {
                         condition: { $: `!(${collapsed})` },
                         then: {
+                          /*
+                            No `flex` or `width` here: `we-tooltip` is `display: contents`, so it
+                            generates no box and layout props on it do nothing — the primitive says
+                            so out loud in development, which is how these were found. They belong
+                            on the Column inside, which already carries them.
+                          */
                           type: 'we-tooltip',
                           props: {
                             content: { $: `count(${as}.comments) ? 'Hide this branch' : 'Fold this comment'` },
-                            flex: '1',
-                            width: '100%',
                           },
                           children: [
                             {
@@ -855,8 +859,19 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         reply row.
       */
       {
-        type: 'Column',
-        props: { gap: '200', width: '100%' },
+        /*
+          The field and its send, on one row — the transcript composer's shape exactly.
+
+          The button was under the composer, right-aligned, which put the whole of "write a reply"
+          across two rows at the foot of a panel that is mostly thread. Beside it the pair reads as
+          one control, and the row costs a button's width rather than a button's height, which is
+          the scarce direction here.
+
+          `ay: 'end'` so the send stays at the bottom as the composer grows: what somebody is typing
+          extends downward, and a button tracking the middle of a three-line draft drifts.
+        */
+        type: 'Row',
+        props: { gap: '200', ay: 'end', width: '100%' },
         children: [
           {
             /*
@@ -870,7 +885,11 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
               {
                 type: 'Column',
                 props: {
-                  width: '100%',
+                  // The one item that gives up space, which is why the button beside it keeps its
+                  // square: a flex item's automatic minimum is its content, and an editor's content
+                  // is a paragraph.
+                  flex: '1',
+                  minWidth: '0',
                   bg: 'surface',
                   border: '1px solid border',
                   r: 'surface',
@@ -924,27 +943,31 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
             ],
           },
           {
-            type: 'Row',
-            props: { gap: '300', ax: 'end', width: '100%' },
+            type: 'we-tooltip',
+            props: { content: 'Post this reply' },
             children: [
               {
                 type: 'we-button',
                 props: {
-                  variant: 'primary',
-                  size: 'sm',
                   /*
-                    Present and refusing, rather than absent until there is something to post.
+                    An icon and nothing else, which is what "Reply" under the box became.
 
-                    A button that appears once you start typing moves everything under it on the
-                    first keystroke, in a panel that is usually already scrolled — and it cannot be
-                    found by somebody looking for how to send. Disabled says the same thing without
-                    changing the height of the page.
+                    `square` sizes the width from the control height, so an icon-only button is a
+                    square rather than a rounded rectangle with a glyph adrift in it. `label` is the
+                    whole of what a screen reader gets, since there is no text left to read.
+
+                    Present and refusing, rather than absent until there is something to post: a
+                    button that appears on the first keystroke moves the composer beside it, and
+                    cannot be found by somebody looking for how to send.
                   */
+                  square: true,
+                  variant: 'secondary',
+                  label: 'Post this reply',
                   disabled: { $: `!local.${COMPOSER_DIRTY} || local.${COMPOSER_BUSY}` },
                   loading: { $: `local.${COMPOSER_BUSY}` },
                   onClick: { $callLocal: COMPOSER_SAVE },
                 },
-                children: ['Reply'],
+                children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
               },
             ],
           },

@@ -10,7 +10,7 @@ export const name = 'reply composer';
 export const scenario = 'discussion:thread';
 export const widths = [280, 420];
 
-export async function check({ measure, measureAll, focused }, width) {
+export async function check({ measure, measureAll, measureControl, focused }, width) {
   const problems = [];
 
   const mount = await measure('.we-block-composer-mount');
@@ -31,9 +31,20 @@ export async function check({ measure, measureAll, focused }, width) {
     keystroke moves everything under it, in a panel that is usually already scrolled, and cannot be
     found by somebody looking for how to send.
   */
-  const send = (await measureAll('we-button')).filter((b) => b.text === 'Reply').at(-1);
-  if (!send) problems.push('no Reply button under the composer');
-  else if (!send.disabled) problems.push('Reply is offered on an empty composer');
+  const send = await measureControl('Post this reply');
+  if (!send) problems.push('no send beside the composer');
+  else if (!send.disabled) problems.push('a reply is offered on an empty composer');
+
+  /*
+    Beside the field, not under it — the transcript composer's shape.
+
+    Across two rows, "write a reply" took a button's height at the foot of a panel that is mostly
+    thread, and height is the scarce direction here. On one row it costs a button's width instead,
+    and the pair reads as one control.
+  */
+  if (send && (send.y + send.h < mount.y || send.x < mount.x + mount.w)) {
+    problems.push(`the send is at ${send.x},${send.y} and the field at ${mount.x},${mount.y} — not beside it`);
+  }
 
   /*
     No block gutter.

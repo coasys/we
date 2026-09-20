@@ -134,6 +134,7 @@ async function main() {
         measure: (sel) => page.evaluate((s) => window.__harness.measure(s), sel),
         measureAll: (sel) => page.evaluate((s) => window.__harness.measureAll(s), sel),
         measurePart: (sel, part) => page.evaluate((a) => window.__harness.measurePart(...a), [sel, part]),
+        measureControl: (label, sel) => page.evaluate((a) => window.__harness.measureControl(...a), [label, sel]),
         measureText: (text, sel) => page.evaluate((a) => window.__harness.measureText(...a), [text, sel]),
         pageColor: () => page.evaluate(() => window.__harness.pageColor()),
         focused: () => page.evaluate(() => window.__harness.focused()),

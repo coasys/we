@@ -297,8 +297,15 @@ describe('a thread in a panel', () => {
     await tick();
     await settled();
 
-    // One "Reply" on screen — the record's own, at the foot of the section. The reply has none yet.
-    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(1);
+    /*
+      No "Reply" anywhere yet.
+
+      It used to be one — the record's own, at the foot of the section — and that button is now the
+      composer's icon-only send, which carries its name as an `aria-label` rather than as text. So
+      the only thing that can put the word on screen is a REPLY's own Reply, which is what this test
+      is about: the count is the furniture, and at rest there should be none of it.
+    */
+    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(0);
 
     const words = host.querySelector('[style*="cursor: pointer"]') as HTMLElement | null;
     expect(words).not.toBeNull();
@@ -306,11 +313,12 @@ describe('a thread in a panel', () => {
     await settled();
 
     // Pressed: the reply's own Reply appears beside the reactions.
-    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(2);
+    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(1);
 
-    // Pressed again, it goes away — one open at a time, and this was the one.
+    // Pressed again, it goes away. Several replies can be open at once now, so this says only that
+    // a second press on the SAME one closes it — which is the row's own affordance.
     words?.click();
     await settled();
-    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(1);
+    expect(host.textContent?.match(/Reply/g) ?? []).toHaveLength(0);
   });
 });
