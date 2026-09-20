@@ -115,6 +115,16 @@ export interface DiscussionSectionOptions {
   title?: string;
 }
 
+/**
+ * What the fold control is called, which depends on what is under it.
+ *
+ * One expression for the caret and the line, because they are one affordance and a screen reader
+ * reading two names for it would be reading two controls.
+ */
+const FOLD_LABEL = (as: string): SchemaProp => ({
+  $: `count(${as}.comments) ? 'Fold this branch' : 'Fold this comment'`,
+});
+
 /** The button that opens the composer on one reply — the thing flat mode withholds. */
 function replyButton(as: string): SchemaNode {
   return {
@@ -467,41 +477,44 @@ function replyBody(
                 ? [
                     {
                       /*
-                        The caret, on every comment — and the line only where there is a branch.
+                        The fold control: a caret and the line beside the words it folds.
 
-                        They used to be one control gated on having replies, which made folding
-                        something you could do to *some* comments: the affordance people looked for
-                        on a long comment was missing exactly where the comment was worth putting
-                        away, and present on a two-word one that happened to be answered. The
-                        machinery never had that limit — `collapsed` gates the comment's own words
-                        as well as its subtree, so a childless comment folded perfectly well and
-                        simply had no way to ask.
+                        Both on every comment. It used to be gated on having been replied to, which
+                        made folding something you could do to *some* comments — missing exactly
+                        where a comment is worth putting away, a long one nobody has answered, and
+                        present on a two-word one that somebody had. The machinery never had that
+                        limit: `collapsed` gates a comment's own words as well as its subtree.
 
-                        The LINE does not generalise with it. It is this thread's vocabulary for
-                        "there is a branch below here" — the head of a rail that runs past these
-                        words and down beside the replies — so beside a childless comment it would
-                        draw a rail to nothing, which is a worse lie than no affordance at all.
+                        The line generalises WITH the caret, which took a second go to see. It looks
+                        like the thread's "there is a branch below here" mark and it is not — that is
+                        `branchRail` in `commentThread`, a different segment beside the REPLIES,
+                        which exists only where there are some. This one runs from the caret down
+                        past this comment's own paragraphs, so it traces exactly what the caret
+                        folds. On a childless comment that is the comment itself, which is now
+                        foldable, so the line belongs there too. Gating it left a caret with nothing
+                        under it and the fold's extent unmarked.
 
-                        So: two conditions, not one. The tooltip and the highlight still wrap
-                        whatever is there, which is what keeps a press on the line saying the same
-                        thing as a press on the caret.
+                        Two buttons, because a caret is a glyph and a line is a column — but one
+                        tooltip over both and one highlight across both, so what reads as a single
+                        affordance behaves as one. The tooltip wraps them rather than sitting on the
+                        caret, which is what let a press on the line say nothing.
                       */
-                      type: 'we-tooltip',
+                      type: '$if',
                       props: {
-                        content: { $: `count(${as}.comments) ? 'Hide this branch' : 'Fold this comment'` },
-                        flex: '1',
-                        width: '100%',
-                      },
-                      children: [
-                        {
-                          type: 'Column',
-                          props: { width: '100%', flex: '1', ax: 'center' },
+                        condition: { $: `!(${collapsed})` },
+                        then: {
+                          type: 'we-tooltip',
+                          props: {
+                            content: { $: `count(${as}.comments) ? 'Hide this branch' : 'Fold this comment'` },
+                            flex: '1',
+                            width: '100%',
+                          },
                           children: [
                             {
-                              type: '$if',
-                              props: {
-                                condition: { $: `!(${collapsed})` },
-                                then: {
+                              type: 'Column',
+                              props: { width: '100%', flex: '1', ax: 'center' },
+                              children: [
+                                {
                                   type: 'we-button',
                                   props: {
                                     variant: 'bare',
@@ -509,32 +522,20 @@ function replyBody(
                                     width: '100%',
                                     r: '0',
                                     color: 'text-faint',
-                                    label: {
-                                      $: `count(${as}.comments) ? 'Fold this branch' : 'Fold this comment'`,
-                                    },
+                                    label: FOLD_LABEL(as),
                                     ...railHighlight(),
                                     onClick: foldToggle(as),
                                   },
                                   children: [{ type: 'we-icon', props: { name: 'caret-down' } }],
                                 },
-                              },
-                            },
-                            {
-                              /*
-                                The rest of the line, beside the words.
+                                {
+                                  /*
+                                    The rest of the line, beside the words.
 
-                                `commentThread` draws the rail beside the REPLIES; this is the
-                                segment above it, running from the caret down past however many
-                                paragraphs the comment has. Without it a tall comment left the
-                                caret stranded at the top and the line starting under the text.
-
-                                Its own condition now, which is the split: a comment with nothing
-                                under it gets the caret and no rail.
-                              */
-                              type: '$if',
-                              props: {
-                                condition: { $: `!(${collapsed}) && count(${as}.comments)` },
-                                then: {
+                                    Runs from the caret down past however many paragraphs the
+                                    comment has. Without it a tall comment left the caret stranded
+                                    at the top with nothing marking how far the fold reaches.
+                                  */
                                   type: 'we-button',
                                   props: {
                                     variant: 'bare',
@@ -542,17 +543,17 @@ function replyBody(
                                     flex: '1',
                                     ax: 'center',
                                     r: '0',
-                                    label: 'Fold this branch',
+                                    label: FOLD_LABEL(as),
                                     ...railHighlight(),
                                     onClick: foldToggle(as),
                                   },
                                   children: [{ type: 'Column', props: { width: '1px', height: '100%', bg: 'border' } }],
                                 },
-                              },
+                              ],
                             },
                           ],
                         },
-                      ],
+                      },
                     } as SchemaNode,
                   ]
                 : [],

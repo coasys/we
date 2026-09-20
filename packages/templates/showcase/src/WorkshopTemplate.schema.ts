@@ -1866,8 +1866,18 @@ const discussion: SchemaNode = {
   props: { gap: '200', pt: '200', borderTop: '1px solid border', width: '100%' },
   children: [
     sectionCaption('Discussion', REPLY_TOTAL),
-    // TEMPORARY — testing pagination and expansion. Ship values are [10, 5, 3, 3, 2, 2] at depth 6.
-    discussionSection({ record: 'row', fractal: FRACTAL_THREADS, perLevel: [1, 3], depth: 2 }),
+    /*
+      No depth or breadth of its own: the kit's [10, 5, 3] at three levels.
+
+      Three is right for THIS surface and the reason is arithmetic. Each level costs the gutter and
+      its gap — 32px — and the panel is 320px wide, so six levels would spend nearly two thirds of
+      the width on indent before a word is drawn. Depth past three is reached by re-rooting, which
+      gives the branch the top level's whole budget and is a better place to read it from anyway.
+
+      Said by saying nothing, so the number lives in one place. A template that restates a default
+      is a template that stops following it.
+    */
+    discussionSection({ record: 'row', fractal: FRACTAL_THREADS }),
   ],
 };
 

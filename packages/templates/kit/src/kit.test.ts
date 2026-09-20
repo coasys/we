@@ -461,32 +461,32 @@ describe('contracts call sites depend on', () => {
     expect((spinner!.props as { then?: { slot?: string } }).then?.slot).toBe('end');
   });
 
-  it('offers the fold on every comment, and the rail only where there is a branch', () => {
+  it('offers the fold, and its line, on every comment', () => {
     /*
       Folding used to be gated on having been replied to, so the affordance was missing exactly
-      where a comment was worth collapsing — a long one nobody had answered — and present on a
+      where a comment is worth collapsing — a long one nobody has answered — and present on a
       two-word one that somebody had. The machinery never had that limit: `collapsed` gates a
       comment's own words as well as its subtree.
 
-      The RAIL does not generalise with it, and that is what this pins. It is the thread's
-      vocabulary for "there is a branch below here", so beside a childless comment it would draw a
-      line to nothing. The caret's condition must be the looser of the two.
+      The line goes with the caret, and the first attempt at this gated it separately on the
+      grounds that a line means "there is a branch below here". It does not: that is `branchRail`
+      in `commentThread`, beside the REPLIES. This segment runs past the comment's own paragraphs
+      and traces what the caret folds, which on a childless comment is the comment. So neither
+      condition may mention `comments` — a caret with no line under it leaves the fold's extent
+      unmarked.
     */
-    const conditions: string[] = [];
+    const gutter: string[] = [];
     walk(weDomain.discussionSection, (n) => {
-      const props = (n.props ?? {}) as { condition?: { $?: string }; then?: SchemaNode };
-      const then = props.then as { props?: { label?: unknown }; type?: string } | undefined;
-      const label = then?.props?.label;
+      const props = (n.props ?? {}) as { label?: unknown; onClick?: unknown };
+      const label = props.label;
       const says = typeof label === 'string' ? label : ((label as { $?: string })?.$ ?? '');
-      if (then?.type === 'we-button' && says.includes('Fold this')) conditions.push(props.condition?.$ ?? '');
+      if (n.type === 'we-button' && says.includes('Fold this')) gutter.push(says);
     });
-
-    // The caret, then its line — in that order, since the caret is drawn above the rail.
-    const [caret, rail] = conditions;
-    expect(caret, 'no fold control in the gutter').toBeTruthy();
-    expect(caret).not.toContain('comments');
-    expect(rail, 'no rail under the caret').toBeTruthy();
-    expect(rail).toContain('count(reply.comments)');
+    // The caret and its line, on the first reply — both named the same, because they are one
+    // affordance and two names for it reads as two controls.
+    expect(gutter.length).toBeGreaterThanOrEqual(2);
+    expect(gutter[0]).toBe(gutter[1]);
+    expect(gutter[0]).toContain("count(reply.comments) ? 'Fold this branch' : 'Fold this comment'");
   });
 
   it('says what a folded comment was, not only how much is under it', () => {

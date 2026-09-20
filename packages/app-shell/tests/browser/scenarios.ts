@@ -57,7 +57,7 @@ const discussionThread = (): Scenario => ({
         parentId: 'card-1',
         author: 'did:me',
         createdAt: '2026-09-01T10:00:00Z',
-        editorState: null,
+        editorState: [{ _type: 'block', style: 'normal', text: 'A reply with something under it' }],
         textContent: 'A reply with something under it',
         comments: ['r2'],
       },
@@ -73,7 +73,15 @@ const discussionThread = (): Scenario => ({
         parentId: 'r1',
         author: 'did:them',
         createdAt: '2026-09-01T11:00:00Z',
-        editorState: null,
+        /*
+          A real composition, not `null`.
+
+          The gutter line is `flex: 1` down the side of the comment's words, so a row with no words
+          gives it nothing to stretch over and it measures 0 — which looks exactly like a line that
+          is not being drawn. A scenario meant to judge whether the line is there has to give it
+          something to run beside.
+        */
+        editorState: [{ _type: 'block', style: 'normal', text: 'A reply with nothing under it at all' }],
         textContent: 'A reply with nothing under it at all',
         comments: [],
       },
