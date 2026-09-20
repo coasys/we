@@ -862,3 +862,68 @@ describe('moving between spaces', () => {
     expect(navigate).toHaveBeenCalledWith(`/space/${a}`);
   }, 10000);
 });
+
+describe('changing a reaction', () => {
+  it('replaces the record rather than editing it, because an edit notifies nobody', async () => {
+    /*
+      A rating moved from three stars to four did nothing anybody could see, the author included.
+
+      The write landed. What did not happen was the re-read. Every surface fetches reactions as
+      `include: { signals: true }` on the record, so the live query is over the RECORD's class, and
+      the executor builds that subscription's trigger from `build_model_trigger_predicates` — the
+      predicates of the subscribed class's own shape, plus the parent predicate. It does not walk
+      `include`. `we://signal` is in that set, so adding or removing a reaction fires it; `we://value`,
+      which belongs to the Signal, is not. An in-place edit changes the store and wakes no reader.
+
+      So the shape IS the requirement: a change has to touch `we://signal`, which means removing and
+      adding. The test asserts the record's identity changed, because that is the observable
+      difference between the two implementations — and the obvious tidy-up, one write instead of
+      two, is exactly what broke it.
+
+      The rest of the assertion is what a naive delete-then-create could still get wrong: one
+      reaction of this type by this agent, holding the new value, not two.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Raters', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Raters')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+
+    const handle = space.handle as never;
+    const SignalType = getEntity('SignalType')!;
+    const Signal = getEntity('Signal')!;
+    const stars = await (SignalType as never as typeof Space).create(handle, {
+      name: 'Stars',
+      slug: 'stars',
+      mode: 'rating',
+      rangeMin: 0,
+      rangeMax: 5,
+    } as never);
+    const subject = await CollectionBlock.create(handle, { kind: 'post', textContent: 'rate me' } as never);
+
+    const mine = async () =>
+      (await (Signal as never as typeof Space).findAll(handle, {
+        parent: { id: subject.id, predicate: 'we://signal' },
+        where: { signalTypeId: stars.id, author: 'did:test:james' },
+      } as never)) as unknown as { id: string; value: number }[];
+
+    await stores.spaces.upsertSignal(subject.id, stars.id, 3);
+    const first = await mine();
+    expect(first).toHaveLength(1);
+    expect(first[0].value).toBe(3);
+
+    await stores.spaces.upsertSignal(subject.id, stars.id, 4);
+    const second = await mine();
+    // One reaction, the new value — not two rows where the reader finds the stale one first.
+    expect(second).toHaveLength(1);
+    expect(second[0].value).toBe(4);
+    // And a different record, which is what touching `we://signal` twice amounts to.
+    expect(second[0].id).not.toBe(first[0].id);
+
+    // Withdrawing is still a removal rather than a stored 0, so nothing has to exclude it.
+    await stores.spaces.upsertSignal(subject.id, stars.id, 0);
+    expect(await mine()).toHaveLength(0);
+  }, 10000);
+});

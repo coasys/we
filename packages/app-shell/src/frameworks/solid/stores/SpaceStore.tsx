@@ -2514,25 +2514,32 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
 
     /*
-      Changing a reaction edits the record; withdrawing one removes it.
+      Withdrawing a reaction removes the record; changing one replaces it.
 
-      It used to delete and re-create in every case, which is two writes where one will do and is
-      visible while they land: a rating dragged from 3 to 4 passed through "nobody has rated this"
-      for a round trip, so the mean under it dipped and came back. It also minted a new record id and
-      a new `createdAt` for what is the same person's same reaction, differently weighted.
+      Replaces, not edits — and that is not the obvious choice. Editing is one write where this is
+      two, and it keeps the record's id and `createdAt` for what is plainly the same person's same
+      reaction differently weighted. It was written that way, and it made changing a rating do
+      nothing anybody could see.
 
-      Zero is still a delete rather than a stored 0, which is what makes a withdrawn reaction absent
+      The reason is in the executor. A model subscription's trigger is built by
+      `build_model_trigger_predicates`, which collects the predicates of the SUBSCRIBED class's own
+      shape plus the parent predicate — it does not walk `include`. Every surface reads reactions as
+      `include: { signals: true }` on the record, so the live query is over CollectionBlock, whose
+      predicates cover `we://signal`: adding or removing one fires the trigger, and the row re-reads.
+      A property of the included Signal does not. `we://value` is not in that set, so an in-place
+      edit changes the store, notifies nobody, and every reader — the author included — goes on
+      showing the old number until something else re-runs the query.
+
+      So a change is a remove and an add, which touches `we://signal` twice and is therefore visible.
+      The cost is the flicker the edit-in-place was introduced to remove: a rating moved from 3 to 4
+      passes through "nobody has rated this" for a round trip, so the mean dips and comes back. A
+      figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
+      is an executor that triggers on the shapes a query includes — filed in the ad4m follow-ups.
+
+      Zero is a delete rather than a stored 0, which is what makes a withdrawn reaction absent
       everywhere rather than a row every count has to remember to exclude.
     */
-    if (existing) {
-      if (value === 0) {
-        await existing.delete();
-        return;
-      }
-      existing.value = value;
-      await existing.save();
-      return;
-    }
+    if (existing) await existing.delete();
     if (value === 0) return;
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }

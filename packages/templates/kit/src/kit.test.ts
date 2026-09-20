@@ -272,6 +272,15 @@ function doorCondition(display: SchemaNode): string | undefined {
   return found;
 }
 
+/** The first node in an expansion matching `is`, so an assertion can be about one part of it. */
+function subtree(node: SchemaNode, is: (n: Record<string, unknown>) => boolean): SchemaNode | undefined {
+  let found: SchemaNode | undefined;
+  walk(node, (n) => {
+    if (!found && is(n)) found = n as SchemaNode;
+  });
+  return found;
+}
+
 /** Answer an expression against a made-up world, using the real library. */
 function evaluate(source: string, roots: Record<string, unknown>): unknown {
   return evaluateExpression(parseExpression(source), {
@@ -779,6 +788,37 @@ describe('contracts call sites depend on', () => {
 
     // What it used to be, in the state that mattered.
     expect(evaluate(`count(${OFFERED}) - 4 > 0`, world(1, 3))).toBe(false);
+  });
+
+  it('the sheet is a list that says what each reaction means, not the row with more room', () => {
+    /*
+      Somebody opens this sheet *because* they did not know what the glyphs meant. It used to render
+      `fullRow` — every control side by side, which is right in a panel where the reader already
+      knows them and wants them out of the way, and wrong here: four glyphs in a line, each meaning
+      whatever this community decided, with the names only in tooltips found one at a time.
+
+      So one row per type, carrying the name and the community's own sentence beside the control.
+    */
+    const sheet = subtree(weDomain['signalDisplay (compact)'], (n) => n.type === 'we-modal');
+    expect(sheet, 'no reactions sheet on a compact display').toBeTruthy();
+
+    const texts: string[] = [];
+    walk(sheet!, (n) => {
+      for (const child of (n.children ?? []) as unknown[]) {
+        const read = (child as { $?: string } | undefined)?.$;
+        if (read) texts.push(read);
+      }
+    });
+    expect(texts).toContain('cardSig.name');
+    expect(texts).toContain('cardSig.description');
+
+    // And the sheet shows the whole vocabulary, not the subset the row behind it was drawing.
+    const items: string[] = [];
+    walk(sheet!, (n) => {
+      const each = (n.props as { items?: { $?: string } } | undefined)?.items?.$;
+      if (each) items.push(each);
+    });
+    expect(items.some((e) => e.includes('count(filter(card.signals'))).toBe(false);
   });
 
   it('a read-only compact display opens nothing', () => {

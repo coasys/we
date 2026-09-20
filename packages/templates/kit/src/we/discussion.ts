@@ -608,9 +608,16 @@ function replyBody(
                           under every reply is a column of furniture between one sentence and the
                           next, which is the whole reason the modes exist.
 
-                          Used types only, which is `compact`'s default. A thread is not where a
-                          community's vocabulary should be learned; the `+N` and the modal are, and
-                          the inspector above shows all of them.
+                          Every offered type, not only the ones somebody has used — `showUnused`,
+                          against `compact`'s own default.
+
+                          The argument for the default is that a thread is not where a vocabulary
+                          should be learned, and it is a good argument about a community with six
+                          reactions. It is a poor one about a community with two, where hiding the
+                          unused half means the reply you want to star shows a heart and nothing
+                          else, and the way to the star is a plus and a sheet. Being explicit here
+                          is how that gets looked at rather than inherited: flip this line and the
+                          thread is back to used-only.
 
                           It costs nothing new — the types come from the subscription the section
                           already hoists, and each reply's signals from the `include` the thread's
@@ -620,6 +627,7 @@ function replyBody(
                                   record: as,
                                   as: `${as}Sig`,
                                   mode: 'compact',
+                                  showUnused: true,
                                   inline: true,
                                   size: 'xs',
                                 }),

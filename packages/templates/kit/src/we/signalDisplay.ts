@@ -94,10 +94,9 @@ const MODAL_OPEN = 'signalsModalOpen';
 /**
  * The same, for the form that defines a new reaction type.
  *
- * Declared on the root beside `MODAL_OPEN` rather than inside the sheet, because the button that
- * sets it is in `fullRow` — which renders both inside the sheet and, in `full` mode, on its own.
- * A `$setLocal` with no declaring ancestor warns and no-ops: the button renders, takes the click,
- * and does nothing.
+ * Declared on the root beside `MODAL_OPEN` rather than inside either surface that offers it, since
+ * `newType` is rendered both by `fullRow` and by the sheet. A `$setLocal` with no declaring
+ * ancestor warns and no-ops: the button renders, takes the click, and does nothing.
  */
 const NEW_TYPE_OPEN = 'signalTypeFormOpen';
 
@@ -301,58 +300,72 @@ function fullRow(opts: Resolved, as: string): SchemaNode {
         props: { items: { $: typesShown(opts) }, as },
         children: [meaning(as, [control(opts, as)])],
       },
-      /*
-        And a way to mean something the community has no reaction for yet.
-
-        This row is where somebody arrives having looked for the reaction they wanted and not found
-        it — directly, in an inspector, or through the sheet, which is this row with room. That is
-        the moment the vocabulary is felt to be short, so it is where the answer belongs; Settings →
-        Vocabulary is the other way to the same form and it is the wrong one here, since it means
-        leaving the thing you were reacting to in order to describe how you wanted to react to it.
-
-        The same form as that section's, through `createSignalTypeModal`, rather than a smaller one
-        written for this surface. A second form would be a second idea of what a reaction type is,
-        and the modes carry range, step and a secondary icon that a "quick add" would quietly drop —
-        which is how a community ends up with a rating that is secretly a toggle.
-
-        Gated as that section gates it: defining a reaction names something every member will then
-        see, so it is an administrator's act wherever it is done from. A member without the right
-        sees the reactions and no plus, which is exactly what they see in Settings.
-      */
-      ...(opts.readOnly
-        ? []
-        : [
-            {
-              type: '$if',
-              props: {
-                condition: { $: 'spaceStore.canAdministerCurrentSpace' },
-                then: {
-                  type: 'we-tooltip',
-                  props: { content: 'New reaction type' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'bare',
-                        size: opts.size === 'xs' ? 'xs' : 'sm',
-                        color: 'text-faint',
-                        hoverProps: { color: 'text' },
-                        label: 'New reaction type',
-                        onClick: { $setLocal: NEW_TYPE_OPEN, value: true },
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'plus' } }],
-                    },
-                    createSignalTypeModal({
-                      open: { $: `local.${NEW_TYPE_OPEN}` },
-                      close: { $setLocal: NEW_TYPE_OPEN, value: false },
-                    }),
-                  ],
-                },
-              },
-            } as SchemaNode,
-          ]),
+      // And a way to mean something the community has no reaction for yet — see `newType`.
+      ...newType(opts, { labelled: false }),
     ],
   };
+}
+
+/**
+ * The button that defines a new reaction type, and the form behind it.
+ *
+ * Offered where somebody arrives having looked for the reaction they wanted and not found it — a
+ * full row in an inspector, or the sheet, which is that row with room. That is the moment a
+ * vocabulary is felt to be short, so it is where the answer belongs; Settings → Vocabulary is the
+ * other way to the same form and it is the wrong one here, since it means leaving the thing you
+ * were reacting to in order to describe how you wanted to react to it.
+ *
+ * The same form as that section's, through `createSignalTypeModal`, rather than a smaller one
+ * written for this surface. A second form would be a second idea of what a reaction type is, and
+ * the modes carry range, step and a secondary icon that a "quick add" would quietly drop — which is
+ * how a community ends up with a rating that is secretly a toggle.
+ *
+ * Gated as that section gates it: defining a reaction names something every member will then see,
+ * so it is an administrator's act wherever it is done from. A member without the right sees the
+ * reactions and no plus, which is exactly what they see in Settings.
+ *
+ * `labelled` is the whole difference between the two surfaces that carry it: a row of controls in a
+ * panel has room for a plus and a tooltip, and the sheet — where somebody is reading a list of what
+ * each reaction means — has room for the words and needs them, since a lone plus under a list reads
+ * as "add a row" rather than "name a kind of reaction".
+ *
+ * Empty for a read-only display, which is drawing rather than offering.
+ */
+function newType(opts: Resolved, { labelled }: { labelled: boolean }): SchemaNode[] {
+  if (opts.readOnly) return [];
+  const button: SchemaNode = {
+    type: 'we-button',
+    props: {
+      variant: labelled ? 'secondary' : 'bare',
+      size: opts.size === 'xs' && !labelled ? 'xs' : 'sm',
+      ...(labelled ? {} : { color: 'text-faint', hoverProps: { color: 'text' } }),
+      label: 'New reaction type',
+      onClick: { $setLocal: NEW_TYPE_OPEN, value: true },
+    },
+    children: [
+      { type: 'we-icon', props: { name: 'plus' } },
+      ...(labelled ? [{ type: 'we-text', children: ['New reaction type'] } as SchemaNode] : []),
+    ],
+  };
+  return [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+        then: {
+          type: labelled ? 'Row' : 'we-tooltip',
+          ...(labelled ? { props: { width: '100%' } } : { props: { content: 'New reaction type' } }),
+          children: [
+            button,
+            createSignalTypeModal({
+              open: { $: `local.${NEW_TYPE_OPEN}` },
+              close: { $setLocal: NEW_TYPE_OPEN, value: false },
+            }),
+          ],
+        },
+      },
+    },
+  ];
 }
 
 /** A row of marks, and a way to the rest. */
@@ -474,7 +487,64 @@ function modal(opts: Resolved, as: string): SchemaNode {
           // one overlay along. Pinned in `props` it is an unknown prop on `we-text` and the heading
           // lands in the modal's scrolling body instead of its header.
           { type: 'we-text', slot: 'header', props: { variant: 'heading-md' }, children: ['Reactions'] },
-          fullRow({ ...opts, mode: 'full', showUnused: opts.showUnused ?? true, inline: false }, as),
+          /*
+            A list, not the row with more room around it.
+
+            The sheet used to render `fullRow`, which is every control side by side — the right shape
+            for a panel, where the reader already knows what the glyphs mean and wants them out of
+            the way. It is the wrong one here. Somebody opens this sheet *because* they did not know:
+            four glyphs in a line, each meaning whatever this community decided it means, with the
+            names only in tooltips they have to find one at a time.
+
+            So one row per type, each carrying the name and the community's own sentence about it
+            beside its control. The tooltip goes with it — `meaning` exists to say in a bubble what
+            there was no room to write, and there is room to write it here, so a bubble repeating the
+            line next to it would be chrome.
+          */
+          {
+            type: 'Column',
+            props: { width: '100%', gap: '400' },
+            children: [
+              {
+                type: '$each',
+                props: { items: { $: typesShown({ ...opts, mode: 'full', showUnused: true }) }, as },
+                children: [
+                  {
+                    type: 'Row',
+                    props: { width: '100%', ay: 'center', gap: '400' },
+                    children: [
+                      {
+                        // Takes the room, and gives it up: a long description wraps rather than
+                        // pushing the control off the edge of the sheet.
+                        type: 'Column',
+                        props: { flex: '1 1 auto', minWidth: '0', gap: '100' },
+                        children: [
+                          { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${as}.name` }] },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: `${as}.description` },
+                              then: {
+                                type: 'we-text',
+                                props: { fontSize: '100', color: 'text-muted' },
+                                children: [{ $: `${as}.description` }],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                      {
+                        type: 'Row',
+                        props: { flex: '0 0 auto' },
+                        children: [control(opts, as)],
+                      },
+                    ],
+                  },
+                ],
+              },
+              ...newType(opts, { labelled: true }),
+            ],
+          },
         ],
       },
     },
@@ -510,7 +580,12 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
           // both what `full` renders and what the sheet holds.
           [NEW_TYPE_OPEN]: { type: 'boolean', initial: false },
         },
-        children: mode === 'full' ? [body] : [body, modal(opts, as)],
+        /*
+          The sheet is built only where something can open it. A read-only display has no door —
+          no plus on a compact row, no press on a total's mark — so a modal beside one is a subtree
+          of live controls that nothing can reach.
+        */
+        children: mode === 'full' || opts.readOnly ? [body] : [body, modal(opts, as)],
       },
     },
   };
