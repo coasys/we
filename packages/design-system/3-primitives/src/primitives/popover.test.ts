@@ -42,3 +42,56 @@ describe('what it opens from', () => {
     expect((el as unknown as { anchorEl: HTMLElement }).anchorEl).toBe(el);
   });
 });
+
+describe('only the panel decides whether the panel is open', () => {
+  /*
+    The listener is bound to the panel, so anything dispatched INSIDE the panel's content reaches it
+    too when it bubbles and crosses shadow boundaries — and `we-tooltip` dispatches exactly that: a
+    `composed`, bubbling `toggle` CustomEvent each time it opens or closes. `newState` on a
+    CustomEvent is undefined, which read as "not open", so the panel closed itself.
+
+    Every tooltip inside a popover was therefore a way to shut the popover. A rating or a slider
+    dragged inside one opened its value bubble and the popover went; hovering the clear button did
+    the same. What kept working was everything with no tooltip in it — selecting the count, pressing
+    a vote arrow — which is what made it look like a problem with dragging.
+  */
+  it('ignores a `toggle` raised by something inside it', async () => {
+    const host = document.createElement('we-popover') as HTMLElement & {
+      updateComplete: Promise<unknown>;
+      open: boolean;
+    };
+    const content = document.createElement('div');
+    content.slot = 'content';
+    host.append(content);
+    document.body.append(host);
+    await host.updateComplete;
+
+    host.open = true;
+    await host.updateComplete;
+
+    content.dispatchEvent(new CustomEvent('toggle', { bubbles: true, composed: true }));
+    await host.updateComplete;
+
+    expect(host.open, 'a tooltip opening inside the panel closed it').toBe(true);
+  });
+
+  it('still follows the browser closing the panel itself', async () => {
+    // The event this handler is actually for: the panel's own state changing, `newState` and all.
+    const host = document.createElement('we-popover') as HTMLElement & {
+      updateComplete: Promise<unknown>;
+      open: boolean;
+    };
+    document.body.append(host);
+    await host.updateComplete;
+    host.open = true;
+    await host.updateComplete;
+
+    const panel = host.shadowRoot!.querySelector('[popover]')!;
+    const closed = new Event('toggle') as Event & { newState?: string };
+    closed.newState = 'closed';
+    panel.dispatchEvent(closed);
+    await host.updateComplete;
+
+    expect(host.open).toBe(false);
+  });
+});

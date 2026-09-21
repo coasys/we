@@ -73,6 +73,26 @@ export default class Popover extends LayoutElement {
     warnAboutBoxlessLayoutProps(this, 'we-popover');
   }
 
+  /**
+   * The browser saying this panel opened or closed — and nothing else that calls itself `toggle`.
+   *
+   * The listener is on the panel, so anything dispatched inside the panel's CONTENT reaches it too
+   * when it bubbles and crosses shadow boundaries. `we-tooltip` dispatches exactly that: a
+   * `composed`, bubbling `toggle` CustomEvent whenever it opens or closes. Its `newState` is
+   * undefined, which read as "not open", so the panel closed itself — and every tooltip inside a
+   * popover became a way to shut the popover. A rating or a slider dragged inside one opened its
+   * value bubble and the popover went; so did hovering the clear button beside them. What kept
+   * working was everything with no tooltip in it: selecting the count, pressing a vote arrow.
+   *
+   * Checked by TARGET rather than by `instanceof ToggleEvent`, which is true of a CustomEvent in
+   * no browser but is also not the property that matters: this panel's own state is the only thing
+   * this handler is about.
+   */
+  private _onToggle = (e: Event) => {
+    if (e.target !== this.popoverElement) return;
+    this.open = (e as ToggleEvent).newState === 'open';
+  };
+
   private _onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this.open) {
       this.open = false;
@@ -122,7 +142,7 @@ export default class Popover extends LayoutElement {
         <slot name="trigger"></slot>
       </div>
 
-      <div part="content" popover="auto" @toggle=${(e: Event) => (this.open = (e as ToggleEvent).newState === 'open')}>
+      <div part="content" popover="auto" @toggle=${this._onToggle}>
         <slot name="content"></slot>
       </div>
     `;

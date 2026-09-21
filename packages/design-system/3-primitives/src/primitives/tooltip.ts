@@ -297,62 +297,15 @@ export default class Tooltip extends LayoutElement {
     }
   }
 
-  /** Whether this tooltip put itself in the top layer, and so has something to undo. */
-  private promoted = false;
-
-  /**
-   * Whether something above this is already an open popover.
-   *
-   * Up the FLAT tree, which is the only walk that finds one. A `we-popover` keeps its panel in its
-   * own shadow root and slots the content into it, so the panel is nowhere in a slotted tooltip's
-   * DOM ancestry: `parentNode` goes straight past it to the `we-popover` host and on up the page.
-   * A first version of this walked `parentNode`, found nothing, and changed no behaviour at all.
-   *
-   * Following `assignedSlot` is what crosses INTO the shadow root the content was rendered in —
-   * from there the slot's own parent is the panel. Together with the host hop out of a shadow root,
-   * that is the composed ancestry.
-   */
-  private get insideOpenPopover(): boolean {
-    const up = (node: Node): Node | null => {
-      const slot = node instanceof Element ? node.assignedSlot : null;
-      if (slot) return slot;
-      const parent: Node | null = node.parentNode;
-      return parent instanceof ShadowRoot ? parent.host : parent;
-    };
-
-    let node: Node | null = up(this);
-    while (node) {
-      if (node instanceof Element) {
-        try {
-          if (node.hasAttribute('popover') && node.matches(':popover-open')) return true;
-        } catch {
-          // A browser without `:popover-open` cannot be inside one either.
-        }
-      }
-      node = up(node);
-    }
-    return false;
-  }
-
   private openTooltip() {
     if (!this.tooltipEl) return;
 
-    /*
-      Promote to the browser's top layer so `position: fixed` resolves to the viewport instead of
-      an ancestor `backdrop-filter`'s containing block.
-
-      NOT when something above this is already an open popover. The content of one is in the top
-      layer already, so promotion buys nothing there — and it costs: showing a popover from inside
-      another one disturbs the one it is inside, which closed the moment a tooltip opened within
-      it. That is every case of it happening: a rating or a slider dragged inside a compact mark's
-      popover, whose value bubble opens on the drag, and the clear button beside them, whose tip
-      opens on a hover. In both the popover shut before the gesture finished.
-    */
-    if ('showPopover' in this.tooltipEl && !this.insideOpenPopover) {
+    // Promote to browser top layer so position:fixed resolves to the viewport
+    // instead of an ancestor backdrop-filter containing block.
+    if ('showPopover' in this.tooltipEl) {
       this.tooltipEl.setAttribute('popover', 'manual');
       try {
         (this.tooltipEl as HTMLElement & { showPopover(): void }).showPopover();
-        this.promoted = true;
       } catch {}
     }
 
@@ -364,14 +317,11 @@ export default class Tooltip extends LayoutElement {
       this.cleanup();
       this.cleanup = undefined;
     }
-    // Only what this promoted: calling `hidePopover` on an element that was never shown throws,
-    // and removing the attribute from one that is not ours is a change with no author.
-    if (this.promoted && this.tooltipEl && 'hidePopover' in this.tooltipEl) {
+    if (this.tooltipEl && 'hidePopover' in this.tooltipEl) {
       try {
         (this.tooltipEl as HTMLElement & { hidePopover(): void }).hidePopover();
       } catch {}
       this.tooltipEl.removeAttribute('popover');
-      this.promoted = false;
     }
   }
 
