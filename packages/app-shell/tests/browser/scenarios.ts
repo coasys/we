@@ -319,7 +319,13 @@ const vocabulary = (): Scenario => {
           children: modes.map((mode) => ({
             type: 'Column',
             props: { width: '100%', p: '200' },
-            children: [signalDisplay({ record: 'row', mode, as: `sig${mode}` })],
+            /*
+            `sm`, which is what a panel draws them at.
+
+            Not the default `md`: nothing renders these at `md` any more, and a case that measured
+            it would be pinning a size no reader sees.
+          */
+            children: [signalDisplay({ record: 'row', mode, size: 'sm', as: `sig${mode}` })],
           })),
         },
       ],

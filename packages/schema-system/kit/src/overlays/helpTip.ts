@@ -85,7 +85,15 @@ export function helpTip(opts: HelpTipOptions): SchemaNode {
                 type: 'we-text',
                 // The bubble sets weight 500 for the phrases it usually holds; four sentences at
                 // that weight are a wall.
-                props: { fontWeight: 'regular', lineHeight: 'normal' },
+                /*
+                  A step behind a heading, where there is one.
+
+                  A tooltip paints on `surface-inverse`, whose one foreground role holds a fixed
+                  lightness and has no muted counterpart — so "quieter than the line above" cannot
+                  be named here the way it can on a page. With no heading there is nothing for the
+                  prose to be quieter THAN, and it stays full strength.
+                */
+                props: { fontWeight: 'regular', lineHeight: 'normal', ...(opts.heading && { opacity: 0.8 }) },
                 children: [opts.text],
               },
             ],

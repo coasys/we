@@ -28,6 +28,15 @@ export function SignalControl(props: SignalControlProps) {
    * thread's weight a wider gap set them apart as a glyph and then a number.
    */
   const gap = () => (size() === 'md' ? '300' : '100');
+  /**
+   * The size a pressable half of a control is drawn at — one step below the control itself.
+   *
+   * A `square` button takes its height from its component size alone, so a mode built from two or
+   * three of them came out taller than one built from a glyph and a number. Stepping them down puts
+   * every mode on one line at a given size, which is what lets a column of them line up with the
+   * names beside them.
+   */
+  const pressSize = () => (size() === 'md' ? 'sm' : 'xs');
   const [previewValue, setPreviewValue] = createSignal<number | null>(null);
   /** Draft value while the slider thumb is being dragged — not persisted until release */
   const [sliderDraft, setSliderDraft] = createSignal<number | null>(null);
@@ -217,7 +226,15 @@ export function SignalControl(props: SignalControlProps) {
           <Row class="signal-control__vote" ay="center" gap={gap()}>
             <we-button
               variant="bare"
-              size={size()}
+              /*
+                A step below the control's own size, as the clear button is.
+
+                `square` sizes a button purely by its component height, so at `sm` two of them made
+                the vote 32px tall where a toggle and a slider are 24 — and in a list that reads as
+                one type's row sitting lower than its neighbours. The glyph inside keeps the
+                control's size, so what shrinks is the press target's padding, not the mark.
+              */
+              size={pressSize()}
               square
               color={mineIs((v) => v > 0) ? 'primary-500' : 'neutral-300'}
               prop:hoverProps={{ color: mineIs((v) => v > 0) ? 'primary-500' : 'neutral-400' }}
@@ -231,7 +248,7 @@ export function SignalControl(props: SignalControlProps) {
             <we-number class="signal-control__count" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             <we-button
               variant="bare"
-              size={size()}
+              size={pressSize()}
               square
               color={mineIs((v) => v < 0) ? 'primary-500' : 'neutral-300'}
               prop:hoverProps={{ color: mineIs((v) => v < 0) ? 'primary-500' : 'neutral-400' }}

@@ -78,11 +78,26 @@ async function main() {
   */
   const shell = compile(join(ROOT, 'packages/app-shell/src/shared/index.scss')).css;
 
+  /*
+    And the components' own stylesheet, for the same reason one step up.
+
+    A layer-4 component carries CSS a schema cannot express — a rating's filled half is an
+    absolutely positioned overlay clipped to a fraction — and without it that overlay falls back
+    into the flow and stacks. The harness measured a five-star control as twice its height and
+    reported it as a control that did not line up with its own name, which is a bug in the harness
+    wearing the clothes of a bug in the app.
+  */
+  const components = await readFile(
+    join(ROOT, 'packages/design-system/4-components/dist/styles/index.css'),
+    'utf8',
+  ).catch(() => '');
+
   const server = createServer((req, res) => {
     const url = (req.url ?? '/').split('?')[0];
     const send = (body, type) => res.writeHead(200, { 'content-type': type }).end(body);
     if (url === '/' || url === '/index.html') return send(html, MIME['.html']);
     if (url === '/shell.css') return send(shell, MIME['.css']);
+    if (url === '/components.css') return send(components, MIME['.css']);
     if (url === '/entry.bundle.js') return send(js, MIME['.js']);
     for (const [prefix, dir] of Object.entries(DIRS)) {
       if (!url.startsWith(prefix)) continue;

@@ -257,8 +257,13 @@ function meaning(opts: Resolved, as: string, children: SchemaNode[]): SchemaNode
                 props: { ay: 'center', gap: '200' },
                 children: [
                   {
-                    type: 'we-icon',
-                    props: { name: { $: `${as}.icon` }, size: 'xs', weight: 'fill', flexShrink: '0' },
+                    // A step behind the name, as in the list — see the tip in `fullList` for why
+                    // that step is an opacity on an inverse surface rather than a role. On a Row
+                    // rather than the glyph: `we-icon` is a layout-only primitive and takes no
+                    // visual props, so an `opacity` on it validates as a warning and paints nothing.
+                    type: 'Row',
+                    props: { opacity: 0.6, ay: 'center', flexShrink: '0' },
+                    children: [{ type: 'we-icon', props: { name: { $: `${as}.icon` }, size: 'xs', weight: 'fill' } }],
                   },
                   { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: `${as}.name` }] },
                 ],
@@ -269,7 +274,8 @@ function meaning(opts: Resolved, as: string, children: SchemaNode[]): SchemaNode
                   condition: { $: `${as}.description` },
                   then: {
                     type: 'we-text',
-                    props: { variant: 'footnote' },
+                    // A step behind the heading above it, for the reason the glyph is.
+                    props: { variant: 'footnote', opacity: 0.8 },
                     children: [{ $: `${as}.description` }],
                   },
                 },
@@ -818,7 +824,16 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                           name: { $: `${as}.icon` },
                           size: 'xs',
                           weight: 'fill',
-                          color: 'text-muted',
+                          /*
+                            A step behind the name, which is itself a step behind the record's own
+                            text.
+
+                            A filled glyph is a solid shape where a name is a few strokes, so at the
+                            same role the glyph reads louder than the word it belongs to — and a
+                            column of them read as the loudest thing in a panel whose subject is the
+                            record, not the ways of reacting to it.
+                          */
+                          color: 'text-faint',
                           flexShrink: '0',
                         },
                       },
@@ -828,6 +843,9 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                         type: 'we-text',
                         props: {
                           variant: 'label',
+                          // Quieter than the record's own fields above it: this is a list of ways
+                          // to react to the thing, not the thing.
+                          color: 'text-muted',
                           /*
                             Shrinks but never GROWS.
 
@@ -870,7 +888,29 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                               type: 'Row',
                               props: { ay: 'center', gap: '200' },
                               children: [
-                                { type: 'we-icon', props: { name: { $: `${as}.icon` }, size: 'xs', weight: 'fill' } },
+                                {
+                                  /*
+                                    Quieter than the name beside it, said with opacity.
+
+                                    A tooltip paints on `surface-inverse`, and the roles have one
+                                    foreground for it — `on-inverse` — with no muted counterpart,
+                                    since it holds a fixed lightness rather than following the
+                                    theme. So "a step back" cannot be named here the way it can on a
+                                    page, and this is the honest way to say it.
+
+                                    On a Row rather than on the glyph: `we-icon` is a layout-only
+                                    primitive and takes no visual props, so an `opacity` on it
+                                    validates as a warning and paints nothing.
+                                  */
+                                  type: 'Row',
+                                  props: { opacity: 0.6, ay: 'center' },
+                                  children: [
+                                    {
+                                      type: 'we-icon',
+                                      props: { name: { $: `${as}.icon` }, size: 'xs', weight: 'fill' },
+                                    },
+                                  ],
+                                },
                                 { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: `${as}.name` }] },
                               ],
                             },

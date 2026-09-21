@@ -1824,14 +1824,15 @@ const reactionsSection: SchemaNode = {
         signalDisplay({
           record: 'row',
           /*
-            `xs`, like everything else in this panel.
+            The middle step.
 
-            It was the default `md`, which is the size a control is on a page rather than in a
-            320px column — and it made the same list look like two different controls depending on
-            whether it was reached here or through the sheet, which is drawn at whatever size the
-            surface that opened it uses.
+            `md` is the size a control is on a page rather than in a 320px column; `xs` is the size
+            it is on a card, among a row of marks, and in a panel somebody opened deliberately it
+            read as too small to aim at. At `sm` every mode comes out one line tall — a toggle, a
+            rating, a vote and a slider all 24px — which is also what lets each control sit on the
+            same line as the name beside it.
           */
-          size: 'xs',
+          size: 'sm',
           // The plus is in the section's heading, so the list draws none of its own. The form is
           // still this fragment's, bound to the flag the panel declares.
           newTypeOpen: 'newSignalTypeOpen',
