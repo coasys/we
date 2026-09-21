@@ -6,8 +6,24 @@ export interface HelpTipOptions {
    * and a paragraph that needs scrolling has stopped being one.
    */
   text: string | ExpressionToken;
+  /**
+   * A line above the text — a glyph and a name, where the thing being explained has both.
+   *
+   * A reaction's tip is the case: the list it sits in draws a heart and the word beside it, and a
+   * bubble that opened with prose alone made the reader carry the association across the gap
+   * themselves. Anything legal in a `children` position; keep it to one line.
+   */
+  heading?: SchemaNode;
   /** The trigger's accessible name — what a screen reader calls the glyph. */
   label?: string;
+  /**
+   * How big the trigger is. `sm` by default, which is the size a label's companion is on a page.
+   *
+   * `xs` where it sits in a dense row: a control's height sets its row's height, so an `sm` glyph
+   * beside an `xs` name makes that row taller than the rows around it — which is exactly how the
+   * People heading came to sit lower than its neighbours.
+   */
+  size?: 'xs' | 'sm';
   placement?: 'top' | 'bottom' | 'left' | 'right';
 }
 
@@ -62,8 +78,9 @@ export function helpTip(opts: HelpTipOptions): SchemaNode {
               as the paragraph up to here and no wider. Left-aligned because a tooltip centres its
               one-line phrases, and centred prose is a poster.
             */
-            props: { maxWidth: '280px', whiteSpace: 'normal', textAlign: 'left' },
+            props: { maxWidth: '280px', whiteSpace: 'normal', textAlign: 'left', gap: '100' },
             children: [
+              ...(opts.heading ? [opts.heading] : []),
               {
                 type: 'we-text',
                 // The bubble sets weight 500 for the phrases it usually holds; four sentences at
@@ -79,7 +96,7 @@ export function helpTip(opts: HelpTipOptions): SchemaNode {
         type: 'we-button',
         props: {
           variant: 'bare',
-          size: 'sm',
+          size: opts.size ?? 'sm',
           label: opts.label ?? 'How this works',
           // Quieter than the label it sits beside: an affordance for the curious, not a warning.
           color: 'text-faint',

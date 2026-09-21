@@ -1,3 +1,4 @@
+import { helpTip } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
 import { createSignalTypeModal } from './signalTypeForm.ts';
@@ -732,19 +733,18 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
         children: [
           {
             /*
-              Name and control on one line, the description under both.
+              The name and its control on one line, and nothing else on it.
 
-              It was a name-and-description column beside the control, and in the sheet — 420px, less
-              its padding — a wide control left so little room that `overflowWrap: anywhere` did what
-              it is there to do and broke the words. A type called "Rating" came out as a tower of
-              single letters.
+              The description was a second line under every type, then a line under the NAME after
+              it turned out that putting it under the whole row made its distance from the name
+              depend on the control's height. Both versions cost a line per type, on a panel where a
+              type nobody has used should be one line and a type somebody has used should be two.
 
-              Widening the sheet would have been treating the symptom: the control is as wide as it
-              is, and any name is one collision away from the same tower. A NAME is short by nature —
-              a word or two — so it shares the line with the control and keeps its own row; the
-              description is the part that runs long, and it gets the full width underneath where
-              there is nothing to compete with.
-            */
+              So it moves behind an info glyph next to the name: the same words, on a hover, with
+              the reaction's own glyph above them so the bubble names what it is explaining. A
+              description is read once and then is furniture — the same argument `helpTip` was
+              written for, one surface along.
+                        */
             type: 'Column',
             props: { width: '100%', gap: '100' },
             children: [
@@ -830,23 +830,48 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                         },
                         children: [{ $: `${as}.name` }],
                       },
+                      {
+                        /*
+                          What the community means by it, on a hover.
+
+                          Only where there is something to say: a type with no description would
+                          otherwise grow a glyph promising an explanation and then open an empty
+                          bubble, which is worse than no glyph at all.
+
+                          `xs`, because a control's height sets its row's height — an `sm` trigger
+                          beside an `xs` name is how the People heading came to sit lower than its
+                          neighbours.
+                        */
+                        type: '$if',
+                        props: {
+                          condition: { $: `${as}.description` },
+                          then: helpTip({
+                            text: { $: `${as}.description` },
+                            label: 'What this signal means',
+                            size: 'xs',
+                            heading: {
+                              type: 'Row',
+                              props: { ay: 'center', gap: '200' },
+                              children: [
+                                { type: 'we-icon', props: { name: { $: `${as}.icon` }, size: 'xs', weight: 'fill' } },
+                                { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: `${as}.name` }] },
+                              ],
+                            },
+                          }),
+                        },
+                      },
                     ],
                   },
-                  // Never absorbs somebody else's overflow: a rating is five glyphs and a slider is
-                  // a track, and neither has a narrower form worth having.
-                  { type: 'Row', props: { flex: '0 0 auto', ay: 'center' }, children: [control(opts, as)] },
-                ],
-              },
-              {
-                type: '$if',
-                props: {
-                  condition: { $: `${as}.description` },
-                  then: {
-                    type: 'we-text',
-                    props: { width: '100%', fontSize: '100', color: 'text-muted' },
-                    children: [{ $: `${as}.description` }],
+                  {
+                    // Never absorbs somebody else's overflow: a rating is five glyphs and a slider
+                    // is a track, and neither has a narrower form worth having. It stopped needing
+                    // a cap when the description left the row — there is nothing beside it now but
+                    // a name, which truncates.
+                    type: 'Row',
+                    props: { flex: '0 0 auto', ay: 'center' },
+                    children: [control(opts, as)],
                   },
-                },
+                ],
               },
               /*
                 Who reacted: the faces and the count, and their names under them when asked for.

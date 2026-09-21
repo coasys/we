@@ -174,6 +174,15 @@ export function SignalControl(props: SignalControlProps) {
         <Match when={props.signalType.mode === 'toggle'}>
           <Row class="signal-control__toggle-row" ay="center" gap={gap()}>
             <CountMark
+              /*
+                The number leads, as the rating's and the slider's aggregates do.
+
+                A full display is a COLUMN of controls, and a reader scans down it: with the count
+                on the far side of the glyph, the toggle's figure was the one number not in line
+                with the rest. On a card — where `CountMark` is a mark on its own — the count still
+                follows, which is what reads left to right as "this thing, that many".
+              */
+              countFirst
               class="signal-control__toggle"
               icon={props.signalType.icon}
               count={aggregate()}

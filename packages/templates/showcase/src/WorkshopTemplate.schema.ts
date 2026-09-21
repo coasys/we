@@ -1816,6 +1816,15 @@ const reactionsSection: SchemaNode = {
       children: [
         signalDisplay({
           record: 'row',
+          /*
+            `xs`, like everything else in this panel.
+
+            It was the default `md`, which is the size a control is on a page rather than in a
+            320px column — and it made the same list look like two different controls depending on
+            whether it was reached here or through the sheet, which is drawn at whatever size the
+            surface that opened it uses.
+          */
+          size: 'xs',
           // The plus is in the section's heading, so the list draws none of its own. The form is
           // still this fragment's, bound to the flag the panel declares.
           newTypeOpen: 'newSignalTypeOpen',

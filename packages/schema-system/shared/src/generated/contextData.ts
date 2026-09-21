@@ -991,6 +991,7 @@ export const contextData: ContextData = {
         { name: 'mine', type: 'boolean', optional: true },
         { name: 'size', type: '"xs" | "sm" | "md"', optional: true },
         { name: 'countTone', type: '"text" | "glyph"', optional: true },
+        { name: 'countFirst', type: 'boolean', optional: true },
         { name: 'onPress', type: '(() => void)', optional: true },
         { name: 'label', type: 'string', optional: true },
         { name: 'disabled', type: 'boolean', optional: true },

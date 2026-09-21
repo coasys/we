@@ -30,6 +30,15 @@ export interface CountMarkProps {
    * row of undimmed ones and the like looked like a different kind of thing.
    */
   countTone?: 'glyph' | 'text';
+  /**
+   * Put the number before the glyph.
+   *
+   * A mark on a card reads left to right as "this thing, that many", which is why the count follows
+   * by default. In a COLUMN of controls it reads down instead: a rating and a slider both lead with
+   * their aggregate, so a toggle whose number sat on the other side put one figure out of line with
+   * every other row — the one column a reader scans.
+   */
+  countFirst?: boolean;
   /** What pressing it does. Omit for a mark that only reports. */
   onPress?: () => void;
   /** What a screen reader is told the press does. */

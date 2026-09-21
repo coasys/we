@@ -2785,6 +2785,11 @@
           "optional": true
         },
         {
+          "name": "countFirst",
+          "type": "boolean",
+          "optional": true
+        },
+        {
           "name": "onPress",
           "type": "(() => void)",
           "optional": true

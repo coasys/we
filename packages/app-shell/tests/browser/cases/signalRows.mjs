@@ -9,12 +9,17 @@
  *
  * Only a rendered page can say this. The schema is one row shape for every type; what differs is
  * what the control resolves to at paint.
+ *
+ * The same case also holds the rows to ONE line each: what each type means moved behind an info
+ * glyph, so an unused type is a name and a control and nothing else.
  */
 export const name = 'signal names sit level';
 export const scenario = 'signals:vocabulary';
 export const widths = [420];
 
 export async function check({ measureAll, measureText }) {
+  const problems = [];
+
   const dividers = (await measureAll('we-divider')).filter((line) => line.w > 0);
   if (dividers.length < 2) return [`expected lines between the types, found ${dividers.length}`];
 
@@ -35,7 +40,20 @@ export async function check({ measureAll, measureText }) {
 
   const sizes = new Set(offsets.map((o) => o.gap));
   if (sizes.size !== 1) {
-    return [`the names sit ${offsets.map((o) => `${o.label} ${o.gap}px`).join(', ')} below their lines`];
+    problems.push(`the names sit ${offsets.map((o) => `${o.label} ${o.gap}px`).join(', ')} below their lines`);
   }
-  return [];
+
+  /*
+    And a description is not on the row at all — it is behind the info glyph beside the name.
+
+    It cost a line per type, on a panel where a type nobody has used should be one line and a type
+    somebody has used should be two. Asserted by looking for the words: a tooltip's content sits in
+    the DOM with the bubble closed, so this is specifically that they are not LAID OUT.
+  */
+  const description = await measureText('How the room feels, nought to a hundred.', 'we-text');
+  if (description && description.h > 0) {
+    problems.push(`a type's description is taking ${description.h}px of the row`);
+  }
+
+  return problems;
 }

@@ -56,6 +56,41 @@ export function CountMark(props: CountMarkProps) {
   /** One step behind the glyph, as a caption is. Empty at `md`, where the inherited size is right. */
   const digits = () => ({ xs: '100', sm: '200', md: '' })[size()];
 
+  const mark = (
+    <we-button
+      variant="bare"
+      size={size()}
+      p="0"
+      disabled={props.disabled ?? false}
+      label={props.label || ''}
+      onClick={() => props.onPress?.()}
+    >
+      {/* Filled, like every signal glyph — see `SIGNAL_GLYPH_WEIGHT`. */}
+      <we-icon name={props.icon} weight={SIGNAL_GLYPH_WEIGHT} size={glyph()} />
+    </we-button>
+  );
+
+  /*
+    The digits follow the glyph, or read as text — see `countTone`.
+
+    Stated as the `text` role rather than left to inherit, because what they would inherit is the
+    ROW, and the row is deliberately dim — that is the whole mechanism that makes the digits follow
+    the glyph. Undoing it means naming the colour the other readings resolve to.
+
+    `prop:fontSize`, not `fontSize`: a camelCase prop with a computed value on a `we-*` element
+    compiles to a lowercased property assignment Lit never reads — see `check:we-props`. `color` is
+    already lowercase, so it lands as an attribute and arrives.
+  */
+  const count = (
+    <we-number
+      class="count-mark__count"
+      prop:fontSize={digits()}
+      color={props.countTone === 'text' ? 'text' : undefined}
+      value={props.count ?? 0}
+      shorten
+    />
+  );
+
   return (
     <Row
       class={`count-mark ${props.class || ''}`}
@@ -65,38 +100,11 @@ export function CountMark(props: CountMarkProps) {
       color={props.mine ? 'primary-500' : 'neutral-300'}
       hoverProps={{ color: props.mine ? 'primary-500' : 'neutral-400' }}
     >
-      <we-button
-        variant="bare"
-        size={size()}
-        p="0"
-        disabled={props.disabled ?? false}
-        label={props.label || ''}
-        onClick={() => props.onPress?.()}
-      >
-        {/* Filled, like every signal glyph — see `SIGNAL_GLYPH_WEIGHT`. */}
-        <we-icon name={props.icon} weight={SIGNAL_GLYPH_WEIGHT} size={glyph()} />
-      </we-button>
       {/*
-        `prop:fontSize`, not `fontSize`. A camelCase prop with a computed value on a `we-*` element
-        compiles to a lowercased property assignment Lit never reads — see `check:we-props`.
+        Named once and then ordered, rather than written out per direction: the gap, the colour and
+        the hover all belong to the row, and two spellings of one mark is how two marks drift apart.
       */}
-      {/*
-        The digits follow the glyph, or read as text — see `countTone`.
-
-        Stated as the `text` role rather than left to inherit, because what they would inherit is the
-        ROW, and the row is deliberately dim — that is the whole mechanism that makes the digits
-        follow the glyph. Undoing it means naming the colour the other readings resolve to.
-
-        No `prop:` prefix: that rule is for camelCase names, which Solid lowercases into a property
-        Lit never reads. `color` is already lowercase, so it lands as an attribute and arrives.
-      */}
-      <we-number
-        class="count-mark__count"
-        prop:fontSize={digits()}
-        color={props.countTone === 'text' ? 'text' : undefined}
-        value={props.count ?? 0}
-        shorten
-      />
+      {props.countFirst ? [count, mark] : [mark, count]}
     </Row>
   );
 }
