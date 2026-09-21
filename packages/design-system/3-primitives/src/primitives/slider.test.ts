@@ -10,6 +10,23 @@
  *
  * So a press that ends on the control commits what it is on. These tests pin that, and the thing it
  * must not do: fire twice for one gesture.
+ *
+ * ## The order below is measured, and it is not the same everywhere
+ *
+ * On a bare `<input type="range">` Chrome dispatches `pointerdown > input… > pointerup > change`:
+ * the native change arrives AFTER the release. These tests originally had it the other way round,
+ * which is worth knowing because a test written against an assumed sequence is a restatement of the
+ * assumption rather than a check on it.
+ *
+ * Driven through this element, though, real Chrome fires **no** native change after a drag at all —
+ * measured by the browser harness (`@we/app-shell test:browser`, case `sliderDrag`), which records
+ * the sequence on the inner input. The likely reason is that Lit re-sets `.value` on every `input`,
+ * which moves the baseline Chrome compares against when deciding whether anything changed.
+ *
+ * So the echo guard below is defensive rather than a fix for something observed here: it is what
+ * keeps a browser that DOES deliver that trailing change from turning one gesture into two writes.
+ * Two matters because each write is a delete-then-create — see `upsertSignal`, where the pair is
+ * serialised for the same reason.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -70,8 +87,11 @@ describe('a press commits, changed or not', () => {
   });
 
   it('commits once for a gesture that did move', async () => {
-    // The native `change` is swallowed while a pointer is down, so the release is the only
-    // dispatch. Two would be two writes for one drag.
+    /*
+      In the real order: the release commits, and the native change that follows carries the same
+      value and is its echo. Two dispatches here are two writes for one drag — and since each is a
+      delete-then-create, the second can miss the first's record and leave two.
+    */
     const el = await mount({ min: 0, max: 100, value: 0 });
     const input = native(el);
 
@@ -79,11 +99,52 @@ describe('a press commits, changed or not', () => {
       input.dispatchEvent(new Event('pointerdown', { bubbles: true }));
       input.value = '40';
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
       input.dispatchEvent(new Event('pointerup', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     expect(seen).toEqual([40]);
+  });
+
+  it('does not eat a keyboard change after a press that moved nothing', async () => {
+    /*
+      Why the echo is matched on its VALUE rather than on a "we already fired" flag. A press that
+      moves nothing produces no native change at all, so a flag would still be up when the next
+      arrow key arrived — and the keyboard change would vanish with no sign of why.
+    */
+    const el = await mount({ min: 0, max: 100, value: 10 });
+    const input = native(el);
+
+    const seen = await changesDuring(el, () => {
+      input.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      input.dispatchEvent(new Event('pointerup', { bubbles: true }));
+      input.value = '11';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    expect(seen).toEqual([10, 11]);
+  });
+
+  it('commits a second drag that ends on the same value as the first', async () => {
+    // The echo guard is cleared by the next press, so two identical drags are two answers — which
+    // is what "the person settled on this" means, however many times they settle on it.
+    const el = await mount({ min: 0, max: 100, value: 0 });
+    const input = native(el);
+
+    const twice = () => {
+      input.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      input.value = '40';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('pointerup', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    const seen = await changesDuring(el, () => {
+      twice();
+      twice();
+    });
+
+    expect(seen).toEqual([40, 40]);
   });
 
   it('still commits a keyboard change, which has no press behind it', async () => {

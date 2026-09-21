@@ -206,6 +206,8 @@ export default class Slider extends DesignSystemElement {
   @state() private _width = 0;
   /** A pointer is down on the control — see {@link _onChange}. */
   private _pressing = false;
+  /** What the last release committed, so the native change that follows it is not a second write. */
+  private _lastCommitted?: number;
   private _observer?: ResizeObserver;
   private _track?: HTMLElement;
 
@@ -308,7 +310,25 @@ export default class Slider extends DesignSystemElement {
     e.stopPropagation();
     const val = Number((e.target as HTMLInputElement).value);
     this.value = val;
+    // Still down: the release is what commits, so this one is the gesture talking to itself.
     if (this._pressing) return;
+    /*
+      The release already committed this exact value, so this is its echo.
+
+      A bare range input in Chrome fires `pointerdown > input… > pointerup > change`, so the native
+      change arrives AFTER the release; committing on both would be two writes for one drag. Through
+      this element real Chrome delivers no trailing change at all — measured, see the note in
+      `slider.test.ts` — so this guard is for the browsers that do, and costs nothing where none
+      comes.
+
+      Matched on the VALUE rather than on a "we already fired" flag, which would have to be cleared
+      on a timer: a press that moves nothing produces no change at all, so the flag would still be
+      up when the next arrow key arrived and would eat it.
+    */
+    if (val === this._lastCommitted) {
+      this._lastCommitted = undefined;
+      return;
+    }
     this._commit(val);
   }
 
@@ -317,13 +337,16 @@ export default class Slider extends DesignSystemElement {
   }
 
   private _onPointerDown() {
-    if (!this.disabled) this._pressing = true;
+    if (this.disabled) return;
+    this._pressing = true;
+    this._lastCommitted = undefined;
   }
 
   /** The release IS the commit — see {@link _onChange}. Also covers a press that moved nothing. */
   private _onPointerUp() {
     if (!this._pressing) return;
     this._pressing = false;
+    this._lastCommitted = this.value;
     this._commit(this.value);
   }
 

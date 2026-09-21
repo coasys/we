@@ -119,6 +119,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { useAppStore } from './AppStore';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
@@ -2523,6 +2524,19 @@ export function SpaceStoreProvider(props: ParentProps) {
    * overload survive: it is correct for two of the four modes, and the two it is wrong for are the
    * two whose range a community chooses.
    */
+  /*
+    One reaction write at a time, per record-and-type pair.
+
+    `upsertSignal` reads before it writes, so two calls for the same pair both read first: both find
+    the same stored record, both delete it, and both create a replacement. That is how one person
+    came to be listed twice under one signal type with the same value — and it is not a bug in
+    whatever called twice, because a read-then-write is racy against any second caller at all.
+
+    Per pair rather than globally: reacting to one post has no reason to wait on a reaction to
+    another. See `oneAtATime`.
+  */
+  const queueSignalWrite = oneAtATime();
+
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number | null): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     const myDid = session.me()?.did;
@@ -2538,12 +2552,22 @@ export function SpaceStoreProvider(props: ParentProps) {
     */
     signalOptimism.hold(nodeId, signalTypeId, value);
 
-    const existing = await Signal.findOne(p, {
-      parent: { id: nodeId, predicate: 'we://signal' },
-      where: { signalTypeId, author: myDid },
-    });
+    await queueSignalWrite(`${nodeId}|${signalTypeId}`, async () => {
+      /*
+        EVERY reaction of mine on this type, not the first one.
 
-    /*
+        `findOne` was the obvious spelling and it is the one that cannot recover: where two records
+        already exist, it reaches one of them, leaves the other, and no amount of changing the
+        reaction afterwards will ever remove it — a person listed twice under one type for good.
+        At most one reaction per person per type is what "upsert" means here, so the write enforces
+        it rather than assuming it.
+      */
+      const mine = (await Signal.findAll(p, {
+        parent: { id: nodeId, predicate: 'we://signal' },
+        where: { signalTypeId, author: myDid },
+      })) as Signal[];
+
+      /*
       Withdrawing a reaction removes the record; changing one replaces it.
 
       Replaces, not edits — and that is not the obvious choice. Editing is one write where this is
@@ -2570,20 +2594,21 @@ export function SpaceStoreProvider(props: ParentProps) {
       withdrawn reaction absent everywhere instead of being a row every count has to remember to
       exclude. A zero is now an ordinary value and is stored like any other.
     */
-    try {
-      if (existing) await existing.delete();
-      if (value !== null) {
-        await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+      try {
+        for (const signal of mine) await signal.delete();
+        if (value !== null) {
+          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+        }
+        // The write is back. Not a release — what retires a hold is the data moving — but it ends
+        // the hold's exemption from what the next draw says. See `@we/optimism`.
+        signalOptimism.done(nodeId, signalTypeId);
+      } catch (error) {
+        // What is on screen is a lie the moment the write is refused.
+        signalOptimism.release(nodeId, signalTypeId);
+        console.error('SpaceStore: could not record that reaction', error);
+        toastService.error('Could not record that reaction.');
       }
-      // The write is back. Not a release — what retires a hold is the data moving — but it ends the
-      // hold's exemption from what the next draw says. See `@we/optimism`.
-      signalOptimism.done(nodeId, signalTypeId);
-    } catch (error) {
-      // What is on screen is a lie the moment the write is refused.
-      signalOptimism.release(nodeId, signalTypeId);
-      console.error('SpaceStore: could not record that reaction', error);
-      toastService.error('Could not record that reaction.');
-    }
+    });
   }
 
   /**

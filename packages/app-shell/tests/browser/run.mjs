@@ -163,6 +163,45 @@ async function main() {
           await page.click(sel, { timeout: 3000 });
           await page.waitForTimeout(120);
         },
+        /*
+          Drag across something, left to right, as a fraction of its own width.
+
+          The gesture a growing number of these controls ARE: a slider, a rating dragged across its
+          stars. A click cannot stand in for it, and the difference is not cosmetic — a real drag is
+          `pointerdown > input… > pointerup > change`, and that ORDER is what one of these controls
+          committed twice over. A case that can only click can only ever judge a first paint of a
+          thing whose whole behaviour is in the moving.
+        */
+        drag: async (sel, from = 0.1, to = 0.8) => {
+          // The VISIBLE one. A compact row keeps its real controls inside closed popovers, so the
+          // first match is routinely a thing with no box — and "cannot be dragged" is the correct
+          // answer for something nobody can see, not a selector to work around.
+          const box = await page.locator(sel).locator('visible=true').first().boundingBox({ timeout: 3000 });
+          if (!box) throw new Error(`nothing to drag at ${sel}`);
+          const y = box.y + box.height / 2;
+          await page.mouse.move(box.x + box.width * from, y);
+          await page.mouse.down();
+          await page.mouse.move(box.x + box.width * to, y, { steps: 6 });
+          await page.mouse.up();
+          await page.waitForTimeout(150);
+        },
+        /** What a page-level listener recorded — for counting what a gesture actually emitted. */
+        recorded: (key) => page.evaluate((k) => globalThis[k] ?? [], key),
+        /**
+         * Collect an event's `detail` under `key`, listening at the document.
+         *
+         * At the document rather than on the element, because these events are `composed` and
+         * bubble — so this catches them wherever they were raised, including inside a shadow root,
+         * and does not have to name the same node the gesture happened to reach.
+         */
+        record: (type, key) =>
+          page.evaluate(
+            ([t, k]) => {
+              globalThis[k] = [];
+              document.addEventListener(t, (e) => globalThis[k].push(e.detail));
+            },
+            [type, key],
+          ),
       };
       const problems = (await mod.check(api, width)) ?? [];
       const label = `${mod.name} @ ${width}px`;
