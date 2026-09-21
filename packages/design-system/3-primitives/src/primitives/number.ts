@@ -24,6 +24,24 @@ const styles = css`
     */
     font-size: var(--we-number-font-size, inherit);
     font-variant-numeric: tabular-nums;
+    /*
+      A number is one atomic token, so it never gives up room and never breaks — the same rule
+      we-timestamp carries, for the same reason and with the same trade.
+
+      Every typography surface defaults overflow-wrap: anywhere, which is right for a URL or a DID
+      and wrong for a figure: a flex item's automatic minimum size is its content, so a number in a
+      row that has run short is asked to narrow, and "53" obliges by putting the 5 above the 3. That
+      is not a smaller number, it is an unreadable one — and it happened in two places at once on a
+      slider, where the count and the live value are both squeezed between a glyph and the track.
+
+      The trade is deliberate and matches the timestamp's: in a genuinely too-narrow box it overflows
+      rather than stacking. Legible and visibly wrong beats quietly mangled, and a figure that must
+      be clipped belongs in a we-text.
+
+      (No backticks in here: this is a tagged template literal, and one ends the string.)
+    */
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 `;
 

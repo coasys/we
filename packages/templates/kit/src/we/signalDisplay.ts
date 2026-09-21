@@ -301,24 +301,38 @@ function mark(opts: Resolved, as: string): SchemaNode {
  * All of them by default, whether or not anybody has used them, which is the difference from a card
  * and the reason this mode exists: a type a community defined and nobody has used yet is exactly the
  * one that needs a control, and hiding it leaves a vocabulary unreachable from every surface at once.
+ *
+ * ## A row among other things, or a list that owns the space — which is what `inline` already meant
+ *
+ * `inline` is the caller saying whether this display sits among other controls or owns its line, and
+ * the two want genuinely different layouts rather than the same one with more padding.
+ *
+ * **Inline** is a wrapping row of bare controls, for a card's footer beside a comment count. The
+ * names live in tooltips because there is no room to write them.
+ *
+ * **Owning the line** is a list, one type per row, each with its name and the community's own
+ * sentence about it beside its control. A wrapping row in a panel blurs four types into one strip —
+ * a heart, some stars, two arrows and a slider running together with nothing saying where one ends
+ * and the next begins, and a slider in particular has no room to be dragged. A panel is also where
+ * somebody is *reading* the vocabulary rather than reaching past it, so the words belong on screen
+ * and the tooltip goes: `meaning` exists to say in a bubble what there was no room to write, and
+ * here there is room.
+ *
+ * The sheet is this layout too, which is why it no longer has one of its own.
  */
 function fullRow(opts: Resolved, as: string): SchemaNode {
+  if (!opts.inline) return fullList(opts, as);
   return {
     /*
       Wrapping, and a floor under its height.
 
-      A community may offer five types and a panel is 320px wide, so the row wraps rather than
-      pushing the panel's own scroll sideways. The floor is what stops the section appearing a frame
+      A community may offer five types and a card is 320px wide, so the row wraps rather than
+      pushing the card's own scroll sideways. The floor is what stops the section appearing a frame
       late and shoving everything below it down: the controls are buttons, which have a height the
       moment they exist and none before the subscription answers.
     */
     type: 'Row',
-    props: {
-      gap: opts.size === 'xs' ? '300' : '400',
-      ay: 'center',
-      wrap: true,
-      ...(opts.inline ? {} : { width: '100%', minHeight: '40px' }),
-    },
+    props: { gap: opts.size === 'xs' ? '300' : '400', ay: 'center', wrap: true },
     children: [
       {
         type: '$each',
@@ -327,6 +341,54 @@ function fullRow(opts: Resolved, as: string): SchemaNode {
       },
       // And a way to mean something the community has no reaction for yet — see `newType`.
       ...newType(opts, { labelled: false }),
+    ],
+  };
+}
+
+/** One type per row, each saying what it is — see `fullRow` for when this is the shape. */
+function fullList(opts: Resolved, as: string): SchemaNode {
+  return {
+    type: 'Column',
+    // The floor is `fullRow`'s, for the same reason: the section must not appear a frame late and
+    // shove everything under it down once the subscription answers.
+    props: { width: '100%', gap: '400', minHeight: '40px' },
+    children: [
+      {
+        type: '$each',
+        props: { items: { $: typesShown(opts) }, as },
+        children: [
+          {
+            type: 'Row',
+            props: { width: '100%', ay: 'center', gap: '400' },
+            children: [
+              {
+                // Takes the room and gives it up: a long description wraps rather than pushing the
+                // control off the edge.
+                type: 'Column',
+                props: { flex: '1 1 auto', minWidth: '0', gap: '100' },
+                children: [
+                  { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${as}.name` }] },
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `${as}.description` },
+                      then: {
+                        type: 'we-text',
+                        props: { fontSize: '100', color: 'text-muted' },
+                        children: [{ $: `${as}.description` }],
+                      },
+                    },
+                  },
+                ],
+              },
+              // Never absorbs somebody else's overflow: a rating is five glyphs and a slider is a
+              // track, and neither has a narrower form worth having.
+              { type: 'Row', props: { flex: '0 0 auto' }, children: [control(opts, as)] },
+            ],
+          },
+        ],
+      },
+      ...newType(opts, { labelled: true }),
     ],
   };
 }
@@ -513,63 +575,19 @@ function modal(opts: Resolved, as: string): SchemaNode {
           // lands in the modal's scrolling body instead of its header.
           { type: 'we-text', slot: 'header', props: { variant: 'heading-md' }, children: ['Reactions'] },
           /*
-            A list, not the row with more room around it.
+            The same list a panel draws, which is what `fullRow` answers with when it owns the line.
 
-            The sheet used to render `fullRow`, which is every control side by side — the right shape
-            for a panel, where the reader already knows what the glyphs mean and wants them out of
-            the way. It is the wrong one here. Somebody opens this sheet *because* they did not know:
-            four glyphs in a line, each meaning whatever this community decided it means, with the
-            names only in tooltips they have to find one at a time.
+            It briefly had a copy of that layout here, written when `full` was still a wrapping row
+            and the sheet needed something better. Then the panel wanted the better one too — so the
+            layout moved into `fullRow` and this went back to one call. Two spellings of "one type
+            per row with its name beside it" is two chances to drift, which is the whole reason this
+            fragment exists.
 
-            So one row per type, each carrying the name and the community's own sentence about it
-            beside its control. The tooltip goes with it — `meaning` exists to say in a bubble what
-            there was no room to write, and there is room to write it here, so a bubble repeating the
-            line next to it would be chrome.
+            `inline: false` is what asks for it, and `showUnused` is forced: the sheet is where the
+            rest are reached from, so arriving to find it showing the same subset as the row behind
+            it would be a door onto the room you were already in.
           */
-          {
-            type: 'Column',
-            props: { width: '100%', gap: '400' },
-            children: [
-              {
-                type: '$each',
-                props: { items: { $: typesShown({ ...opts, mode: 'full', showUnused: true }) }, as },
-                children: [
-                  {
-                    type: 'Row',
-                    props: { width: '100%', ay: 'center', gap: '400' },
-                    children: [
-                      {
-                        // Takes the room, and gives it up: a long description wraps rather than
-                        // pushing the control off the edge of the sheet.
-                        type: 'Column',
-                        props: { flex: '1 1 auto', minWidth: '0', gap: '100' },
-                        children: [
-                          { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${as}.name` }] },
-                          {
-                            type: '$if',
-                            props: {
-                              condition: { $: `${as}.description` },
-                              then: {
-                                type: 'we-text',
-                                props: { fontSize: '100', color: 'text-muted' },
-                                children: [{ $: `${as}.description` }],
-                              },
-                            },
-                          },
-                        ],
-                      },
-                      {
-                        type: 'Row',
-                        props: { flex: '0 0 auto' },
-                        children: [control(opts, as)],
-                      },
-                    ],
-                  },
-                ],
-              },
-              ...newType(opts, { labelled: true }),
-            ],
-          },
+          fullRow({ ...opts, mode: 'full', showUnused: opts.showUnused ?? true, inline: false }, as),
         ],
       },
     },

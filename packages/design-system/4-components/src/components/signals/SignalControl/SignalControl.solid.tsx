@@ -42,6 +42,18 @@ export function SignalControl(props: SignalControlProps) {
   /** Unified reactive value */
   const value = () => myValue();
 
+  /**
+   * Whether this agent's own reaction satisfies a test — the vote's "is this arrow mine".
+   *
+   * One helper because the answer is read three times per arrow (the colour, the hover colour and
+   * what the press should write) and a fourth spelling of `value() !== null && value()! > 0` is a
+   * fourth chance for one of them to disagree with the others.
+   */
+  const mineIs = (test: (v: number) => boolean) => {
+    const v = value();
+    return v !== null && test(v);
+  };
+
   /** Unified signal emitter */
   const signal = (v: number) => {
     if (props.preview) setPreviewValue(v);
@@ -84,25 +96,46 @@ export function SignalControl(props: SignalControlProps) {
           />
         </Match>
 
-        {/* Vote */}
+        {/*
+          Vote — an arrow each way, and the GLYPH is what says which one is yours.
+
+          It used to be the button: `primary` when yours and `ghost` otherwise, which paints a solid
+          accent rectangle around the arrow. That is a different language from every other mode here
+          — a like is a filled heart, a rating is filled stars — so one vocabulary said "mine" three
+          ways on one card, and the loudest of the three was the one on the control nobody had
+          pressed most recently.
+
+          `bare` is the appearance-free variant and inherits its colour, so the same pair
+          `CountMark` uses reaches the icon: accent when it is yours, a quiet neutral when it is not,
+          one step more present under the pointer. A scale position rather than a role for the
+          reason `CountMark` records — `text-faint` is tuned for the strokes of text and reads loud
+          as solid ink.
+        */}
         <Match when={props.signalType.mode === 'vote'}>
           <Row class="signal-control__vote" ay="center" gap={gap()}>
             <we-button
-              variant={value() !== null && value()! > 0 ? 'primary' : 'ghost'}
+              variant="bare"
               size={size()}
               square
+              color={mineIs((v) => v > 0) ? 'primary-500' : 'neutral-300'}
+              prop:hoverProps={{ color: mineIs((v) => v > 0) ? 'primary-500' : 'neutral-400' }}
               disabled={isDisabled()}
-              onClick={() => signal(value() !== null && value()! > 0 ? 0 : 1)}
+              label="Vote up"
+              onClick={() => signal(mineIs((v) => v > 0) ? 0 : 1)}
             >
               <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
             </we-button>
+            {/* The community's net score, which is nobody's in particular — so it stays text. */}
             <we-number class="signal-control__count" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
             <we-button
-              variant={value() !== null && value()! < 0 ? 'primary' : 'ghost'}
+              variant="bare"
               size={size()}
               square
+              color={mineIs((v) => v < 0) ? 'primary-500' : 'neutral-300'}
+              prop:hoverProps={{ color: mineIs((v) => v < 0) ? 'primary-500' : 'neutral-400' }}
               disabled={isDisabled()}
-              onClick={() => signal(value() !== null && value()! < 0 ? 0 : -1)}
+              label="Vote down"
+              onClick={() => signal(mineIs((v) => v < 0) ? 0 : -1)}
             >
               <we-icon name={props.signalType.iconSecondary || props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
             </we-button>
@@ -182,7 +215,19 @@ export function SignalControl(props: SignalControlProps) {
           <Row class="signal-control__slider" ay="center" gap={gap()}>
             {/* Community mean shown on the left */}
             <we-number class="signal-control__agg" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
-            <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
+            {/*
+              And the glyph says whether the reading is yours, as it does in every other mode.
+
+              It inherited its colour, so on a dark theme it was white whether you had touched the
+              slider or not — the one mode where a reaction gave no sign of being yours. `color` on
+              a `we-icon` is a Layout-tier prop and lands on the element itself, so no wrapper is
+              needed.
+            */}
+            <we-icon
+              name={props.signalType.icon}
+              weight={SIGNAL_GLYPH_WEIGHT}
+              color={value() !== null ? 'primary-500' : 'neutral-300'}
+            />
             <we-slider
               min={props.signalType.rangeMin}
               max={props.signalType.rangeMax}

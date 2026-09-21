@@ -8,17 +8,21 @@
  */
 export const name = 'signal densities';
 export const scenario = 'signals:vocabulary';
-export const widths = [420];
+/*
+  320 as well as 420, because two of the things this case now checks are about a control that has
+  been squeezed: a slider's number stacking its own digits, and a list of types staying one per row.
+*/
+export const widths = [320, 420];
 
-/** What the scenario puts on the record: two likes, two ratings, two votes. */
-const REACTIONS = 6;
-/** Offered types. Three have been used; `Spark` has not. */
-const OFFERED = 4;
-const USED = 3;
+/** What the scenario puts on the record: two each of like, rating, vote and mood. */
+const REACTIONS = 8;
+/** Offered types. Four have been used; `Spark` has not. */
+const OFFERED = 5;
+const USED = 4;
 /** Of the offered, the ones whose control IS a mark — `Like` and the unused `Spark`. */
 const TOGGLES = 2;
 
-export async function check({ measureAll, measurePart, measureControl, count }) {
+export async function check({ measureAll, measurePart, measureControl, count }, width) {
   const problems = [];
 
   /*
@@ -78,14 +82,46 @@ export async function check({ measureAll, measurePart, measureControl, count }) 
   }
 
   /*
-    And every mark says what the community means by it.
+    And every compact mark says what the community means by it.
 
     A glyph is a heart or a star; what it MEANS is whatever the space decided, which is written in
     the type's description and was shown nowhere a reader would look. Two spaces can both have a
     star and mean quite different things by it.
+
+    Only the compact ones, now. A full display that owns its line writes each name and description
+    out beside its control, so a bubble repeating the line next to it would be chrome — `meaning`
+    exists to say in a bubble what there was no room to write.
   */
   const tooltips = await count('we-tooltip');
-  if (tooltips < USED + OFFERED) problems.push(`${tooltips} tooltips, expected one per drawn type`);
+  if (tooltips < USED) problems.push(`${tooltips} tooltips, expected one per compact mark`);
+
+  /*
+    The full display is a LIST — one type per row, not a strip they all run together in.
+
+    A wrapping row in a panel blurs five types into one line: a heart, some stars, two arrows and a
+    slider with nothing saying where one ends and the next begins, and the slider with no room to be
+    dragged. Asserted as "no two controls share a top edge", which is what one-per-row means and what
+    a wrapping row fails at every width wide enough to fit two.
+  */
+  const rows = await measureAll('.signal-control');
+  const tops = rows.filter((box) => box.h).map((box) => Math.round(box.y));
+  const shared = tops.filter((top, i) => tops.indexOf(top) !== i);
+  if (shared.length) {
+    problems.push(`${shared.length + 1} controls share a row at ${shared[0]}px — the full list is drawn as a strip`);
+  }
+
+  /*
+    And a number is one line, whatever room it is given.
+
+    Every typography surface defaults `overflow-wrap: anywhere`, which is right for a URL and wrong
+    for a figure — so the slider's reading, squeezed between a glyph and its track, put the 5 above
+    the 3 of "53". Measured as height rather than as text, because the digits are all still there:
+    the failure is that they are stacked.
+  */
+  const digits = await measureAll('we-number');
+  for (const box of digits.filter((one) => one.h)) {
+    if (box.h > 24) problems.push(`a number is ${box.h}px tall at ${width}px — its digits are stacked`);
+  }
 
   return problems;
 }

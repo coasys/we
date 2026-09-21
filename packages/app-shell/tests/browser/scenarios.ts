@@ -294,6 +294,9 @@ const vocabulary = (): Scenario => {
     { signalTypeId: 'st-stars', value: 4, author: 'did:me' },
     { signalTypeId: 'st-vote', value: 1, author: 'did:them' },
     { signalTypeId: 'st-vote', value: -1, author: 'did:me' },
+    // A two-digit reading on a 0–100 scale, which is what made the number stack its own digits.
+    { signalTypeId: 'st-mood', value: 70, author: 'did:them' },
+    { signalTypeId: 'st-mood', value: 53, author: 'did:me' },
   ];
   const modes = ['total', 'compact', 'full'] as const;
   return {
@@ -343,6 +346,16 @@ const vocabulary = (): Scenario => {
           mode: 'vote',
           rangeMin: -1,
           rangeMax: 1,
+        },
+        {
+          id: 'st-mood',
+          name: 'Mood',
+          slug: 'mood',
+          description: 'How the room feels, nought to a hundred.',
+          icon: 'sun',
+          mode: 'slider',
+          rangeMin: 0,
+          rangeMax: 100,
         },
         // Offered and unused: `full` shows it, `compact` and `total` do not.
         { id: 'st-spark', name: 'Spark', slug: 'spark', icon: 'lightning', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
