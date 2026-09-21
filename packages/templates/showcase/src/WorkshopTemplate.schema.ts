@@ -70,6 +70,7 @@ import {
   foldingSectionLabel,
   formModal,
   linkedRecords,
+  newSignalTypeButton,
   panelHeader,
   panelScroll,
   peopleFilter,
@@ -1797,15 +1798,27 @@ const reactionsSection: SchemaNode = {
   props: { gap: '100', width: '100%' },
   children: [
     foldingSectionLabel({
-      label: 'Reactions',
+      label: 'Signals',
       count: 'signalTally({ signals: row.signals })',
       open: { field: 'reactionsOpen' },
+      /*
+        The plus goes here, beside the count, where every other per-section control in this panel
+        sits — not at the foot of the list as a full-width button.
+
+        A reaction type is a thing about the SECTION rather than about any reaction in it, and a
+        button under the last type reads as belonging to that type. The list keeps rendering the
+        form, from the flag declared on the panel; this only opens it.
+      */
+      action: newSignalTypeButton({ open: 'newSignalTypeOpen' }),
     }),
     foldingBody({
       open: { field: 'reactionsOpen' },
       children: [
         signalDisplay({
           record: 'row',
+          // The plus is in the section's heading, so the list draws none of its own. The form is
+          // still this fragment's, bound to the flag the panel declares.
+          newTypeOpen: 'newSignalTypeOpen',
           /*
         A space arrives with no reactions at all — nothing seeds a heart on a community's behalf, and
         that is the design rather than an omission. Without this the section was a caption over empty
@@ -1939,6 +1952,9 @@ const inspectorPanel: SchemaNode = {
       preference outranks the declaration, so keeping the old keys would mean shipping a default
       nobody who had already opened the inspector would ever see.
     */
+    // Opened from the Signals heading, and read by the form `signalDisplay` renders — so it is
+    // declared above both of them.
+    newSignalTypeOpen: { type: 'boolean', initial: false },
     connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
     connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
     peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },

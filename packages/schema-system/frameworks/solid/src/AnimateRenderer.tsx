@@ -270,7 +270,24 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
     const a = animationCSS();
     if (a) style.animation = a;
     if (hasReveal) {
-      style.display = 'grid';
+      /*
+        A closed section is taken out of the layout, not merely clipped to nothing.
+
+        `0fr` gives it no height, and a zero-height box is still a flex item — so the column holding
+        it goes on spending its `gap` on the gap either side of a section that is not there. In the
+        inspector that read as one section sitting further from its neighbour than the rest, which
+        is a strange thing to chase because there is nothing between them to find.
+
+        `display: none` keeps the subtree MOUNTED, which is the whole point of `condition` over
+        `$if` — a half-typed field, a scroll position — while taking it out of the flow. Set only
+        once the animation has settled, so opening and closing still animate: the style goes back to
+        `grid` the moment `animating` is true.
+
+        Scoped to a condition-driven reveal. A scroll trigger's closed state must stay in the layout
+        or the IntersectionObserver watching it has nothing to observe, and the section never opens.
+      */
+      const gone = hasCondition && !open() && !animating();
+      style.display = gone ? 'none' : 'grid';
       style[revealTrackProperty(hasReveal)] = open() ? '1fr' : '0fr';
     }
     // A reveal already clips a closed section to zero area, so nothing inside is reachable.

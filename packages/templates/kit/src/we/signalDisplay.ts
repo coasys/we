@@ -50,6 +50,19 @@ import { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './signalTypes.ts
  *   reads zero while the reactions are plainly there.
  */
 export interface SignalDisplayOptions {
+  /**
+   * A `$localState` boolean the CALLER declares, when it is drawing the "new signal type" control
+   * itself.
+   *
+   * A panel that draws its reactions under a folding heading wants the plus in that heading, beside
+   * the count — and the heading belongs to the panel, not to this. Naming a flag here says "I have
+   * put the control somewhere": the list stops drawing its own button at the foot, and the form
+   * goes on being rendered once, from this flag, so there is still exactly one of it.
+   *
+   * Pair it with `newSignalTypeButton`, and declare the flag above BOTH — `$setLocal` only reaches
+   * a field an ancestor of the button declared.
+   */
+  newTypeOpen?: string;
   /** Context key of the record being reacted to — `'row'`, `'link'`, `'card'`. */
   record: string;
   /** How much room this surface has. Defaults to `full`. */
@@ -242,7 +255,10 @@ function meaning(opts: Resolved, as: string, children: SchemaNode[]): SchemaNode
                 type: 'Row',
                 props: { ay: 'center', gap: '200' },
                 children: [
-                  { type: 'we-icon', props: { name: { $: `${as}.icon` }, size: 'xs', flexShrink: '0' } },
+                  {
+                    type: 'we-icon',
+                    props: { name: { $: `${as}.icon` }, size: 'xs', weight: 'fill', flexShrink: '0' },
+                  },
                   { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: `${as}.name` }] },
                 ],
               },
@@ -756,8 +772,20 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                 },
               },
               {
+                /*
+                  Top-aligned, not centred.
+
+                  The controls are four different heights — a toggle is one glyph, a vote is two
+                  buttons and a score, a rating is five glyphs, a slider is a track — and a row that
+                  centres them puts each type's NAME at a different distance from the line above it.
+                  Read down the column, the headings stagger, and the type with the tallest control
+                  looks like it has been given extra room.
+
+                  So the name and the control both start at the top of the row, and a taller control
+                  grows downwards into its own section rather than pushing its own heading about.
+                */
                 type: 'Row',
-                props: { width: '100%', ay: 'center', ax: 'between', gap: '300' },
+                props: { width: '100%', ay: 'start', ax: 'between', gap: '300' },
                 children: [
                   {
                     /*
@@ -777,13 +805,29 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                     children: [
                       {
                         type: 'we-icon',
-                        props: { name: { $: `${as}.icon` }, size: 'xs', color: 'text-muted', flexShrink: '0' },
+                        props: {
+                          name: { $: `${as}.icon` },
+                          size: 'xs',
+                          weight: 'fill',
+                          color: 'text-muted',
+                          flexShrink: '0',
+                        },
                       },
                       {
                         // Truncates rather than wrapping: a name long enough to need two lines is a
                         // name to shorten, not to stack.
                         type: 'we-text',
-                        props: { variant: 'label', flex: '1 1 auto', minWidth: '0', truncate: true },
+                        props: {
+                          variant: 'label',
+                          flex: '1 1 auto',
+                          minWidth: '0',
+                          truncate: true,
+                          // The height of the shortest control, so a name sits on the same line as
+                          // the glyph beside it rather than a few pixels above it.
+                          height: 'var(--we-component-height-xs)',
+                          display: 'flex',
+                          ay: 'center',
+                        },
                         children: [{ $: `${as}.name` }],
                       },
                     ],
@@ -815,35 +859,61 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                 Collapsed by default on both, because a vocabulary of four types with six reactions
                 each is twenty-four rows of people in front of whatever the reader actually opened.
               */
-              reactorSummary(opts, as),
+              /*
+                One person is shown; two or more are summarised.
+
+                A summary says "1 person" beside one face, behind a press that reveals one row —
+                three pieces of indirection standing in front of a fact that is shorter than the
+                thing hiding it. The collapse earns its place the moment there is a list to keep out
+                of the way, and not before.
+              */
               {
                 type: '$if',
                 props: {
-                  /*
-                    A search opens every type it matched, whether or not the reader had opened it.
-
-                    Typing a name into the sheet IS the request to see the names, and rows that
-                    stayed shut would hide the very answer being searched for — while the types
-                    nobody matching used drop out of their own accord, so an open row means a hit.
-                  */
-                  condition: {
-                    $: roster
-                      ? `${as}.id in local.${EXPANDED} || trim(local.${SEARCH}) != ''`
-                      : `${as}.id in local.${EXPANDED}`,
-                  },
-                  // Opening in place, so the rows ease the panel taller rather than appearing in it.
-                  enterTransition: [
-                    { type: 'reveal', duration: 200 },
-                    { type: 'fade', duration: 150 },
-                  ],
+                  condition: { $: `${reactorsOf(opts.record, as)}.total == 1` },
                   then: reactorList(opts, as, { searchable: roster }),
+                  else: {
+                    type: 'Column',
+                    props: { width: '100%' },
+                    children: [
+                      reactorSummary(opts, as),
+                      {
+                        type: '$if',
+                        props: {
+                          /*
+                            A search opens every type it matched, whether or not the reader had
+                            opened it.
+
+                            Typing a name into the sheet IS the request to see the names, and rows
+                            that stayed shut would hide the very answer being searched for — while
+                            the types nobody matching used drop out of their own accord, so an open
+                            row means a hit.
+                          */
+                          condition: {
+                            $: roster
+                              ? `${as}.id in local.${EXPANDED} || trim(local.${SEARCH}) != ''`
+                              : `${as}.id in local.${EXPANDED}`,
+                          },
+                          // Opening in place, so the rows ease the panel taller rather than
+                          // appearing in it.
+                          enterTransition: [
+                            { type: 'reveal', duration: 200 },
+                            { type: 'fade', duration: 150 },
+                          ],
+                          then: reactorList(opts, as, { searchable: roster }),
+                        },
+                      },
+                    ],
+                  },
                 },
               },
             ],
           },
         ],
       },
-      ...newType(opts, { labelled: true, under: typesCounted(opts) }),
+      // Nothing at the foot when the caller has put the control in its own heading — see
+      // `newTypeOpen`.
+      ...(opts.newTypeOpen ? [] : newType(opts, { labelled: true, under: typesCounted(opts) })),
     ],
   };
 }
@@ -882,7 +952,7 @@ function newType(opts: Resolved, { labelled, under }: { labelled: boolean; under
       size: opts.size === 'xs' && !labelled ? 'xs' : 'sm',
       ...(labelled ? {} : { color: 'text-faint', hoverProps: { color: 'text' } }),
       label: 'New reaction type',
-      onClick: { $setLocal: NEW_TYPE_OPEN, value: true },
+      onClick: { $setLocal: opts.newTypeOpen ?? NEW_TYPE_OPEN, value: true },
     },
     children: [
       { type: 'we-icon', props: { name: 'plus' } },
@@ -946,8 +1016,8 @@ function newTypeForm(opts: Resolved): SchemaNode[] {
       props: {
         condition: { $: 'spaceStore.canAdministerCurrentSpace' },
         then: createSignalTypeModal({
-          open: { $: `local.${NEW_TYPE_OPEN}` },
-          close: { $setLocal: NEW_TYPE_OPEN, value: false },
+          open: { $: `local.${opts.newTypeOpen ?? NEW_TYPE_OPEN}` },
+          close: { $setLocal: opts.newTypeOpen ?? NEW_TYPE_OPEN, value: false },
         }),
       },
     },
@@ -1162,7 +1232,9 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
           [EXPANDED]: { type: 'array', initial: [] },
           // Declared in every mode: `fullRow` carries the button that sets it, and `fullRow` is
           // both what `full` renders and what the sheet holds.
-          [NEW_TYPE_OPEN]: { type: 'boolean', initial: false },
+          // Only where this display owns it. A caller that named its own has declared it above
+          // both its button and this, which is what `$setLocal` needs.
+          ...(opts.newTypeOpen ? {} : { [NEW_TYPE_OPEN]: { type: 'boolean', initial: false } }),
         },
         /*
           The sheet is built only where something can open it. A read-only display has no door —

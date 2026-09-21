@@ -10,6 +10,48 @@ export interface CreateSignalTypeModalOptions {
 }
 
 /**
+ * The plus that opens that form, sized for a section heading.
+ *
+ * Exported because the affordance and the list it belongs to are not always in the same place: a
+ * panel that draws its reactions under a folding heading wants the plus IN that heading, beside the
+ * count, where every other per-section control in the app sits — and a heading is the template's,
+ * not the reaction list's. The flag is the caller's for the same reason: `$setLocal` only reaches a
+ * field an ancestor of the BUTTON declared, and the list's own root is not an ancestor of the row
+ * above it.
+ *
+ * Gated on administering the space, because defining a reaction names something every member will
+ * then see. A member without the right sees the reactions and no plus, which is what they see in
+ * Settings → Vocabulary too.
+ */
+export function newSignalTypeButton(options: { open: string }): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+      then: {
+        type: 'we-tooltip',
+        props: { content: 'New signal type' },
+        children: [
+          {
+            type: 'we-button',
+            // `xs`, which is the size a section heading's aside is — see `sectionLabel`, which
+            // reserves exactly that much room for one.
+            props: {
+              variant: 'ghost',
+              size: 'xs',
+              square: true,
+              label: 'New signal type',
+              onClick: { $setLocal: options.open, value: true },
+            },
+            children: [{ type: 'we-icon', props: { name: 'plus' } }],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
  * Defining a new kind of reaction for this community.
  *
  * A function rather than the constant this was, because it is opened from two places now: the

@@ -1024,6 +1024,37 @@ describe('contracts call sites depend on', () => {
     expect(JSON.stringify(full)).not.toContain('signalTypeOrder');
   });
 
+  it('shows a lone reactor instead of summarising them', () => {
+    /*
+      "1 person" beside one face, behind a press that reveals one row: three pieces of indirection
+      in front of a fact shorter than the thing hiding it. The collapse earns its place once there
+      is a list to keep out of the way.
+    */
+    const full = signalDisplay({ record: 'row', mode: 'full', as: 'sig' });
+    let direct = 0;
+    walk(full, (n) => {
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (condition?.includes('.total == 1')) direct += 1;
+    });
+    expect(direct, 'one reactor is still summarised').toBeGreaterThan(0);
+  });
+
+  it('draws no create button of its own when the caller has one', () => {
+    /*
+      A reaction type is a thing about the SECTION, so the plus belongs in its heading beside the
+      count — and the heading is the panel's, not this fragment's. Naming a flag says "I have put
+      the control somewhere"; what must not happen is two of them, or a form bound to a flag
+      nothing declares.
+    */
+    const owned = JSON.stringify(signalDisplay({ record: 'row', mode: 'full', as: 'sig', newTypeOpen: 'mine' }));
+    expect(owned).not.toContain('New reaction type');
+    expect(owned, 'the form is no longer opened by the flag the caller named').toContain('"$setLocal":"mine"');
+    expect(owned, 'it declared a flag the caller owns').not.toContain('"signalTypeFormOpen":{');
+
+    // And on its own it still offers one.
+    expect(JSON.stringify(signalDisplay({ record: 'row', mode: 'full', as: 'sig' }))).toContain('New reaction type');
+  });
+
   it('a search opens the rows it matched', () => {
     /*
       Collapsed by default, and a search is the request to see the names — so a row that stayed shut
