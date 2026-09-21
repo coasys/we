@@ -1545,6 +1545,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "ticks",
+          "type": "'auto' | 'on' | 'off'",
+          "optional": false,
+          "default": "'auto'"
         }
       ]
     },

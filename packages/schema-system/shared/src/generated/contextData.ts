@@ -556,6 +556,7 @@ export const contextData: ContextData = {
         { name: 'label', type: 'string', optional: false, default: "''" },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'showValue', type: 'boolean', optional: false, default: 'false' },
+        { name: 'ticks', type: "'auto' | 'on' | 'off'", optional: false, default: "'auto'" },
       ],
     },
     {
