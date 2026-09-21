@@ -92,6 +92,18 @@ export interface SignalDisplayOptions {
 const MODAL_OPEN = 'signalsModalOpen';
 
 /**
+ * How many people the hover bubble names before it stops naming them.
+ *
+ * Five is where a bubble stops being a glance. Below it the rows answer the question outright;
+ * above it they start covering the thing being explained, and the sheet — which can be searched —
+ * is the better surface anyway.
+ */
+const TOOLTIP_PEOPLE = 5;
+
+/** Which types have their people rows open, by type id — see `reactorSummary`. */
+const EXPANDED = 'expandedReactors';
+
+/**
  * The same, for the form that defines a new reaction type.
  *
  * Declared on the root beside `MODAL_OPEN` rather than inside either surface that offers it, since
@@ -198,44 +210,47 @@ function meaning(opts: Resolved, as: string, children: SchemaNode[]): SchemaNode
                 },
               },
               /*
-                And who has reacted with it — faces and a number, not a list of names.
+                And who has reacted with it, by name — up to five of them, with what each gave.
 
-                A compact mark says nothing about who is behind it, and the bubble explaining what
-                the mark MEANS is where somebody is already looking. Faces because they read at a
-                glance and take one line whatever the count; the names and the values are in the
-                sheet, where they can be searched.
+                This was faces and a number, on the argument that the names belong in the sheet
+                where they can be searched. The argument was wrong about the common case: most
+                records have a handful of reactions, five rows answer the question completely, and
+                making somebody open a sheet — and then read past every other type in the
+                vocabulary — to learn that Anna and Ben liked it is a long way round to a short
+                answer.
 
-                Deliberately not a roster. `peopleTooltip` lists everybody for a stated reason —
-                the ones it hides are unreachable any other way — and that reason stops applying the
-                moment there is a searchable sheet. Cramming ten rows in here would also make the
-                one surface a touchscreen cannot reach the only place the answer lives.
+                Five, and then a count of the rest. Past that the sheet is genuinely the better
+                surface: a bubble tall enough to list twenty people is a bubble that covers what it
+                is explaining, and it is still the one surface a touchscreen cannot open.
               */
               {
                 type: '$if',
                 props: {
                   condition: { $: `count(${reactorsOf(opts.record, as)}.people)` },
                   then: {
-                    type: 'Row',
-                    props: { ay: 'center', gap: '200', pt: '100' },
+                    type: 'Column',
+                    props: { width: '100%', gap: '100', pt: '100' },
                     children: [
                       {
-                        type: 'AvatarStack',
+                        type: '$each',
                         props: {
-                          avatars: {
-                            $: `${reactorsOf(opts.record, as)}.people.map(p, { image: p.avatar, hash: p.did })`,
-                          },
-                          max: 5,
-                          size: 'xs',
+                          items: { $: `filter(${reactorsOf(opts.record, as)}.people, {}, ${TOOLTIP_PEOPLE})` },
+                          as: `${as}Face`,
                         },
+                        // `inverse`: the bubble is `surface-inverse`, where the muted foreground a
+                        // row wears on a panel is measured against the wrong thing entirely.
+                        children: [reactorRow(as, `${as}Face`, { inverse: true })],
                       },
                       {
-                        type: 'we-text',
-                        props: { variant: 'footnote' },
-                        children: [
-                          {
-                            $: `\`\${${reactorsOf(opts.record, as)}.total} \${plural(${reactorsOf(opts.record, as)}.total, 'person', 'people')}\``,
+                        type: '$if',
+                        props: {
+                          condition: { $: `${reactorsOf(opts.record, as)}.total > ${TOOLTIP_PEOPLE}` },
+                          then: {
+                            type: 'we-text',
+                            props: { variant: 'footnote' },
+                            children: [{ $: `\`\${${reactorsOf(opts.record, as)}.total - ${TOOLTIP_PEOPLE}} more…\`` }],
                           },
-                        ],
+                        },
                       },
                     ],
                   },
@@ -399,17 +414,49 @@ const reactorsOf = (record: string, as: string, search?: string) =>
   } })`;
 
 /**
- * The faces of everybody who reacted with this type, and how many.
+ * The faces of everybody who reacted with this type, and how many — and the way to their names.
  *
- * Read at a glance and pressable: the sheet is where the names and the values are, and this is both
- * the summary and the way there. One control rather than a face-strip beside a separate button, for
- * the reason `peopleTooltip` gives about `AvatarStack` — what a reader reaches for is the faces AND
- * the count, which together are the thing that says "twelve people".
+ * Collapsed by default, because a panel showing four types with six reactions each is
+ * twenty-four rows of people where the reader came to see the reactions. The faces and the count
+ * are what answers at a glance; the names are one press away, and the press is the whole row
+ * rather than the caret, since a caret is a five-millimetre target for a question the entire line
+ * is asking.
+ *
+ * A read-only display gets the summary and no press: it is drawing rather than offering, and a
+ * card being dragged should not grow a disclosure.
  *
  * Absent where nobody has reacted, so an offered type nobody has used stays two lines.
  */
-function reactorFaces(opts: Resolved, as: string): SchemaNode {
+function reactorSummary(opts: Resolved, as: string): SchemaNode {
   const roster = reactorsOf(opts.record, as);
+  const faces: SchemaNode = {
+    type: 'Row',
+    props: { width: '100%', ay: 'center', gap: '200' },
+    children: [
+      {
+        type: 'AvatarStack',
+        props: {
+          avatars: { $: `${roster}.people.map(p, { image: p.avatar, hash: p.did })` },
+          max: 4,
+          size: 'xs',
+        },
+      },
+      {
+        type: 'we-text',
+        props: { fontSize: '100', flex: '1 1 auto', minWidth: '0', truncate: true },
+        children: [{ $: `\`\${${roster}.total} \${plural(${roster}.total, 'person', 'people')} signalled\`` }],
+      },
+      ...(opts.readOnly
+        ? []
+        : [
+            {
+              type: 'we-icon',
+              props: { name: { $: `${as}.id in local.${EXPANDED} ? 'caret-up' : 'caret-down'` }, size: '12px' },
+            } as SchemaNode,
+          ]),
+    ],
+  };
+
   return {
     type: '$if',
     props: {
@@ -419,32 +466,20 @@ function reactorFaces(opts: Resolved, as: string): SchemaNode {
         props: {
           variant: 'bare',
           size: 'xs',
+          width: '100%',
           color: 'text-muted',
           hoverProps: { color: 'text' },
           label: 'Who reacted',
-          ...(opts.readOnly ? {} : { onClick: { $setLocal: MODAL_OPEN, value: true } }),
+          /*
+            Per type, by id.
+
+            A `$localState` field name is fixed when the template is written and the types come from
+            the community, so "is this one open?" cannot be a boolean — the set of ids is the only
+            shape that can hold one answer per row that does not exist yet.
+          */
+          ...(opts.readOnly ? {} : { onClick: { $toggleLocalIn: EXPANDED, value: { $: `${as}.id` } } }),
         },
-        children: [
-          {
-            type: 'Row',
-            props: { ay: 'center', gap: '200' },
-            children: [
-              {
-                type: 'AvatarStack',
-                props: {
-                  avatars: { $: `${roster}.people.map(p, { image: p.avatar, hash: p.did })` },
-                  max: 4,
-                  size: 'xs',
-                },
-              },
-              {
-                type: 'we-text',
-                props: { fontSize: '100' },
-                children: [{ $: `\`\${${roster}.total} \${plural(${roster}.total, 'person', 'people')}\`` }],
-              },
-            ],
-          },
-        ],
+        children: [faces],
       },
     },
   };
@@ -457,7 +492,7 @@ function reactorFaces(opts: Resolved, as: string): SchemaNode {
  * same thing — the fact that they are listed is the whole of it — and a column of identical "1"s
  * beside identical hearts is noise pretending to be information.
  */
-function reactorRow(as: string, who: string): SchemaNode {
+function reactorRow(as: string, who: string, { inverse = false }: { inverse?: boolean } = {}): SchemaNode {
   return {
     type: 'Row',
     props: { width: '100%', ay: 'center', gap: '300' },
@@ -475,7 +510,7 @@ function reactorRow(as: string, who: string): SchemaNode {
           condition: { $: `${as}.rangeMax - ${as}.rangeMin > 1` },
           then: {
             type: 'Row',
-            props: { flex: '0 0 auto', ay: 'center', gap: '100', color: 'text-muted' },
+            props: { flex: '0 0 auto', ay: 'center', gap: '100', ...(inverse ? {} : { color: 'text-muted' }) },
             children: [
               { type: 'we-icon', props: { name: { $: `${as}.icon` }, weight: 'fill', size: '12px' } },
               { type: 'we-number', props: { fontSize: '100', value: { $: `${who}.value` } } },
@@ -488,17 +523,22 @@ function reactorRow(as: string, who: string): SchemaNode {
 }
 
 /**
- * Everybody who reacted with this type, by name, narrowed by whatever is in the search box.
+ * Everybody who reacted with this type, by name — what the summary row above it reveals.
  *
- * The sheet's depth, where the faces in a panel are its summary. Nothing here is fetched: the
- * record already carries every signal with its author and value, so this is a join and a sort.
+ * Nothing here is fetched: the record already carries every signal with its author and value, so
+ * this is a join and a sort.
  *
- * A search that matches nobody says whether that is because nobody matched or because nobody's
- * profile has arrived yet. The difference matters on a busy record — a name cannot be matched
- * before it exists, and "no one called that" is a different claim from "I cannot tell yet".
+ * It carries no count of its own. It used to, from when it was the sheet's whole answer and had
+ * nothing above it; now `reactorSummary` says "six people signalled" one line up, and repeating it
+ * over the rows it just opened is the same sentence twice.
+ *
+ * `searchable` is the sheet's search box, which only exists there. A search that matches nobody
+ * says whether that is because nobody matched or because nobody's profile has arrived yet — a name
+ * cannot be matched before it exists, and "no one called that" is a different claim from "I cannot
+ * tell yet".
  */
-function reactorList(opts: Resolved, as: string): SchemaNode {
-  const roster = reactorsOf(opts.record, as, SEARCH);
+function reactorList(opts: Resolved, as: string, { searchable = false }: { searchable?: boolean } = {}): SchemaNode {
+  const roster = reactorsOf(opts.record, as, searchable ? SEARCH : undefined);
   const who = `${as}Who`;
   return {
     type: '$if',
@@ -509,15 +549,6 @@ function reactorList(opts: Resolved, as: string): SchemaNode {
         props: { width: '100%', gap: '200', pt: '200' },
         children: [
           {
-            type: 'we-text',
-            props: { fontSize: '100', color: 'text-muted' },
-            children: [
-              {
-                $: `\`\${${roster}.total} \${plural(${roster}.total, 'person', 'people')}\``,
-              },
-            ],
-          },
-          {
             type: '$each',
             props: { items: { $: `${roster}.people` }, as: who },
             children: [reactorRow(as, who)],
@@ -527,7 +558,7 @@ function reactorList(opts: Resolved, as: string): SchemaNode {
             // to be missing from.
             type: '$if',
             props: {
-              condition: { $: `trim(local.${SEARCH}) && ${roster}.unresolved` },
+              condition: { $: searchable ? `trim(local.${SEARCH}) && ${roster}.unresolved` : 'false' },
               then: {
                 type: 'we-text',
                 props: { fontSize: '100', color: 'text-faint' },
@@ -603,14 +634,40 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                 },
               },
               /*
-                Who reacted — as faces and a count in a panel, and as the names themselves in the
-                sheet.
+                Who reacted: the faces and the count, and their names under them when asked for.
 
-                The same question at two depths, which is why one surface leads to the other rather
-                than answering it twice: a panel has room to say "twelve people" and the sheet has
-                room to say which twelve and what each of them gave.
+                The same shape on both surfaces now. It was faces-in-a-panel and names-in-the-sheet
+                — one leading to the other — which read well until the sheet learned to say what
+                each person gave: then the panel with the most room was the one that could not show
+                it, and the way to find out was to leave the panel.
+
+                Collapsed by default on both, because a vocabulary of four types with six reactions
+                each is twenty-four rows of people in front of whatever the reader actually opened.
               */
-              roster ? reactorList(opts, as) : reactorFaces(opts, as),
+              reactorSummary(opts, as),
+              {
+                type: '$if',
+                props: {
+                  /*
+                    A search opens every type it matched, whether or not the reader had opened it.
+
+                    Typing a name into the sheet IS the request to see the names, and rows that
+                    stayed shut would hide the very answer being searched for — while the types
+                    nobody matching used drop out of their own accord, so an open row means a hit.
+                  */
+                  condition: {
+                    $: roster
+                      ? `${as}.id in local.${EXPANDED} || trim(local.${SEARCH}) != ''`
+                      : `${as}.id in local.${EXPANDED}`,
+                  },
+                  // Opening in place, so the rows ease the panel taller rather than appearing in it.
+                  enterTransition: [
+                    { type: 'reveal', duration: 200 },
+                    { type: 'fade', duration: 150 },
+                  ],
+                  then: reactorList(opts, as, { searchable: roster }),
+                },
+              },
             ],
           },
         ],
@@ -900,6 +957,14 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
           */
           [MODAL_OPEN]: { type: 'boolean', initial: false },
           [SEARCH]: { type: 'string', initial: '' },
+          /*
+            Which types have their people showing — ids, not a boolean each.
+
+            The types come from the community, so there is no set of field names a template could
+            declare one apiece for. Per display, like the rest of these, so opening the people on
+            one card does not open them on every card in the feed.
+          */
+          [EXPANDED]: { type: 'array', initial: [] },
           // Declared in every mode: `fullRow` carries the button that sets it, and `fullRow` is
           // both what `full` renders and what the sheet holds.
           [NEW_TYPE_OPEN]: { type: 'boolean', initial: false },

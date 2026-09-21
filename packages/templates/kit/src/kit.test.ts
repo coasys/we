@@ -878,20 +878,62 @@ describe('contracts call sites depend on', () => {
     expect(forms).toBe(1);
   });
 
-  it('every mode can reach the sheet, including the one with the most room', () => {
+  it('every mode can get to who reacted, including the one with the most room', () => {
     /*
       The sheet was built only where the row hid something, so `full` — the inspector, the surface
       with the most reason to ask who reacted — was the one place with no way in. Fine while it held
       only types you could already see; not fine once it held the people.
+
+      The question is who reacted, not which surface answers it, and `full` now answers in place:
+      the summary row opens its own people rather than sending the reader to a sheet that would say
+      the same thing. So either door counts, and what this still refuses is a mode with neither.
     */
     for (const mode of ['full', 'compact', 'total'] as const) {
       const display = signalDisplay({ record: 'row', mode, as: `sig${mode}` });
-      let opens = 0;
+      let ways = 0;
       walk(display, (n) => {
-        if (n.$setLocal === 'signalsModalOpen' && n.value === true) opens += 1;
+        if (n.$setLocal === 'signalsModalOpen' && n.value === true) ways += 1;
+        if (n.$toggleLocalIn === 'expandedReactors') ways += 1;
       });
-      expect(opens, `${mode} has no way into the reactions sheet`).toBeGreaterThan(0);
+      expect(ways, `${mode} has no way to who reacted`).toBeGreaterThan(0);
     }
+  });
+
+  it('the full row opens its people in place rather than sending them to the sheet', () => {
+    /*
+      The panel with the most room was the one that could not show what each person gave — the way
+      to find out was to leave the panel for a sheet that then listed every other type as well.
+
+      Pinned as "no door to the sheet on the summary itself", because that is the regression with no
+      symptom: reinstating it would look right, and quietly mean a press on the people row jumped to
+      a modal instead of opening the rows underneath it.
+    */
+    const full = signalDisplay({ record: 'row', mode: 'full', as: 'sigFull' });
+    let expands = 0;
+    let opensSheet = 0;
+    walk(full, (n) => {
+      if (n.$toggleLocalIn === 'expandedReactors') expands += 1;
+      if (n.$setLocal === 'signalsModalOpen' && n.value === true) opensSheet += 1;
+    });
+    expect(expands, 'the full row cannot open its people').toBeGreaterThan(0);
+    expect(opensSheet, 'the full row still sends the reader to the sheet for the people').toBe(0);
+  });
+
+  it('a search opens the rows it matched', () => {
+    /*
+      Collapsed by default, and a search is the request to see the names — so a row that stayed shut
+      would hide the very answer being searched for. The types nobody matching used drop out of
+      their own accord, so an open row means a hit.
+    */
+    const sheet = subtree(weDomain['signalDisplay (compact)'], (n) => n.type === 'we-modal');
+    expect(sheet, 'no reactions sheet on a compact display').toBeTruthy();
+
+    let searchOpens = 0;
+    walk(sheet!, (n) => {
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      if (condition?.includes('expandedReactors') && condition.includes('reactorSearch')) searchOpens += 1;
+    });
+    expect(searchOpens, 'a search in the sheet does not open the rows it matched').toBeGreaterThan(0);
   });
 
   it('a read-only compact display opens nothing', () => {
