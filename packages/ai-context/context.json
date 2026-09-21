@@ -3154,7 +3154,7 @@
         },
         {
           "name": "onSignal",
-          "type": "((value: number) => void)",
+          "type": "((value: number | null) => void)",
           "optional": true
         },
         {
@@ -6943,6 +6943,7 @@
         "updateInvolvementType",
         "setInvolvementTypeRetired",
         "upsertSignal",
+        "withdrawSignal",
         "navigateToSpace",
         "openRecordRef",
         "canAdministerSpace",

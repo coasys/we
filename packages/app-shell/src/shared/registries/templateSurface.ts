@@ -478,6 +478,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // a community naming what it means by something.
     createRelationshipType: action('signals'),
     upsertSignal: action('signals'),
+    withdrawSignal: action('signals'),
     /*
       The vocabulary of states, the third of the same kind — a community naming what it means by
       something, alongside its reactions and its connections.

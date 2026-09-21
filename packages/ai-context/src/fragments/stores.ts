@@ -416,6 +416,7 @@ export const storeEntries: StoreEntry[] = [
       'updateInvolvementType',
       'setInvolvementTypeRetired',
       'upsertSignal',
+      'withdrawSignal',
       'navigateToSpace',
       'openRecordRef',
       'canAdministerSpace',
@@ -1188,7 +1189,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         uploadFile:
           '(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload',
         upsertSignal:
-          '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
+          "(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right",
+        withdrawSignal:
+          "(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears",
         navigateToSpace:
           '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
         openRecordRef:

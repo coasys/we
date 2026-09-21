@@ -381,9 +381,20 @@ function fullList(opts: Resolved, as: string): SchemaNode {
                   },
                 ],
               },
-              // Never absorbs somebody else's overflow: a rating is five glyphs and a slider is a
-              // track, and neither has a narrower form worth having.
-              { type: 'Row', props: { flex: '0 0 auto' }, children: [control(opts, as)] },
+              /*
+                A column of its own, so the glyphs line up down the list.
+
+                `flex: '0 0 auto'` alone right-aligns them, and the four modes are four different
+                widths — a heart, five stars, two arrows and a whole slider track — so the eye had
+                to find each one at a different place on its row. A basis gives them a shared left
+                edge to start from while still never absorbing somebody else's overflow: a rating is
+                five glyphs and a slider is a track, and neither has a narrower form worth having.
+              */
+              {
+                type: 'Row',
+                props: { flex: '0 0 auto', ax: 'start', minWidth: '0' },
+                children: [control(opts, as)],
+              },
             ],
           },
         ],

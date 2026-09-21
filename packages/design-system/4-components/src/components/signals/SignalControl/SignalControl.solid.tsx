@@ -1,9 +1,9 @@
 export type * from './SignalControl.types';
 
-import { createSignal, For, Match, Switch } from 'solid-js';
+import { createSignal, For, Match, Show, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
-import { SIGNAL_GLYPH_WEIGHT, tallySignals } from '../aggregate';
+import { GLYPH_SIZE, SIGNAL_GLYPH_WEIGHT, tallySignals } from '../aggregate';
 import { CountMark } from '../CountMark/CountMark.solid';
 import type { SignalControlProps } from './SignalControl.types';
 
@@ -54,8 +54,10 @@ export function SignalControl(props: SignalControlProps) {
     return v !== null && test(v);
   };
 
-  /** Unified signal emitter */
-  const signal = (v: number) => {
+  /**
+   * Unified signal emitter. `null` withdraws — see `upsertSignal` for why that is not a zero.
+   */
+  const signal = (v: number | null) => {
     if (props.preview) setPreviewValue(v);
     else props.onSignal?.(v);
   };
@@ -74,6 +76,50 @@ export function SignalControl(props: SignalControlProps) {
    */
   const aggregate = () => (props.preview ? (previewValue() ?? 0) : tallySignals(props.signalType, props.signals ?? []));
 
+  /**
+   * Taking a reaction back, as a control of its own.
+   *
+   * ## Why it is not the press that gave it
+   *
+   * Two of the four modes have a natural undo — press the heart again, press the arrow again —
+   * because there are two states and the control holds both. A rating and a slider do not: setting
+   * a value and having no value are genuinely different acts, and the rating only APPEARED to have
+   * an undo because pressing your own star wrote `rangeMin`, which was 0, which used to mean
+   * delete. On a 1–5 rating that same press wrote 1 and there was no way back at all; on a slider
+   * there was never one.
+   *
+   * ## Why it is visible rather than a gesture on the glyph
+   *
+   * The glyph is the tempting place — it is already lit to say the reaction is yours, so pressing
+   * it to un-light it reads well. But it is decorative in three of the four modes and the control
+   * itself in the fourth, so the same press would mean two things, and an affordance nobody can see
+   * is one nobody finds. A visible control costs one element and needs no guessing.
+   *
+   * ## Shown only when there is something to withdraw
+   *
+   * Absent until this agent has reacted, which is what keeps it from being noise on every untouched
+   * row and what makes it self-explanatory when it appears. Present in every mode, including the
+   * two that also undo by press: removing a learned gesture would cost more than the redundancy.
+   */
+  const clearControl = () => (
+    <Show when={value() !== null && !isDisabled()}>
+      <we-tooltip content="Remove your reaction">
+        <we-button
+          class="signal-control__clear"
+          variant="bare"
+          size={size() === 'md' ? 'sm' : 'xs'}
+          square
+          color="neutral-300"
+          prop:hoverProps={{ color: 'danger-text' }}
+          label="Remove your reaction"
+          onClick={() => signal(null)}
+        >
+          <we-icon name="x" size={size() === 'md' ? '16px' : '12px'} />
+        </we-button>
+      </we-tooltip>
+    </Show>
+  );
+
   return (
     <div class={`signal-control ${props.class || ''}`} style={props.styles}>
       <Switch>
@@ -85,15 +131,18 @@ export function SignalControl(props: SignalControlProps) {
           to the pointer. See `CountMark` for why a template cannot simply match this.
         */}
         <Match when={props.signalType.mode === 'toggle'}>
-          <CountMark
-            class="signal-control__toggle"
-            icon={props.signalType.icon}
-            count={aggregate()}
-            mine={Boolean(value())}
-            size={size()}
-            disabled={isDisabled()}
-            onPress={() => signal(value() ? 0 : props.signalType.rangeMax)}
-          />
+          <Row class="signal-control__toggle-row" ay="center" gap={gap()}>
+            <CountMark
+              class="signal-control__toggle"
+              icon={props.signalType.icon}
+              count={aggregate()}
+              mine={Boolean(value())}
+              size={size()}
+              disabled={isDisabled()}
+              onPress={() => signal(value() ? null : props.signalType.rangeMax)}
+            />
+            {clearControl()}
+          </Row>
         </Match>
 
         {/*
@@ -121,9 +170,9 @@ export function SignalControl(props: SignalControlProps) {
               prop:hoverProps={{ color: mineIs((v) => v > 0) ? 'primary-500' : 'neutral-400' }}
               disabled={isDisabled()}
               label="Vote up"
-              onClick={() => signal(mineIs((v) => v > 0) ? 0 : 1)}
+              onClick={() => signal(mineIs((v) => v > 0) ? null : 1)}
             >
-              <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
+              <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} size={GLYPH_SIZE[size()]} />
             </we-button>
             {/* The community's net score, which is nobody's in particular — so it stays text. */}
             <we-number class="signal-control__count" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
@@ -135,10 +184,15 @@ export function SignalControl(props: SignalControlProps) {
               prop:hoverProps={{ color: mineIs((v) => v < 0) ? 'primary-500' : 'neutral-400' }}
               disabled={isDisabled()}
               label="Vote down"
-              onClick={() => signal(mineIs((v) => v < 0) ? 0 : -1)}
+              onClick={() => signal(mineIs((v) => v < 0) ? null : -1)}
             >
-              <we-icon name={props.signalType.iconSecondary || props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} />
+              <we-icon
+                name={props.signalType.iconSecondary || props.signalType.icon}
+                weight={SIGNAL_GLYPH_WEIGHT}
+                size={GLYPH_SIZE[size()]}
+              />
             </we-button>
+            {clearControl()}
           </Row>
         </Match>
 
@@ -164,10 +218,19 @@ export function SignalControl(props: SignalControlProps) {
                     return Math.min(1, Math.max(0, v - (props.signalType.rangeMin + i - 1)));
                   };
 
-                  /** Clicking the same icon again resets to rangeMin (deselect) */
+                  /*
+                    Pressing a star sets that score, and pressing the one you are already on does
+                    nothing.
+
+                    It used to write `rangeMin`, which withdrew the rating — but only because
+                    `rangeMin` happened to be 0 and 0 happened to mean "delete". On a 1–5 rating the
+                    same press wrote 1, so half the communities that could make a rating had no way
+                    to take one back at all. Withdrawing is the Clear beside the control now, and
+                    pressing your own score is the no-op it looks like.
+                  */
                   const handleClick = () => {
                     const target = props.signalType.rangeMin + i;
-                    signal(value() === target ? props.signalType.rangeMin : target);
+                    if (value() !== target) signal(target);
                   };
 
                   return (
@@ -176,21 +239,13 @@ export function SignalControl(props: SignalControlProps) {
                       onClick={isDisabled() ? undefined : handleClick}
                     >
                       {/* Background (empty) icon — muted colour via CSS */}
-                      <we-icon
-                        name={props.signalType.icon}
-                        weight={SIGNAL_GLYPH_WEIGHT}
-                        size={size() === 'md' ? 'sm' : 'xs'}
-                      />
+                      <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} size={GLYPH_SIZE[size()]} />
                       {/* Foreground (filled) icon — primary colour via CSS, clipped to fraction */}
                       <span
                         class="signal-icon-stack__fill"
                         style={{ 'clip-path': `inset(0 ${(1 - fraction()) * 100}% 0 0)` }}
                       >
-                        <we-icon
-                          name={props.signalType.icon}
-                          weight={SIGNAL_GLYPH_WEIGHT}
-                          size={size() === 'md' ? 'sm' : 'xs'}
-                        />
+                        <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} size={GLYPH_SIZE[size()]} />
                       </span>
                     </span>
                   );
@@ -207,6 +262,7 @@ export function SignalControl(props: SignalControlProps) {
               disabled={isDisabled()}
               onChange={(e: Event) => signal((e as CustomEvent<number>).detail)}
             />
+            {clearControl()}
           </Row>
         </Match>
 
@@ -226,6 +282,7 @@ export function SignalControl(props: SignalControlProps) {
             <we-icon
               name={props.signalType.icon}
               weight={SIGNAL_GLYPH_WEIGHT}
+              size={GLYPH_SIZE[size()]}
               color={value() !== null ? 'primary-500' : 'neutral-300'}
             />
             <we-slider
@@ -246,6 +303,7 @@ export function SignalControl(props: SignalControlProps) {
               class="signal-control__slider-value"
               value={sliderDraft() ?? value() ?? props.signalType.rangeMin}
             />
+            {clearControl()}
           </Row>
         </Match>
       </Switch>

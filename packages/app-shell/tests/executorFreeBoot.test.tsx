@@ -922,8 +922,20 @@ describe('changing a reaction', () => {
     // And a different record, which is what touching `we://signal` twice amounts to.
     expect(second[0].id).not.toBe(first[0].id);
 
-    // Withdrawing is still a removal rather than a stored 0, so nothing has to exclude it.
+    /*
+      A zero is an ordinary value now, and is stored.
+
+      It used to be the withdrawal, which meant a type whose range includes 0 could not hold it — a
+      0–100 slider dragged to the bottom was written as "did not answer". The two acts are spelled
+      apart: a number is a reaction, `null` takes it back.
+    */
     await stores.spaces.upsertSignal(subject.id, stars.id, 0);
+    const zeroed = await mine();
+    expect(zeroed).toHaveLength(1);
+    expect(zeroed[0].value).toBe(0);
+
+    // And withdrawing is its own act, which removes the record rather than storing anything.
+    await stores.spaces.withdrawSignal(subject.id, stars.id);
     expect(await mine()).toHaveLength(0);
   }, 10000);
 });

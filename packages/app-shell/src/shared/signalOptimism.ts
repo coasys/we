@@ -11,12 +11,13 @@
  * `boardOptimism` is — it is wiring between a write and the read that supersedes it, not something a
  * template has any use for.
  *
- * ## The value held is the agent's own reaction, and zero means withdrawn
+ * ## The value held is the agent's own reaction, and `null` is a withdrawal
  *
- * A signal is one agent's record on one node for one type, so the held value is a number and the
- * absence of one is a zero. That matches `upsertSignal`, where a zero deletes rather than storing a
- * nought, so nothing downstream has to know the difference: the overlay either puts this agent's
- * reaction into the list or takes it out.
+ * A signal is one agent's record on one node for one type, so the held value is a number — and the
+ * absence of one is `null`, not a zero. It was a zero, which made 0 unstorable: a 0–100 slider
+ * dragged to the bottom was held, written and read back as "did not answer". `null` is the same
+ * distinction `upsertSignal` now draws, so the overlay either puts this agent's reaction into the
+ * list or takes it out, and a stored zero is an ordinary reaction like any other.
  *
  * ## Why the list rather than the count
  *
@@ -33,18 +34,18 @@ import { createSignal } from 'solid-js';
 export interface PendingSignal {
   record: string;
   type: string;
-  /** The value written. `0` is a withdrawal, which is how `upsertSignal` spells one. */
-  value: number;
+  /** The value written, or `null` for a withdrawal — the same spelling `upsertSignal` takes. */
+  value: number | null;
 }
 
-const optimism = createOptimism<number>(createSignal, { same: sameValue });
+const optimism = createOptimism<number | null>(createSignal, { same: sameValue });
 
 const key = (record: string, type: string) => keyOf(record, type);
 const parts = (k: string): [string, string] => k.split('\u0000') as [string, string];
 
 export const signalOptimism = {
-  /** Note a reaction going out — `0` for a withdrawal. */
-  hold: (record: string, type: string, value: number) => optimism.hold(key(record, type), value),
+  /** Note a reaction going out — `null` for a withdrawal. */
+  hold: (record: string, type: string, value: number | null) => optimism.hold(key(record, type), value),
   /** The write returned. Not a release — what retires a hold is the data moving. */
   done: (record: string, type: string) => optimism.done(key(record, type)),
   /** The write failed, so what is on screen is a lie. */
@@ -82,7 +83,9 @@ export const signalOptimism = {
     const mine = (signals as { author?: unknown; signalTypeId?: unknown; value?: unknown }[]).find(
       (row) => row?.author === me && row?.signalTypeId === type,
     );
-    const observed = typeof mine?.value === 'number' ? mine.value : 0;
+    // No row of this type from this agent is `null` — the same absence a withdrawal holds, so a
+    // withdrawal settles the moment the row is gone. A row holding 0 is a reaction and reads as 0.
+    const observed = typeof mine?.value === 'number' ? mine.value : null;
     optimism.settle((k) => {
       const [heldRecord, heldType] = parts(k);
       // This pair only. Every other hold is about something this list was never asked about.

@@ -120,3 +120,38 @@ describe('a reaction in flight', () => {
     expect(held()).toBeUndefined();
   });
 });
+
+describe('a withdrawal is not a zero', () => {
+  it('settles a held zero against the row reading zero, not against it being gone', () => {
+    /*
+      The pair the `null` spelling separates. Both of these used to be "value 0", so a slider
+      dragged to the bottom and a slider cleared were the same hold — and whichever way the data
+      landed, one of them was drawn wrong.
+    */
+    signalOptimism.hold('post-1', 'st-like', 0);
+    signalOptimism.done('post-1', 'st-like');
+
+    // The row still says 50: the write has not landed, so the hold stands.
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [{ author: me, signalTypeId: 'st-like', value: 50 }]);
+    expect(held()).toMatchObject({ value: 0 });
+
+    // The row now says 0 — the zero landed, and the hold is spent.
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [{ author: me, signalTypeId: 'st-like', value: 0 }]);
+    expect(held()).toBeUndefined();
+  });
+
+  it('settles a withdrawal against the row being gone, not against it reading zero', () => {
+    signalOptimism.hold('post-1', 'st-like', null);
+    signalOptimism.done('post-1', 'st-like');
+
+    // A row holding 0 is a reaction, so it does not answer a withdrawal.
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [{ author: me, signalTypeId: 'st-like', value: 0 }]);
+    expect(held()).toMatchObject({ value: null });
+
+    // This agent having no row of this type is what a withdrawal was waiting for.
+    signalOptimism.settleFromSignals('post-1', 'st-like', me, [
+      { author: 'did:them', signalTypeId: 'st-like', value: 1 },
+    ]);
+    expect(held()).toBeUndefined();
+  });
+});

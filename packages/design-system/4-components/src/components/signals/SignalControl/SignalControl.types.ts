@@ -48,7 +48,14 @@ export interface SignalControlProps {
   signals?: SignalData[];
   /** DID of the current user — used to derive myValue from signals */
   myDid?: string;
-  onSignal?: (value: number) => void;
+  /**
+   * The reaction given, or `null` to withdraw one.
+   *
+   * `null` rather than a zero, and the distinction is load-bearing: a zero is an ordinary value on
+   * any type whose range includes it, and spelling a withdrawal as one made a 0–100 slider dragged
+   * to the bottom indistinguishable from an unanswered one. See `spaceStore.upsertSignal`.
+   */
+  onSignal?: (value: number | null) => void;
   disabled?: boolean;
   /**
    * When true the component manages its own internal value state so it can be

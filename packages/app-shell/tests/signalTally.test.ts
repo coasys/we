@@ -88,11 +88,25 @@ describe('a reaction drawn before it is stored', () => {
     expect(rows.find((row) => (row as { author?: string }).author === me)).toMatchObject({ value: 4 });
   });
 
-  it('takes it out again on a withdrawal, which is what a zero means', () => {
-    // `upsertSignal` deletes rather than storing a nought, so the overlay has to spell a withdrawal
-    // the same way or an un-pressed heart would keep its fill until the data caught up.
-    const rows = call([{ author: me, signalTypeId: 'st-like', value: 1 }], held(0));
+  it('takes it out again on a withdrawal, which is `null` and not a zero', () => {
+    // `upsertSignal` deletes on `null`, so the overlay spells a withdrawal the same way — otherwise
+    // an un-pressed heart keeps its fill until the data catches up.
+    const rows = call(
+      [{ author: me, signalTypeId: 'st-like', value: 1 }],
+      [{ record: 'post-1', type: 'st-like', value: null }],
+    );
     expect(rows).toEqual([]);
+  });
+
+  it('puts a held ZERO back, because a zero is a reaction', () => {
+    /*
+      The bug the `null` spelling exists for. A 0–100 slider dragged to the bottom is the strongest
+      thing somebody can say on it, and while a withdrawal was spelled as 0 that answer was written,
+      held and read back as "did not answer" — so the average ignored exactly the people who felt
+      most strongly.
+    */
+    const rows = call([{ author: me, signalTypeId: 'st-like', value: 50 }], held(0));
+    expect(rows).toEqual([{ author: me, signalTypeId: 'st-like', value: 0 }]);
   });
 
   it('leaves everybody else’s alone', () => {

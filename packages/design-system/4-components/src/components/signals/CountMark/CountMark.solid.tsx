@@ -1,7 +1,7 @@
 export type * from './CountMark.types';
 
 import { Row } from '../../../frameworks/solid';
-import { SIGNAL_GLYPH_WEIGHT } from '../aggregate';
+import { GLYPH_SIZE, SIGNAL_GLYPH_WEIGHT } from '../aggregate';
 import type { CountMarkProps } from './CountMark.types';
 
 /**
@@ -45,13 +45,14 @@ export function CountMark(props: CountMarkProps) {
   /** Closed up as the control shrinks: at a thread's weight, a wide gap reads as two things. */
   const gap = () => (size() === 'md' ? '300' : '100');
   /**
-   * Stated rather than inherited from the button below `md`.
+   * Stated rather than inherited from the button.
    *
    * A `we-icon` nested in a sized primitive takes `--we-context-icon-size`, which is 12px at `xs` —
-   * right for an icon that labels a button, too small for a mark that IS the control. At `md` the
-   * button is big enough for that rule to be right, so nothing is said and it inherits.
+   * right for an icon that labels a button, too small for a mark that IS the control. This table
+   * used to live here, which is how the four modes came to disagree: `GLYPH_SIZE` is the same
+   * numbers in the one place every signal glyph now reads them from.
    */
-  const glyph = () => ({ xs: '16px', sm: '18px', md: '' })[size()];
+  const glyph = () => GLYPH_SIZE[size()];
   /** One step behind the glyph, as a caption is. Empty at `md`, where the inherited size is right. */
   const digits = () => ({ xs: '100', sm: '200', md: '' })[size()];
 

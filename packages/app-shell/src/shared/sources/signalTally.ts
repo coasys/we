@@ -84,11 +84,14 @@ export function reactions(options: unknown): unknown[] {
   const held = (pending as { record?: unknown; type?: unknown; value?: unknown }[]).find(
     (entry) => entry?.record === record && entry?.type === type,
   );
-  if (!held || typeof held.value !== 'number') return rows;
+  // `null` is a held WITHDRAWAL and has to reach the branch below; only an entry holding neither a
+  // number nor a withdrawal is nothing to apply.
+  if (!held || (typeof held.value !== 'number' && held.value !== null)) return rows;
 
   // This agent's stored reaction of this type goes, whatever it says — the held one stands in for
   // it, so changing a rating does not count twice and withdrawing one does not leave it behind.
   const others = rows.filter((row) => (row as { author?: unknown } | null)?.author !== me);
-  // Zero is a withdrawal, which is how `upsertSignal` spells one: nothing is added back.
-  return held.value === 0 ? others : [...others, { author: me, signalTypeId: type, value: held.value }];
+  // A withdrawal is `null`, not a zero: a zero is an ordinary reaction and is put back like any
+  // other. See `upsertSignal` for why the two stopped being the same thing.
+  return held.value === null ? others : [...others, { author: me, signalTypeId: type, value: held.value }];
 }

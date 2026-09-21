@@ -19,6 +19,35 @@ import type { SignalAggregate, SignalData, SignalTypeData } from './SignalContro
  */
 export const SIGNAL_GLYPH_WEIGHT = 'fill';
 
+/**
+ * How big a signal's glyph is, everywhere one is drawn.
+ *
+ * ## Why this is a table rather than four judgements
+ *
+ * It was four judgements and they agreed at one size by coincidence. Three different mechanisms
+ * were deciding it: `CountMark` carried its own literal pixels, the vote's arrows took whatever
+ * `we-button` hands a nested icon, and the rating and the slider named a size token directly — and
+ * the slider named none at all, so it fell through to `we-icon`'s own default.
+ *
+ * At `md` that default is `--we-size-md`, **32px**, beside 24px everywhere else. The trap is a
+ * collision between two scales: a `we-button` at `md` gives its icons `--we-size-sm`, so a bare
+ * icon asking for the *same* word lands a step up. At `xs` and `sm` the mismatch moved to a
+ * different mode, which is how it survived — whoever checked, checked at `md`.
+ *
+ * ## The values
+ *
+ * What a `we-button` of that size gives a nested icon, which is what three of the four already
+ * resolved to and therefore what "matching" means. Stated in pixels rather than as a token so the
+ * two scales cannot be confused again at the call site.
+ */
+export const GLYPH_SIZE: Record<'xs' | 'sm' | 'md', string> = {
+  // A thread's weight. `we-button` would give 12px here, which is too small for a mark that IS the
+  // control rather than one labelling a button — `CountMark` had already overridden it to this.
+  xs: '16px',
+  sm: '18px',
+  md: '24px',
+};
+
 /** The aggregate a mode's control is asking for, where the type names none. */
 const AGGREGATE_FOR_MODE: Record<SignalTypeData['mode'], SignalAggregate> = {
   toggle: 'count',

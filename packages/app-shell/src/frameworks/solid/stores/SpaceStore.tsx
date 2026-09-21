@@ -910,7 +910,12 @@ export interface SpaceStore {
   ) => Promise<void>;
   /** Withdraw a kind from use, or bring it back — never touching anybody who holds it. */
   setInvolvementTypeRetired: (slug: string, retired: boolean) => Promise<void>;
-  upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
+  /**
+   * Give a reaction, or change one. `null` withdraws it — a zero is an ordinary value and is stored.
+   */
+  upsertSignal: (nodeId: string, signalTypeId: string, value: number | null) => Promise<void>;
+  /** Take back this agent's reaction of one type on one record. */
+  withdrawSignal: (nodeId: string, signalTypeId: string) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
@@ -2504,7 +2509,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     await RelationshipType.create(p, { ...config, slug });
   }
 
-  async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
+  /**
+   * Give a reaction, or change one — and `null` withdraws it.
+   *
+   * ## Why a withdrawal is its own value rather than a zero
+   *
+   * It was a zero, and that made **0 unstorable**. Every mode whose range includes it lost the
+   * answer: a 0–100 mood slider dragged to the bottom was written as "did not answer", so the
+   * strongest thing somebody could say was the one thing the average then ignored. Silent, and
+   * invisible from the call site — `upsertSignal(node, type, 0)` reads like storing a nought.
+   *
+   * A toggle and a vote are unaffected, because there 0 genuinely IS absence. That is what let the
+   * overload survive: it is correct for two of the four modes, and the two it is wrong for are the
+   * two whose range a community chooses.
+   */
+  async function upsertSignal(nodeId: string, signalTypeId: string, value: number | null): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     const myDid = session.me()?.did;
     if (!p || !myDid) return;
@@ -2547,12 +2566,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
       is an executor that triggers on the shapes a query includes — filed in the ad4m follow-ups.
 
-      Zero is a delete rather than a stored 0, which is what makes a withdrawn reaction absent
-      everywhere rather than a row every count has to remember to exclude.
+      A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
+      withdrawn reaction absent everywhere instead of being a row every count has to remember to
+      exclude. A zero is now an ordinary value and is stored like any other.
     */
     try {
       if (existing) await existing.delete();
-      if (value !== 0) {
+      if (value !== null) {
         await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
       }
       // The write is back. Not a release — what retires a hold is the data moving — but it ends the
@@ -2564,6 +2584,18 @@ export function SpaceStoreProvider(props: ParentProps) {
       console.error('SpaceStore: could not record that reaction', error);
       toastService.error('Could not record that reaction.');
     }
+  }
+
+  /**
+   * Take back this agent's reaction of one type on one record.
+   *
+   * Its own action rather than `upsertSignal(node, type, 0)`, which is what it used to be. A
+   * template calling that was storing a nought as far as anything could tell, and on a mode whose
+   * range includes zero it silently was — so the two acts are spelled apart, and a schema now says
+   * which one it means.
+   */
+  async function withdrawSignal(nodeId: string, signalTypeId: string): Promise<void> {
+    await upsertSignal(nodeId, signalTypeId, null);
   }
 
   // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
@@ -5068,6 +5100,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateInvolvementType,
     setInvolvementTypeRetired,
     upsertSignal,
+    withdrawSignal,
     navigateToSpace,
     openRecordRef,
     canAdministerSpace,

@@ -111,6 +111,39 @@ export async function check({ measureAll, measurePart, measureControl, count }, 
   }
 
   /*
+    Every signal glyph is the same size, in every mode.
+
+    Three mechanisms used to decide it — a component's own literal pixels, a button's context
+    variable, and a size token named on a bare icon — and they agreed at `md` by coincidence and
+    nowhere else. The slider's was the visible one at 32px against everyone else's 24, because it
+    was the only glyph not inside a button and fell through to `we-icon`'s own default; a
+    `we-button` at md gives its icons `--we-size-sm`, so a bare icon asking for md lands a step up.
+
+    Measured rather than asserted per mode: the failure is that they DIFFER, so the test is that
+    there is one answer, whatever it is.
+  */
+  // Not the Clear's own ×, which is chrome rather than a signal glyph and is deliberately smaller.
+  const glyphs = (await measureAll('.signal-control we-icon:not(.signal-control__clear *)')).filter(
+    (box) => box.w && box.h,
+  );
+  const widths = [...new Set(glyphs.map((box) => Math.round(box.w)))];
+  if (widths.length > 1) {
+    problems.push(`signal glyphs are ${widths.sort((a, b) => a - b).join(', ')}px — they should be one size`);
+  }
+
+  /*
+    And every mode this agent has reacted with offers a way to take it back.
+
+    Two of the four undo by pressing again; a rating only appeared to, because pressing your own
+    star wrote `rangeMin`, which was 0, which used to mean delete — so a 1–5 rating had no way back
+    at all and a slider never did. The Clear is the same control in every mode, and it is absent
+    until there is something to withdraw, which is why the count is USED rather than OFFERED.
+  */
+  const clears = await count('.signal-control__clear');
+  // One per used type in `full`, and one inside each popover the compact row opened for a used type.
+  if (clears < USED) problems.push(`${clears} clear controls, expected one per reaction of this agent's`);
+
+  /*
     And a number is one line, whatever room it is given.
 
     Every typography surface defaults `overflow-wrap: anywhere`, which is right for a URL and wrong
