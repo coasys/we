@@ -1739,3 +1739,23 @@ describe('the history of what was read', () => {
     expect(extracted).toBeGreaterThan(changes);
   });
 });
+
+describe('the things to extract fold like every other section', () => {
+  /*
+    It was the one section in this panel with a heading that did not fold and no count — which is
+    also the section a reader most often wants out of the way, since it is settings rather than
+    findings.
+  */
+  it('folds, and counts what is ticked rather than what exists', () => {
+    const json = JSON.stringify(extractionPanel);
+    expect(json).toContain('"$toggleLocal":"targetsOpen"');
+    expect(json, 'the count is of every model, not the ticked ones').toContain('.filter(t, t.selected))');
+    expect(json).toContain('"persist":"transcribe.targetsOpen"');
+  });
+
+  it('gives running a pass the same weight as keeping them running', () => {
+    // `secondary` read as the lesser of the two beside an "Auto extract: on" switch, when it is the
+    // one that does something this instant.
+    expect(JSON.stringify(extractionPanel)).toContain('"variant":"primary"');
+  });
+});

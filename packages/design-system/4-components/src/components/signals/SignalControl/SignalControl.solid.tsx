@@ -1,5 +1,6 @@
 export type * from './SignalControl.types';
 
+import { POPOVER_DISMISS } from '@we/design-types';
 import { createSignal, For, Match, Show, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
@@ -66,9 +67,29 @@ export function SignalControl(props: SignalControlProps) {
   /**
    * Unified signal emitter. `null` withdraws — see `upsertSignal` for why that is not a zero.
    */
+  /** The control's own element, for telling a popover it is inside that it is done. */
+  let root: HTMLDivElement | undefined;
+
   const signal = (v: number | null) => {
-    if (props.preview) setPreviewValue(v);
-    else props.onSignal?.(v);
+    if (props.preview) {
+      setPreviewValue(v);
+      return;
+    }
+    props.onSignal?.(v);
+    /*
+      And close the popover this is in, if it is in one.
+
+      Every mode but the toggle is drawn in a compact row as a mark that opens its real control in a
+      popover — because a rating is five glyphs and a slider is a track, and neither survives being
+      collapsed to one press. The panel has to outlast the GESTURE, which is why it does not close
+      on a press; once the value is written there is nothing left for it to be open for, and a panel
+      sitting over the row afterwards is something the reader has to dismiss before carrying on.
+
+      On the write rather than on the release, so the two ends of a vote — which are presses, not
+      drags — close it as well. Nothing happens where there is no popover above: the full display
+      draws the same control in flow.
+    */
+    root?.dispatchEvent(new CustomEvent(POPOVER_DISMISS, { bubbles: true, composed: true }));
   };
 
   /** Disabled: never in preview mode */
@@ -171,7 +192,7 @@ export function SignalControl(props: SignalControlProps) {
   );
 
   return (
-    <div class={`signal-control ${props.class || ''}`} style={props.styles}>
+    <div ref={root} class={`signal-control ${props.class || ''}`} style={props.styles}>
       <Switch>
         {/*
           Toggle — a mark and how many, which is `CountMark`.

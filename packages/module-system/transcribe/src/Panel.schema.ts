@@ -16,7 +16,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { emptyState, foldingBody, foldingSectionLabel, panelScroll, panelShell, sectionLabel } from '@we/schema-kit';
+import { emptyState, foldingBody, foldingSectionLabel, panelScroll, panelShell } from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -1669,6 +1669,20 @@ export const extractionTargets: SchemaNode = {
                   fading along with the card they were anchored to.
                 */
                 variant: { $: "target.selected ? 'secondary' : 'outline'" },
+                /*
+                  A step darker than a control's own neutral, so a chip reads as a chip.
+
+                  They sit in a sunken well, and `secondary`'s fill is `control-surface` — near
+                  enough to that well that a row of ticked models read as text on a panel rather
+                  than as a row of things to press.
+
+                  `surface-active` is the darkest neutral surface the roles name, and the roles
+                  name it for a pressed row rather than for a resting fill: there is no "one step
+                  stronger than a control's fill" to reach for. Worth knowing it is a borrowed
+                  meaning rather than the right one — the alternative is lightening the well, which
+                  moves the same contrast the other way.
+                */
+                bg: { $: "target.selected ? 'surface-active' : ''" },
                 // Only where neither list is this agent's to change. Refused visibly rather than in
                 // the store, where it was refused in silence.
                 // Outside a call there is no conversation to narrow, so these state the space's
@@ -2435,7 +2449,15 @@ const extractNowControl: SchemaNode = {
       type: 'we-button',
       props: {
         size: 'sm',
-        variant: 'secondary',
+        /*
+          The same weight as "Auto extract: on", which is the other control that starts a pass.
+
+          It was `secondary`, a step quieter than the switch above it — which read as the lesser of
+          the two when it is the one that does something this instant. They are not a matched pair,
+          and the split between them is deliberate, but a reader scanning for "make it happen" was
+          being pointed at the standing decision.
+        */
+        variant: 'primary',
         gap: '100',
         // Its own alignment, so it needs no wrapper row to stop it stretching across the well —
         // and a wrapper that stayed behind when the button did not would cost a gap for nothing.
@@ -2638,14 +2660,39 @@ const extract: SchemaNode = {
           what `sectionLabel` marks is a *region with a name*, and having two labelled regions in one
           panel wearing two treatments is exactly the drift the fragment exists to stop. No colon —
           the caps and the tracking already say this is a name rather than a lead-in.
+
+          It folds now, like the four sections under it, and for the same reason one step along:
+          this is the panel's settings rather than its findings, and a reader watching a call come
+          in wants it out of the way more often than not.
         */
-        sectionLabel({ label: 'Things to extract' }),
-        {
-          type: 'Column',
-          props: { bg: 'surface-sunken', r: '300', p: '200' },
-          children: [{ type: '$part', props: { id: 'transcribe.extractionTargets' } }],
-        },
-        /*
+        foldingSectionLabel({
+          label: 'Things to extract',
+          /*
+            How many are ticked, not how many exist.
+
+            The list is every model the space could extract, and what the count is asked for is what
+            the next pass will actually look for — a space with nine models and one ticked is doing
+            one thing, and "9" would say the opposite. It is also the number the Extract button's
+            own refusal talks about.
+          */
+          count: `count(${forSubject('targets').$}.filter(t, t.selected))`,
+          // Not a verdict: a number of ticked models is no more a status than a timestamp is.
+          tone: 'neutral',
+          open: { field: 'targetsOpen' },
+        }),
+        foldingBody({
+          open: { field: 'targetsOpen' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { bg: 'surface-sunken', r: '300', p: '200' },
+                  children: [{ type: '$part', props: { id: 'transcribe.extractionTargets' } }],
+                },
+                /*
           Under the chips, because it acts on them.
 
           "Extract now" reads the whole conversation so far looking for exactly the things listed
@@ -2659,7 +2706,11 @@ const extract: SchemaNode = {
           outside a live call, and an empty `Row` is still a flex item — so the well went on paying a
           whole gap for a control that was not there. The button aligns itself instead.
         */
-        extractNowControl,
+                extractNowControl,
+              ],
+            },
+          ],
+        }),
       ],
     },
   ],
@@ -3990,6 +4041,10 @@ export const extractionPanel: SchemaNode = {
                     with it, and the first reading of a call would open the log somebody had folded.
                   */
                   logsOpen: { type: 'boolean', initial: false, persist: 'transcribe.logsOpen' },
+                  // Open to begin with: it holds the controls the rest of this panel acts on, and
+                  // a panel that opened with its own settings folded away would be hiding the
+                  // answer to "why did it find nothing".
+                  targetsOpen: { type: 'boolean', initial: true, persist: 'transcribe.targetsOpen' },
                 },
                 /*
               The readings, declared here rather than on the section that draws them.

@@ -200,6 +200,27 @@ async function main() {
           await page.mouse.up();
           await page.waitForTimeout(150);
         },
+        /*
+          The same gesture, stopped halfway: pressed and moved, still held.
+
+          What separates "the popover closed when I pressed" from "the popover closed when I let
+          go" — one is the bug and the other is the behaviour. A helper that always releases cannot
+          tell them apart, and the difference is the whole of what a reader experiences.
+        */
+        grab: async (sel, from = 0.1, to = 0.8) => {
+          const box = await page.locator(sel).locator('visible=true').first().boundingBox({ timeout: 3000 });
+          if (!box) throw new Error(`nothing to grab at ${sel}`);
+          const y = box.y + box.height / 2;
+          await page.mouse.move(box.x + box.width * from, y);
+          await page.mouse.down();
+          await page.mouse.move(box.x + box.width * to, y, { steps: 6 });
+          await page.waitForTimeout(80);
+        },
+        /** Let go of whatever `grab` is holding. */
+        release: async () => {
+          await page.mouse.up();
+          await page.waitForTimeout(150);
+        },
         /** What a page-level listener recorded — for counting what a gesture actually emitted. */
         recorded: (key) => page.evaluate((k) => globalThis[k] ?? [], key),
         /**

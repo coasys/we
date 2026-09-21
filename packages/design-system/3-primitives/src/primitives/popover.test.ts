@@ -5,6 +5,7 @@
  * and so aligns by its bottom edge — rode higher than the buttons beside it on every task card. The
  * fix is `we-tooltip`'s, and so are the two things a missing box takes away, pinned here the same way.
  */
+import { POPOVER_DISMISS } from '@we/design-types';
 import { describe, expect, it } from 'vitest';
 
 import Popover from './popover';
@@ -93,5 +94,62 @@ describe('only the panel decides whether the panel is open', () => {
     await host.updateComplete;
 
     expect(host.open).toBe(false);
+  });
+});
+
+describe('content can say it is done with the popover', () => {
+  /*
+    A popover owns whether it is open, which is right for the trigger and leaves the CONTENT with no
+    way to say "that is what I was for". The reaction marks are the case: a vote, a rating and a
+    slider each open their real control in one, and the panel has to outlast the GESTURE — so it
+    cannot close on a press — but once the value is written there is nothing left for it to be open
+    for, and a panel still sitting over the row is something the reader has to dismiss first.
+  */
+  const opened = async () => {
+    const host = document.createElement('we-popover') as HTMLElement & {
+      updateComplete: Promise<unknown>;
+      open: boolean;
+    };
+    const content = document.createElement('div');
+    content.slot = 'content';
+    host.append(content);
+    document.body.append(host);
+    await host.updateComplete;
+    host.open = true;
+    await host.updateComplete;
+    return { host, content };
+  };
+
+  it('closes when its content asks to be dismissed', async () => {
+    const { host, content } = await opened();
+    content.dispatchEvent(new CustomEvent(POPOVER_DISMISS, { bubbles: true, composed: true }));
+    await host.updateComplete;
+    expect(host.open).toBe(false);
+  });
+
+  it('lets the nearest popover answer, and no further', async () => {
+    // Otherwise a control finishing inside a nested panel would close the one around it too.
+    const { host, content } = await opened();
+    const asked: Event[] = [];
+    host.parentElement!.addEventListener(POPOVER_DISMISS, (e) => asked.push(e));
+    content.dispatchEvent(new CustomEvent(POPOVER_DISMISS, { bubbles: true, composed: true }));
+    await host.updateComplete;
+    expect(asked, 'the dismiss carried on past the popover that answered it').toEqual([]);
+  });
+
+  it('ignores one raised while it is already closed', async () => {
+    // The full display draws the same controls in flow, with no popover above them; a write there
+    // raises the same event and it must reach whatever is listening, not be swallowed here.
+    const host = document.createElement('we-popover') as HTMLElement & {
+      updateComplete: Promise<unknown>;
+      open: boolean;
+    };
+    document.body.append(host);
+    await host.updateComplete;
+
+    const asked: Event[] = [];
+    host.parentElement!.addEventListener(POPOVER_DISMISS, (e) => asked.push(e));
+    host.dispatchEvent(new CustomEvent(POPOVER_DISMISS, { bubbles: true, composed: true }));
+    expect(asked).toHaveLength(1);
   });
 });
