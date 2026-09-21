@@ -1231,9 +1231,18 @@ describe('the extraction panel', () => {
       The same gate everything else here already carries: proposals, the history and the results
       below all ask for a call first.
     */
-    const well = json.indexOf('"bg":"surface-sunken"');
-    expect(well).toBeGreaterThan(-1);
-    expect(json.lastIndexOf(`"condition":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`, well)).toBeGreaterThan(-1);
+    /*
+      Anchored on the chips themselves, not on the box they used to sit in. That box is gone — a row
+      of pills is already a group, and its padding was coming out of the width they wrap in — and a
+      test that navigates by a background colour is a test that fails when somebody changes a
+      background colour, which says nothing about whether the section is gated.
+    */
+    const chips = json.indexOf('"id":"transcribe.extractionTargets"');
+    expect(chips, 'the chips are not drawn at all').toBeGreaterThan(-1);
+    expect(
+      json.lastIndexOf(`"condition":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`, chips),
+      'the chips are not behind the same "are we in a call" gate as everything else here',
+    ).toBeGreaterThan(-1);
   });
 
   it('uses the same placeholder as the transcript panel, in the same words', () => {
@@ -1757,5 +1766,30 @@ describe('the things to extract fold like every other section', () => {
     // `secondary` read as the lesser of the two beside an "Auto extract: on" switch, when it is the
     // one that does something this instant.
     expect(JSON.stringify(extractionPanel)).toContain('"variant":"primary"');
+  });
+});
+
+describe('the extraction chips say what they are', () => {
+  /*
+    They read as a row of small buttons: the same radius as every other control in the panel, with
+    the state carried by weight alone. Weight is a comparison — it means something once the row
+    holds both kinds, and a space with one model, or with all of them ticked, gives it nothing to be
+    read against.
+  */
+  it('are pills, and tick the ones that are on', () => {
+    const chips = JSON.stringify(extractionTargets);
+    expect(chips).toContain('"r":"pill"');
+    const tick = chips.indexOf('"name":"check"');
+    expect(tick, 'a selected chip says nothing about itself').toBeGreaterThan(-1);
+    expect(
+      chips.lastIndexOf('"condition":{"$":"target.selected"}', tick),
+      'the tick is drawn whether or not the chip is on',
+    ).toBeGreaterThan(-1);
+  });
+
+  it('sit in no well', () => {
+    // A row of pills is already a group; the box drew a second boundary round it and took the room
+    // the chips wrap in. It is also where a colour with no role to name it was being reached for.
+    expect(JSON.stringify(extractionPanel)).not.toContain('surface-sunken');
   });
 });

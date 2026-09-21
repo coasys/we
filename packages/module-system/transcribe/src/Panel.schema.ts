@@ -1670,19 +1670,14 @@ export const extractionTargets: SchemaNode = {
                 */
                 variant: { $: "target.selected ? 'secondary' : 'outline'" },
                 /*
-                  A step darker than a control's own neutral, so a chip reads as a chip.
+                  A pill, because a chip is a chip.
 
-                  They sit in a sunken well, and `secondary`'s fill is `control-surface` — near
-                  enough to that well that a row of ticked models read as text on a panel rather
-                  than as a row of things to press.
-
-                  `surface-active` is the darkest neutral surface the roles name, and the roles
-                  name it for a pressed row rather than for a resting fill: there is no "one step
-                  stronger than a control's fill" to reach for. Worth knowing it is a borrowed
-                  meaning rather than the right one — the alternative is lightening the well, which
-                  moves the same contrast the other way.
+                  They carried the radius every other control in the panel does, which made a row of
+                  them read as a row of small buttons — and what they are is a set of things that
+                  are either in or out. Fully rounded is the shape that says "one of a set" rather
+                  than "press me and something happens".
                 */
-                bg: { $: "target.selected ? 'surface-active' : ''" },
+                r: 'pill',
                 // Only where neither list is this agent's to change. Refused visibly rather than in
                 // the store, where it was refused in silence.
                 // Outside a call there is no conversation to narrow, so these state the space's
@@ -1725,6 +1720,24 @@ export const extractionTargets: SchemaNode = {
                   },
                 },
                 { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'target.label' }] },
+                /*
+                  And a tick when it is on, after the name.
+
+                  The weight of the chip carries the state too — filled is on, outlined is off — but
+                  weight is a COMPARISON: it means something only once the row holds both kinds, and
+                  a space with one model, or with all of them ticked, gives it nothing to be read
+                  against. A tick says it about each chip on its own.
+
+                  After the name, so the names start at the same place down a wrapped row and the
+                  ticks sit at the ends of the ones that have them.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'target.selected' },
+                    then: { type: 'we-icon', props: { name: 'check' } },
+                  },
+                },
               ],
             },
           ],
@@ -2687,11 +2700,23 @@ const extract: SchemaNode = {
               type: 'Column',
               props: { gap: '200' },
               children: [
-                {
-                  type: 'Column',
-                  props: { bg: 'surface-sunken', r: '300', p: '200' },
-                  children: [{ type: '$part', props: { id: 'transcribe.extractionTargets' } }],
-                },
+                /*
+                  No well around them.
+
+                  They sat in a sunken box, which was there to group them — and a row of pills is
+                  already a group, so the box drew a second boundary around something that had one.
+                  What it cost was room: its padding came out of the width the chips wrap in, on a
+                  panel narrow enough that one model with a long name pushed the row onto two lines
+                  it did not need.
+
+                  It is also the honest end of a question with no answer. Making the box a step
+                  deeper than `surface-sunken` has no role to name it — nothing in the ramp sits
+                  below that one, `chrome` is fractionally LIGHTER than a well in a light theme, and
+                  `surface-active` is a pinned scale position that does not follow the ramp when the
+                  polarity flips. Removing the box answers what the box was for, rather than
+                  reaching for a colour the theme system cannot follow.
+                */
+                { type: '$part', props: { id: 'transcribe.extractionTargets' } },
                 /*
           Under the chips, because it acts on them.
 
