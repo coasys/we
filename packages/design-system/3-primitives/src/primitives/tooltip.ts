@@ -325,9 +325,29 @@ export default class Tooltip extends LayoutElement {
     }
   }
 
+  /**
+   * Open — unless there is nothing to say.
+   *
+   * A tooltip with no text and nothing slotted paints an empty bubble, which is never what anybody
+   * wanted and reads as a glitch. It is not hypothetical: a control that shows its reading only
+   * while it is being dragged has empty content the rest of the time, and hovering it produced a
+   * blank card hanging off a slider.
+   *
+   * Only the HOVER and FOCUS paths ask. Setting `open` directly is a caller saying "show this now",
+   * and a caller that does so with nothing to show has made a different mistake — one this should
+   * not paper over, since silently ignoring the instruction is harder to find than an empty box.
+   */
   private show = () => {
+    if (!this._hasSomethingToSay()) return;
     this.open = true;
   };
+
+  /** Text, or anything slotted into `content` — the two ways a bubble is given something to show. */
+  private _hasSomethingToSay(): boolean {
+    if (this.content.trim()) return true;
+    const slotted = this.querySelector('[slot="content"]');
+    return Boolean(slotted && (slotted.textContent ?? '').trim());
+  }
 
   private hide = () => {
     this.open = false;

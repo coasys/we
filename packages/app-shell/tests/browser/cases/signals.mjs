@@ -161,6 +161,44 @@ export async function check({ measureAll, measurePart, measureControl, measureTe
   }
 
   /*
+    In `full`, every control's reading is the same colour.
+
+    `CountMark` colours its row so the digits follow the glyph, which is right for a COMPACT mark —
+    the two are one quiet thing to glance at. In `full` the number is the community's reading, the
+    same role the vote's net score and the rating's mean play, and both of those are plain text. So
+    the like's count sat dimmed in a row of undimmed ones and read as a different kind of thing.
+
+    Compared against the vote's count rather than against a literal colour, which is the claim that
+    matters: they AGREE. A theme is free to move both.
+  */
+  const tones = [];
+  for (let i = 0; i < 4; i++) {
+    /*
+      `measurePart`, never `measureAll` — a design-system colour lands on `[part='base']` and the
+      HOST keeps whatever it inherited, which here is the row `CountMark` deliberately dims. Asked
+      of the host, every reading answers with the colour of the box around it and the assertion is
+      about nothing. The same trap the byline case records.
+    */
+    const toggle = await measurePart('.signal-control .count-mark__count', 'base', i);
+    if (toggle && toggle.h) tones.push(toggle.color);
+    const vote = await measurePart('.signal-control__count', 'base', i);
+    if (vote && vote.h) tones.push(vote.color);
+  }
+  const distinct = [...new Set(tones)];
+  if (!tones.length) problems.push('no readings were found to compare');
+  if (distinct.length > 1) problems.push(`readings are drawn in ${distinct.length} colours: ${distinct.join(' / ')}`);
+
+  /*
+    And a control that says its value only while it is dragged says nothing at rest.
+
+    Both the rating and the slider show their reading in a bubble during a drag. `we-tooltip` also
+    opens on hover, so at rest — with nothing to say — it opened an empty card hanging off the
+    control. A tooltip with no text and nothing slotted now stays shut.
+  */
+  const empties = await count('we-tooltip[open]');
+  if (empties) problems.push(`${empties} tooltips are open with nothing hovered`);
+
+  /*
     And a number is one line, whatever room it is given.
 
     Every typography surface defaults `overflow-wrap: anywhere`, which is right for a URL and wrong

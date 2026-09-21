@@ -19,6 +19,17 @@ export interface CountMarkProps {
    * conversation.
    */
   size?: 'xs' | 'sm' | 'md';
+  /**
+   * Whether the number follows the glyph's colour, or reads as ordinary text. Defaults to following.
+   *
+   * The two uses of this component want different answers, and one of them was wrong. As a COMPACT
+   * display the mark and its number are one quiet thing to glance at, so the digits take the glyph's
+   * colour — that is what the row-level colour below is for. As a toggle's control inside
+   * `SignalControl` the number is the community's reading, which is the same role the vote's net
+   * score and the rating's mean play, and both of those are plain text — so a dimmed count sat in a
+   * row of undimmed ones and the like looked like a different kind of thing.
+   */
+  countTone?: 'glyph' | 'text';
   /** What pressing it does. Omit for a mark that only reports. */
   onPress?: () => void;
   /** What a screen reader is told the press does. */

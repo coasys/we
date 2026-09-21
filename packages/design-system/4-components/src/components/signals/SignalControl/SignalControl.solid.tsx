@@ -179,6 +179,9 @@ export function SignalControl(props: SignalControlProps) {
               count={aggregate()}
               mine={Boolean(value())}
               size={size()}
+              // A control's reading, beside the vote's net score and the rating's mean — not a
+              // mark's own quiet number, which is what the compact row draws. See `countTone`.
+              countTone="text"
               disabled={isDisabled()}
               onPress={() => signal(value() ? null : props.signalType.rangeMax)}
             />
@@ -260,7 +263,19 @@ export function SignalControl(props: SignalControlProps) {
               blocked clicks on its own trigger, and it is what lets this one sit over the stars
               while they are being dragged.
             */}
-            <we-tooltip open={ratingDraft() !== null} content={String(ratingShown() ?? '')} placement="top">
+            {/*
+              The bubble says the score only while it is being CHOSEN.
+
+              `ratingShown()` was in here, which is the draft OR the stored value — so a rated
+              control had something to say at rest and hovering it popped a number nobody asked
+              for. What the bubble is for is the value under the pointer during a drag; at rest the
+              stars already say it.
+            */}
+            <we-tooltip
+              open={ratingDraft() !== null}
+              content={ratingDraft() === null ? '' : String(ratingDraft())}
+              placement="top"
+            >
               <Row
                 class="signal-control__rating-icons"
                 ay="center"

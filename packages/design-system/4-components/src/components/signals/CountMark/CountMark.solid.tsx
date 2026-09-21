@@ -80,7 +80,23 @@ export function CountMark(props: CountMarkProps) {
         `prop:fontSize`, not `fontSize`. A camelCase prop with a computed value on a `we-*` element
         compiles to a lowercased property assignment Lit never reads — see `check:we-props`.
       */}
-      <we-number class="count-mark__count" prop:fontSize={digits()} value={props.count ?? 0} shorten />
+      {/*
+        The digits follow the glyph, or read as text — see `countTone`.
+
+        Stated as the `text` role rather than left to inherit, because what they would inherit is the
+        ROW, and the row is deliberately dim — that is the whole mechanism that makes the digits
+        follow the glyph. Undoing it means naming the colour the other readings resolve to.
+
+        No `prop:` prefix: that rule is for camelCase names, which Solid lowercases into a property
+        Lit never reads. `color` is already lowercase, so it lands as an attribute and arrives.
+      */}
+      <we-number
+        class="count-mark__count"
+        prop:fontSize={digits()}
+        color={props.countTone === 'text' ? 'text' : undefined}
+        value={props.count ?? 0}
+        shorten
+      />
     </Row>
   );
 }

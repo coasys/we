@@ -2775,6 +2775,11 @@
           "optional": true
         },
         {
+          "name": "countTone",
+          "type": "\"text\" | \"glyph\"",
+          "optional": true
+        },
+        {
           "name": "onPress",
           "type": "(() => void)",
           "optional": true
