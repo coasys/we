@@ -22,6 +22,7 @@ import { calendarMonth, calendarMonths, monthLabel, yearLabel } from './calendar
 import { formatJson } from './formatJson';
 import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
+import { reactors } from './reactors';
 import { reactions, signalTally } from './signalTally';
 
 export interface HostSource {
@@ -107,6 +108,14 @@ export const hostSources: readonly HostSource[] = [
     example:
       'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })',
     fn: reactions,
+  },
+  {
+    name: 'reactors',
+    params: ['options'],
+    doc: 'Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal\'s author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type\'s signals, hydrated), profiles (profileStore.profiles), me (me.did), search.',
+    example:
+      'reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })',
+    fn: reactors,
   },
   {
     name: 'formatJson',

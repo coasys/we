@@ -345,8 +345,164 @@ function fullRow(opts: Resolved, as: string): SchemaNode {
   };
 }
 
+/** Local holding what has been typed into the sheet's search box. */
+const SEARCH = 'reactorSearch';
+
+/** Who reacted with this type, joined to their faces and names — see the `reactors` host function. */
+const reactorsOf = (record: string, as: string, search?: string) =>
+  `reactors({ signals: ${forType(record, as)}, profiles: profileStore.profiles, me: me.did${
+    search ? `, search: local.${search}` : ''
+  } })`;
+
+/**
+ * The faces of everybody who reacted with this type, and how many.
+ *
+ * Read at a glance and pressable: the sheet is where the names and the values are, and this is both
+ * the summary and the way there. One control rather than a face-strip beside a separate button, for
+ * the reason `peopleTooltip` gives about `AvatarStack` — what a reader reaches for is the faces AND
+ * the count, which together are the thing that says "twelve people".
+ *
+ * Absent where nobody has reacted, so an offered type nobody has used stays two lines.
+ */
+function reactorFaces(opts: Resolved, as: string): SchemaNode {
+  const roster = reactorsOf(opts.record, as);
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `count(${roster}.people)` },
+      then: {
+        type: 'we-button',
+        props: {
+          variant: 'bare',
+          size: 'xs',
+          color: 'text-muted',
+          hoverProps: { color: 'text' },
+          label: 'Who reacted',
+          ...(opts.readOnly ? {} : { onClick: { $setLocal: MODAL_OPEN, value: true } }),
+        },
+        children: [
+          {
+            type: 'Row',
+            props: { ay: 'center', gap: '200' },
+            children: [
+              {
+                type: 'AvatarStack',
+                props: {
+                  avatars: { $: `${roster}.people.map(p, { image: p.avatar, hash: p.did })` },
+                  max: 4,
+                  size: 'xs',
+                },
+              },
+              {
+                type: 'we-text',
+                props: { fontSize: '100' },
+                children: [{ $: `\`\${${roster}.total} \${plural(${roster}.total, 'person', 'people')}\`` }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * One person's reaction: who they are, and what they gave.
+ *
+ * The value is drawn only where the type HAS values to tell apart. On a toggle everybody gave the
+ * same thing — the fact that they are listed is the whole of it — and a column of identical "1"s
+ * beside identical hearts is noise pretending to be information.
+ */
+function reactorRow(as: string, who: string): SchemaNode {
+  return {
+    type: 'Row',
+    props: { width: '100%', ay: 'center', gap: '300' },
+    children: [
+      { type: 'we-avatar', props: { size: 'xs', image: { $: `${who}.avatar` }, hash: { $: `${who}.did` } } },
+      {
+        // The one row that is yours says so, since it is also the one this sheet can change.
+        type: 'we-text',
+        props: { flex: '1 1 auto', minWidth: '0', truncate: true, fontSize: '200' },
+        children: [{ $: `${who}.mine ? 'You' : (${who}.name ?? '')` }],
+      },
+      {
+        type: '$if',
+        props: {
+          condition: { $: `${as}.rangeMax - ${as}.rangeMin > 1` },
+          then: {
+            type: 'Row',
+            props: { flex: '0 0 auto', ay: 'center', gap: '100', color: 'text-muted' },
+            children: [
+              { type: 'we-icon', props: { name: { $: `${as}.icon` }, weight: 'fill', size: '12px' } },
+              { type: 'we-number', props: { fontSize: '100', value: { $: `${who}.value` } } },
+            ],
+          },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * Everybody who reacted with this type, by name, narrowed by whatever is in the search box.
+ *
+ * The sheet's depth, where the faces in a panel are its summary. Nothing here is fetched: the
+ * record already carries every signal with its author and value, so this is a join and a sort.
+ *
+ * A search that matches nobody says whether that is because nobody matched or because nobody's
+ * profile has arrived yet. The difference matters on a busy record — a name cannot be matched
+ * before it exists, and "no one called that" is a different claim from "I cannot tell yet".
+ */
+function reactorList(opts: Resolved, as: string): SchemaNode {
+  const roster = reactorsOf(opts.record, as, SEARCH);
+  const who = `${as}Who`;
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `count(${reactorsOf(opts.record, as)}.people)` },
+      then: {
+        type: 'Column',
+        props: { width: '100%', gap: '200', pt: '200' },
+        children: [
+          {
+            type: 'we-text',
+            props: { fontSize: '100', color: 'text-muted' },
+            children: [
+              {
+                $: `\`\${${roster}.total} \${plural(${roster}.total, 'person', 'people')}\``,
+              },
+            ],
+          },
+          {
+            type: '$each',
+            props: { items: { $: `${roster}.people` }, as: who },
+            children: [reactorRow(as, who)],
+          },
+          {
+            // Only while a search is narrowing: with nothing typed there is no question for anybody
+            // to be missing from.
+            type: '$if',
+            props: {
+              condition: { $: `trim(local.${SEARCH}) && ${roster}.unresolved` },
+              then: {
+                type: 'we-text',
+                props: { fontSize: '100', color: 'text-faint' },
+                children: [
+                  {
+                    $: `\`\${${roster}.unresolved} more whose name has not loaded yet\``,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
 /** One type per row, each saying what it is — see `fullRow` for when this is the shape. */
-function fullList(opts: Resolved, as: string): SchemaNode {
+function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boolean } = {}): SchemaNode {
   return {
     type: 'Column',
     // The floor is `fullRow`'s, for the same reason: the section must not appear a frame late and
@@ -402,6 +558,15 @@ function fullList(opts: Resolved, as: string): SchemaNode {
                   },
                 },
               },
+              /*
+                Who reacted — as faces and a count in a panel, and as the names themselves in the
+                sheet.
+
+                The same question at two depths, which is why one surface leads to the other rather
+                than answering it twice: a panel has room to say "twelve people" and the sheet has
+                room to say which twelve and what each of them gave.
+              */
+              roster ? reactorList(opts, as) : reactorFaces(opts, as),
             ],
           },
         ],
@@ -460,14 +625,34 @@ function newType(opts: Resolved, { labelled }: { labelled: boolean }): SchemaNod
         then: {
           type: labelled ? 'Row' : 'we-tooltip',
           ...(labelled ? { props: { width: '100%' } } : { props: { content: 'New reaction type' } }),
-          children: [
-            button,
-            createSignalTypeModal({
-              open: { $: `local.${NEW_TYPE_OPEN}` },
-              close: { $setLocal: NEW_TYPE_OPEN, value: false },
-            }),
-          ],
+          children: [button],
         },
+      },
+    },
+  ];
+}
+
+/**
+ * The form itself, rendered once however many buttons open it.
+ *
+ * It used to sit beside each button, which was one form while the list was drawn once. The sheet
+ * draws the same list again — so in `full`, with the sheet open, there were two of them bound to
+ * one flag, and pressing New reaction type mounted both: two identical sheets stacked on each
+ * other, and whichever was closed left the other behind.
+ *
+ * One form at the root, and the buttons only set a flag. Which is what a flag is for.
+ */
+function newTypeForm(opts: Resolved): SchemaNode[] {
+  if (opts.readOnly) return [];
+  return [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+        then: createSignalTypeModal({
+          open: { $: `local.${NEW_TYPE_OPEN}` },
+          close: { $setLocal: NEW_TYPE_OPEN, value: false },
+        }),
       },
     },
   ];
@@ -605,7 +790,32 @@ function modal(opts: Resolved, as: string): SchemaNode {
             rest are reached from, so arriving to find it showing the same subset as the row behind
             it would be a door onto the room you were already in.
           */
-          fullRow({ ...opts, mode: 'full', showUnused: opts.showUnused ?? true, inline: false }, as),
+          /*
+            One box, narrowing the people rather than the types.
+
+            A reader's question here is "did Anna react", and the answer is "with what" — so the
+            search runs over the names inside each type and a type nobody matching used drops out
+            of its own accord, which is one control answering both halves. A second filter over the
+            type names would be a second thing to learn and would hide the answer to the first.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: `count(${typesShown({ ...opts, mode: 'full', showUnused: false })})` },
+              then: {
+                type: 'we-input',
+                props: {
+                  size: 'sm',
+                  placeholder: 'Find someone…',
+                  value: { $: `local.${SEARCH}` },
+                  onInput: { $setLocal: SEARCH, value: { $: 'event.detail' } },
+                },
+              },
+            },
+          },
+          fullList({ ...opts, mode: 'full', showUnused: opts.showUnused ?? true, inline: false }, as, {
+            roster: true,
+          }),
         ],
       },
     },
@@ -636,7 +846,16 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
         // Per display: inside an `$each` this is created per row, so two records cannot disagree
         // about whose reactions are open.
         $localState: {
-          ...(mode === 'full' ? {} : { [MODAL_OPEN]: { type: 'boolean', initial: false } }),
+          /*
+            The sheet is reachable from every mode now, including `full`.
+
+            It used to be built only where the row hid something — so the inspector, the surface
+            with the most room and the most reason to ask, was the one place with no way in. That
+            was fine while the sheet only held types you could already see; it stopped being fine
+            when it started holding who reacted.
+          */
+          [MODAL_OPEN]: { type: 'boolean', initial: false },
+          [SEARCH]: { type: 'string', initial: '' },
           // Declared in every mode: `fullRow` carries the button that sets it, and `fullRow` is
           // both what `full` renders and what the sheet holds.
           [NEW_TYPE_OPEN]: { type: 'boolean', initial: false },
@@ -646,7 +865,8 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
           no plus on a compact row, no press on a total's mark — so a modal beside one is a subtree
           of live controls that nothing can reach.
         */
-        children: mode === 'full' || opts.readOnly ? [body] : [body, modal(opts, as)],
+        // A read-only display is drawing rather than offering, so it opens nothing.
+        children: opts.readOnly ? [body] : [body, modal(opts, as), ...newTypeForm(opts)],
       },
     },
   };

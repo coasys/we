@@ -272,6 +272,37 @@ function doorCondition(display: SchemaNode): string | undefined {
   return found;
 }
 
+/**
+ * Every `$if` condition on the path from the root to the first node matching `is`.
+ *
+ * What "nothing gates this" has to be asked of. Collecting conditions from the whole tree answers a
+ * different question — it refuses a guard anywhere, including ones on siblings that have every right
+ * to be conditional — and a test that broad fails the first time something correct is added beside
+ * the thing it is about.
+ */
+function guardsAround(node: SchemaNode, is: (n: Record<string, unknown>) => boolean): string[] {
+  let found: string[] | undefined;
+  const walkIn = (value: unknown, guards: string[]): void => {
+    if (found || !value) return;
+    if (Array.isArray(value)) return value.forEach((v) => walkIn(v, guards));
+    if (typeof value !== 'object') return;
+    const record = value as Record<string, unknown>;
+    if (is(record)) {
+      found = guards;
+      return;
+    }
+    const props = (record.props ?? {}) as Record<string, unknown>;
+    const own = record.type === '$if' ? (props.condition as { $?: string } | undefined)?.$ : undefined;
+    for (const [key, child] of Object.entries({ ...record, ...props })) {
+      if (key === 'condition' || key === 'props') continue;
+      const inner = own && (key === 'then' || key === 'else') ? [...guards, own] : guards;
+      walkIn(child, inner);
+    }
+  };
+  walkIn(node, []);
+  return found ?? [];
+}
+
 /** The first node in an expansion matching `is`, so an assertion can be about one part of it. */
 function subtree(node: SchemaNode, is: (n: Record<string, unknown>) => boolean): SchemaNode | undefined {
   let found: SchemaNode | undefined;
@@ -393,17 +424,29 @@ describe('contracts call sites depend on', () => {
   });
 
   it('signalDisplay at full offers every type, so the first reaction in a space can be given', () => {
-    // The bug this fragment exists for: a feed row draws a control only where somebody has already
-    // reacted, so a type a community just defined is unreachable from every surface at once. A
-    // detail panel has the room, and must not inherit that rule — no count guard between the
-    // `$each` over the offered types and the control it draws.
+    /*
+      The bug this fragment exists for: a feed row draws a control only where somebody has already
+      reacted, so a type a community just defined is unreachable from every surface at once. A
+      detail panel has the room, and must not inherit that rule — no count guard between the `$each`
+      over the offered types and the control it draws.
+
+      Asked of the guards ON THE PATH to the control, which is what "between" means. It used to be
+      asked of every condition anywhere in the expansion, and that stopped being the same question
+      the moment the list grew things that are RIGHTLY gated on whether anybody has reacted — the
+      faces, the roster. Those hide a summary of reactions when there are none, which is correct;
+      what must never be gated is the control that lets somebody be the first.
+    */
     const conditions: string[] = [];
     walk(weDomain['signalDisplay (full)'], (n) => {
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
       if (condition) conditions.push(condition);
     });
     expect(conditions).toContain('count(filter(local.signalTypes, { retired: { not: true } }))');
-    expect(conditions.filter((c) => c.includes('row.signals'))).toEqual([]);
+
+    const guards = guardsAround(weDomain['signalDisplay (full)'], (n) => n.type === 'SignalControl');
+    expect(guards, 'a control is gated on somebody having already used the type').toEqual(
+      guards.filter((c) => !c.includes('row.signals')),
+    );
   });
 
   it('folds a branch by id, declared once, and closes it without tearing it down', () => {
@@ -819,6 +862,36 @@ describe('contracts call sites depend on', () => {
       if (each) items.push(each);
     });
     expect(items.some((e) => e.includes('count(filter(card.signals'))).toBe(false);
+  });
+
+  it('the create form is declared once, however many buttons open it', () => {
+    /*
+      It used to sit beside each button, which was one form while the list was drawn once. The sheet
+      draws the same list again — so in `full`, with the sheet open, there were two bound to one
+      flag, and pressing New reaction type mounted both: two identical sheets stacked on each other,
+      and closing either left the other behind.
+    */
+    let forms = 0;
+    walk(weDomain['signalDisplay (full)'], (n) => {
+      if (n.$action === 'spaceStore.createSignalType') forms += 1;
+    });
+    expect(forms).toBe(1);
+  });
+
+  it('every mode can reach the sheet, including the one with the most room', () => {
+    /*
+      The sheet was built only where the row hid something, so `full` — the inspector, the surface
+      with the most reason to ask who reacted — was the one place with no way in. Fine while it held
+      only types you could already see; not fine once it held the people.
+    */
+    for (const mode of ['full', 'compact', 'total'] as const) {
+      const display = signalDisplay({ record: 'row', mode, as: `sig${mode}` });
+      let opens = 0;
+      walk(display, (n) => {
+        if (n.$setLocal === 'signalsModalOpen' && n.value === true) opens += 1;
+      });
+      expect(opens, `${mode} has no way into the reactions sheet`).toBeGreaterThan(0);
+    }
   });
 
   it('a read-only compact display opens nothing', () => {
