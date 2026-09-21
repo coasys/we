@@ -187,3 +187,49 @@ describe('hover', () => {
     expect(el.open).toBe(true);
   });
 });
+
+describe('a tooltip inside an open popover leaves the top layer alone', () => {
+  /*
+    Showing a popover from inside another one disturbs the one it is inside, and the content of an
+    open popover is in the top layer already — so a tooltip there has nothing to gain by promoting
+    itself and a popover to lose.
+
+    It surfaced as a compact reaction mark that would not let go of a gesture: dragging a rating or
+    a slider inside it opened the value bubble and the popover shut, and hovering the clear button
+    beside them did the same. Both are a `we-tooltip` opening inside a `we-popover`.
+
+    jsdom implements neither `showPopover` nor `:popover-open`, so what is checked here is the
+    decision — whether the tooltip believes it is inside one — rather than the browser's reaction
+    to it. The behaviour itself is a `@we/app-shell test:browser` matter.
+  */
+  it('finds an open popover above it, across a shadow boundary', async () => {
+    const outer = document.createElement('div');
+    outer.setAttribute('popover', 'auto');
+    // `:popover-open` does not exist here, so stand in for it: the walk is what is being tested.
+    outer.matches = ((selector: string) => selector === ':popover-open') as Element['matches'];
+    document.body.append(outer);
+
+    const host = document.createElement('div');
+    const root = host.attachShadow({ mode: 'open' });
+    outer.append(host);
+
+    const tip = document.createElement('we-tooltip') as HTMLElement & { updateComplete: Promise<unknown> };
+    root.append(tip);
+    await tip.updateComplete;
+
+    expect((tip as unknown as { insideOpenPopover: boolean }).insideOpenPopover).toBe(true);
+  });
+
+  it('says no when the popover above it is closed', async () => {
+    const outer = document.createElement('div');
+    outer.setAttribute('popover', 'auto');
+    outer.matches = (() => false) as Element['matches'];
+    document.body.append(outer);
+
+    const tip = document.createElement('we-tooltip') as HTMLElement & { updateComplete: Promise<unknown> };
+    outer.append(tip);
+    await tip.updateComplete;
+
+    expect((tip as unknown as { insideOpenPopover: boolean }).insideOpenPopover).toBe(false);
+  });
+});

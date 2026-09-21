@@ -297,15 +297,50 @@ export default class Tooltip extends LayoutElement {
     }
   }
 
+  /** Whether this tooltip put itself in the top layer, and so has something to undo. */
+  private promoted = false;
+
+  /**
+   * Whether something above this is already an open popover — crossing shadow boundaries.
+   *
+   * `closest` stops at the shadow root it starts in, and every one of these lives in one: a
+   * tooltip inside a `we-popover` is slotted, so its chain to the panel runs host, root, host.
+   */
+  private get insideOpenPopover(): boolean {
+    let node: Node | null = this.parentNode instanceof ShadowRoot ? this.parentNode.host : this.parentNode;
+    while (node) {
+      if (node instanceof Element) {
+        try {
+          if (node.hasAttribute('popover') && node.matches(':popover-open')) return true;
+        } catch {
+          // A browser without `:popover-open` cannot be inside one either.
+        }
+      }
+      const parent: Node | null = node.parentNode;
+      node = parent instanceof ShadowRoot ? parent.host : parent;
+    }
+    return false;
+  }
+
   private openTooltip() {
     if (!this.tooltipEl) return;
 
-    // Promote to browser top layer so position:fixed resolves to the viewport
-    // instead of an ancestor backdrop-filter containing block.
-    if ('showPopover' in this.tooltipEl) {
+    /*
+      Promote to the browser's top layer so `position: fixed` resolves to the viewport instead of
+      an ancestor `backdrop-filter`'s containing block.
+
+      NOT when something above this is already an open popover. The content of one is in the top
+      layer already, so promotion buys nothing there — and it costs: showing a popover from inside
+      another one disturbs the one it is inside, which closed the moment a tooltip opened within
+      it. That is every case of it happening: a rating or a slider dragged inside a compact mark's
+      popover, whose value bubble opens on the drag, and the clear button beside them, whose tip
+      opens on a hover. In both the popover shut before the gesture finished.
+    */
+    if ('showPopover' in this.tooltipEl && !this.insideOpenPopover) {
       this.tooltipEl.setAttribute('popover', 'manual');
       try {
         (this.tooltipEl as HTMLElement & { showPopover(): void }).showPopover();
+        this.promoted = true;
       } catch {}
     }
 
@@ -317,11 +352,14 @@ export default class Tooltip extends LayoutElement {
       this.cleanup();
       this.cleanup = undefined;
     }
-    if (this.tooltipEl && 'hidePopover' in this.tooltipEl) {
+    // Only what this promoted: calling `hidePopover` on an element that was never shown throws,
+    // and removing the attribute from one that is not ours is a change with no author.
+    if (this.promoted && this.tooltipEl && 'hidePopover' in this.tooltipEl) {
       try {
         (this.tooltipEl as HTMLElement & { hidePopover(): void }).hidePopover();
       } catch {}
       this.tooltipEl.removeAttribute('popover');
+      this.promoted = false;
     }
   }
 
