@@ -10,6 +10,7 @@ import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/te
 import { hostSourceBag } from '@shared/sources';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
+import { signalOrder } from '../../../shared/signalOrder';
 
 /** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
 const idOf = (entry: unknown): string =>
@@ -551,6 +552,40 @@ export default function TemplateProvider() {
       subscription actually says, so a hold is released the moment the data has overtaken it rather
       than when the write's promise settles.
     */
+    /*
+      The order a record's reactions are drawn in, settled once and then held.
+
+      Here rather than in the fragment, because the fragment cannot hold anything: a reaction
+      surface sits inside an `$each` over a query, a subscription answers with fresh objects, and
+      Solid's keyed `<For>` therefore remounts the row — taking any `$localState` initial with it.
+      Writing a reaction re-runs the query that feeds the row you wrote it on, so a snapshot taken
+      at mount was re-taken on exactly the events it was meant to be stable across.
+
+      `of` is the record. Without one there is nothing to key on and the live order is the answer,
+      which is right for a caller that is not drawing a particular record's reactions.
+    */
+    signalTypesByUse: (options: unknown) => {
+      const given = (options ?? {}) as { of?: unknown; limit?: unknown };
+      if (typeof given.of !== 'string') return sources.signalTypesByUse(given);
+
+      /*
+        The WHOLE order is settled, and the limit applied after.
+
+        A compact row asks for four; storing those four as the order would throw away where
+        everything else stood, so opening the sheet — which asks for all of them — would settle a
+        fresh order for the tail every time it opened.
+      */
+      const all = sources.signalTypesByUse({
+        ...given,
+        limit: undefined,
+        order: signalOrder.held(given.of),
+      }) as unknown[];
+      signalOrder.settle(
+        given.of,
+        all.map((type) => (type as { id?: unknown }).id).filter((id): id is string => typeof id === 'string'),
+      );
+      return typeof given.limit === 'number' && given.limit >= 0 ? all.slice(0, given.limit) : all;
+    },
     reactions: (options: unknown) => {
       const given = (options ?? {}) as { signals?: unknown; record?: unknown; type?: unknown; me?: unknown };
       const list = sources.reactions({ ...given, pending: signalOptimism.overlay() });

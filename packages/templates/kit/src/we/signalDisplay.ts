@@ -109,20 +109,6 @@ const TOOLTIP_PEOPLE = 5;
  */
 const PANEL_PEOPLE = 8;
 
-/**
- * The order the types are drawn in, settled when the display mounts.
- *
- * Ordering by use live meant a reaction you had just withdrawn slid down the column under your
- * cursor. Worse than merely odd: `$each` gives a row its index as a value captured when the row
- * rendered, so a row that moves keeps the index it was born with — and the line between one type
- * and the next, which asks "am I first", was then drawn in the wrong place.
- *
- * Taken at mount rather than continuously, which is what makes reopening the panel the moment the
- * order refreshes. Safe to take there because the whole display is behind a "does this community
- * have any reaction types" guard, so it does not mount until the vocabulary has arrived.
- */
-const TYPE_ORDER = 'signalTypeOrder';
-
 /** Which types have their people rows open, by type id — see `reactorSummary`. */
 const EXPANDED = 'expandedReactors';
 
@@ -208,19 +194,9 @@ function typeSet(opts: Resolved): string {
  * from a row with space for four.
  */
 function typesShown(opts: Resolved, limit?: number): string {
-  return `signalTypesByUse({ types: ${typeSet(opts)}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids, order: local.${TYPE_ORDER}${
+  return `signalTypesByUse({ of: ${opts.record}.id, types: ${typeSet(opts)}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids${
     limit === undefined ? '' : `, limit: ${limit}`
   } })`;
-}
-
-/**
- * That order, as ids, for the display to remember at mount.
- *
- * Over every offered type rather than the subset one surface draws, so the row and the sheet behind
- * it agree — a type the row is not showing still has a place to be in once the sheet shows it.
- */
-function typeOrderSnapshot(opts: Resolved): string {
-  return `signalTypesByUse({ types: ${OFFERED_SIGNAL_TYPES}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids }).map(t, t.id)`;
 }
 
 /**
@@ -260,7 +236,16 @@ function meaning(opts: Resolved, as: string, children: SchemaNode[]): SchemaNode
             type: 'Column',
             props: { gap: '100', textAlign: 'left' },
             children: [
-              { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: `${as}.name` }] },
+              {
+                // The glyph leads here too, for the reason it does in the full list: a bubble
+                // explaining what a mark MEANS should start with the mark.
+                type: 'Row',
+                props: { ay: 'center', gap: '200' },
+                children: [
+                  { type: 'we-icon', props: { name: { $: `${as}.icon` }, size: 'xs', flexShrink: '0' } },
+                  { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: `${as}.name` }] },
+                ],
+              },
               {
                 type: '$if',
                 props: {
@@ -775,11 +760,33 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                 props: { width: '100%', ay: 'center', ax: 'between', gap: '300' },
                 children: [
                   {
-                    // Gives up room before the control does, and truncates rather than wrapping: a
-                    // name long enough to need two lines is a name to shorten, not to stack.
-                    type: 'we-text',
-                    props: { variant: 'label', flex: '1 1 auto', minWidth: '0', truncate: true },
-                    children: [{ $: `${as}.name` }],
+                    /*
+                      The glyph, then the name — the two halves of what a reaction IS.
+
+                      Every other surface says a type with its glyph, so a list that said it in
+                      words alone was the one place somebody had to translate between the heart on a
+                      card and the row that configures it. It leads rather than follows because that
+                      is the order a reader meets them in everywhere else, and because a column of
+                      glyphs down the left edge is scannable in a way a column of names is not.
+
+                      Never shrinks, and the name gives up the room: the glyph is the recognisable
+                      half, so squeezing it to fit a long name would lose the wrong one.
+                    */
+                    type: 'Row',
+                    props: { flex: '1 1 auto', minWidth: '0', ay: 'center', gap: '200' },
+                    children: [
+                      {
+                        type: 'we-icon',
+                        props: { name: { $: `${as}.icon` }, size: 'xs', color: 'text-muted', flexShrink: '0' },
+                      },
+                      {
+                        // Truncates rather than wrapping: a name long enough to need two lines is a
+                        // name to shorten, not to stack.
+                        type: 'we-text',
+                        props: { variant: 'label', flex: '1 1 auto', minWidth: '0', truncate: true },
+                        children: [{ $: `${as}.name` }],
+                      },
+                    ],
                   },
                   // Never absorbs somebody else's overflow: a rating is five glyphs and a slider is
                   // a track, and neither has a narrower form worth having.
@@ -1153,14 +1160,6 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
             one card does not open them on every card in the feed.
           */
           [EXPANDED]: { type: 'array', initial: [] },
-          /*
-            Read once, when this display mounts, and held for as long as it is on screen.
-
-            An `initial` is evaluated at mount and never again, which is exactly the semantics
-            wanted: the order settles as the panel opens and nothing anybody does afterwards moves
-            a row out from under the reader.
-          */
-          [TYPE_ORDER]: { type: 'array', initial: { $: typeOrderSnapshot(opts) } },
           // Declared in every mode: `fullRow` carries the button that sets it, and `fullRow` is
           // both what `full` renders and what the sheet holds.
           [NEW_TYPE_OPEN]: { type: 'boolean', initial: false },

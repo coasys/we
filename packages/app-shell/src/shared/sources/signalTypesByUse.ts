@@ -38,10 +38,13 @@
  * born with, and anything drawn from the index — the line between one type and the next — is drawn
  * in the wrong place afterwards.
  *
- * So a display takes the order ONCE, when it mounts, and passes it back here as a list of ids. Ids
- * it names keep that order; anything it does not name — a type defined since, or one that has just
- * had its first reaction — is appended by use, so a new type appears rather than being dropped. An
- * empty or absent `order` means nobody has settled one, and the live order is the answer.
+ * So an order settled earlier is passed back in as a list of ids. Ids it names keep that order;
+ * anything it does not name — a type defined since, or one that has just had its first reaction —
+ * is appended by use, so a new type appears rather than being dropped. An empty or absent `order`
+ * means nobody has settled one, and the live order is the answer.
+ *
+ * WHO settles it is the host, not the template: see `signalOrder`, and the note there about why a
+ * `$localState` snapshot cannot survive the subscription that a reaction itself triggers.
  *
  * Total, like every function an expression can call.
  */

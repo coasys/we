@@ -121,6 +121,7 @@ import {
 
 import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
+import { signalOrder } from '../../../shared/signalOrder';
 import { useAppStore } from './AppStore';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
@@ -3329,6 +3330,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     // A hold is a promise about records on the screen being left; see `involvementOptimism.reset`.
     involvementOptimism.reset();
     signalOptimism.reset();
+    // The order a record's reactions settled into is a promise about the same screen. See
+    // `signalOrder`.
+    signalOrder.reset();
     void loadInvolvementTypes();
   });
 

@@ -1159,7 +1159,7 @@ const emptyFields: SchemaNode = {
     condition: { $: EMPTY_COUNT },
     then: {
       type: 'Column',
-      props: { gap: '200', pt: '200', borderTop: '1px solid border' },
+      props: { gap: '200' },
       children: [
         foldingSectionLabel({ label: 'Empty fields', count: EMPTY_COUNT, open: { field: 'showEmpty' } }),
         foldingBody({
@@ -1326,7 +1326,7 @@ function endButton(opts: { id: string; type: string; icon: string; name: string;
  */
 const cardConnections: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  props: { gap: '100' },
   children: [
     foldingSectionLabel({
       label: 'Connections',
@@ -1452,7 +1452,7 @@ const cardConnections: SchemaNode = {
  */
 const linkEnds: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  props: { gap: '100' },
   children: [
     foldingSectionLabel({ label: 'Connects', open: { field: 'connectsOpen' } }),
     foldingBody({
@@ -1508,7 +1508,7 @@ const peopleSection: SchemaNode = {
     then: {
       type: 'Column',
       // The same gap under the caption as Connections has; the parts below keep a wider one.
-      props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+      props: { gap: '100' },
       children: [
         foldingSectionLabel({
           label: 'People',
@@ -1796,7 +1796,7 @@ const connectionsSection: SchemaNode = {
  */
 const reactionsSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', pt: '200', borderTop: '1px solid border', width: '100%' },
+  props: { gap: '100', width: '100%' },
   children: [
     foldingSectionLabel({
       label: 'Reactions',
@@ -1838,7 +1838,7 @@ const REPLY_TOTAL = 'first(local.card).$descendants ?? count(row.comments)';
 /** The thread, and the way into it. */
 const discussion: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', pt: '200', borderTop: '1px solid border', width: '100%' },
+  props: { gap: '200', width: '100%' },
   children: [
     foldingSectionLabel({ label: 'Discussion', count: REPLY_TOTAL, open: { field: 'discussionOpen' } }),
     foldingBody({
@@ -2186,7 +2186,17 @@ const inspectorPanel: SchemaNode = {
               children: [
                 {
                   type: 'Column',
-                  props: { gap: '300' },
+                  /*
+                    The gap the extraction panel sets its sections apart with, and no rules between
+                    them.
+
+                    Each section drew a line above itself, which was the separation when a heading
+                    was a caption and a section was a caption with rows under it. They fold now, so
+                    every one already has a heading that reads as a heading — and six rules on a
+                    panel 320px wide is a lot of horizontal ink for a job the space between them
+                    does.
+                  */
+                  props: { gap: '400' },
                   /*
                     The model's own declaration, held for the subtree rather than read at each use.
 

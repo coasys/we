@@ -13,8 +13,16 @@ export const widths = [420];
 export async function check({ measureAll }) {
   const problems = [];
 
-  const glyphs = await measureAll('we-icon');
-  const counts = await measureAll('we-number');
+  /*
+    Not the ones inside a hover bubble.
+  
+    A compact mark is wrapped in a `we-tooltip` whose content — the type's name, its glyph, and who
+    reacted — is in the DOM the whole time, laid out at zero size until it opens. `querySelectorAll`
+    cannot tell those apart, so the day the bubble gained a glyph of its own, this measured it and
+    reported a 0x0 mark. The bubble's contents are exactly what `[slot='content']` holds.
+  */
+  const glyphs = await measureAll('we-icon:not([slot="content"] *)');
+  const counts = await measureAll('we-number:not([slot="content"] *)');
   if (glyphs.length !== 2 || counts.length !== 2) {
     return [`expected two marks and two counts, found ${glyphs.length} and ${counts.length}`];
   }

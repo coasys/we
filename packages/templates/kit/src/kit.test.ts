@@ -995,65 +995,33 @@ describe('contracts call sites depend on', () => {
     ).toBe(true);
   });
 
-  it('settles the order at mount so a row cannot move under the reader', () => {
+  it('names the record it is ordering, so the order can be settled once', () => {
     /*
-      Ordering by use live meant a reaction you had just withdrawn slid down the column. That is
-      disconcerting on its own, and it also broke the line between one type and the next: `$each`
-      gives a row its `index` as a value captured when the row RENDERED, so a row that moves keeps
-      the index it was born with, and "am I first" answers for where it used to be.
+      It settled the order into a `$localState` initial — evaluated at mount and never again, which
+      looked like exactly the right semantics. It was not: a reaction surface sits inside an `$each`
+      over a query, a subscription answers with fresh objects, and Solid's keyed `<For>` therefore
+      remounts the row and takes the snapshot with it. Writing a reaction re-runs the query that
+      feeds the row you wrote it on, so the snapshot was re-taken on precisely the events it existed
+      to be stable across — which is why the column still jumped, and why it jumped late.
 
-      So the display reads the order once — an `initial` is evaluated at mount and never again —
-      and every list it draws is ranked by that, rather than by the counts as they stand.
+      So the template names the record (`of`) and the host holds the order. What is pinned here is
+      that every list passes `of`: without it there is nothing to key on and the live order comes
+      back, which is the bug with no symptom until somebody presses something.
     */
     const full = signalDisplay({ record: 'row', mode: 'full', as: 'sig' });
-    let declared: unknown;
     const lists: string[] = [];
     walk(full, (n) => {
-      const state = n.$localState as Record<string, { initial?: unknown }> | undefined;
-      if (state?.signalTypeOrder) declared = state.signalTypeOrder.initial;
       const items = (n.props as { items?: { $?: string } } | undefined)?.items?.$;
       if (items?.includes('signalTypesByUse(')) lists.push(items);
     });
 
-    expect((declared as { $?: string })?.$, 'the display settles no order of its own').toContain('signalTypesByUse(');
     expect(lists.length, 'nothing draws a list of types').toBeGreaterThan(0);
     expect(
-      lists.every((e) => e.includes('order: local.signalTypeOrder')),
+      lists.every((e) => e.includes('of: row.id')),
       `a list ordered itself live: ${lists.join(' | ')}`,
     ).toBe(true);
-  });
-
-  it('the line above the create button is gated with the button', () => {
-    /*
-      The line says "the list ends here, and this next thing is about the vocabulary rather than
-      about the reaction above it". But the button is an administrator's, so for an ordinary member
-      the line was a rule under the last type with nothing after it — drawn, because it was gated on
-      the list having types and nothing else.
-
-      Caught by the browser harness counting five lines between five types; pinned here by asking
-      what stands between the root and the line, which is the question the bug was an answer to.
-    */
-    const full = signalDisplay({ record: 'row', mode: 'full', as: 'sig' });
-    const guards = guardsAround(full, (n) => n.type === 'we-divider' && !!(n.props as { width?: string })?.width);
-
-    // The FIRST divider reached is the one between two types, which is conditional on its position.
-    expect(
-      guards.some((g) => g === 'index'),
-      `first line's guards: ${guards.join(', ')}`,
-    ).toBe(true);
-
-    const button = subtree(full, (n) => (n.props as { label?: string } | undefined)?.label === 'New reaction type');
-    expect(button, 'no create button on a full display').toBeTruthy();
-    const line = subtree(
-      full,
-      (n) =>
-        (n.props as { condition?: { $?: string } } | undefined)?.condition?.$ ===
-        'spaceStore.canAdministerCurrentSpace',
-    );
-    expect(
-      JSON.stringify(line).includes('we-divider'),
-      'the line above the create button is drawn for people who have no button',
-    ).toBe(true);
+    // And nothing tries to keep the order in the template any more.
+    expect(JSON.stringify(full)).not.toContain('signalTypeOrder');
   });
 
   it('a search opens the rows it matched', () => {

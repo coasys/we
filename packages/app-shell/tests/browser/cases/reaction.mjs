@@ -14,8 +14,16 @@ export async function check(api) {
   const { measure, measurePart } = api;
   const problems = [];
 
-  const glyph = await measure('we-icon');
-  const count = await measure('we-number');
+  /*
+    Not the ones inside a hover bubble.
+  
+    A compact mark is wrapped in a `we-tooltip` whose content — the type's name, its glyph, and who
+    reacted — is in the DOM the whole time, laid out at zero size until it opens. `querySelectorAll`
+    cannot tell those apart, so the day the bubble gained a glyph of its own, this measured it and
+    reported a 0x0 mark. The bubble's contents are exactly what `[slot='content']` holds.
+  */
+  const glyph = await measure('we-icon:not([slot="content"] *)');
+  const count = await measure('we-number:not([slot="content"] *)');
   if (!glyph || !count) return ['no reaction control rendered'];
 
   if (glyph.h < 14) problems.push(`the glyph is ${glyph.w}x${glyph.h} — too small to read as the control`);
