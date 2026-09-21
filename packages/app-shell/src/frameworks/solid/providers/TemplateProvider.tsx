@@ -51,7 +51,7 @@ import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
@@ -580,10 +580,24 @@ export default function TemplateProvider() {
         limit: undefined,
         order: signalOrder.held(given.of),
       }) as unknown[];
+      const record = given.of;
       signalOrder.settle(
-        given.of,
+        record,
         all.map((type) => (type as { id?: unknown }).id).filter((id): id is string => typeof id === 'string'),
       );
+      /*
+        The order lives exactly as long as this drawing does.
+
+        Held for the session instead, selecting another card and coming back showed the first card's
+        order from minutes ago, with a reaction since given sitting halfway down a list that claims
+        to be sorted by use. Released when the owner goes away, it still survives the remount a
+        subscription causes — that disposes and rebuilds inside one batch, so the order is asked for
+        again before the deferred release fires — and is forgotten once the reader has moved on.
+
+        Only where there is an owner to hang it on: a source called outside a reactive computation
+        has nothing to be cleaned up with, and `onCleanup` there warns and does nothing.
+      */
+      if (getOwner()) onCleanup(() => signalOrder.release(record));
       return typeof given.limit === 'number' && given.limit >= 0 ? all.slice(0, given.limit) : all;
     },
     reactions: (options: unknown) => {

@@ -6,7 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import type { SchemaNode } from '@we/schema-shared';
-import { discussionSection, signalDisplay } from '@we/template-kit';
+import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -395,6 +395,53 @@ const nestedInteractive = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * Three folding section headings in a column — plain, with a count, and with a control beside it.
+ *
+ * The heading with a control is a different tree from the other two: a button around the whole row
+ * is invalid markup once there is a second button in it, so an `action` splits the heading into a
+ * name and a count-with-caret, with the control between them. Two shapes that must read as one
+ * kind of row is exactly the thing a schema test cannot check and a rendered page can.
+ */
+const panelSections = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', gap: '400', p: '300' },
+    $localState: {
+      plainOpen: { type: 'boolean', initial: false },
+      countedOpen: { type: 'boolean', initial: false },
+      actionedOpen: { type: 'boolean', initial: false },
+    },
+    children: [
+      foldingSectionLabel({ label: 'Connects', open: { field: 'plainOpen' } }),
+      foldingSectionLabel({ label: 'Connections', count: '3', open: { field: 'countedOpen' } }),
+      foldingSectionLabel({
+        label: 'People',
+        count: '2',
+        open: { field: 'actionedOpen' },
+        /*
+          The inspector's picker, at the size a heading's aside is.
+
+          `xs` because that is what `sectionLabel` reserves room for. It was `sm` here, and the row
+          came out 32px against the other two headings' 24 — which is what this case caught.
+        */
+        action: {
+          type: 'DropdownMenu',
+          props: {
+            triggerIcon: 'user-plus',
+            triggerTitle: 'Who is on this',
+            triggerVariant: 'ghost',
+            size: 'xs',
+            itemSize: 'sm',
+            items: [],
+          },
+        },
+      }),
+    ],
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, () => Scenario> = {
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
@@ -403,4 +450,5 @@ export const scenarios: Record<string, () => Scenario> = {
   'signals:vocabulary': vocabulary,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
+  'panel:sections': panelSections,
 };

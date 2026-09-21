@@ -1,5 +1,5 @@
 /**
- * The order a record's reactions were first drawn in, held for as long as the app is open.
+ * The order a record's reactions were settled into, held for as long as something is drawing them.
  *
  * ## Why this is not a `$localState` snapshot
  *
@@ -15,60 +15,76 @@
  * to be stable across, which is why the column still jumped, and why it jumped *late*: the jump was
  * the subscription landing, not the press.
  *
- * Nothing a template can declare survives that, because the thing that does not survive is the
- * template's own state. So the order lives here, beside the optimism holds, keyed by record.
+ * ## Why it is not held for the session either
  *
- * ## Holding it means the order can go stale, and that is the point
+ * That was the next attempt, and it went too far the other way: an order settled once was kept
+ * until the space changed, so selecting another card and coming back showed the first card's order
+ * from minutes ago — a reaction the reader had since given sitting halfway down a list that claims
+ * to be sorted by use. Stale in a way they can see is as wrong as moving under their cursor.
  *
- * A record whose order was settled an hour ago keeps it, even as reactions arrive and overtake each
- * other. That is the bargain: an order that reflects the latest counts is an order that moves under
- * somebody's cursor, and a reaction they have just withdrawn sliding down the column is worse than
- * a leaderboard being a few minutes out of date. Types the settled order has never seen are
- * appended by use, so nothing new is ever hidden.
+ * So an order lives exactly as long as something is drawing it. The caller releases it when its
+ * subtree goes away, and the release is **deferred by a tick**: a remount caused by a subscription
+ * disposes the old row and renders the new one in the same batch, so the order is asked for again
+ * before the release fires and survives. A record genuinely left behind is asked for by nobody, and
+ * is forgotten.
  *
- * It is dropped when the space changes, with the optimism holds and for the same reason — a promise
- * about records on the screen being left — and it is capped, so a long session spent scrolling a
- * feed does not accumulate an entry per record ever drawn.
+ * That the tick is injectable is not a testing convenience — it is the only way to assert the
+ * difference between those two cases without a renderer.
  */
+
+/** Everything settled, by record. */
+const settled = new Map<string, string[]>();
 
 /**
- * How many records keep their order.
+ * How many times each record has been asked about.
  *
- * Generous enough that everything on one screen, and everything scrolled past recently, is covered,
- * and small enough that it is a rounding error in memory. The oldest goes first: a record nobody
- * has looked at for five hundred other records is one whose order nobody is watching.
+ * A release compares this against what it was when the release was requested. Unchanged means
+ * nobody wanted it in the meantime, which is what tells a record left behind from one whose row was
+ * torn down and rebuilt around it.
  */
-const LIMIT = 500;
+const touches = new Map<string, number>();
 
-const settled = new Map<string, string[]>();
+let schedule: (run: () => void) => void = queueMicrotask;
+
+const touch = (record: string) => touches.set(record, (touches.get(record) ?? 0) + 1);
 
 export const signalOrder = {
   /** The order settled for this record, or undefined where none is. */
   held: (record: string): string[] | undefined => {
-    const order = settled.get(record);
-    // Re-inserted so it counts as recently used: a Map iterates in insertion order, which is what
-    // makes the eviction below reach for the least recently drawn rather than the oldest.
-    if (order) {
-      settled.delete(record);
-      settled.set(record, order);
-    }
-    return order;
+    touch(record);
+    return settled.get(record);
   },
 
   /** Note the order this record's reactions are being drawn in. */
   settle: (record: string, ids: string[]): void => {
-    settled.delete(record);
+    touch(record);
     settled.set(record, ids);
-    while (settled.size > LIMIT) {
-      const oldest = settled.keys().next().value;
-      if (oldest === undefined) break;
-      settled.delete(oldest);
-    }
+  },
+
+  /**
+   * Nothing is drawing this record any more — forget its order, unless that turns out to be untrue
+   * by the end of the tick.
+   */
+  release: (record: string): void => {
+    const asked = touches.get(record) ?? 0;
+    schedule(() => {
+      if ((touches.get(record) ?? 0) !== asked) return;
+      settled.delete(record);
+      touches.delete(record);
+    });
   },
 
   /** Forget everything — the space being left, or a test starting. */
-  reset: (): void => settled.clear(),
+  reset: (): void => {
+    settled.clear();
+    touches.clear();
+  },
 
-  /** How many records are holding an order. For tests, and for judging the cap. */
+  /** How many records are holding an order. For tests. */
   size: (): number => settled.size,
+
+  /** Run deferred releases through this instead of a microtask. For tests. */
+  scheduleWith: (run: (work: () => void) => void): void => {
+    schedule = run;
+  },
 };

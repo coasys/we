@@ -1761,32 +1761,33 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('"height":"1lh"');
   });
 
-  it('holds the people picker to one caption line', () => {
+  it('sizes the people picker for a section heading, not for the panel header', () => {
     /*
-      The button is the size of the header's pencil, which is taller than a footnote; left in flow it
-      made the caption row that tall, so People stood further from its first line than Connections
-      does from its own.
+      It was `sm` — the size of the pencil and the bin in the panel's own header — and a heading is
+      not the header. The kit reserves `--we-component-height-xs` for a heading's aside precisely
+      because those are the small end of the set, so at `sm` this row came out 32px against
+      everything else's 24, and a row that centres its contents put "People" lower than the four
+      names around it.
 
-      It kept that when the heading moved onto the shared folding pattern — which places the action
-      itself, so the `ml: 'auto'` that used to push it to the end of a row it owned went with the
-      row.
+      It wore a `height: '1lh'` wrapper meant to prevent exactly that. The wrapper did not work: the
+      button overflowed it and the row grew anyway, which is why this is pinned on the SIZE rather
+      than on a box drawn around it. The pixels are in the `section headings agree` browser case.
     */
-    expect(inspector).toContain('"props":{"fontSize":"100","height":"1lh","ay":"center"}');
-    expect(inspector).not.toContain('"opacity":0.75');
+    expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"xs"');
   });
 
   it('offers no assignee text box beside the People section that answers it', () => {
     expect(inspector).toContain("f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes");
   });
 
-  it('sets section names apart from the properties under them, with a picker sized like the header’s', () => {
+  it('sets section names apart from the properties under them', () => {
     /*
       Through the kit's `SECTION_LABEL_PROPS`, not a local copy of it. The copy agreed on the colour
       and the tracking and spelled the caps with `we-text`'s own shorthand, which is the kind of
       divergence that is invisible until somebody changes one of the two.
     */
     expect(inspector).toContain('"textTransform":"uppercase"');
-    expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"sm"');
+    expect(inspector).not.toContain('"opacity":0.75');
   });
 
   it('folds every section, and remembers which are open', () => {
@@ -1800,7 +1801,12 @@ describe('the workshop inspector’s people', () => {
     */
     for (const field of ['connectionsOpen', 'connectsOpen', 'peopleOpen', 'reactionsOpen', 'discussionOpen']) {
       expect(inspector, `${field} is never folded`).toContain(`"$toggleLocal":"${field}"`);
-      expect(inspector, `${field} is not remembered`).toContain(`"persist":"inspector.${field}"`);
+      expect(inspector, `${field} is not remembered`).toContain(
+        `"persist":"inspector.${field.replace('Open', 'Section')}"`,
+      );
+      // Closed to begin with: five sections opened push the record's own properties off a 320px
+      // panel before a reader has decided they want any of them.
+      expect(inspector, `${field} starts open`).toContain(`"${field}":{"type":"boolean","initial":false`);
     }
   });
 

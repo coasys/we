@@ -1515,47 +1515,45 @@ const peopleSection: SchemaNode = {
           count: `count(${ON_ROW}.people)`,
           open: { field: 'peopleOpen' },
           /*
-            One caption line tall, with the picker centred on it and spilling over either side.
+            `xs`, which is the size a section heading's aside is.
 
-            The button is the size of the header's pencil, which is taller than a footnote; left in
-            flow it made this caption row that tall, so People stood further from its first line
-            than Connections does from its own. Held to the caption's line, the two sections share
-            one rhythm and the button keeps the size it is pressed at.
+            It was `sm` — the size of the pencil and the bin in the panel's header — and a heading
+            is not the header: the kit reserves `--we-component-height-xs` for a heading's aside
+            precisely because they are the small end of the set, an xs button, a switch, a badge. At
+            `sm` this row came out 32px against everything else's 24, and since the row centres its
+            contents, "People" sat lower than the four names around it.
+
+            It used to wear a `height: '1lh'` wrapper meant to stop exactly that, and the wrapper
+            did not work: the button overflowed it and the row grew anyway. Measured, not guessed —
+            see the `section headings agree` case.
           */
           action: {
-            type: 'Row',
-            props: { fontSize: '100', height: '1lh', ay: 'center' },
-            children: [
-              {
-                type: '$if',
+            type: '$if',
+            props: {
+              // An event's answers have their own buttons on the calendar; the picker is for parts
+              // one member gives another, and an entity with none of those has nothing to pick.
+              condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+              then: {
+                type: 'DropdownMenu',
                 props: {
-                  // An event's answers have their own buttons on the calendar; the picker is for parts
-                  // one member gives another, and an entity with none of those has nothing to pick.
-                  condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
-                  then: {
-                    type: 'DropdownMenu',
-                    props: {
-                      triggerIcon: 'user-plus',
-                      triggerTitle: 'Who is on this',
-                      triggerVariant: 'ghost',
-                      // The size of the pencil and the bin in the panel's header — the controls it sits among.
-                      size: 'sm',
-                      itemSize: 'sm',
-                      placement: 'bottom-end',
-                      searchable: true,
-                      searchPlaceholder: 'Find a member',
-                      items: {
-                        $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
-                      },
-                      onSelect: {
-                        $action: 'spaceStore.setInvolvement',
-                        args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
-                      },
-                    },
+                  triggerIcon: 'user-plus',
+                  triggerTitle: 'Who is on this',
+                  triggerVariant: 'ghost',
+                  size: 'xs',
+                  itemSize: 'sm',
+                  placement: 'bottom-end',
+                  searchable: true,
+                  searchPlaceholder: 'Find a member',
+                  items: {
+                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                  },
+                  onSelect: {
+                    $action: 'spaceStore.setInvolvement',
+                    args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
                   },
                 },
               },
-            ],
+            },
           },
         }),
         foldingBody({
@@ -1928,14 +1926,24 @@ const inspectorPanel: SchemaNode = {
       folding on the person who opens it. The extraction panel keeps its sections the same way.
 
       Per panel rather than per record, which is the same decision: it is a way of working, not a
-      fact about the card. Open to begin with, because these sections ARE the inspector — one that
-      opened folded would be a panel showing five words.
+      fact about the card.
+
+      CLOSED to begin with. The fields are the record, and the five sections are all things *about*
+      it — who is on it, what it is joined to, what people made of it, what was said. Opened, they
+      push the record's own properties off a 320px panel before a reader has decided they want any
+      of them; closed, each is one line saying what is there and how much, which is the question
+      most visits are answering.
+
+      The keys carry `Section` because an earlier version of this defaulted them open, and anybody
+      who has looked at the panel since then has `true` sitting in their device storage: a stored
+      preference outranks the declaration, so keeping the old keys would mean shipping a default
+      nobody who had already opened the inspector would ever see.
     */
-    connectionsOpen: { type: 'boolean', initial: true, persist: 'inspector.connectionsOpen' },
-    connectsOpen: { type: 'boolean', initial: true, persist: 'inspector.connectsOpen' },
-    peopleOpen: { type: 'boolean', initial: true, persist: 'inspector.peopleOpen' },
-    reactionsOpen: { type: 'boolean', initial: true, persist: 'inspector.reactionsOpen' },
-    discussionOpen: { type: 'boolean', initial: true, persist: 'inspector.discussionOpen' },
+    connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
+    connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
+    peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },
+    reactionsOpen: { type: 'boolean', initial: false, persist: 'inspector.reactionsSection' },
+    discussionOpen: { type: 'boolean', initial: false, persist: 'inspector.discussionSection' },
   },
   $queries: {
     /*
