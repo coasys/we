@@ -22,7 +22,7 @@ const USED = 4;
 /** Of the offered, the ones whose control IS a mark — `Like` and the unused `Spark`. */
 const TOGGLES = 2;
 
-export async function check({ measureAll, measurePart, measureControl, measureText, count }, width) {
+export async function check({ measureAll, measurePart, measureControl, measureText, count, hover }, width) {
   const problems = [];
 
   /*
@@ -195,6 +195,10 @@ export async function check({ measureAll, measurePart, measureControl, measureTe
     opens on hover, so at rest — with nothing to say — it opened an empty card hanging off the
     control. A tooltip with no text and nothing slotted now stays shut.
   */
+  // The pointer is put somewhere harmless first, because "with nothing hovered" is a state this has
+  // to ESTABLISH rather than assume: a case that hovers something leaves it hovered, and the next
+  // width reuses the page — so this read the previous pass's tooltip and blamed it on rest.
+  await hover('body');
   const empties = await count('we-tooltip[open]');
   if (empties) problems.push(`${empties} tooltips are open with nothing hovered`);
 
@@ -210,6 +214,21 @@ export async function check({ measureAll, measurePart, measureControl, measureTe
   for (const box of digits.filter((one) => one.h)) {
     if (box.h > 24) problems.push(`a number is ${box.h}px tall at ${width}px — its digits are stacked`);
   }
+
+  /*
+    A compact mark's bubble says who is behind it.
+
+    The mark itself says a glyph and a number and nothing about the people, and the bubble
+    explaining what the mark MEANS is where somebody is already looking. Faces rather than a roster:
+    the names and the values are in the sheet where they can be searched, and a hover-only list
+    would put the answer somewhere a touchscreen cannot reach.
+
+    Hovered rather than assumed — the content is in a slot, so it is in the tree either way; what is
+    being checked is that a reader who points at a mark is shown it.
+  */
+  await hover('we-tooltip .count-mark we-button');
+  const faces = await count('we-tooltip[open] we-avatar');
+  if (!faces) problems.push('hovering a mark says nothing about who reacted');
 
   return problems;
 }

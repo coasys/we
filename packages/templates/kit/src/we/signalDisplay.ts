@@ -173,7 +173,7 @@ function typesShown(opts: Resolved, limit?: number): string {
  * dropped — the content then falls into the tooltip's *default* slot beside the trigger and renders
  * as permanently visible chrome. See `peopleTooltip`, which learned this first.
  */
-function meaning(as: string, children: SchemaNode[]): SchemaNode {
+function meaning(opts: Resolved, as: string, children: SchemaNode[]): SchemaNode {
   return {
     type: 'we-tooltip',
     children: [
@@ -194,6 +194,50 @@ function meaning(as: string, children: SchemaNode[]): SchemaNode {
                     type: 'we-text',
                     props: { variant: 'footnote' },
                     children: [{ $: `${as}.description` }],
+                  },
+                },
+              },
+              /*
+                And who has reacted with it — faces and a number, not a list of names.
+
+                A compact mark says nothing about who is behind it, and the bubble explaining what
+                the mark MEANS is where somebody is already looking. Faces because they read at a
+                glance and take one line whatever the count; the names and the values are in the
+                sheet, where they can be searched.
+
+                Deliberately not a roster. `peopleTooltip` lists everybody for a stated reason —
+                the ones it hides are unreachable any other way — and that reason stops applying the
+                moment there is a searchable sheet. Cramming ten rows in here would also make the
+                one surface a touchscreen cannot reach the only place the answer lives.
+              */
+              {
+                type: '$if',
+                props: {
+                  condition: { $: `count(${reactorsOf(opts.record, as)}.people)` },
+                  then: {
+                    type: 'Row',
+                    props: { ay: 'center', gap: '200', pt: '100' },
+                    children: [
+                      {
+                        type: 'AvatarStack',
+                        props: {
+                          avatars: {
+                            $: `${reactorsOf(opts.record, as)}.people.map(p, { image: p.avatar, hash: p.did })`,
+                          },
+                          max: 5,
+                          size: 'xs',
+                        },
+                      },
+                      {
+                        type: 'we-text',
+                        props: { variant: 'footnote' },
+                        children: [
+                          {
+                            $: `\`\${${reactorsOf(opts.record, as)}.total} \${plural(${reactorsOf(opts.record, as)}.total, 'person', 'people')}\``,
+                          },
+                        ],
+                      },
+                    ],
                   },
                 },
               },
@@ -269,12 +313,12 @@ function mark(opts: Resolved, as: string): SchemaNode {
     type: '$if',
     props: {
       condition: { $: `${as}.mode == 'toggle'` },
-      then: meaning(as, [markNode(true)]),
+      then: meaning(opts, as, [markNode(true)]),
       else: {
         type: 'we-popover',
         props: { placement: 'top' },
         children: [
-          { type: 'div', slot: 'trigger', children: [meaning(as, [markNode(false)])] },
+          { type: 'div', slot: 'trigger', children: [meaning(opts, as, [markNode(false)])] },
           {
             type: 'div',
             slot: 'content',
@@ -337,7 +381,7 @@ function fullRow(opts: Resolved, as: string): SchemaNode {
       {
         type: '$each',
         props: { items: { $: typesShown(opts) }, as },
-        children: [meaning(as, [control(opts, as)])],
+        children: [meaning(opts, as, [control(opts, as)])],
       },
       // And a way to mean something the community has no reaction for yet — see `newType`.
       ...newType(opts, { labelled: false }),
