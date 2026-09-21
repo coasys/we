@@ -301,13 +301,26 @@ export default class Tooltip extends LayoutElement {
   private promoted = false;
 
   /**
-   * Whether something above this is already an open popover — crossing shadow boundaries.
+   * Whether something above this is already an open popover.
    *
-   * `closest` stops at the shadow root it starts in, and every one of these lives in one: a
-   * tooltip inside a `we-popover` is slotted, so its chain to the panel runs host, root, host.
+   * Up the FLAT tree, which is the only walk that finds one. A `we-popover` keeps its panel in its
+   * own shadow root and slots the content into it, so the panel is nowhere in a slotted tooltip's
+   * DOM ancestry: `parentNode` goes straight past it to the `we-popover` host and on up the page.
+   * A first version of this walked `parentNode`, found nothing, and changed no behaviour at all.
+   *
+   * Following `assignedSlot` is what crosses INTO the shadow root the content was rendered in —
+   * from there the slot's own parent is the panel. Together with the host hop out of a shadow root,
+   * that is the composed ancestry.
    */
   private get insideOpenPopover(): boolean {
-    let node: Node | null = this.parentNode instanceof ShadowRoot ? this.parentNode.host : this.parentNode;
+    const up = (node: Node): Node | null => {
+      const slot = node instanceof Element ? node.assignedSlot : null;
+      if (slot) return slot;
+      const parent: Node | null = node.parentNode;
+      return parent instanceof ShadowRoot ? parent.host : parent;
+    };
+
+    let node: Node | null = up(this);
     while (node) {
       if (node instanceof Element) {
         try {
@@ -316,8 +329,7 @@ export default class Tooltip extends LayoutElement {
           // A browser without `:popover-open` cannot be inside one either.
         }
       }
-      const parent: Node | null = node.parentNode;
-      node = parent instanceof ShadowRoot ? parent.host : parent;
+      node = up(node);
     }
     return false;
   }

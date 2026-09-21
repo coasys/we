@@ -196,40 +196,73 @@ describe('a tooltip inside an open popover leaves the top layer alone', () => {
 
     It surfaced as a compact reaction mark that would not let go of a gesture: dragging a rating or
     a slider inside it opened the value bubble and the popover shut, and hovering the clear button
-    beside them did the same. Both are a `we-tooltip` opening inside a `we-popover`.
+    beside them did the same. Both are a `we-tooltip` opening inside a `we-popover`. What is NOT
+    affected is telling: selecting the text, or pressing a vote arrow, neither of which has a tip.
 
-    jsdom implements neither `showPopover` nor `:popover-open`, so what is checked here is the
-    decision — whether the tooltip believes it is inside one — rather than the browser's reaction
-    to it. The behaviour itself is a `@we/app-shell test:browser` matter.
+    jsdom implements neither `showPopover` nor `:popover-open`, so `matches` is stood in for and
+    what is checked is the WALK — which is where the first version of this was wrong, and wrong in
+    the way that changes no behaviour and passes a weaker test.
   */
-  it('finds an open popover above it, across a shadow boundary', async () => {
-    const outer = document.createElement('div');
-    outer.setAttribute('popover', 'auto');
-    // `:popover-open` does not exist here, so stand in for it: the walk is what is being tested.
-    outer.matches = ((selector: string) => selector === ':popover-open') as Element['matches'];
-    document.body.append(outer);
+  const openPopover = (): HTMLElement => {
+    const panel = document.createElement('div');
+    panel.setAttribute('popover', 'auto');
+    panel.matches = ((selector: string) => selector === ':popover-open') as Element['matches'];
+    return panel;
+  };
 
+  const tooltipIn = async (parent: Element) => {
+    const tip = document.createElement('we-tooltip') as HTMLElement & { updateComplete: Promise<unknown> };
+    parent.append(tip);
+    await tip.updateComplete;
+    return tip as unknown as { insideOpenPopover: boolean };
+  };
+
+  it('finds the panel a `we-popover` SLOTS its content into', async () => {
+    /*
+      The real shape, and the one a DOM walk cannot see. A `we-popover` renders its panel inside its
+      own shadow root and slots the content in, so the panel is nowhere in the slotted content's
+      `parentNode` chain — that chain leaves through the host and carries on up the page.
+    */
     const host = document.createElement('div');
     const root = host.attachShadow({ mode: 'open' });
-    outer.append(host);
+    const panel = openPopover();
+    panel.append(document.createElement('slot'));
+    root.append(panel);
+    document.body.append(host);
 
-    const tip = document.createElement('we-tooltip') as HTMLElement & { updateComplete: Promise<unknown> };
-    root.append(tip);
-    await tip.updateComplete;
+    const tip = await tooltipIn(host);
+    expect(tip.insideOpenPopover, 'the walk went past the panel it was slotted into').toBe(true);
+  });
 
-    expect((tip as unknown as { insideOpenPopover: boolean }).insideOpenPopover).toBe(true);
+  it('finds one it is an ordinary descendant of', async () => {
+    const panel = openPopover();
+    document.body.append(panel);
+    expect((await tooltipIn(panel)).insideOpenPopover).toBe(true);
+  });
+
+  it('crosses a shadow boundary on the way up', async () => {
+    const panel = openPopover();
+    document.body.append(panel);
+    const host = document.createElement('div');
+    const root = host.attachShadow({ mode: 'open' });
+    panel.append(host);
+
+    const inner = document.createElement('div');
+    root.append(inner);
+    expect((await tooltipIn(inner)).insideOpenPopover).toBe(true);
   });
 
   it('says no when the popover above it is closed', async () => {
-    const outer = document.createElement('div');
-    outer.setAttribute('popover', 'auto');
-    outer.matches = (() => false) as Element['matches'];
-    document.body.append(outer);
+    const panel = document.createElement('div');
+    panel.setAttribute('popover', 'auto');
+    panel.matches = (() => false) as Element['matches'];
+    document.body.append(panel);
+    expect((await tooltipIn(panel)).insideOpenPopover).toBe(false);
+  });
 
-    const tip = document.createElement('we-tooltip') as HTMLElement & { updateComplete: Promise<unknown> };
-    outer.append(tip);
-    await tip.updateComplete;
-
-    expect((tip as unknown as { insideOpenPopover: boolean }).insideOpenPopover).toBe(false);
+  it('says no when there is no popover at all', async () => {
+    const plain = document.createElement('div');
+    document.body.append(plain);
+    expect((await tooltipIn(plain)).insideOpenPopover).toBe(false);
   });
 });
