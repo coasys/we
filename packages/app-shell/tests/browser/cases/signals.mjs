@@ -22,7 +22,7 @@ const USED = 4;
 /** Of the offered, the ones whose control IS a mark — `Like` and the unused `Spark`. */
 const TOGGLES = 2;
 
-export async function check({ measureAll, measurePart, measureControl, count }, width) {
+export async function check({ measureAll, measurePart, measureControl, measureText, count }, width) {
   const problems = [];
 
   /*
@@ -142,6 +142,23 @@ export async function check({ measureAll, measurePart, measureControl, count }, 
   const clears = await count('.signal-control__clear');
   // One per used type in `full`, and one inside each popover the compact row opened for a used type.
   if (clears < USED) problems.push(`${clears} clear controls, expected one per reaction of this agent's`);
+
+  /*
+    A type's name is one line, whatever the control beside it is doing.
+
+    In the sheet — 420px, less its padding — a rating's control left so little room for the naming
+    column that `overflowWrap: anywhere` did what it is there to do and broke the words: "Rating"
+    came out as a tower of single letters. The name shares the control's line now and the
+    description runs full width underneath, so neither is competing for the same inches.
+
+    Measured as height, because every letter is still present either way — the failure is the shape.
+  */
+  const names = await Promise.all(['Like', 'Rating', 'Vote', 'Mood'].map((word) => measureText(word)));
+  for (const [i, box] of names.entries()) {
+    if (box && box.h > 28) {
+      problems.push(`the name "${['Like', 'Rating', 'Vote', 'Mood'][i]}" is ${box.h}px tall — it is being broken up`);
+    }
+  }
 
   /*
     And a number is one line, whatever room it is given.

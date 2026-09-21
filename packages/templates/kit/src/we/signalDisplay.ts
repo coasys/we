@@ -358,42 +358,49 @@ function fullList(opts: Resolved, as: string): SchemaNode {
         props: { items: { $: typesShown(opts) }, as },
         children: [
           {
-            type: 'Row',
-            props: { width: '100%', ay: 'center', gap: '400' },
+            /*
+              Name and control on one line, the description under both.
+
+              It was a name-and-description column beside the control, and in the sheet — 420px, less
+              its padding — a wide control left so little room that `overflowWrap: anywhere` did what
+              it is there to do and broke the words. A type called "Rating" came out as a tower of
+              single letters.
+
+              Widening the sheet would have been treating the symptom: the control is as wide as it
+              is, and any name is one collision away from the same tower. A NAME is short by nature —
+              a word or two — so it shares the line with the control and keeps its own row; the
+              description is the part that runs long, and it gets the full width underneath where
+              there is nothing to compete with.
+            */
+            type: 'Column',
+            props: { width: '100%', gap: '100' },
             children: [
               {
-                // Takes the room and gives it up: a long description wraps rather than pushing the
-                // control off the edge.
-                type: 'Column',
-                props: { flex: '1 1 auto', minWidth: '0', gap: '100' },
+                type: 'Row',
+                props: { width: '100%', ay: 'center', ax: 'between', gap: '300' },
                 children: [
-                  { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${as}.name` }] },
                   {
-                    type: '$if',
-                    props: {
-                      condition: { $: `${as}.description` },
-                      then: {
-                        type: 'we-text',
-                        props: { fontSize: '100', color: 'text-muted' },
-                        children: [{ $: `${as}.description` }],
-                      },
-                    },
+                    // Gives up room before the control does, and truncates rather than wrapping: a
+                    // name long enough to need two lines is a name to shorten, not to stack.
+                    type: 'we-text',
+                    props: { variant: 'label', flex: '1 1 auto', minWidth: '0', truncate: true },
+                    children: [{ $: `${as}.name` }],
                   },
+                  // Never absorbs somebody else's overflow: a rating is five glyphs and a slider is
+                  // a track, and neither has a narrower form worth having.
+                  { type: 'Row', props: { flex: '0 0 auto', ay: 'center' }, children: [control(opts, as)] },
                 ],
               },
-              /*
-                A column of its own, so the glyphs line up down the list.
-
-                `flex: '0 0 auto'` alone right-aligns them, and the four modes are four different
-                widths — a heart, five stars, two arrows and a whole slider track — so the eye had
-                to find each one at a different place on its row. A basis gives them a shared left
-                edge to start from while still never absorbing somebody else's overflow: a rating is
-                five glyphs and a slider is a track, and neither has a narrower form worth having.
-              */
               {
-                type: 'Row',
-                props: { flex: '0 0 auto', ax: 'start', minWidth: '0' },
-                children: [control(opts, as)],
+                type: '$if',
+                props: {
+                  condition: { $: `${as}.description` },
+                  then: {
+                    type: 'we-text',
+                    props: { width: '100%', fontSize: '100', color: 'text-muted' },
+                    children: [{ $: `${as}.description` }],
+                  },
+                },
               },
             ],
           },

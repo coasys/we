@@ -66,6 +66,47 @@ export function SignalControl(props: SignalControlProps) {
   const isDisabled = () => !props.preview && (props.disabled ?? false);
 
   /**
+   * The score under the pointer while a rating is being dragged — not written until release.
+   *
+   * The rating's counterpart to `sliderDraft`, and it exists for the reason that one does: a value
+   * chosen by moving has to be *shown* while it moves, or the person is choosing blind. Null between
+   * drags, so `value()` is what the stars are drawn from the rest of the time.
+   */
+  const [ratingDraft, setRatingDraft] = createSignal<number | null>(null);
+  /** What the stars draw: the drag if there is one, otherwise what is stored. */
+  const ratingShown = () => ratingDraft() ?? value();
+
+  /** The icon row, for turning a pointer position into a score. */
+  let ratingRow: HTMLDivElement | undefined;
+
+  /**
+   * The score at a point along the icon row, snapped to the type's own step.
+   *
+   * Measured against the row rather than counted per icon, which is what makes a *drag* work at all:
+   * the pointer is captured by the element the gesture began on, so every move after the first
+   * arrives on that one icon and asking which icon is under the cursor answers the same thing all
+   * the way across. The row's box is the only thing that knows where the pointer actually is.
+   *
+   * Clamped to at least one step, so dragging to the far left is the lowest score rather than
+   * nothing — taking a rating back is the Clear, and a gesture that silently withdrew at one end
+   * would be the `rangeMin`-means-delete trap wearing a different coat.
+   */
+  const scoreAt = (clientX: number): number => {
+    const box = ratingRow?.getBoundingClientRect();
+    const { rangeMin, rangeMax } = props.signalType;
+    const span = rangeMax - rangeMin;
+    if (!box || !box.width || span <= 0) return rangeMax;
+    const step = props.signalType.step && props.signalType.step > 0 ? props.signalType.step : 1;
+    const along = Math.min(1, Math.max(0, (clientX - box.left) / box.width));
+    const raw = rangeMin + along * span;
+    const snapped = rangeMin + Math.round((raw - rangeMin) / step) * step;
+    // Rounding can land a hair outside on either end, and a float can carry a tail — both matter
+    // because the value is compared against a stored one.
+    const bounded = Math.min(rangeMax, Math.max(rangeMin + step, snapped));
+    return Number(bounded.toFixed(4));
+  };
+
+  /**
    * The signals read as one number, by whichever aggregate {@link aggregateFor} settles on.
    *
    * - `count`: how many people reacted — a zero is a withdrawn signal, not a reaction.
@@ -201,67 +242,117 @@ export function SignalControl(props: SignalControlProps) {
           <Row class="signal-control__rating" ay="center" gap="400">
             {/* Community mean */}
             <we-number class="signal-control__agg" prop:fontSize={COUNT_SIZE[size()]} value={aggregate()} shorten />
-            {/* Icon row: one icon per integer step between rangeMin and rangeMax */}
-            <Row class="signal-control__rating-icons" ay="center" gap="100">
-              <For
-                each={Array.from({ length: props.signalType.rangeMax - props.signalType.rangeMin }, (_, i) => i + 1)}
-              >
-                {(i) => {
-                  /**
-                   * Fraction of this icon that should appear "filled".
-                   * Icon i (1-indexed) is fully filled when value >= rangeMin + i,
-                   * partially filled for fractional values in between.
-                   */
-                  const fraction = () => {
-                    const v = value();
-                    if (v === null) return 0;
-                    return Math.min(1, Math.max(0, v - (props.signalType.rangeMin + i - 1)));
-                  };
+            {/*
+              The stars ARE the input — dragged across, not clicked one at a time.
 
-                  /*
-                    Pressing a star sets that score, and pressing the one you are already on does
-                    nothing.
+              The number input that used to sit beside them is gone. It was the widest thing on the
+              row by some way, which is what crushed a type's name into a column of single letters
+              in the sheet, and it asked somebody to type a figure at a control whose whole point is
+              that you can see the answer.
 
-                    It used to write `rangeMin`, which withdrew the rating — but only because
-                    `rangeMin` happened to be 0 and 0 happened to mean "delete". On a 1–5 rating the
-                    same press wrote 1, so half the communities that could make a rating had no way
-                    to take one back at all. Withdrawing is the Clear beside the control now, and
-                    pressing your own score is the no-op it looks like.
-                  */
-                  const handleClick = () => {
-                    const target = props.signalType.rangeMin + i;
-                    if (value() !== target) signal(target);
-                  };
+              A drag reads better and is the same gesture as the slider's one mode along: the stars
+              fill as the pointer moves and a bubble above says the number, so the score is legible
+              while it is being chosen rather than after. A click still works — it is a drag that
+              travelled no distance, and it goes through the same path rather than a second one.
 
-                  return (
-                    <span
-                      class={`signal-icon-stack${isDisabled() ? ' is-disabled' : ''}`}
-                      onClick={isDisabled() ? undefined : handleClick}
-                    >
-                      {/* Background (empty) icon — muted colour via CSS */}
-                      <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} size={GLYPH_SIZE[size()]} />
-                      {/* Foreground (filled) icon — primary colour via CSS, clipped to fraction */}
-                      <span
-                        class="signal-icon-stack__fill"
-                        style={{ 'clip-path': `inset(0 ${(1 - fraction()) * 100}% 0 0)` }}
-                      >
-                        <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} size={GLYPH_SIZE[size()]} />
-                      </span>
-                    </span>
-                  );
+              The tooltip is opened rather than hovered, which `we-tooltip` supports through its own
+              `open` property, and it never takes the pointer — that was fixed when an open bubble
+              blocked clicks on its own trigger, and it is what lets this one sit over the stars
+              while they are being dragged.
+            */}
+            <we-tooltip open={ratingDraft() !== null} content={String(ratingShown() ?? '')} placement="top">
+              <Row
+                class="signal-control__rating-icons"
+                ay="center"
+                gap="100"
+                ref={(el: HTMLDivElement) => (ratingRow = el)}
+                /*
+                  One control, so it is reachable without a pointer.
+
+                  The stars were spans with a click each, which no keyboard could reach — the number
+                  input was the only way in, and it has just been removed. `role="slider"` is what
+                  this is: a value in a range, set by moving along it.
+                */
+                role="slider"
+                tabindex={isDisabled() ? undefined : 0}
+                aria-valuemin={props.signalType.rangeMin}
+                aria-valuemax={props.signalType.rangeMax}
+                aria-valuenow={value() ?? props.signalType.rangeMin}
+                aria-label="Rating"
+                onPointerDown={(e: PointerEvent) => {
+                  if (isDisabled()) return;
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  setRatingDraft(scoreAt(e.clientX));
                 }}
-              </For>
-            </Row>
-            {/* Number input for precise value entry */}
-            <we-number-input
-              class="signal-control__rating-input"
-              min={props.signalType.rangeMin}
-              max={props.signalType.rangeMax}
-              step={props.signalType.step ?? 1}
-              value={value() ?? props.signalType.rangeMin}
-              disabled={isDisabled()}
-              onChange={(e: Event) => signal((e as CustomEvent<number>).detail)}
-            />
+                onPointerMove={(e: PointerEvent) => {
+                  if (ratingDraft() === null) return;
+                  setRatingDraft(scoreAt(e.clientX));
+                }}
+                onPointerUp={(e: PointerEvent) => {
+                  const chosen = ratingDraft();
+                  setRatingDraft(null);
+                  (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+                  // Pressing the score you are already on is the no-op it looks like; withdrawing is
+                  // the Clear.
+                  if (chosen !== null && chosen !== value()) signal(chosen);
+                }}
+                // A drag that leaves the window, or is taken by something else, writes nothing.
+                onPointerCancel={() => setRatingDraft(null)}
+                onKeyDown={(e: KeyboardEvent) => {
+                  if (isDisabled()) return;
+                  const step = props.signalType.step && props.signalType.step > 0 ? props.signalType.step : 1;
+                  const { rangeMin, rangeMax } = props.signalType;
+                  const from = value() ?? rangeMin;
+                  const move =
+                    e.key === 'ArrowRight' || e.key === 'ArrowUp'
+                      ? step
+                      : e.key === 'ArrowLeft' || e.key === 'ArrowDown'
+                        ? -step
+                        : 0;
+                  if (!move) return;
+                  e.preventDefault();
+                  const next = Math.min(rangeMax, Math.max(rangeMin + step, from + move));
+                  if (next !== value()) signal(Number(next.toFixed(4)));
+                }}
+              >
+                <For
+                  each={Array.from({ length: props.signalType.rangeMax - props.signalType.rangeMin }, (_, i) => i + 1)}
+                >
+                  {(i) => {
+                    /**
+                     * Fraction of this icon that should appear "filled".
+                     * Icon i (1-indexed) is fully filled when value >= rangeMin + i,
+                     * partially filled for fractional values in between.
+                     */
+                    const fraction = () => {
+                      const v = ratingShown();
+                      if (v === null) return 0;
+                      return Math.min(1, Math.max(0, v - (props.signalType.rangeMin + i - 1)));
+                    };
+
+                    return (
+                      // No handler of its own: the row above owns the gesture, so a press on any star
+                      // is a drag that began there. See the row's pointer handlers.
+                      <span class={`signal-icon-stack${isDisabled() ? ' is-disabled' : ''}`}>
+                        {/* Background (empty) icon — muted colour via CSS */}
+                        <we-icon name={props.signalType.icon} weight={SIGNAL_GLYPH_WEIGHT} size={GLYPH_SIZE[size()]} />
+                        {/* Foreground (filled) icon — primary colour via CSS, clipped to fraction */}
+                        <span
+                          class="signal-icon-stack__fill"
+                          style={{ 'clip-path': `inset(0 ${(1 - fraction()) * 100}% 0 0)` }}
+                        >
+                          <we-icon
+                            name={props.signalType.icon}
+                            weight={SIGNAL_GLYPH_WEIGHT}
+                            size={GLYPH_SIZE[size()]}
+                          />
+                        </span>
+                      </span>
+                    );
+                  }}
+                </For>
+              </Row>
+            </we-tooltip>
             {clearControl()}
           </Row>
         </Match>
@@ -285,24 +376,34 @@ export function SignalControl(props: SignalControlProps) {
               size={GLYPH_SIZE[size()]}
               color={value() !== null ? 'primary-500' : 'neutral-300'}
             />
-            <we-slider
-              min={props.signalType.rangeMin}
-              max={props.signalType.rangeMax}
-              step={props.signalType.step ?? 1}
-              value={sliderDraft() ?? value() ?? props.signalType.rangeMin}
-              disabled={isDisabled()}
-              onInput={(e: Event) => setSliderDraft((e as CustomEvent<number>).detail)}
-              onChange={(e: Event) => {
-                const v = (e as CustomEvent<number>).detail;
-                signal(v);
-                setSliderDraft(null);
-              }}
-            />
-            {/* Live position during drag, settled value after */}
-            <we-number
-              class="signal-control__slider-value"
-              value={sliderDraft() ?? value() ?? props.signalType.rangeMin}
-            />
+            {/*
+              The reading is a bubble over the thumb while it moves, not a figure parked at the end.
+
+              The same shape the rating now has, and for the same reason: a value chosen by moving
+              wants to be legible *where the eye already is*, which is the thumb. A number at the far
+              end of the track asked somebody to look away from what they were dragging to read what
+              they were setting — and it sat there permanently for a value that is only in question
+              while a drag is happening.
+
+              `sliderDraft` already tracked exactly this: `we-slider` emits `input` as it moves and
+              `change` on release, so the draft is non-null for precisely the length of a drag. The
+              bubble needed no new state, only somewhere to be shown.
+            */}
+            <we-tooltip open={sliderDraft() !== null} content={String(sliderDraft() ?? '')} placement="top">
+              <we-slider
+                min={props.signalType.rangeMin}
+                max={props.signalType.rangeMax}
+                step={props.signalType.step ?? 1}
+                value={sliderDraft() ?? value() ?? props.signalType.rangeMin}
+                disabled={isDisabled()}
+                onInput={(e: Event) => setSliderDraft((e as CustomEvent<number>).detail)}
+                onChange={(e: Event) => {
+                  const v = (e as CustomEvent<number>).detail;
+                  signal(v);
+                  setSliderDraft(null);
+                }}
+              />
+            </we-tooltip>
             {clearControl()}
           </Row>
         </Match>
