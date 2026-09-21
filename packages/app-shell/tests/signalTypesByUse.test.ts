@@ -74,6 +74,48 @@ describe('reaction types, most used first', () => {
     expect(ids(given)).toEqual(['like', 'stars', 'vote']);
   });
 
+  it('holds an order somebody settled, whatever the counts do afterwards', () => {
+    /*
+      The bug this exists for: a reaction you have just WITHDRAWN slides down the column under your
+      cursor. Worse than odd — `$each` gives a row its index as a value captured when the row
+      rendered, so a row that moves keeps the index it was born with, and the line drawn between one
+      type and the next went missing on exactly the row that moved.
+    */
+    const settled = ['like', 'stars', 'vote'];
+    // Nobody likes it any more; stars is now the busiest. Nothing moves.
+    const signals = [
+      { signalTypeId: 'stars', value: 4, author: 'did:a' },
+      { signalTypeId: 'stars', value: 5, author: 'did:b' },
+      { signalTypeId: 'vote', value: 1, author: 'did:c' },
+    ];
+    expect(ids(signalTypesByUse({ types, signals, order: settled }))).toEqual(settled);
+  });
+
+  it('appends a type the settled order never saw, rather than dropping it', () => {
+    // A community can define a reaction while somebody is looking at the panel. It appears — at the
+    // end, because the whole point is not to move the rows they are reading.
+    const order = ['vote'];
+    const signals = [
+      { signalTypeId: 'like', value: 1, author: 'did:a' },
+      { signalTypeId: 'like', value: 1, author: 'did:b' },
+      { signalTypeId: 'stars', value: 5, author: 'did:c' },
+    ];
+    expect(ids(signalTypesByUse({ types, signals, order }))).toEqual(['vote', 'like', 'stars']);
+  });
+
+  it('falls back to the live order when nothing has been settled', () => {
+    // What a display shows before it has an order of its own — and what every surface that does not
+    // keep one gets.
+    const signals = [{ signalTypeId: 'vote', value: 1, author: 'did:a' }];
+    expect(ids(signalTypesByUse({ types, signals, order: [] }))).toEqual(['vote', 'like', 'stars']);
+  });
+
+  it('drops an id from the settled order that is no longer offered', () => {
+    // A retired type leaves the list it was ranked in; the ranking of the rest is unaffected.
+    const order = ['stars', 'gone', 'like', 'vote'];
+    expect(ids(signalTypesByUse({ types, signals: [], order }))).toEqual(['stars', 'like', 'vote']);
+  });
+
   it('answers with a list for anything that is not one', () => {
     // Total, like every function an expression can call: a subscription that has not arrived yet is
     // undefined, and a display that threw on its first frame would never reach its second.

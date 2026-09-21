@@ -34,7 +34,7 @@ export async function check({ count, measureControl, click }) {
   if (closed) problems.push(`${closed} people rows are showing before anybody asked for them`);
 
   // By its TEXT, which is the point: this is the part of the row nobody would think to wire up.
-  await click('text="2 people signalled"');
+  await click('text="2 people"');
   const open = await count(mine);
   if (!open) problems.push('pressing the words of the summary row opened no people rows');
 

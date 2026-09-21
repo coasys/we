@@ -109,6 +109,20 @@ const TOOLTIP_PEOPLE = 5;
  */
 const PANEL_PEOPLE = 8;
 
+/**
+ * The order the types are drawn in, settled when the display mounts.
+ *
+ * Ordering by use live meant a reaction you had just withdrawn slid down the column under your
+ * cursor. Worse than merely odd: `$each` gives a row its index as a value captured when the row
+ * rendered, so a row that moves keeps the index it was born with — and the line between one type
+ * and the next, which asks "am I first", was then drawn in the wrong place.
+ *
+ * Taken at mount rather than continuously, which is what makes reopening the panel the moment the
+ * order refreshes. Safe to take there because the whole display is behind a "does this community
+ * have any reaction types" guard, so it does not mount until the vocabulary has arrived.
+ */
+const TYPE_ORDER = 'signalTypeOrder';
+
 /** Which types have their people rows open, by type id — see `reactorSummary`. */
 const EXPANDED = 'expandedReactors';
 
@@ -194,9 +208,19 @@ function typeSet(opts: Resolved): string {
  * from a row with space for four.
  */
 function typesShown(opts: Resolved, limit?: number): string {
-  return `signalTypesByUse({ types: ${typeSet(opts)}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids${
+  return `signalTypesByUse({ types: ${typeSet(opts)}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids, order: local.${TYPE_ORDER}${
     limit === undefined ? '' : `, limit: ${limit}`
   } })`;
+}
+
+/**
+ * That order, as ids, for the display to remember at mount.
+ *
+ * Over every offered type rather than the subset one surface draws, so the row and the sheet behind
+ * it agree — a type the row is not showing still has a place to be in once the sheet shows it.
+ */
+function typeOrderSnapshot(opts: Resolved): string {
+  return `signalTypesByUse({ types: ${OFFERED_SIGNAL_TYPES}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids }).map(t, t.id)`;
 }
 
 /**
@@ -483,7 +507,9 @@ function reactorSummary(opts: Resolved, as: string): SchemaNode {
       {
         type: 'we-text',
         props: { fontSize: '100', flex: '1 1 auto', minWidth: '0', truncate: true },
-        children: [{ $: `\`\${${roster}.total} \${plural(${roster}.total, 'person', 'people')} signalled\`` }],
+        // Just the count. "signalled" was a word on every row of every type saying what the faces
+        // beside it already say, and it is the type's own name that says what they did.
+        children: [{ $: `\`\${${roster}.total} \${plural(${roster}.total, 'person', 'people')}\`` }],
       },
       ...(opts.readOnly
         ? []
@@ -810,7 +836,7 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
           },
         ],
       },
-      ...newType(opts, { labelled: true }),
+      ...newType(opts, { labelled: true, under: typesCounted(opts) }),
     ],
   };
 }
@@ -840,7 +866,7 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
  *
  * Empty for a read-only display, which is drawing rather than offering.
  */
-function newType(opts: Resolved, { labelled }: { labelled: boolean }): SchemaNode[] {
+function newType(opts: Resolved, { labelled, under }: { labelled: boolean; under?: string }): SchemaNode[] {
   if (opts.readOnly) return [];
   const button: SchemaNode = {
     type: 'we-button',
@@ -862,9 +888,33 @@ function newType(opts: Resolved, { labelled }: { labelled: boolean }): SchemaNod
       props: {
         condition: { $: 'spaceStore.canAdministerCurrentSpace' },
         then: {
-          type: labelled ? 'Row' : 'we-tooltip',
-          ...(labelled ? { props: { width: '100%' } } : { props: { content: 'New reaction type' } }),
-          children: [button],
+          type: labelled ? 'Column' : 'we-tooltip',
+          ...(labelled ? { props: { width: '100%', gap: '400' } } : { props: { content: 'New reaction type' } }),
+          children: [
+            /*
+              A line above it, when there is a list for it to be below.
+
+              Without one it sits in the same column with the same gap as everything belonging to
+              the last type, and reads as a control for THAT reaction rather than for the
+              vocabulary as a whole.
+
+              Inside this `$if` rather than beside it, because the button is an administrator's and
+              a line drawn under the last type for a member who cannot see a button is a rule with
+              nothing after it. The two are one thing; they are gated once.
+            */
+            ...(under
+              ? [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `count(${under})` },
+                      then: { type: 'we-divider', props: { width: '100%' } },
+                    },
+                  } as SchemaNode,
+                ]
+              : []),
+            button,
+          ],
         },
       },
     },
@@ -1103,6 +1153,14 @@ export function signalDisplay(options: SignalDisplayOptions): SchemaNode {
             one card does not open them on every card in the feed.
           */
           [EXPANDED]: { type: 'array', initial: [] },
+          /*
+            Read once, when this display mounts, and held for as long as it is on screen.
+
+            An `initial` is evaluated at mount and never again, which is exactly the semantics
+            wanted: the order settles as the panel opens and nothing anybody does afterwards moves
+            a row out from under the reader.
+          */
+          [TYPE_ORDER]: { type: 'array', initial: { $: typeOrderSnapshot(opts) } },
           // Declared in every mode: `fullRow` carries the button that sets it, and `fullRow` is
           // both what `full` renders and what the sheet holds.
           [NEW_TYPE_OPEN]: { type: 'boolean', initial: false },

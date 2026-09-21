@@ -30,14 +30,28 @@
  * Somebody this agent has muted should not decide what the panel leads with. They are excluded from
  * the count here for the same reason they are excluded from the lists everywhere else.
  *
+ * ## `order` is what stops the list moving while somebody is reading it
+ *
+ * Ordering by use live means a reaction you have just WITHDRAWN slides down the column under your
+ * cursor, which is disconcerting on its own and worse than that in practice: `$each` hands each row
+ * its index as a value captured when the row rendered, so a row that moves keeps the index it was
+ * born with, and anything drawn from the index — the line between one type and the next — is drawn
+ * in the wrong place afterwards.
+ *
+ * So a display takes the order ONCE, when it mounts, and passes it back here as a list of ids. Ids
+ * it names keep that order; anything it does not name — a type defined since, or one that has just
+ * had its first reaction — is appended by use, so a new type appears rather than being dropped. An
+ * empty or absent `order` means nobody has settled one, and the live order is the answer.
+ *
  * Total, like every function an expression can call.
  */
 export function signalTypesByUse(options: unknown): unknown[] {
-  const { types, signals, muted, limit } = (options ?? {}) as {
+  const { types, signals, muted, limit, order } = (options ?? {}) as {
     types?: unknown;
     signals?: unknown;
     muted?: unknown;
     limit?: unknown;
+    order?: unknown;
   };
   if (!Array.isArray(types)) return [];
   const rows = Array.isArray(signals) ? signals : [];
@@ -55,6 +69,28 @@ export function signalTypesByUse(options: unknown): unknown[] {
     return typeof id === 'string' ? (reactors.get(id) ?? 0) : 0;
   };
 
-  const ordered = [...types].sort((a, b) => used(b) - used(a));
+  /*
+    The settled order first, then everything it did not know about, by use.
+
+    Both halves are sorted with a stable sort, so ties inside each keep the order they arrived in —
+    the vocabulary's own, which is what makes two surfaces showing one record agree.
+  */
+  const settled = Array.isArray(order) ? (order as unknown[]).filter((id) => typeof id === 'string') : [];
+  const rank = new Map(settled.map((id, at) => [id as string, at]));
+  const placed = (type: unknown) => {
+    const id = (type as { id?: unknown } | null)?.id;
+    return typeof id === 'string' ? rank.get(id) : undefined;
+  };
+
+  const ordered = [...types].sort((a, b) => {
+    const [left, right] = [placed(a), placed(b)];
+    if (left !== undefined && right !== undefined) return left - right;
+    // A type the settled order never saw goes after every type it did, however used it is: it
+    // arrived while somebody was reading, and moving the rows they are looking at is the thing
+    // being avoided.
+    if (left !== undefined) return -1;
+    if (right !== undefined) return 1;
+    return used(b) - used(a);
+  });
   return typeof limit === 'number' && limit >= 0 ? ordered.slice(0, limit) : ordered;
 }
