@@ -899,24 +899,100 @@ describe('contracts call sites depend on', () => {
     }
   });
 
-  it('the full row opens its people in place rather than sending them to the sheet', () => {
+  it('the full row opens its people in place, and only hands over once the list is long', () => {
     /*
       The panel with the most room was the one that could not show what each person gave — the way
       to find out was to leave the panel for a sheet that then listed every other type as well.
 
-      Pinned as "no door to the sheet on the summary itself", because that is the regression with no
-      symptom: reinstating it would look right, and quietly mean a press on the people row jumped to
-      a modal instead of opening the rows underneath it.
+      So the summary row expands, and that is pinned on the row ITSELF rather than by counting
+      doors: reinstating the old behaviour would look right and quietly mean a press on the people
+      jumped to a modal instead of opening the rows underneath it.
+
+      The overflow line is the other half. A panel cannot show forty names under one of several
+      types, and the reader who wants the forty-first is looking for somebody rather than scrolling
+      — so past the cap it offers the surface that can search, which is also what gives `full` its
+      only remaining way back to the sheet.
     */
     const full = signalDisplay({ record: 'row', mode: 'full', as: 'sigFull' });
-    let expands = 0;
-    let opensSheet = 0;
+    const byLabel = (label: string) => {
+      let hit: Record<string, unknown> | undefined;
+      walk(full, (n) => {
+        if ((n.props as { label?: string } | undefined)?.label === label) hit = n;
+      });
+      return (hit?.props as { onClick?: Record<string, unknown> } | undefined)?.onClick;
+    };
+
+    expect(byLabel('Who reacted')?.$toggleLocalIn, 'the summary row does not open its own people').toBe(
+      'expandedReactors',
+    );
+    expect(byLabel('Who reacted')?.$setLocal, 'the summary row still jumps to the sheet').toBeUndefined();
+    expect(byLabel('See everyone who reacted')?.$setLocal, 'a long list has no way to the sheet').toBe(
+      'signalsModalOpen',
+    );
+  });
+
+  it('the panel caps its people and the sheet does not', () => {
+    /*
+      The cap is what the overflow door counts against, so the two have to be the same number —
+      and the sheet must not cap at all, or "see everyone" would arrive at another truncated list.
+    */
+    const peopleLists = (node: Parameters<typeof walk>[0]) => {
+      const found: string[] = [];
+      walk(node, (n) => {
+        const items = (n.props as { items?: { $?: string } } | undefined)?.items?.$;
+        if (items?.includes('reactors(')) found.push(items);
+      });
+      return found;
+    };
+
+    // A `full` display BUILDS the sheet as well — it is where the compact row's door leads and it
+    // is declared at the root — so the panel's own lists are everything outside that modal.
+    const full = signalDisplay({ record: 'row', mode: 'full', as: 'sigFull' });
+    const sheet = subtree(full, (n) => n.type === 'we-modal');
+    expect(sheet, 'no sheet built beside the full display').toBeTruthy();
+    const inSheet = peopleLists(sheet!);
+    const panel = peopleLists(full).filter((e) => !inSheet.includes(e));
+
+    expect(panel.length, 'the panel lists nobody').toBeGreaterThan(0);
+    expect(
+      panel.every((e) => e.includes('.people, {}, 8)')),
+      `panel lists: ${panel.join(' | ')}`,
+    ).toBe(true);
+    expect(inSheet.length, 'the sheet lists nobody').toBeGreaterThan(0);
+    expect(inSheet.every((e) => !e.includes('.people, {},'))).toBe(true);
+  });
+
+  it("a downvote in the people rows is drawn with the type's second glyph", () => {
+    /*
+      It drew the primary glyph for everybody, so somebody who had voted a thing DOWN was listed
+      with an up arrow and a "-1" beside it — the glyph saying one thing and the number the
+      opposite, which reads as a bug whichever of the two you believe.
+
+      And then the number goes, but only where the glyph can carry the meaning instead. A vote whose
+      community never gave it a second glyph is drawn with the same arrow at both ends, and there
+      the sign is the only thing saying which way somebody went.
+    */
+    const full = signalDisplay({ record: 'row', mode: 'full', as: 'sig' });
+    const glyphs: string[] = [];
+    const numbers: string[] = [];
     walk(full, (n) => {
-      if (n.$toggleLocalIn === 'expandedReactors') expands += 1;
-      if (n.$setLocal === 'signalsModalOpen' && n.value === true) opensSheet += 1;
+      if (n.type === 'we-icon') {
+        const name = (n.props as { name?: { $?: string } } | undefined)?.name?.$;
+        if (name?.includes('iconSecondary')) glyphs.push(name);
+      }
+      const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
+      const then = (n.props as { then?: { type?: string } } | undefined)?.then;
+      if (then?.type === 'we-number' && condition) numbers.push(condition);
     });
-    expect(expands, 'the full row cannot open its people').toBeGreaterThan(0);
-    expect(opensSheet, 'the full row still sends the reader to the sheet for the people').toBe(0);
+
+    expect(
+      glyphs.some((g) => /value < 0 && \w+\.iconSecondary \?/.test(g)),
+      'a downvote keeps the up arrow',
+    ).toBe(true);
+    expect(
+      numbers.some((c) => c === '!sig.iconSecondary'),
+      'the value is drawn beside a glyph that already says it',
+    ).toBe(true);
   });
 
   it('a search opens the rows it matched', () => {

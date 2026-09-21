@@ -100,6 +100,15 @@ const MODAL_OPEN = 'signalsModalOpen';
  */
 const TOOLTIP_PEOPLE = 5;
 
+/**
+ * How many people a panel lists in place before handing over to the sheet.
+ *
+ * The rows open inside a panel that is showing several types at once, so the list has to stay
+ * something a reader scrolls past rather than through. Past this the question has stopped being
+ * "who reacted" and started being "did so-and-so" — which is a search, and the sheet has one.
+ */
+const PANEL_PEOPLE = 8;
+
 /** Which types have their people rows open, by type id — see `reactorSummary`. */
 const EXPANDED = 'expandedReactors';
 
@@ -161,15 +170,45 @@ const everything = (record: string) => `filter(${record}.signals, { author: { no
 const mineOfType = (record: string, as: string) => `count(filter(${forType(record, as)}, { author: me.did }))`;
 
 /**
- * The types this display draws, which is the whole of what `showUnused` decides.
+ * The set of types this display draws, which is the whole of what `showUnused` decides.
  *
- * `filter(…, {}, max)` keeps the first N — the same limit the overflow counts against, so the two
- * cannot disagree about which marks are shown.
+ * Kept as an expression — it is a filter, and reads as one. Everything that counts what a row is
+ * and is not showing is arithmetic over this, evaluable by anything that can evaluate an
+ * expression, which is how the overflow door is tested against the states it was once wrong in.
+ */
+function typeSet(opts: Resolved): string {
+  const used = `${OFFERED_SIGNAL_TYPES}.filter(t, count(filter(${opts.record}.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } })))`;
+  return (opts.showUnused ?? opts.mode === 'full') ? OFFERED_SIGNAL_TYPES : used;
+}
+
+/**
+ * Those types in the order they are drawn: the ones most of the community is using, first.
+ *
+ * Through `signalTypesByUse`, because sorting a list is the one thing the expression language
+ * cannot say — there is no sort in the library, the grammar is closed, and there is no query to
+ * hang an `order` on, since the types come from a hoisted subscription. See that function for why
+ * the count is people rather than values.
+ *
+ * `limit` keeps the first N of that ORDER, so the marks a compact row shows are the ones being
+ * used rather than the ones defined earliest — which is what makes a growing vocabulary usable
+ * from a row with space for four.
  */
 function typesShown(opts: Resolved, limit?: number): string {
-  const used = `${OFFERED_SIGNAL_TYPES}.filter(t, count(filter(${opts.record}.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } })))`;
-  const all = (opts.showUnused ?? opts.mode === 'full') ? OFFERED_SIGNAL_TYPES : used;
-  return limit === undefined ? all : `filter(${all}, {}, ${limit})`;
+  return `signalTypesByUse({ types: ${typeSet(opts)}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids${
+    limit === undefined ? '' : `, limit: ${limit}`
+  } })`;
+}
+
+/**
+ * The same selection, for counting rather than drawing.
+ *
+ * Reordering a list cannot change how long it is, so the door's "how many are offstage" gives the
+ * same answer either way — and this spelling stays arithmetic an expression evaluator can check,
+ * where the ordered one would be an opaque call. Both are built from `typeSet`, so they cannot
+ * disagree about which types are in play.
+ */
+function typesCounted(opts: Resolved, limit?: number): string {
+  return limit === undefined ? typeSet(opts) : `filter(${typeSet(opts)}, {}, ${limit})`;
 }
 
 /**
@@ -467,6 +506,9 @@ function reactorSummary(opts: Resolved, as: string): SchemaNode {
           variant: 'bare',
           size: 'xs',
           width: '100%',
+          // Its own space above it. The column's gap is the one between a name and the sentence
+          // explaining it, and the people are a different subject from both.
+          mt: '200',
           color: 'text-muted',
           hoverProps: { color: 'text' },
           label: 'Who reacted',
@@ -512,8 +554,43 @@ function reactorRow(as: string, who: string, { inverse = false }: { inverse?: bo
             type: 'Row',
             props: { flex: '0 0 auto', ay: 'center', gap: '100', ...(inverse ? {} : { color: 'text-muted' }) },
             children: [
-              { type: 'we-icon', props: { name: { $: `${as}.icon` }, weight: 'fill', size: '12px' } },
-              { type: 'we-number', props: { fontSize: '100', value: { $: `${who}.value` } } },
+              {
+                /*
+                  A vote's two ends are two glyphs, and a person's row has to use the one they
+                  pressed.
+
+                  It drew the primary for everybody, so somebody who had voted the thing DOWN was
+                  listed with an up arrow and a "-1" beside it — the glyph saying one thing and the
+                  number the opposite, which reads as a bug whichever of the two you believe.
+
+                  On the sign rather than on the mode, so a community that gives any type a second
+                  icon for its negative half gets the same treatment; a type without one keeps its
+                  single glyph and the number carries the sign, as before.
+                */
+                type: 'we-icon',
+                props: {
+                  name: { $: `${who}.value < 0 && ${as}.iconSecondary ? ${as}.iconSecondary : ${as}.icon` },
+                  weight: 'fill',
+                  size: '12px',
+                },
+              },
+              {
+                /*
+                  And where the glyph says it, the number is the same fact twice: "1" and "-1"
+                  beside two arrows, with the minus sign the part a reader has to stop and parse.
+
+                  On whether the type HAS a second glyph, not on whether it is a vote. A vote whose
+                  community never gave it one is drawn with the same arrow at both ends, and there
+                  the sign is the only thing saying which way somebody went — so it keeps its
+                  number. A rating or a slider has no second glyph either, and its value is the
+                  whole of what was said.
+                */
+                type: '$if',
+                props: {
+                  condition: { $: `!${as}.iconSecondary` },
+                  then: { type: 'we-number', props: { fontSize: '100', value: { $: `${who}.value` } } },
+                },
+              },
             ],
           },
         },
@@ -532,10 +609,17 @@ function reactorRow(as: string, who: string, { inverse = false }: { inverse?: bo
  * nothing above it; now `reactorSummary` says "six people signalled" one line up, and repeating it
  * over the rows it just opened is the same sentence twice.
  *
- * `searchable` is the sheet's search box, which only exists there. A search that matches nobody
- * says whether that is because nobody matched or because nobody's profile has arrived yet — a name
- * cannot be matched before it exists, and "no one called that" is a different claim from "I cannot
- * tell yet".
+ * `searchable` is the sheet's search box, which only exists there, and it decides two things. A
+ * search that matches nobody says whether that is because nobody matched or because nobody's
+ * profile has arrived yet — a name cannot be matched before it exists, and "no one called that" is
+ * a different claim from "I cannot tell yet".
+ *
+ * And without one, the list is CAPPED. A panel showing several types at once cannot also show
+ * forty names under one of them, and the reader who wants the forty-first is not scrolling, they
+ * are looking for somebody — so the overflow is a door to the sheet, which is the surface with the
+ * search. That door is also what gives `full` its way back to the sheet at all: the summary row
+ * itself opens the people in place, deliberately, so this is the one place left that offers the
+ * other surface, and it offers it exactly when it is the better one.
  */
 function reactorList(opts: Resolved, as: string, { searchable = false }: { searchable?: boolean } = {}): SchemaNode {
   const roster = reactorsOf(opts.record, as, searchable ? SEARCH : undefined);
@@ -550,9 +634,40 @@ function reactorList(opts: Resolved, as: string, { searchable = false }: { searc
         children: [
           {
             type: '$each',
-            props: { items: { $: `${roster}.people` }, as: who },
+            props: {
+              items: { $: searchable ? `${roster}.people` : `filter(${roster}.people, {}, ${PANEL_PEOPLE})` },
+              as: who,
+            },
             children: [reactorRow(as, who)],
           },
+          ...(searchable || opts.readOnly
+            ? []
+            : [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: `${roster}.total > ${PANEL_PEOPLE}` },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        variant: 'bare',
+                        size: 'xs',
+                        color: 'text-faint',
+                        hoverProps: { color: 'text' },
+                        label: 'See everyone who reacted',
+                        onClick: { $setLocal: MODAL_OPEN, value: true },
+                      },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { fontSize: '100' },
+                          children: [{ $: `\`\${${roster}.total - ${PANEL_PEOPLE}} more…\`` }],
+                        },
+                      ],
+                    },
+                  },
+                } as SchemaNode,
+              ]),
           {
             // Only while a search is narrowing: with nothing typed there is no question for anybody
             // to be missing from.
@@ -606,6 +721,29 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
             type: 'Column',
             props: { width: '100%', gap: '100' },
             children: [
+              {
+                /*
+                  A line between one type and the next.
+
+                  Each type is now three or four stacked pieces — a name with its control, a
+                  sentence, a row of faces, sometimes a list of people — so the gap that used to
+                  separate two types reads as just another gap inside one of them, and a reader
+                  scanning the column cannot see where one reaction ends and the next begins.
+
+                  Inside the row rather than between the rows, because `$each` renders its first
+                  child and drops the rest — so a divider as a sibling would silently be the only
+                  thing drawn. `index` is falsy on the first row, which is the one that must not
+                  have a line above it.
+
+                  The margin is the outer gap less the inner one, so the line sits the same distance
+                  from the type above it as from the type below.
+                */
+                type: '$if',
+                props: {
+                  condition: { $: 'index' },
+                  then: { type: 'we-divider', props: { width: '100%', mb: '300' } },
+                },
+              },
               {
                 type: 'Row',
                 props: { width: '100%', ay: 'center', ax: 'between', gap: '300' },
@@ -763,9 +901,9 @@ function newTypeForm(opts: Resolved): SchemaNode[] {
 function compactRow(opts: Resolved, as: string): SchemaNode {
   const limit = opts.max ?? 4;
   /** Marks the `max` dropped — a number worth showing, because those reactions are really there. */
-  const overflow = `count(${typesShown(opts)}) - ${limit}`;
+  const overflow = `count(${typesCounted(opts)}) - ${limit}`;
   /** Anything the community offers that this row is not drawing: unused types, and the overflow. */
-  const offstage = `count(${OFFERED_SIGNAL_TYPES}) - count(${typesShown(opts, limit)})`;
+  const offstage = `count(${OFFERED_SIGNAL_TYPES}) - count(${typesCounted(opts, limit)})`;
   return {
     type: 'Row',
     props: { gap: opts.size === 'md' ? '500' : '300', ay: 'center', wrap: true },
@@ -902,7 +1040,7 @@ function modal(opts: Resolved, as: string): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: { $: `count(${typesShown({ ...opts, mode: 'full', showUnused: false })})` },
+              condition: { $: `count(${typesCounted({ ...opts, mode: 'full', showUnused: false })})` },
               then: {
                 type: 'we-input',
                 props: {

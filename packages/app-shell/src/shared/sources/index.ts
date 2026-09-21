@@ -24,6 +24,7 @@ import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
 import { reactors } from './reactors';
 import { reactions, signalTally } from './signalTally';
+import { signalTypesByUse } from './signalTypesByUse';
 
 export interface HostSource {
   /** The name a template calls. */
@@ -116,6 +117,14 @@ export const hostSources: readonly HostSource[] = [
     example:
       'reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })',
     fn: reactors,
+  },
+  {
+    name: 'signalTypesByUse',
+    params: ['options'],
+    doc: "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Options: types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).",
+    example:
+      'signalTypesByUse({ types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })',
+    fn: signalTypesByUse,
   },
   {
     name: 'formatJson',
