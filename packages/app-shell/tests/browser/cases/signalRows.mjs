@@ -17,7 +17,16 @@ export const name = 'signal names sit level';
 export const scenario = 'signals:vocabulary';
 export const widths = [420];
 
-export async function check({ measureAll, measureText }) {
+/*
+  Not the copies inside a closed bubble.
+
+  A type's name is drawn twice now — once on its row, and once as the heading of the tip explaining
+  it — and the tip's copy is in the DOM at zero size the whole time. `querySelectorAll` cannot tell
+  them apart, so without this the case would measure a 0x0 box and agree with itself.
+*/
+const VISIBLE = 'we-text:not([slot="content"] *)';
+
+export async function check({ measureAll, measureText, measureControl }) {
   const problems = [];
 
   const dividers = (await measureAll('we-divider')).filter((line) => line.w > 0);
@@ -26,7 +35,7 @@ export async function check({ measureAll, measureText }) {
   // The name belonging to each line is the first one under it.
   const names = [];
   for (const label of ['Stars', 'Vote', 'Mood']) {
-    const box = await measureText(label, 'we-text');
+    const box = await measureText(label, VISIBLE);
     if (box) names.push({ label, box });
   }
   if (names.length < 2) return [`expected to find the type names, found ${names.map((n) => n.label).join(', ')}`];
@@ -50,9 +59,43 @@ export async function check({ measureAll, measureText }) {
     somebody has used should be two. Asserted by looking for the words: a tooltip's content sits in
     the DOM with the bubble closed, so this is specifically that they are not LAID OUT.
   */
-  const description = await measureText('How the room feels, nought to a hundred.', 'we-text');
+  const description = await measureText('How the room feels, nought to a hundred.', VISIBLE);
   if (description && description.h > 0) {
     problems.push(`a type's description is taking ${description.h}px of the row`);
+  }
+
+  /*
+    The name and its control start on the same line.
+
+    The row is top-aligned, so "the same line" is the same TOP: a control shorter than a line of
+    label — which every one of them is at the size a panel draws them — would otherwise hang from
+    the top of the row while the words beside it sat centred in theirs, and the two read as slightly
+    out of step all the way down the column.
+  */
+  for (const [label, control] of [
+    ['Like', '.signal-control__toggle-row'],
+    ['Vote', '.signal-control__vote'],
+    ['Mood', '.signal-control__slider'],
+  ]) {
+    const name = await measureText(label, VISIBLE);
+    const [cell] = (await measureAll(control)).filter((box) => box.h);
+    if (!name || !cell) continue;
+    if (name.y !== cell.y) {
+      problems.push(`${label}'s control starts at ${cell.y}px and its name at ${name.y}px`);
+    }
+  }
+
+  /*
+    And the glyph explaining a type sits against its NAME, not against the control.
+
+    The name used to grow into the space it was given, which pushed the tip to the far side of the
+    row where it read as part of the control it had ended up beside.
+  */
+  const like = await measureText('Like', VISIBLE);
+  const tip = await measureControl('What this signal means');
+  if (like && tip) {
+    const away = tip.x - (like.x + like.w);
+    if (away < 0 || away > 16) problems.push(`the info glyph sits ${away}px from the end of the name`);
   }
 
   return problems;

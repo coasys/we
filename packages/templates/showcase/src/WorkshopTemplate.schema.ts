@@ -1795,7 +1795,14 @@ const connectionsSection: SchemaNode = {
  */
 const reactionsSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', width: '100%' },
+  /*
+    More room under this heading than the others have.
+
+    A section whose body is prose or a list of rows starts below its heading and reads as one
+    block. This one starts with a CONTROL, and a control sitting a hundred under a heading reads as
+    belonging to it — as though the heading were its label rather than the section's name.
+  */
+  props: { gap: '300', width: '100%' },
   children: [
     foldingSectionLabel({
       label: 'Signals',

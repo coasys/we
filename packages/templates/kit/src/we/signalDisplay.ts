@@ -800,8 +800,17 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                       Never shrinks, and the name gives up the room: the glyph is the recognisable
                       half, so squeezing it to fit a long name would lose the wrong one.
                     */
+                    /*
+                      Shrinks but never grows, so the glyph explaining a type stays against its
+                      NAME.
+
+                      Given room to grow, this cell took the whole left half and carried the tip
+                      with it, leaving it against the control where it read as part of the control.
+                      The row's `ax: 'between'` is what puts the control at the far edge; nothing
+                      here needs to stretch to achieve that.
+                    */
                     type: 'Row',
-                    props: { flex: '1 1 auto', minWidth: '0', ay: 'center', gap: '200' },
+                    props: { flex: '0 1 auto', minWidth: '0', ay: 'center', gap: '200' },
                     children: [
                       {
                         type: 'we-icon',
@@ -819,7 +828,15 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                         type: 'we-text',
                         props: {
                           variant: 'label',
-                          flex: '1 1 auto',
+                          /*
+                            Shrinks but never GROWS.
+
+                            At `1 1 auto` the name took the whole left half and pushed the glyph
+                            explaining it against the control, where it read as part of the control
+                            rather than as part of the name. The tip belongs to the word, so it sits
+                            against the word; the room left over goes to the row.
+                          */
+                          flex: '0 1 auto',
                           minWidth: '0',
                           truncate: true,
                           // The height of the shortest control, so a name sits on the same line as
@@ -863,12 +880,19 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                     ],
                   },
                   {
-                    // Never absorbs somebody else's overflow: a rating is five glyphs and a slider
-                    // is a track, and neither has a narrower form worth having. It stopped needing
-                    // a cap when the description left the row — there is nothing beside it now but
-                    // a name, which truncates.
+                    /*
+                      Never absorbs somebody else's overflow: a rating is five glyphs and a slider
+                      is a track, and neither has a narrower form worth having. It stopped needing a
+                      cap when the description left the row — there is nothing beside it now but a
+                      name, which truncates.
+
+                      The floor is the name's own height, so the two sit on one line. The row is
+                      top-aligned — that is what keeps every name the same distance below the rule
+                      above it — and a control shorter than a line of label would otherwise hang
+                      from the top of the row while the words beside it were centred in theirs.
+                    */
                     type: 'Row',
-                    props: { flex: '0 0 auto', ay: 'center' },
+                    props: { flex: '0 0 auto', ay: 'center', minHeight: 'var(--we-component-height-xs)' },
                     children: [control(opts, as)],
                   },
                 ],

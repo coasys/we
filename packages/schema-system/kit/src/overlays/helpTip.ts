@@ -102,7 +102,15 @@ export function helpTip(opts: HelpTipOptions): SchemaNode {
           color: 'text-faint',
           hoverProps: { color: 'text-muted' },
         },
-        children: [{ type: 'we-icon', props: { name: 'info' } }],
+        /*
+          Sized, not inherited, on the small trigger.
+
+          A `we-icon` inside a sized primitive takes `--we-context-icon-size`, which is 12px at
+          `xs` — right for a glyph labelling a button and too small for one that IS the affordance,
+          where it reads as a speck beside the word it belongs to. `xs` on the icon's own scale is
+          16px, which is the same glyph a size up without making the button taller than the row.
+        */
+        children: [{ type: 'we-icon', props: { name: 'info', ...(opts.size === 'xs' && { size: 'xs' }) } }],
       },
     ],
   };
