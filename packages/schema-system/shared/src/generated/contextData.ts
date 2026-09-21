@@ -83,6 +83,7 @@ export const contextData: ContextData = {
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'text', type: 'string | undefined', optional: true },
         { name: 'label', type: 'string', optional: false, default: "''" },
+        { name: 'expanded', type: 'boolean | undefined', optional: true },
         { name: 'href', type: 'string | undefined', optional: true },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'loading', type: 'boolean', optional: false, default: 'false' },

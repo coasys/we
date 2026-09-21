@@ -66,6 +66,8 @@ import {
   emptyNote,
   emptyState,
   field,
+  foldingBody,
+  foldingSectionLabel,
   formModal,
   linkedRecords,
   panelHeader,
@@ -1143,8 +1145,13 @@ const composedContent: SchemaNode = {
  * row is at the foot of the panel and shut by default — a model with twelve properties and three
  * filled in should read as three facts, not as nine gaps.
  *
- * `$animate` rather than `$if`, so closing it does not unmount a control somebody is halfway through
- * typing into — `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed.
+ * `keepMounted`, so closing it does not unmount a control somebody is halfway through typing into —
+ * `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed. Every other
+ * folding section here drops its contents, which is the right default and the wrong one for this.
+ *
+ * The heading is the same row the other sections use, which is a change from the sentence it was:
+ * "3 empty fields" said the count in words and left the section unnamed, so the one row in the
+ * panel that folded looked unlike the four that now do.
  */
 const emptyFields: SchemaNode = {
   type: '$if',
@@ -1154,40 +1161,10 @@ const emptyFields: SchemaNode = {
       type: 'Column',
       props: { gap: '200', pt: '200', borderTop: '1px solid border' },
       children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'bare',
-            width: '100%',
-            ax: 'start',
-            gap: '200',
-            onClick: { $toggleLocal: 'showEmpty' },
-          },
-          children: [
-            {
-              type: 'we-icon',
-              props: {
-                size: 'xs',
-                color: 'text-faint',
-                name: { $: "local.showEmpty ? 'caret-down' : 'caret-right'" },
-              },
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [{ $: `${EMPTY_COUNT} + ' empty ' + plural(${EMPTY_COUNT}, 'field', 'fields')` }],
-            },
-          ],
-        },
-        {
-          type: '$animate',
-          props: {
-            condition: { $: 'local.showEmpty' },
-            enterTransition: [
-              { type: 'reveal', duration: 200 },
-              { type: 'fade', duration: 150 },
-            ],
-          },
+        foldingSectionLabel({ label: 'Empty fields', count: EMPTY_COUNT, open: { field: 'showEmpty' } }),
+        foldingBody({
+          open: { field: 'showEmpty' },
+          keepMounted: true,
           children: [
             {
               type: 'Column',
@@ -1195,7 +1172,7 @@ const emptyFields: SchemaNode = {
               children: [fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, EMPTY_FIELDS)],
             },
           ],
-        },
+        }),
       ],
     },
   },
@@ -1332,43 +1309,6 @@ function endButton(opts: { id: string; type: string; icon: string; name: string;
 }
 
 /**
- * A section's caption, with a count beside it where the count is worth reading.
- *
- * Uppercase, and a step fainter than the faintest text role, so a section's name reads apart from
- * the properties under it and from a placeholder sentence like "Nobody is on this yet", which is
- * already `text-faint`. There is no role below that one, so the step is opacity — it follows the
- * theme either way, where a scale position would fix it to one theme's idea of grey.
- */
-function sectionCaption(label: string, count?: string): SchemaNode {
-  return {
-    type: 'Row',
-    props: { gap: '200', ay: 'center', opacity: 0.75 },
-    children: [
-      {
-        type: 'we-text',
-        props: { variant: 'footnote', uppercase: true, letterSpacing: 'wide', color: 'text-faint' },
-        children: [label],
-      },
-      ...(count
-        ? [
-            {
-              type: '$if',
-              props: {
-                condition: { $: count },
-                then: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: [{ $: count }],
-                },
-              },
-            } as SchemaNode,
-          ]
-        : []),
-    ],
-  };
-}
-
-/**
  * Everything this card is connected to — including what this canvas cannot draw.
  *
  * The canvas draws a line only when both of its ends are placed on it (see the `canvas` seed), which
@@ -1388,91 +1328,98 @@ const cardConnections: SchemaNode = {
   type: 'Column',
   props: { gap: '100', pt: '200', borderTop: '1px solid border' },
   children: [
-    sectionCaption('Connections', 'count(local.connections)'),
-    {
-      /*
+    foldingSectionLabel({
+      label: 'Connections',
+      count: 'count(local.connections)',
+      open: { field: 'connectionsOpen' },
+    }),
+    foldingBody({
+      open: { field: 'connectionsOpen' },
+      children: [
+        {
+          /*
         Waiting, then counted — the same gate the thread below uses, and for the same reason: an
         unanswered query and an empty one are both `count() == 0`, so a section that tests the count
         alone declares itself empty on its first frame and fills a moment later. The connections
         arrive after the card does, so that frame is visible.
       */
-      type: '$if',
-      props: {
-        condition: { $: 'local.connectionsLoaded' },
-        else: {
-          type: 'Column',
-          props: { gap: '200', py: '100' },
-          children: [1, 2].map(() => ({
-            type: 'Row',
-            props: { gap: '200', ay: 'center' },
-            children: [
-              { type: 'we-skeleton', props: { width: '16px', height: '16px', bg: 'control-surface' } },
-              { type: 'we-skeleton', props: { width: '60%', height: '12px', bg: 'control-surface' } },
-            ],
-          })),
-        },
-        then: {
           type: '$if',
           props: {
-            condition: { $: 'count(local.connections)' },
+            condition: { $: 'local.connectionsLoaded' },
+            else: {
+              type: 'Column',
+              props: { gap: '200', py: '100' },
+              children: [1, 2].map(() => ({
+                type: 'Row',
+                props: { gap: '200', ay: 'center' },
+                children: [
+                  { type: 'we-skeleton', props: { width: '16px', height: '16px', bg: 'control-surface' } },
+                  { type: 'we-skeleton', props: { width: '60%', height: '12px', bg: 'control-surface' } },
+                ],
+              })),
+            },
             then: {
-              type: '$each',
-              props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
-              children: [
-                {
-                  type: 'Row',
-                  props: { gap: '100', ay: 'center', width: '100%' },
+              type: '$if',
+              props: {
+                condition: { $: 'count(local.connections)' },
+                then: {
+                  type: '$each',
+                  props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
                   children: [
-                    endButton({
-                      id: 'conn.otherId',
-                      type: 'conn.otherType',
-                      icon: 'conn.icon',
-                      name: 'conn.name',
-                      lead: [
-                        {
-                          type: 'we-icon',
-                          props: {
-                            name: { $: 'conn.arrow' },
-                            size: 'xs',
-                            // The kind's own colour, where the community chose one — the same colour its
-                            // lines are drawn in on the knowledge map.
-                            color: { $: "conn.tint ? conn.tint : 'text-faint'" },
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          props: {
-                            variant: 'footnote',
-                            flexShrink: '0',
-                            color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
-                          },
-                          children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
-                        },
-                      ],
-                    }),
                     {
-                      type: 'we-tooltip',
-                      props: { content: 'Open this connection' },
+                      type: 'Row',
+                      props: { gap: '100', ay: 'center', width: '100%' },
                       children: [
+                        endButton({
+                          id: 'conn.otherId',
+                          type: 'conn.otherType',
+                          icon: 'conn.icon',
+                          name: 'conn.name',
+                          lead: [
+                            {
+                              type: 'we-icon',
+                              props: {
+                                name: { $: 'conn.arrow' },
+                                size: 'xs',
+                                // The kind's own colour, where the community chose one — the same colour its
+                                // lines are drawn in on the knowledge map.
+                                color: { $: "conn.tint ? conn.tint : 'text-faint'" },
+                              },
+                            },
+                            {
+                              type: 'we-text',
+                              props: {
+                                variant: 'footnote',
+                                flexShrink: '0',
+                                color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
+                              },
+                              children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
+                            },
+                          ],
+                        }),
                         {
-                          type: 'we-button',
-                          props: {
-                            variant: 'ghost',
-                            size: 'sm',
-                            square: true,
-                            flexShrink: '0',
-                            label: 'Open this connection',
-                            onClick: openRecord('conn.id', 'Relationship'),
-                          },
-                          children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                          type: 'we-tooltip',
+                          props: { content: 'Open this connection' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                square: true,
+                                flexShrink: '0',
+                                label: 'Open this connection',
+                                onClick: openRecord('conn.id', 'Relationship'),
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                            },
+                          ],
                         },
                       ],
                     },
                   ],
                 },
-              ],
-            },
-            /*
+                /*
           Nothing yet — and said as what to do.
 
           The connect handles appear on a selected card's edges and nowhere else, so the gesture is
@@ -1482,15 +1429,17 @@ const cardConnections: SchemaNode = {
           answered, where before this was the only thing standing between a card and the claim that
           it was connected to nothing.
         */
-            else: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+                else: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+                },
+              },
             },
           },
         },
-      },
-    },
+      ],
+    }),
   ],
 };
 
@@ -1505,26 +1454,31 @@ const linkEnds: SchemaNode = {
   type: 'Column',
   props: { gap: '100', pt: '200', borderTop: '1px solid border' },
   children: [
-    sectionCaption('Connects'),
-    {
-      type: '$each',
-      props: { items: { $: LINK_END_ROWS }, as: 'end' },
+    foldingSectionLabel({ label: 'Connects', open: { field: 'connectsOpen' } }),
+    foldingBody({
+      open: { field: 'connectsOpen' },
       children: [
-        endButton({
-          id: 'end.id',
-          type: 'end.type',
-          icon: 'end.icon',
-          name: 'end.name',
-          lead: [
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
-              children: [{ $: 'end.role' }],
-            },
+        {
+          type: '$each',
+          props: { items: { $: LINK_END_ROWS }, as: 'end' },
+          children: [
+            endButton({
+              id: 'end.id',
+              type: 'end.type',
+              icon: 'end.icon',
+              name: 'end.name',
+              lead: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
+                  children: [{ $: 'end.role' }],
+                },
+              ],
+            }),
           ],
-        }),
+        },
       ],
-    },
+    }),
   ],
 };
 
@@ -1556,47 +1510,168 @@ const peopleSection: SchemaNode = {
       // The same gap under the caption as Connections has; the parts below keep a wider one.
       props: { gap: '100', pt: '200', borderTop: '1px solid border' },
       children: [
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', width: '100%' },
-          children: [
-            sectionCaption('People'),
-            /*
-              One caption line tall, with the picker centred on it and spilling over either side.
+        foldingSectionLabel({
+          label: 'People',
+          count: `count(${ON_ROW}.people)`,
+          open: { field: 'peopleOpen' },
+          /*
+            One caption line tall, with the picker centred on it and spilling over either side.
 
-              The button is the size of the header's pencil, which is taller than a footnote; left in
-              flow it made this caption row that tall, so People stood further from its first line
-              than Connections does from its own. Held to the caption's line, the two sections share
-              one rhythm and the button keeps the size it is pressed at.
-            */
+            The button is the size of the header's pencil, which is taller than a footnote; left in
+            flow it made this caption row that tall, so People stood further from its first line
+            than Connections does from its own. Held to the caption's line, the two sections share
+            one rhythm and the button keeps the size it is pressed at.
+          */
+          action: {
+            type: 'Row',
+            props: { fontSize: '100', height: '1lh', ay: 'center' },
+            children: [
+              {
+                type: '$if',
+                props: {
+                  // An event's answers have their own buttons on the calendar; the picker is for parts
+                  // one member gives another, and an entity with none of those has nothing to pick.
+                  condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+                  then: {
+                    type: 'DropdownMenu',
+                    props: {
+                      triggerIcon: 'user-plus',
+                      triggerTitle: 'Who is on this',
+                      triggerVariant: 'ghost',
+                      // The size of the pencil and the bin in the panel's header — the controls it sits among.
+                      size: 'sm',
+                      itemSize: 'sm',
+                      placement: 'bottom-end',
+                      searchable: true,
+                      searchPlaceholder: 'Find a member',
+                      items: {
+                        $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                      },
+                      onSelect: {
+                        $action: 'spaceStore.setInvolvement',
+                        args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        }),
+        foldingBody({
+          open: { field: 'peopleOpen' },
+          children: [
             {
-              type: 'Row',
-              props: { ml: 'auto', fontSize: '100', height: '1lh', ay: 'center' },
+              type: 'Column',
+              props: { gap: '200' },
               children: [
+                {
+                  type: '$each',
+                  props: {
+                    items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
+                    as: 'part',
+                  },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '100' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } },
+                        },
+                        {
+                          type: '$each',
+                          props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center', width: '100%' },
+                              children: [
+                                {
+                                  type: 'AvatarStack',
+                                  props: {
+                                    size: 'xs',
+                                    avatars: {
+                                      $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                    },
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    fontSize: '200',
+                                    flex: '1',
+                                    minWidth: '0',
+                                    truncate: true,
+                                    text: {
+                                      $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                    },
+                                  },
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    // Anybody may take somebody off an assignment; only you may withdraw your own answer.
+                                    condition: { $: '!holder.reflexive || holder.did == me.did' },
+                                    then: {
+                                      type: 'we-tooltip',
+                                      props: {
+                                        content: {
+                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                        },
+                                      },
+                                      children: [
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            variant: 'ghost',
+                                            size: 'xs',
+                                            square: true,
+                                            label: {
+                                              $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                            },
+                                            onClick: {
+                                              $if: {
+                                                condition: { $: 'holder.reflexive' },
+                                                then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                                else: {
+                                                  $action: 'spaceStore.setInvolvement',
+                                                  args: [
+                                                    { $: 'row.id' },
+                                                    { $: 'holder.did' },
+                                                    { $: 'holder.kind' },
+                                                    false,
+                                                  ],
+                                                },
+                                              },
+                                            },
+                                          },
+                                          children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
                 {
                   type: '$if',
                   props: {
-                    // An event's answers have their own buttons on the calendar; the picker is for parts
-                    // one member gives another, and an entity with none of those has nothing to pick.
-                    condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+                    condition: { $: `!count(${ON_ROW}.people)` },
                     then: {
-                      type: 'DropdownMenu',
+                      type: 'we-text',
                       props: {
-                        triggerIcon: 'user-plus',
-                        triggerTitle: 'Who is on this',
-                        triggerVariant: 'ghost',
-                        // The size of the pencil and the bin in the panel's header — the controls it sits among.
-                        size: 'sm',
-                        itemSize: 'sm',
-                        placement: 'bottom-end',
-                        searchable: true,
-                        searchPlaceholder: 'Find a member',
-                        items: {
-                          $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
-                        },
-                        onSelect: {
-                          $action: 'spaceStore.setInvolvement',
-                          args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                        variant: 'footnote',
+                        color: 'text-faint',
+                        text: {
+                          $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
                         },
                       },
                     },
@@ -1605,115 +1680,7 @@ const peopleSection: SchemaNode = {
               ],
             },
           ],
-        },
-        {
-          type: 'Column',
-          props: { gap: '200' },
-          children: [
-            {
-              type: '$each',
-              props: {
-                items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
-                as: 'part',
-              },
-              children: [
-                {
-                  type: 'Column',
-                  props: { gap: '100' },
-                  children: [
-                    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } } },
-                    {
-                      type: '$each',
-                      props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
-                      children: [
-                        {
-                          type: 'Row',
-                          props: { gap: '200', ay: 'center', width: '100%' },
-                          children: [
-                            {
-                              type: 'AvatarStack',
-                              props: {
-                                size: 'xs',
-                                avatars: {
-                                  $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
-                                },
-                              },
-                            },
-                            {
-                              type: 'we-text',
-                              props: {
-                                fontSize: '200',
-                                flex: '1',
-                                minWidth: '0',
-                                truncate: true,
-                                text: {
-                                  $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
-                                },
-                              },
-                            },
-                            {
-                              type: '$if',
-                              props: {
-                                // Anybody may take somebody off an assignment; only you may withdraw your own answer.
-                                condition: { $: '!holder.reflexive || holder.did == me.did' },
-                                then: {
-                                  type: 'we-tooltip',
-                                  props: {
-                                    content: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
-                                  },
-                                  children: [
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        variant: 'ghost',
-                                        size: 'xs',
-                                        square: true,
-                                        label: {
-                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
-                                        },
-                                        onClick: {
-                                          $if: {
-                                            condition: { $: 'holder.reflexive' },
-                                            then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
-                                            else: {
-                                              $action: 'spaceStore.setInvolvement',
-                                              args: [{ $: 'row.id' }, { $: 'holder.did' }, { $: 'holder.kind' }, false],
-                                            },
-                                          },
-                                        },
-                                      },
-                                      children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
-                                    },
-                                  ],
-                                },
-                              },
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: `!count(${ON_ROW}.people)` },
-                then: {
-                  type: 'we-text',
-                  props: {
-                    variant: 'footnote',
-                    color: 'text-faint',
-                    text: {
-                      $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
-                    },
-                  },
-                },
-              },
-            },
-          ],
-        },
+        }),
       ],
     },
   },
@@ -1831,16 +1798,25 @@ const reactionsSection: SchemaNode = {
   type: 'Column',
   props: { gap: '100', pt: '200', borderTop: '1px solid border', width: '100%' },
   children: [
-    sectionCaption('Reactions'),
-    signalDisplay({
-      record: 'row',
-      /*
+    foldingSectionLabel({
+      label: 'Reactions',
+      count: 'signalTally({ signals: row.signals })',
+      open: { field: 'reactionsOpen' },
+    }),
+    foldingBody({
+      open: { field: 'reactionsOpen' },
+      children: [
+        signalDisplay({
+          record: 'row',
+          /*
         A space arrives with no reactions at all — nothing seeds a heart on a community's behalf, and
         that is the design rather than an omission. Without this the section was a caption over empty
         space, which reads as something failing to load; the line is also the only place anybody
         would learn that a space names its own.
       */
-      empty: emptyNote('No reactions here yet — a space names its own in Settings → Vocabulary.'),
+          empty: emptyNote('No reactions here yet — a space names its own in Settings → Vocabulary.'),
+        }),
+      ],
     }),
   ],
 };
@@ -1864,8 +1840,11 @@ const discussion: SchemaNode = {
   type: 'Column',
   props: { gap: '200', pt: '200', borderTop: '1px solid border', width: '100%' },
   children: [
-    sectionCaption('Discussion', REPLY_TOTAL),
-    /*
+    foldingSectionLabel({ label: 'Discussion', count: REPLY_TOTAL, open: { field: 'discussionOpen' } }),
+    foldingBody({
+      open: { field: 'discussionOpen' },
+      children: [
+        /*
       No depth or breadth of its own: the kit's [10, 5, 3] at three levels.
 
       Three is right for THIS surface and the reason is arithmetic. Each level costs the gutter and
@@ -1876,7 +1855,9 @@ const discussion: SchemaNode = {
       Said by saying nothing, so the number lives in one place. A template that restates a default
       is a template that stops following it.
     */
-    discussionSection({ record: 'row', fractal: FRACTAL_THREADS }),
+        discussionSection({ record: 'row', fractal: FRACTAL_THREADS }),
+      ],
+    }),
   ],
 };
 
@@ -1939,6 +1920,22 @@ const inspectorPanel: SchemaNode = {
   $localState: {
     editing: { type: 'boolean', initial: false },
     noteOpen: { type: 'boolean', initial: false },
+    /*
+      Which sections are open — kept on the device, not in the URL.
+
+      A preference rather than view state: somebody who works from Connections and never opens
+      Discussion should find it that way tomorrow, and a link they send should not impose their
+      folding on the person who opens it. The extraction panel keeps its sections the same way.
+
+      Per panel rather than per record, which is the same decision: it is a way of working, not a
+      fact about the card. Open to begin with, because these sections ARE the inspector — one that
+      opened folded would be a panel showing five words.
+    */
+    connectionsOpen: { type: 'boolean', initial: true, persist: 'inspector.connectionsOpen' },
+    connectsOpen: { type: 'boolean', initial: true, persist: 'inspector.connectsOpen' },
+    peopleOpen: { type: 'boolean', initial: true, persist: 'inspector.peopleOpen' },
+    reactionsOpen: { type: 'boolean', initial: true, persist: 'inspector.reactionsOpen' },
+    discussionOpen: { type: 'boolean', initial: true, persist: 'inspector.discussionOpen' },
   },
   $queries: {
     /*

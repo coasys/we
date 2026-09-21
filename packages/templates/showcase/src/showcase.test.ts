@@ -1761,9 +1761,18 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('"height":"1lh"');
   });
 
-  it('keeps the same gap under every section caption, with the captions a step fainter', () => {
-    expect(inspector).toContain('"props":{"ml":"auto","fontSize":"100","height":"1lh","ay":"center"}');
-    expect(inspector).toContain('"props":{"gap":"200","ay":"center","opacity":0.75}');
+  it('holds the people picker to one caption line', () => {
+    /*
+      The button is the size of the header's pencil, which is taller than a footnote; left in flow it
+      made the caption row that tall, so People stood further from its first line than Connections
+      does from its own.
+
+      It kept that when the heading moved onto the shared folding pattern — which places the action
+      itself, so the `ml: 'auto'` that used to push it to the end of a row it owned went with the
+      row.
+    */
+    expect(inspector).toContain('"props":{"fontSize":"100","height":"1lh","ay":"center"}');
+    expect(inspector).not.toContain('"opacity":0.75');
   });
 
   it('offers no assignee text box beside the People section that answers it', () => {
@@ -1771,8 +1780,34 @@ describe('the workshop inspector’s people', () => {
   });
 
   it('sets section names apart from the properties under them, with a picker sized like the header’s', () => {
-    expect(inspector).toContain('"uppercase":true');
+    /*
+      Through the kit's `SECTION_LABEL_PROPS`, not a local copy of it. The copy agreed on the colour
+      and the tracking and spelled the caps with `we-text`'s own shorthand, which is the kind of
+      divergence that is invisible until somebody changes one of the two.
+    */
+    expect(inspector).toContain('"textTransform":"uppercase"');
     expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"sm"');
+  });
+
+  it('folds every section, and remembers which are open', () => {
+    /*
+      The panel's sections were the one set that could not be folded, on a panel narrow enough that
+      five of them is a lot of scrolling — and the pattern for folding one was written four times in
+      the extraction panel and nowhere else.
+
+      Persisted, not in the URL: how somebody likes the inspector folded is a preference, and a link
+      they send should not impose it on whoever opens it.
+    */
+    for (const field of ['connectionsOpen', 'connectsOpen', 'peopleOpen', 'reactionsOpen', 'discussionOpen']) {
+      expect(inspector, `${field} is never folded`).toContain(`"$toggleLocal":"${field}"`);
+      expect(inspector, `${field} is not remembered`).toContain(`"persist":"inspector.${field}"`);
+    }
+  });
+
+  it('says whether a section is open, rather than only drawing a caret', () => {
+    // `we-button`'s `expanded` — the prop the shared pattern was the reason for. Without it these
+    // rows announce as plain buttons and nothing says what pressing one would do.
+    expect(inspector).toContain('"expanded":{"$":"local.discussionOpen"}');
   });
 });
 

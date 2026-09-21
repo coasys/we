@@ -11,7 +11,7 @@ import {
   simulateVision,
   tokenVar,
 } from '@we/design-utils';
-import { PANEL_TITLE_PROPS } from '@we/schema-kit';
+import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
 import { applyThemeVars, roleVar, surfacesForPolarity, themeParametersToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
@@ -421,12 +421,15 @@ function HueSwatch(props: { hue: number }) {
   );
 }
 
+/**
+ * A named region inside the panel — `sectionLabel`'s treatment, in the language this panel is in.
+ *
+ * It was a hand-spelled copy a size up and a shade stronger, with a fifth value for the tracking
+ * (`0.05em`, against the inspector's `0.06em`, a `widest` twenty lines from that, and the kit's
+ * `wide`). None of those was a decision anybody made twice.
+ */
 function SectionLabel(props: { children: string }) {
-  return (
-    <we-text fontSize="200" fontWeight="600" color="text-muted" textTransform="uppercase" letterSpacing="0.05em">
-      {props.children}
-    </we-text>
-  );
+  return <we-text {...SECTION_LABEL_PROPS}>{props.children}</we-text>;
 }
 
 /**
@@ -478,10 +481,18 @@ function CollapsibleSection(props: {
   });
   return (
     <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
-      <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} cursor="pointer">
-        <SectionLabel>{props.title}</SectionLabel>
-        <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="text-faint" />
-      </Row>
+      {/*
+        A real `<button>`, not a `Row` carrying an `onClick`: the row silently loses the keyboard
+        activation and the role, and there is nowhere to put `aria-expanded`. The caret is `xs`,
+        which is the size every other caret in the app is — punctuation, a size below the glyphs it
+        sits beside.
+      */}
+      <we-button variant="bare" width="100%" r="200" expanded={open()} onClick={() => setOpen(!open())}>
+        <Row ay="center" ax="between" py="300" width="100%">
+          <SectionLabel>{props.title}</SectionLabel>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
+        </Row>
+      </we-button>
       <Show when={open()}>
         <Column gap="300" pb="400">
           {props.children}

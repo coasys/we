@@ -193,6 +193,11 @@
           "default": "''"
         },
         {
+          "name": "expanded",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
           "name": "href",
           "type": "string | undefined",
           "optional": true

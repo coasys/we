@@ -46,7 +46,7 @@
  * template is one, over composed posts. The same fragment, because a lane-only board *is* the
  * special case where nothing binds; see `lanesOnly`.
  */
-import { field, formModal } from '@we/schema-kit';
+import { field, formModal, sectionLabel } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { peopleFilter } from './peopleFilter.ts';
@@ -565,10 +565,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
         type: 'Column',
         props: { gap: '100' },
         children: [
-          {
-            type: 'we-text',
-            props: { variant: 'footnote', uppercase: true, color: 'text-muted', text: { $: 'part.name' } },
-          },
+          sectionLabel({ label: { $: 'part.name' } }),
           {
             type: '$each',
             props: { items: { $: `${people}.filter(p, p.kind == part.slug)` }, as: 'holder' },
