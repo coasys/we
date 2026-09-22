@@ -3794,6 +3794,31 @@ export const pendingUtterance: SchemaNode = {
  * Named as a part, for `captureMeter`'s reason: an interface arranging the module's pieces itself
  * would otherwise have the transcript and no way to write into it.
  */
+/**
+ * Write what is in the box, once.
+ *
+ * Shared by the button and by Enter rather than written out at each, so the two cannot drift: they
+ * are the same act, and the guard against sending twice only works if both paths raise the same
+ * flag. They used to hold a copy each of a shorter version of this, which is how the flag would
+ * have ended up on one of them.
+ *
+ * `sending` goes up before the action and comes down in `onFinally`, so it is cleared on a failed
+ * write as well as a successful one — a box that could never be sent again because one write failed
+ * would be worse than the double-send this prevents.
+ *
+ * `message` is still cleared on success only. A failed write keeps what was typed rather than
+ * swallowing it and leaving an empty box as the only report.
+ */
+const sendMessage = [
+  { $setLocal: 'sending', value: true },
+  {
+    $action: 'modules.transcribe.addMessage',
+    args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
+    onSuccess: [{ $setLocal: 'message', value: '' }],
+    onFinally: [{ $setLocal: 'sending', value: false }],
+  },
+];
+
 export const transcriptComposer: SchemaNode = {
   type: '$if',
   /*
@@ -3825,7 +3850,14 @@ export const transcriptComposer: SchemaNode = {
         a panel with nothing to write into.
       */
       props: { gap: '200', ay: 'end', width: '100%', mt: '100' },
-      $localState: { message: { type: 'string', initial: '' } },
+      /*
+        `sending` is plain, not persisted and not in the URL: it is an in-flight flag, and the one
+        thing a reload must never restore is a box that thinks it is still writing.
+      */
+      $localState: {
+        message: { type: 'string', initial: '' },
+        sending: { type: 'boolean', initial: false },
+      },
       children: [
         {
           type: 'we-textarea',
@@ -3859,10 +3891,21 @@ export const transcriptComposer: SchemaNode = {
             onInput: { $setLocal: 'message', value: { $: 'event.detail' } },
             // Enter commits, and the primitive suppresses the newline that would otherwise follow —
             // a schema can read a key event but has nothing that calls `preventDefault`.
+            /*
+              Guarded here rather than by disabling the field, which is how the button does it.
+
+              A write takes a round trip — a second against a local node, longer against a shared
+              remote one — and Enter is the fast path, so pressing it twice is the easy mistake and
+              the one that was reported. The button can simply go `disabled`; the textarea cannot,
+              because disabling the thing somebody is typing into takes the focus away mid-sentence
+              and is a worse interruption than the bug.
+
+              So the condition carries both halves of what `disabled` says on the button — there are
+              words, and no write is already going — and the two paths stay honest about being the
+              same act by running the same handler.
+            */
             'on:submit': {
-              $action: 'modules.transcribe.addMessage',
-              args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
-              onSuccess: [{ $setLocal: 'message', value: '' }],
+              $if: { condition: { $: 'trim(local.message) && !local.sending' }, then: sendMessage },
             },
           },
         },
@@ -3879,14 +3922,20 @@ export const transcriptComposer: SchemaNode = {
                 // square rather than a rounded rectangle with an icon adrift in it.
                 square: true,
                 variant: 'secondary',
-                disabled: { $: '!trim(local.message)' },
-                onClick: {
-                  $action: 'modules.transcribe.addMessage',
-                  args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
-                  // Cleared on success only — a failed write keeps what was typed rather than
-                  // swallowing it and leaving an empty box as the only report.
-                  onSuccess: [{ $setLocal: 'message', value: '' }],
-                },
+                /*
+                  Two reasons to be unpressable, and they are not the same reason.
+
+                  Empty is a precondition: there is nothing to send. In flight is a guard: there is
+                  something to send and it is already going. Both spell `disabled`, but only the
+                  second wants a spinner — which is the whole of what was missing. A write against a
+                  shared remote executor takes long enough that a composer saying nothing at all
+                  reads as a press that did not register, so the next thing somebody does is press
+                  it again, and the transcript gets the line twice. Nothing in this panel can delete
+                  a line once it is written, so the duplicate is there for good.
+                */
+                disabled: { $: '!trim(local.message) || local.sending' },
+                loading: { $: 'local.sending' },
+                onClick: sendMessage,
               },
               children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
             },

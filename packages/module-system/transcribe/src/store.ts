@@ -3190,7 +3190,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         { text: words, source: TYPED },
         { parent: { id: target, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
       );
-      await recordSelfParticipation(target, dataset);
+      /*
+        Not awaited, because the composer is waiting on this promise to say it has finished.
+
+        The roster entry is a second write, and nothing the person is looking at depends on it —
+        where the standing effect on the call's roster already spells it `void` for that reason.
+        Awaited here it put a whole extra round trip between the press and the spinner stopping, and
+        on a shared remote executor that is the difference people notice.
+
+        It only ever cost anything on the first message: the guard inside is keyed on the collection,
+        so every message after the first returned immediately. But the first message is the one
+        somebody is deciding whether the composer works at all.
+
+        Losing it is not a risk worth carrying either way — it has its own try/catch, and a failure
+        clears the guard so the next message retries.
+      */
+      void recordSelfParticipation(target, dataset);
     }, 'Writes something a person typed into a transcript, as a typed line.'),
     /**
      * Fix the words on a line of the transcript.

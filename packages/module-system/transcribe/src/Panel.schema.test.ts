@@ -27,6 +27,7 @@ import {
   panel,
   pendingUtterance,
   SUBJECT_EXPR,
+  transcriptComposer,
   transcriptFeed,
   transcriptLines,
 } from './Panel.schema';
@@ -1791,5 +1792,73 @@ describe('the extraction chips say what they are', () => {
     // A row of pills is already a group; the box drew a second boundary round it and took the room
     // the chips wrap in. It is also where a colour with no role to name it was being reached for.
     expect(JSON.stringify(extractionPanel)).not.toContain('surface-sunken');
+  });
+});
+
+/**
+ * Sending a typed line, and not sending it twice.
+ *
+ * A write is a round trip — about a second against a local node and longer against a shared remote
+ * one — and the composer said nothing at all while it ran: the box was cleared on success only, so
+ * the words were still there, and the button stayed enabled because its only guard was emptiness.
+ * The obvious reading is that the press did not register, so the next thing somebody does is press
+ * again, and the transcript gets the line twice. Nothing in this panel deletes a line, so the
+ * duplicate is permanent.
+ *
+ * These pin the three parts of the answer that are each individually easy to drop: that both ways
+ * of sending raise the flag, that the flag comes down however the write ends, and that the button
+ * admits a write is happening rather than merely refusing the click.
+ */
+describe('the composer', () => {
+  const button = findNode(transcriptComposer, (n) => n.type === 'we-button') as
+    { props: Record<string, unknown> } | undefined;
+  const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
+    { props: Record<string, unknown> } | undefined;
+
+  it('declares the in-flight flag beside the draft, and keeps it out of the URL', () => {
+    /*
+      A plain field on purpose. `syncParam` would put "a write is happening" in a link, and `persist`
+      would restore, on the next launch, a composer that believes it is still writing — with no
+      write to finish and so nothing to ever bring it back down.
+    */
+    const holder = findNode(transcriptComposer, (n) => Boolean((n.$localState as Record<string, unknown>)?.sending));
+    const declared = (holder?.$localState as Record<string, Record<string, unknown>> | undefined)?.sending;
+    expect(declared).toEqual({ type: 'boolean', initial: false });
+    expect((holder?.$localState as Record<string, unknown>)?.message).toBeDefined();
+  });
+
+  it('runs the very same handler from the button and from Enter, so the guard cannot cover one only', () => {
+    // Identity, not equality: two copies that happen to match today are two copies, and the next
+    // edit changes one of them. This is what stops the flag being raised on one path and not the other.
+    const enter = textarea?.props['on:submit'] as { $if?: { then?: unknown } } | undefined;
+    expect(enter?.$if?.then).toBe(button?.props.onClick);
+  });
+
+  it('refuses a second send while one is going, on both paths', () => {
+    expect(button?.props.disabled).toEqual({ $: '!trim(local.message) || local.sending' });
+    /*
+      The field is guarded by a condition rather than by `disabled`, and that asymmetry is
+      deliberate: disabling what somebody is typing into takes the focus away mid-sentence, which is
+      a worse interruption than the bug. So the condition has to restate both halves of what
+      `disabled` says on the button — there are words, and nothing is already in flight.
+    */
+    const enter = textarea?.props['on:submit'] as { $if?: { condition?: unknown } } | undefined;
+    expect(enter?.$if?.condition).toEqual({ $: 'trim(local.message) && !local.sending' });
+  });
+
+  it('says a write is happening rather than only refusing the click', () => {
+    // The half that answers the actual report. `disabled` alone stops the duplicate and still leaves
+    // a composer that looks broken for a second, which is what produced the second press.
+    expect(button?.props.loading).toEqual({ $: 'local.sending' });
+  });
+
+  it('lowers the flag however the write ends, and keeps the words unless it succeeded', () => {
+    const send = button?.props.onClick as Record<string, unknown>[];
+    const write = send.find((step) => '$action' in step) as Record<string, unknown>;
+    // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
+    // would be a worse bug than the one this fixes.
+    expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
+    expect(write.onSuccess).toEqual([{ $setLocal: 'message', value: '' }]);
+    expect(send[0]).toEqual({ $setLocal: 'sending', value: true });
   });
 });

@@ -1207,7 +1207,20 @@ function checkValuePositionIf(
   propTypes: Map<string, string> | undefined,
   errors: ValidationError[],
 ): void {
-  if (/^on[A-Z]/.test(propName)) return;
+  /*
+    Two spellings of "this prop is an event handler", and the second is easy to forget.
+
+    `onClick` is the delegated DOM event. `on:submit` is Solid's direct-listener syntax, which is
+    how a schema reaches a **custom event a Lit primitive declares** — `we-textarea`'s `submit`,
+    `we-menu-item`'s `select` — and which the design system's own guidance tells authors to prefer
+    there, because delegation is unreliable across a shadow boundary and the browser's top layer.
+
+    Only the first was exempt, so a `$if` guarding a custom-event handler was refused with advice to
+    use a ternary, which cannot hold a handler and would not have worked. `$action` in the same
+    position was always accepted, so the rule was not even self-consistent — it was rejecting the
+    conditional form of something it already allowed.
+  */
+  if (/^on[A-Z]/.test(propName) || propName.startsWith('on:')) return;
   const declared = propTypes?.get(propName);
   if (declared === 'function') return;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
