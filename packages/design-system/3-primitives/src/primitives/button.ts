@@ -25,6 +25,17 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   disabledProps: { cursor: 'default', opacity: 'var(--we-theme-disabled-opacity, 0.5)' },
 };
 
+/**
+ * The variants that paint a colour of their own, and so already have a foreground chosen against it.
+ *
+ * Only used to pick the spinner's colour — see `_spinner`. Kept as its own set rather than derived
+ * from `VARIANT_DEFAULTS[v].bg`, because the question is not "does it set a background" (`secondary`
+ * does, a neutral one) but "is its foreground already the answer to a contrast problem". Those come
+ * apart exactly here, and a clever derivation would put an invisible spinner on a primary button the
+ * first time somebody gave `ghost` a fill.
+ */
+const FILLED_VARIANTS = new Set<ButtonVariant>(['primary', 'success', 'danger']);
+
 export const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   primary: {
     bg: 'accent',
@@ -367,9 +378,56 @@ export default class Button extends DesignSystemElement {
     }
   };
 
+  /**
+   * The spinner shown while `loading`, sized and coloured for the button it is standing in.
+   *
+   * ## Its size is the icon's size, not a fixed one
+   *
+   * It was pinned at `sm`, which is 24px whatever the button is. That is the icon size of an `md`
+   * button and wrong everywhere else — worst on `xs`, whose whole box is 24px, so the spinner filled
+   * it edge to edge with the padding and border still to find room. `--we-context-icon-size` is the
+   * variable this component already publishes to size nested `we-icon`s per size, so a spinner
+   * standing in for an icon takes exactly the room the icon would have. The fallback keeps the old
+   * 24px for a button whose size attribute has not reflected yet.
+   *
+   * ## Its colour is chosen against the button's own fill
+   *
+   * `currentColor` was right for half the variants and flat for the rest. On a filled variant the
+   * foreground is already chosen to contrast with the fill, so the spinner should take it. On a
+   * variant with no fill of its own it made the spinner the same colour as ordinary text, which
+   * reads as furniture rather than as something happening — and on a dark theme that is a white
+   * wheel, which is what got this looked at.
+   *
+   * `accent-text` is the role for exactly that case: the accent used as a foreground, on a surface,
+   * at a lightness that stays readable. It must NOT be used on the filled variants — `accent` on an
+   * accent fill is an invisible spinner, which is worse than a flat one.
+   */
+  private _spinner() {
+    const onOwnFill = FILLED_VARIANTS.has(this.variant);
+    return html`<we-spinner
+      part="spinner"
+      size="var(--we-context-icon-size, var(--we-size-sm))"
+      color=${onOwnFill ? 'currentColor' : 'accent-text'}
+    ></we-spinner>`;
+  }
+
   private _content() {
+    /*
+      On a square button the spinner REPLACES the content rather than joining it.
+
+      `square` sizes the width from the height, so the button is a box with room for one glyph — it
+      is icon-only by construction. A spinner beside the icon therefore had nowhere to go: two 24px
+      children in a 40px square, overflowing, which is what this looked like on the transcript
+      composer's send button.
+
+      Only on `square`. A button with a label keeps it and takes the spinner alongside, because the
+      word is what says which action is running, and swapping it for a wheel would both lose that
+      and change the button's width mid-press.
+    */
+    if (this.loading && this.square) return this._spinner();
+
     return html`
-      ${this.loading ? html`<we-spinner size="sm" color="currentColor"></we-spinner>` : null}
+      ${this.loading ? this._spinner() : null}
       <slot name="start"></slot>
       ${this.text ? html`<span>${this.text}</span>` : html`<slot></slot>`}
       <slot name="end"></slot>

@@ -449,6 +449,42 @@ const tokenOffsets = (): Scenario => ({
 });
 
 /**
+ * Square icon-only buttons, loading and not, at the two sizes the app actually uses them at.
+ *
+ * `square` sizes the width from the height, so the button is a box with room for one glyph. A
+ * spinner that joins the icon rather than replacing it therefore puts two of them in a box built
+ * for one — and since the spinner was a fixed 24px, an `xs` button (24px tall, 12px icons) had a
+ * spinner as big as its whole self before padding and border.
+ *
+ * Both of those are layout, and neither is visible in jsdom: the markup is well-formed either way,
+ * and what goes wrong is arithmetic the browser does.
+ */
+const squareLoading = (): Scenario => ({
+  node: {
+    type: 'Row',
+    props: { gap: '400', ay: 'center', p: '300' },
+    children: [
+      {
+        type: 'we-button',
+        props: { id: 'md-idle', variant: 'secondary', square: true },
+        children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
+      },
+      {
+        type: 'we-button',
+        props: { id: 'md-busy', variant: 'secondary', square: true, loading: true },
+        children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
+      },
+      {
+        type: 'we-button',
+        props: { id: 'xs-busy', variant: 'secondary', size: 'xs', square: true, loading: true },
+        children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * Three folding section headings in a column — plain, with a count, and with a control beside it.
  *
  * The heading with a control is a different tree from the other two: a button around the whole row
@@ -504,5 +540,6 @@ export const scenarios: Record<string, () => Scenario> = {
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
   'ds:token-offsets': tokenOffsets,
+  'ds:square-loading': squareLoading,
   'panel:sections': panelSections,
 };
