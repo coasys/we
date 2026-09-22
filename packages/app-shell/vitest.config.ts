@@ -40,6 +40,8 @@ const SOLID_TESTS = [
   'tests/cardPeopleLive.test.tsx',
   // Renders a route through the real router and renderer, reading the surface its layout provides.
   'tests/routeSurface.test.tsx',
+  // Mounts a thread through the real fragment and renderer, watching which drill-downs it issues.
+  'tests/threadDepth.test.tsx',
   // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
   // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
   'tests/dockStowAndReveal.test.tsx',
@@ -94,6 +96,9 @@ export default defineConfig({
           alias,
           globals: true,
           environment: 'jsdom',
+          // Observers jsdom lacks — see the file. Only this project needs them: it is the one that
+          // renders components, and a component that measures itself reaches for them on mount.
+          setupFiles: ['./tests/jsdomGaps.ts'],
           include: SOLID_TESTS,
         },
       },

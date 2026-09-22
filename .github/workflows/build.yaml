@@ -65,6 +65,12 @@ jobs:
       - name: Check source-shipping consumers
         run: pnpm check:source-consumers
 
+      # Beside the one above because it is the same kind of gate: a rule nothing else can state.
+      # `tsc` is green either way, the markup shows no trace, and the symptom is a size or a weight
+      # that is quietly wrong — so without this it is found by a person noticing, months later.
+      - name: Check we-* props
+        run: pnpm check:we-props
+
   build:
     name: Build
     runs-on: ubuntu-latest

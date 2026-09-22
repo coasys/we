@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': 0.13.0-test-model-layer
+  '@coasys/ad4m': 0.13.0-test-inverse-relations
   '@coasys/ad4m-connect': 0.13.0-test-interpretation-2
   prettier: 3.9.6
   '@xmldom/xmldom': '>=0.9.12'
@@ -248,8 +248,8 @@ importers:
         version: 14.0.2
     devDependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-model-layer
-        version: 0.13.0-test-model-layer
+        specifier: 0.13.0-test-inverse-relations
+        version: 0.13.0-test-inverse-relations
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
@@ -339,8 +339,8 @@ importers:
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-model-layer
-        version: 0.13.0-test-model-layer
+        specifier: 0.13.0-test-inverse-relations
+        version: 0.13.0-test-inverse-relations
       '@tauri-apps/api':
         specifier: 2.11.1
         version: 2.11.1
@@ -385,8 +385,8 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-model-layer
-        version: 0.13.0-test-model-layer
+        specifier: 0.13.0-test-inverse-relations
+        version: 0.13.0-test-inverse-relations
       '@coasys/ad4m-connect':
         specifier: 0.13.0-test-interpretation-2
         version: 0.13.0-test-interpretation-2
@@ -480,8 +480,8 @@ importers:
   packages/app-shell:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-model-layer
-        version: 0.13.0-test-model-layer
+        specifier: 0.13.0-test-inverse-relations
+        version: 0.13.0-test-inverse-relations
       '@solidjs/router':
         specifier: ^0.16.3
         version: 0.16.3(solid-js@1.9.15)
@@ -551,6 +551,9 @@ importers:
       '@we/module-transcribe':
         specifier: workspace:*
         version: link:../module-system/transcribe
+      '@we/optimism':
+        specifier: workspace:*
+        version: link:../optimism
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
@@ -624,9 +627,18 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../cli
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1(@noble/hashes@2.3.0)
+      playwright-core:
+        specifier: ^1.56.0
+        version: 1.62.1
+      sass:
+        specifier: ^1.103.1
+        version: 1.103.1
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.0)
@@ -650,8 +662,8 @@ importers:
         version: link:../../entities
     devDependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-model-layer
-        version: 0.13.0-test-model-layer
+        specifier: 0.13.0-test-inverse-relations
+        version: 0.13.0-test-inverse-relations
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
@@ -1544,6 +1556,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../../backend-system/shared
+      '@we/optimism':
+        specifier: workspace:*
+        version: link:../../optimism
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -1635,6 +1650,24 @@ importers:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.12.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/optimism:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../cli
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.0)
@@ -2005,8 +2038,8 @@ packages:
   '@coasys/ad4m-connect@0.13.0-test-interpretation-2':
     resolution: {integrity: sha512-EBk8nrAaLh6Lvp1Fa50yCBxd4advPMQqNydoJ/w/tMDZc+z7YvUSaqvgpLScVXOQKMNzElD5A/8Zh/RT7fILXQ==}
 
-  '@coasys/ad4m@0.13.0-test-model-layer':
-    resolution: {integrity: sha512-k0dNph9h2Hqip4BQTKX4WJ2ZRE4VCX8W2P4lXMaqMrnhOCkk6uaILbsxaP/lUOGzlTzu/jd9k+G2avI+LlM+qw==}
+  '@coasys/ad4m@0.13.0-test-inverse-relations':
+    resolution: {integrity: sha512-ToBMMVNWrMBYQT1seOk3vD5P5AZtfWQul9L7swIRY9rGEc0ta9nZCCRa4SqvDctlc2LgkiAvRDSwTzTr+5n57w==}
 
   '@codemirror/autocomplete@6.20.3':
     resolution: {integrity: sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g==}
@@ -6623,7 +6656,7 @@ snapshots:
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@0.13.0-test-model-layer':
+  '@coasys/ad4m@0.13.0-test-inverse-relations':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1

@@ -232,7 +232,10 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           type: 'uri' as const,
           isCollection: spec.cardinality === 'many',
           required: false,
-          writable: true,
+          // A `reverseOf` relation reads a link the other entity owns, so it is read-only here:
+          // AD4M's `@BelongsTo*` generates no `add`/`remove`/`set`, and an entry claiming otherwise
+          // would build a runtime-adopted class that offers writes the hand-written one refuses.
+          writable: !spec.reverseOf,
           ...(spec.target ? { relatedEntity: spec.target } : {}),
           ...(spec.ordered ? { ordered: true } : {}),
           ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),

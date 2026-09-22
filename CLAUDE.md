@@ -457,6 +457,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
     split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
+    sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.comments)))
   Text:
     contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
     endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
@@ -484,6 +485,10 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
     involvement(options) — Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).  e.g. involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible
     involvementMenu(options) — The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).  e.g. involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })
+    signalTally(options) — What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).  e.g. signalTally({ signals: row.signals, type: sig })
+    reactions(options) — A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).  e.g. reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })
+    reactors(options) — Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.  e.g. reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })
+    signalTypesByUse(options) — Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).  e.g. signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
@@ -735,6 +740,45 @@ from a $each context variable or a route segment). The adapter resolves the rela
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
 For external-app datasets, always add dataset: { "$": "currentDataset" }.
+
+Reading a TREE rather than one record's children — the same scope, with one more key:
+
+  anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
+  whole level of a tree rather than one per parent, which also means one subscription instead of
+  one per parent.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
+
+  "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
+  three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
+  knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
+  where asking level by level from the template costs a round trip each and draws the tree a layer
+  at a time.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
+
+  "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
+  count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
+  to draw part of one.
+
+  "limitPerAnchor": 5 caps results per anchor for a single level. Note it is NOT a substitute for
+  "levels": a walk from one anchor has one group, so it would cap the total instead of the breadth
+  at each depth.
+
+  "direction": "in" searches among the records that point AT the anchor, rather than the ones it
+  points at.
+
+A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
+the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
+inReplyTo, the reverse of comments, so a row names its own parent.
+  "include": { "inReplyTo": true }
+Then each level is a filter over the one result:
+  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
+PARENTHESISE the anchor when it is anything but a plain path — `==` binds tighter than `?:`, so a
+ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
+
+A count over a whole subtree is the same idea in a projection:
+  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
+It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
+— where count(row.comments) is the direct children only and would say 3.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -1123,7 +1167,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -1309,7 +1353,7 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false, ticks: 'auto' | 'on' | 'off' = 'auto'
 - we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
 #### One element, not two
@@ -1417,7 +1461,7 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
+  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
 - BlockRenderer (DesignSystemElement)
   Props: editorState?: EditorStateInput, perspective?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
@@ -1456,6 +1500,8 @@ when `relative` is enabled.
 - Column (DesignSystemElement)
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
+- CountMark
+  Props: icon: string, count?: number, mine?: boolean, size?: "xs" | "sm" | "md", countTone?: "text" | "glyph", countFirst?: boolean, onPress?: (() => void), label?: string, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
@@ -1472,7 +1518,7 @@ when `relative` is enabled.
 - Select (DesignSystemElement)
   Props: options: SelectOption[], value?: string, placeholder?: string, searchable?: boolean, label?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - SignalControl
-  Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
+  Props: signalType: SignalTypeData, size?: "xs" | "sm" | "md", signals?: SignalData[], myDid?: string, onSignal?: ((value: number | null) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - ToastContainer
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
@@ -1525,6 +1571,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - changed: string[] — Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.
   - hidden: string[] — Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.
+  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
@@ -2338,6 +2385,7 @@ Space extends WeNode:
   - enabledViews: string [we://enabled_views]
   - extractionTargets: string [we://extraction_targets]
   - autoInterpret: boolean = true [we://auto_interpret]
+  - threadMode: string = 'fractal' [we://thread_mode]
   - moduleSettings: string [we://module_settings]
   Relations:
   - location: HasOne → LocationBlock [we://location]
@@ -2469,6 +2517,7 @@ VideoBlock extends WeNode:
 WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://comment]
+  - inReplyTo: HasOne [we://comment]
   - signals: HasMany → Signal [we://signal]
   - participants: HasMany [we://participants]
   - calls: HasMany [we://call]
@@ -3021,6 +3070,7 @@ SpaceStore:
   - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
   - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
   - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
+  - setThreadMode(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen
   - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
@@ -3044,7 +3094,8 @@ SpaceStore:
   - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it
   - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it
   - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it
-  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
+  - upsertSignal(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right
+  - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
@@ -3322,6 +3373,7 @@ Ask the space a question and watch the answer arrive.
 Needs: kernels records.
 - State (read in an expression as `modules.polls.<name>`):
   - lastError — Why the last vote could not be recorded, or empty.
+  - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
   - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
   - voting — The id of the poll a vote is being written for, or empty.
 - Actions (`{ "$action": "modules.polls.<name>" }`):
@@ -3329,7 +3381,7 @@ Needs: kernels records.
 - Parts: `polls.pollCard`, `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
 - Functions:
-  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).  e.g. tally({ votes: local.votes, options: block.options })
+  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
 - Views (sections a space enables): `polls` "Polls" at /polls
 - Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
 - Entities (queryable with $query):

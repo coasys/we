@@ -29,7 +29,40 @@ const mount = async (props: Record<string, unknown> = {}, inner = '<we-badge>x</
   return el;
 };
 
+/**
+ * A tooltip never takes the pointer, which is a fact about the CONTROL it describes.
+ *
+ * It used to become `pointer-events: auto` once open — the pattern for a bubble holding something
+ * to interact with, a link or a button. This one holds a string, so that bought nothing and cost
+ * the thing underneath: hover a control, the bubble appears across part of it, and the click that
+ * follows lands on the bubble. Found on a comment's fold, where the target is a tall column and the
+ * press simply did not arrive.
+ */
 describe('the box it does not take', () => {
+  it('wraps a sentence but never a phrase', () => {
+    /*
+      A tooltip is usually a phrase and `nowrap` was right for it — folding "Delete this reply" onto
+      two lines is worse than being wide. It stopped being right when the bubble started carrying a
+      sentence: a signal type says what a community means by it, and unwrapped that is one line as
+      wide as the description, which in a 320px panel is a tooltip wider than the app.
+
+      The cap does the deciding rather than a prop: `max-content` still shrink-wraps a phrase, and
+      the width only bites past the cap.
+    */
+    expect(css()).toContain('white-space: normal');
+    expect(css()).toContain('width: max-content');
+    expect(css()).toMatch(/max-width: var\(--we-tooltip-max-width/);
+    // And a single token longer than the column — a URL, a DID — breaks rather than pushing past it.
+    expect(css()).toContain('overflow-wrap: anywhere');
+  });
+  it('never takes the pointer, open or closed', () => {
+    expect(css()).toContain('pointer-events: none');
+    // The open rule must not undo it. Read as the block rather than as a substring of the whole
+    // sheet, since the note explaining this names the value it removed.
+    const open = /:host\(\[open\]\) \[part='tooltip'\] \{([^}]*)\}/.exec(css());
+    expect(open, 'no :host([open]) rule for the bubble').toBeTruthy();
+    expect(open![1]).not.toContain('pointer-events');
+  });
   it('generates none, so its child is the flex item', () => {
     expect(css()).toContain('display: var(--we-tooltip-host-display, contents)');
   });

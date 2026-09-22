@@ -430,6 +430,45 @@ no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
 For external-app datasets, always add dataset: { "$": "currentDataset" }.
 
+Reading a TREE rather than one record's children — the same scope, with one more key:
+
+  anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
+  whole level of a tree rather than one per parent, which also means one subscription instead of
+  one per parent.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
+
+  "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
+  three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
+  knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
+  where asking level by level from the template costs a round trip each and draws the tree a layer
+  at a time.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
+
+  "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
+  count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
+  to draw part of one.
+
+  "limitPerAnchor": 5 caps results per anchor for a single level. Note it is NOT a substitute for
+  "levels": a walk from one anchor has one group, so it would cap the total instead of the breadth
+  at each depth.
+
+  "direction": "in" searches among the records that point AT the anchor, rather than the ones it
+  points at.
+
+A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
+the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
+inReplyTo, the reverse of comments, so a row names its own parent.
+  "include": { "inReplyTo": true }
+Then each level is a filter over the one result:
+  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
+PARENTHESISE the anchor when it is anything but a plain path — \`==\` binds tighter than \`?:\`, so a
+ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
+
+A count over a whole subtree is the same idea in a projection:
+  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
+It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
+— where count(row.comments) is the direct children only and would say 3.
+
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object", "array".

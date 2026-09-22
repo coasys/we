@@ -1,7 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { sectionCard } from '@we/template-kit';
+import { createSignalTypeModal, sectionCard } from '@we/template-kit';
 
-import { createSignalTypeModal } from './vocabulary/CreateSignalTypeModal.ts';
 import { modelsSection } from './vocabulary/EntitiesSection.ts';
 import { involvementTypesSection } from './vocabulary/InvolvementTypesSection.ts';
 import { relationshipTypesSection } from './vocabulary/RelationshipTypesSection.ts';
@@ -87,7 +86,10 @@ const signalTypesSection: SchemaNode = sectionCard({
       children: [signalTypeCard],
     },
     // Carries its own `$if` — see `formModal`.
-    createSignalTypeModal,
+    createSignalTypeModal({
+      open: { $: 'local.createSignalTypeOpen' },
+      close: { $setLocal: 'createSignalTypeOpen', value: false },
+    }),
   ],
 });
 

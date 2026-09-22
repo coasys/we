@@ -985,6 +985,63 @@ const autoInterpretSection: SchemaNode = {
  * standing default and a very reasonable thing to switch on while working on extraction.
  */
 /**
+ * How deep conversations go here.
+ *
+ * Beside automatic extraction because it is the same kind of decision: a community answering for
+ * everyone about what one of WE's own capabilities does, rather than a module being switched on.
+ *
+ * The wording is careful about what changes, because the honest answer is "less than you would
+ * think": replies are stored as a tree either way, so flat withholds the button that grows one and
+ * nothing else. A thread already three deep stays three deep and stays readable, and turning
+ * fractal back on lets it grow again. Said plainly, because a setting that sounded like it
+ * restructured a year of conversation is one nobody would touch.
+ */
+const threadModeSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  children: [
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Replies to replies'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                {
+                  $: "space.canAdminister ? 'Whether a reply can itself be replied to, the way a forum thread branches — or whether answers all hang off the thing itself. Nothing is rewritten either way: threads that already branch stay as they are, and turning this back on lets them grow again.' : 'Whether a reply can itself be replied to. Changing this needs someone who administers the space.'",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-select',
+          props: {
+            size: 'sm',
+            width: '180px',
+            // Anything but the stored 'flat' reads as fractal, so a space that predates the setting
+            // shows what it has always done rather than an empty picker.
+            value: { $: "spaceStore.currentSpace.threadMode == 'flat' ? 'flat' : 'fractal'" },
+            disabled: { $: '!space.canAdminister' },
+            options: [
+              { label: 'Branching', value: 'fractal' },
+              { label: 'One level', value: 'flat' },
+            ],
+            onChange: { $action: 'spaceStore.setThreadMode', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * Which models this community's calls extract into.
  *
  * The middle of three layers, and the only one a community owns. The codebase decides what is a
@@ -1315,6 +1372,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           moduleSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
+                          threadModeSection,
                         ],
                         fill,
                       ),

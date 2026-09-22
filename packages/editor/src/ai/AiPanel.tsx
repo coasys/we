@@ -109,7 +109,7 @@ export function AiPanel() {
                 >
                   <we-text
                     fontSize="300"
-                    fontWeight={isActive() ? '600' : '400'}
+                    prop:fontWeight={isActive() ? '600' : '400'}
                     color={isActive() ? 'neutral-900' : 'neutral-700'}
                     onClick={() => session.switchSession(chat.id)}
                     cursor="pointer"
@@ -166,7 +166,7 @@ export function AiPanel() {
           size="sm"
           rows={1}
           autoGrow
-          maxRows={6}
+          prop:maxRows={6}
           submitOnEnter
           flex="1"
           minWidth="0"

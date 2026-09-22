@@ -22,6 +22,9 @@ import { calendarMonth, calendarMonths, monthLabel, yearLabel } from './calendar
 import { formatJson } from './formatJson';
 import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
+import { reactors } from './reactors';
+import { reactions, signalTally } from './signalTally';
+import { signalTypesByUse } from './signalTypesByUse';
 
 export interface HostSource {
   /** The name a template calls. */
@@ -91,6 +94,37 @@ export const hostSources: readonly HostSource[] = [
     example:
       "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })",
     fn: involvementMenu,
+  },
+  {
+    name: 'signalTally',
+    params: ['options'],
+    doc: "What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).",
+    example: 'signalTally({ signals: row.signals, type: sig })',
+    fn: signalTally,
+  },
+  {
+    name: 'reactions',
+    params: ['options'],
+    doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
+    example:
+      'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })',
+    fn: reactions,
+  },
+  {
+    name: 'reactors',
+    params: ['options'],
+    doc: 'Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal\'s author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type\'s signals, hydrated), profiles (profileStore.profiles), me (me.did), search.',
+    example:
+      'reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })',
+    fn: reactors,
+  },
+  {
+    name: 'signalTypesByUse',
+    params: ['options'],
+    doc: "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).",
+    example:
+      'signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })',
+    fn: signalTypesByUse,
   },
   {
     name: 'formatJson',

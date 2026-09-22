@@ -862,3 +862,126 @@ describe('moving between spaces', () => {
     expect(navigate).toHaveBeenCalledWith(`/space/${a}`);
   }, 10000);
 });
+
+describe('changing a reaction', () => {
+  it('replaces the record rather than editing it, because an edit notifies nobody', async () => {
+    /*
+      A rating moved from three stars to four did nothing anybody could see, the author included.
+
+      The write landed. What did not happen was the re-read. Every surface fetches reactions as
+      `include: { signals: true }` on the record, so the live query is over the RECORD's class, and
+      the executor builds that subscription's trigger from `build_model_trigger_predicates` — the
+      predicates of the subscribed class's own shape, plus the parent predicate. It does not walk
+      `include`. `we://signal` is in that set, so adding or removing a reaction fires it; `we://value`,
+      which belongs to the Signal, is not. An in-place edit changes the store and wakes no reader.
+
+      So the shape IS the requirement: a change has to touch `we://signal`, which means removing and
+      adding. The test asserts the record's identity changed, because that is the observable
+      difference between the two implementations — and the obvious tidy-up, one write instead of
+      two, is exactly what broke it.
+
+      The rest of the assertion is what a naive delete-then-create could still get wrong: one
+      reaction of this type by this agent, holding the new value, not two.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Raters', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Raters')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+
+    const handle = space.handle as never;
+    const SignalType = getEntity('SignalType')!;
+    const Signal = getEntity('Signal')!;
+    const stars = await (SignalType as never as typeof Space).create(handle, {
+      name: 'Stars',
+      slug: 'stars',
+      mode: 'rating',
+      rangeMin: 0,
+      rangeMax: 5,
+    } as never);
+    const subject = await CollectionBlock.create(handle, { kind: 'post', textContent: 'rate me' } as never);
+
+    const mine = async () =>
+      (await (Signal as never as typeof Space).findAll(handle, {
+        parent: { id: subject.id, predicate: 'we://signal' },
+        where: { signalTypeId: stars.id, author: 'did:test:james' },
+      } as never)) as unknown as { id: string; value: number }[];
+
+    await stores.spaces.upsertSignal(subject.id, stars.id, 3);
+    const first = await mine();
+    expect(first).toHaveLength(1);
+    expect(first[0].value).toBe(3);
+
+    await stores.spaces.upsertSignal(subject.id, stars.id, 4);
+    const second = await mine();
+    // One reaction, the new value — not two rows where the reader finds the stale one first.
+    expect(second).toHaveLength(1);
+    expect(second[0].value).toBe(4);
+    // And a different record, which is what touching `we://signal` twice amounts to.
+    expect(second[0].id).not.toBe(first[0].id);
+
+    /*
+      A zero is an ordinary value now, and is stored.
+
+      It used to be the withdrawal, which meant a type whose range includes 0 could not hold it — a
+      0–100 slider dragged to the bottom was written as "did not answer". The two acts are spelled
+      apart: a number is a reaction, `null` takes it back.
+    */
+    await stores.spaces.upsertSignal(subject.id, stars.id, 0);
+    const zeroed = await mine();
+    expect(zeroed).toHaveLength(1);
+    expect(zeroed[0].value).toBe(0);
+
+    // And withdrawing is its own act, which removes the record rather than storing anything.
+    await stores.spaces.withdrawSignal(subject.id, stars.id);
+    expect(await mine()).toHaveLength(0);
+  }, 10000);
+});
+
+describe('a card’s presentation, drawn before it is stored', () => {
+  it('holds each field on its own, so one settling does not retire the other', async () => {
+    /*
+      The improvement consolidating on `@we/optimism` bought the canvas.
+
+      A colour and a size are written by different gestures and answered by different pushes. Held
+      together as one patch per record, the first to come back retired the other — so recolouring a
+      card you had just resized snapped it back to its old size for the rest of that round trip.
+      Keyed per field, each answers for itself.
+
+      `previewCardStyle` is used because it is synchronous and holds exactly as a write does; what is
+      under test is the holding and the settling, not the round trip.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    stores.records.previewCardStyle('card-1', 'color', 'danger-100');
+    stores.records.previewCardStyle('card-1', 'rotation', 15);
+    expect(stores.records.pendingCardStyle()['card-1']).toEqual({ color: 'danger-100', rotation: 15 });
+
+    // The graph reports the records whose own data now says what was written. Only the colour has
+    // landed, but the report is per record — so the rotation must survive it on its own terms.
+    stores.records.confirmPending(['card-1']);
+    expect(stores.records.pendingCardStyle()['card-1']).toBeUndefined();
+
+    // And a second card's holds are untouched by a report about the first.
+    stores.records.previewCardStyle('card-2', 'color', 'warning-100');
+    stores.records.confirmPending(['card-1']);
+    expect(stores.records.pendingCardStyle()['card-2']).toEqual({ color: 'warning-100' });
+  }, 10000);
+
+  it('a preview is not a write, so it settles rather than standing until the backstop', async () => {
+    // A slider emits continuously as it is dragged. Counted as writes those holds would never be
+    // judged — nothing returns to decrement them — and the card would show its last dragged frame
+    // for ten seconds after the real value had landed.
+    const stores = mountShell();
+    await ready(stores);
+
+    for (const degrees of [5, 10, 15, 20]) stores.records.previewCardStyle('card-3', 'rotation', degrees);
+    expect(stores.records.pendingCardStyle()['card-3']).toEqual({ rotation: 20 });
+
+    stores.records.confirmPending(['card-3']);
+    expect(stores.records.pendingCardStyle()['card-3']).toBeUndefined();
+  }, 10000);
+});

@@ -24,7 +24,8 @@
     "dist"
   ],
   "dependencies": {
-    "@we/backend-shared": "workspace:*"
+    "@we/backend-shared": "workspace:*",
+    "@we/optimism": "workspace:*"
   },
   "peerDependencies": {
     "@we/module-shared": "workspace:*",

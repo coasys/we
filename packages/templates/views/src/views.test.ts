@@ -63,3 +63,63 @@ describe('the built-in views', () => {
     expect([...catalogued].sort()).toEqual([...ids].sort());
   });
 });
+
+/**
+ * The feed asks for posts, and a post is not every record that happens to be stored like one.
+ *
+ * `createPost` writes `kind` ALONGSIDE `type: 'root'` rather than instead of it, so a reply written
+ * from a thread is `type: 'root'` too. Nothing said so until replies could be written from
+ * anywhere, and then every comment in the space appeared in the feed as a post of its own.
+ *
+ * Pinned as a shape rather than a screenshot, because the two plausible fixes fail in opposite
+ * directions: `kind: 'post'` and `kind: { not: 'reply' }` both turn on a field older posts do not
+ * carry, and on AD4M an unbound value fails both tests — so either one empties the feed of
+ * everything written before the field existed. Asking whether the record answers something is the
+ * only spelling that is true of a post from any era.
+ */
+describe('the cards view’s post feed', () => {
+  /** Every node in a schema tree, including the ones behind `$if` branches and `routes`. */
+  function walk(node: unknown, visit: (n: Record<string, unknown>) => void): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) return node.forEach((n) => walk(n, visit));
+    const n = node as Record<string, unknown>;
+    if (typeof n.type === 'string' || n.props || n.children) visit(n);
+    for (const value of Object.values(n)) walk(value, visit);
+  }
+
+  /**
+   * The feed's own query: a `CollectionBlock` read filtered on `type: 'root'`.
+   *
+   * Looked for in `$queries` as well as in props, because `cardList` HOISTS its query onto the node
+   * it builds rather than leaving it on an `$each` — which is the whole point of the fragment, and
+   * would make a props-only search silently find nothing and pass.
+   */
+  function feedQuery(): Record<string, unknown> | undefined {
+    let found: Record<string, unknown> | undefined;
+    const consider = (value: unknown) => {
+      const q = ((value as { $query?: unknown })?.$query ?? value) as
+        { entity?: string; where?: Record<string, unknown> } | undefined;
+      if (q?.entity === 'CollectionBlock' && q.where?.type === 'root' && !found) {
+        found = q as Record<string, unknown>;
+      }
+    };
+    walk(BUILT_IN_VIEWS.cards, (n) => {
+      for (const value of Object.values((n.props ?? {}) as Record<string, unknown>)) consider(value);
+      for (const value of Object.values((n.$queries ?? {}) as Record<string, unknown>)) consider(value);
+    });
+    return found;
+  }
+
+  it('excludes anything that is a reply to something else', () => {
+    const where = feedQuery()?.where as Record<string, unknown> | undefined;
+    expect(where, 'no CollectionBlock query filtered on type: root in the cards view').toBeTruthy();
+    expect(where!.inReplyTo).toEqual({ none: {} });
+  });
+
+  it('counts the whole conversation on each post, not the replies directly under it', () => {
+    // The number beside the icon is what expanding reveals in total; direct children would say
+    // "2" over a thread of forty. `transitive` is the difference, and it rides in the same read.
+    const include = feedQuery()?.include as Record<string, Record<string, unknown>> | undefined;
+    expect(include?.$commentCount).toMatchObject({ from: 'comments', count: true, transitive: true });
+  });
+});

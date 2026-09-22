@@ -273,10 +273,19 @@ export function BlockComposer(props: Props) {
 
     props.onReady?.({ save });
 
-    // Focus after the next frame so the modal/DOM is fully settled.
-    requestAnimationFrame(() => {
-      if (!v.isDestroyed) v.focus();
-    });
+    /*
+      Focus after the next frame so the modal/DOM is fully settled.
+
+      Skipped entirely where the caller says this composer is part of a page rather than something
+      somebody opened — see `autoFocus`. The frame's delay is what made the old behaviour read
+      badly inline: the cursor arrived a beat after the click that selected the card, so it looked
+      less like a focused input than like the app starting to type.
+    */
+    if (props.autoFocus !== false) {
+      requestAnimationFrame(() => {
+        if (!v.isDestroyed) v.focus();
+      });
+    }
 
     onCleanup(() => {
       document.removeEventListener('mousedown', onMouseDown, true);
@@ -305,7 +314,14 @@ export function BlockComposer(props: Props) {
     <Column class="we-block-composer-wrapper" width={width} ax={props.ax} ay={props.ay}>
       <div ref={mountEl} class="we-block-composer-mount" />
       <Show when={view()}>
-        <BlockHandles ctx={ctx} />
+        {/*
+          The gutter is opt-out, not conditional on anything the composer can work out for itself:
+          whether a 50px strip beside each block is worth its room is a question about the surface,
+          and only the caller knows how wide that is. See `handles` on the props.
+        */}
+        <Show when={props.handles !== false}>
+          <BlockHandles ctx={ctx} />
+        </Show>
         <MentionMenu ctx={ctx} />
         <FormattingToolbar ctx={ctx} linkPrompt={linkPrompt} setLinkPrompt={setLinkPrompt} />
         <Show when={!props.onReady}>

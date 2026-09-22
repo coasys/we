@@ -298,6 +298,24 @@ export default class Button extends DesignSystemElement {
    * second one here would override what the reader can see. Necessary for every `square` one.
    */
   @property({ type: String }) label = '';
+  /**
+   * Whether the thing this button opens is currently open.
+   *
+   * A disclosure — a folding section's heading, a nav group, a row that opens its people — is a
+   * button whose whole job is to say what state something else is in, and a screen reader learns
+   * that from `aria-expanded` and from nothing else. Every one of them was silent: schemas assign
+   * props as DOM properties, so a template cannot set an attribute the component does not declare,
+   * and this one did not. The caret said it, visually, to the people who could see it.
+   *
+   * Three-valued on purpose. `undefined` is "this button does not open anything", which is almost
+   * every button, and it must leave the attribute OFF — `aria-expanded="false"` on an ordinary
+   * button announces it as a collapsed disclosure and invites a press that will do nothing of the
+   * kind.
+   *
+   * `we-select`, `we-popover` and `we-date-picker` set it on their own triggers already; they own
+   * their openness, where this is a button opening something a schema holds the state for.
+   */
+  @property({ type: Boolean }) expanded?: boolean;
   @property({ type: String }) href?: string;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) loading = false;
@@ -370,6 +388,7 @@ export default class Button extends DesignSystemElement {
           href=${href}
           aria-label=${this.label || nothing}
           aria-busy=${this.loading ? 'true' : nothing}
+          aria-expanded=${this.expanded === undefined ? nothing : this.expanded ? 'true' : 'false'}
           aria-disabled=${this.disabled || this.loading ? 'true' : 'false'}
           @click=${this._onClick}
           style=${styleMap(inline)}
@@ -397,6 +416,7 @@ export default class Button extends DesignSystemElement {
         ?disabled=${this.disabled}
         aria-label=${this.label || nothing}
         aria-busy=${this.loading ? 'true' : nothing}
+        aria-expanded=${this.expanded === undefined ? nothing : this.expanded ? 'true' : 'false'}
         @click=${this._onClick}
         style=${styleMap(inline)}
       >

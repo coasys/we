@@ -74,6 +74,8 @@ export { attributeRow } from './layout/attributeRow.ts';
 export type { AttributeRowOptions } from './layout/attributeRow.ts';
 export { badgedAvatar } from './layout/badgedAvatar.ts';
 export type { BadgedAvatarOptions } from './layout/badgedAvatar.ts';
+export { CARET_SIZE, foldingBody, foldingSectionLabel, isOpen } from './layout/foldingSection.ts';
+export type { FoldingBodyOptions, FoldingSectionLabelOptions, FoldState } from './layout/foldingSection.ts';
 export { pageShell } from './layout/pageShell.ts';
 export type { PageShellOptions } from './layout/pageShell.ts';
 export {

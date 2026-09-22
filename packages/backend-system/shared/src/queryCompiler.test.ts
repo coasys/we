@@ -122,6 +122,34 @@ describe('compileQuery', () => {
 });
 
 describe('irToFlatQuery', () => {
+  /**
+   * The flag has to survive BOTH halves of the trip: the schema's `include` becoming an aggregate,
+   * and the aggregate becoming the backend's flat projection. It was dropped in the first half and
+   * the whole suite stayed green — a count that quietly means "direct children" where the caller
+   * asked for "everything below" is a plausible number, so nothing downstream complains and no
+   * assertion anywhere was about the flag.
+   */
+  it('carries `transitive` from an include projection through to the flat query', () => {
+    const { ir } = compileQuery({
+      entity: 'CollectionBlock',
+      include: { $descendants: { from: 'comments', count: true, transitive: true } },
+    });
+    expect(ir.aggregate?.[0]).toMatchObject({ as: '$descendants', over: 'comments', transitive: true });
+
+    const flat = irToFlatQuery(ir);
+    expect((flat.include as Record<string, unknown>).$descendants).toMatchObject({
+      from: 'comments',
+      count: true,
+      transitive: true,
+    });
+  });
+
+  it('leaves an ordinary count projection alone', () => {
+    const { ir } = compileQuery({ entity: 'Post', include: { $likes: { from: 'signals', count: true } } });
+    expect(ir.aggregate?.[0]).not.toHaveProperty('transitive');
+    expect((irToFlatQuery(ir).include as Record<string, unknown>).$likes).not.toHaveProperty('transitive');
+  });
+
   it('maps aggregate → count projection and alias → single projection', () => {
     const legacy = irToFlatQuery({
       irVersion: 1,

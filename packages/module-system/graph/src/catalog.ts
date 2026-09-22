@@ -95,6 +95,12 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.',
         },
+        {
+          name: 'counts',
+          type: 'string[]',
+          description:
+            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
       example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,

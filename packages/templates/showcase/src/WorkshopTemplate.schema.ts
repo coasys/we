@@ -62,15 +62,21 @@ import {
   answerButton,
   CHANGED,
   composerModal,
+  discussionSection,
+  emptyNote,
   emptyState,
   field,
+  foldingBody,
+  foldingSectionLabel,
   formModal,
   linkedRecords,
+  newSignalTypeButton,
   panelHeader,
   panelScroll,
   peopleFilter,
   peopleRow,
   recordFormModal,
+  signalDisplay,
   suggestedChanges,
   SUGGESTIONS_HIDDEN,
   suggestionsToggle,
@@ -890,6 +896,16 @@ const EMPTY_COUNT = `count(${EMPTY_FIELDS})`;
  */
 const HAS_EDITABLE_FIELDS = `count(recordStore.displays[${CARD_TYPE}].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json'])))`;
 
+/**
+ * Whether the selected RECORD is a composed document — the header's reading of {@link COMPOSED}.
+ *
+ * The same question one scope up: `COMPOSED` asks it of the `$each`'s row, and the header has no
+ * row, so it asks the query. Both exist because editing a note and editing a task are one control
+ * in the header and two different actions underneath — a note's substance is a document and opens
+ * in the composer, where a task's is a set of fields and unlocks in place.
+ */
+const COMPOSED_CARD = 'first(local.card).editorState';
+
 /** Whether the selected thing is a drawn connection rather than a card. */
 const IS_RELATIONSHIP = `${CARD_TYPE} == 'Relationship'`;
 
@@ -1080,10 +1096,12 @@ const COMPOSED = 'row.editorState';
  * than on the ground — what is wanted here is a card, since the strip above is a description of the
  * record and this is the record itself.
  *
- * The composer beside it is the other half: with the content on screen, the pencil in the header —
- * which edits declared fields, and for a note means its title and description — is the wrong tool
- * for the thing somebody is now looking at. Its own button, attached to the content, opening the
- * same composer the canvas's double-click does and saving through the same reconcile.
+ * The composer below it is opened from the HEADER'S pencil, like every other kind of record — see
+ * the note on `aside` in `inspectorPanel`. It used to have a button of its own down here, on the
+ * grounds that the header's pencil meant "unlock the declared fields" and a note has none; the cost
+ * was that "how do I change this" had two answers depending on what was selected, and the one in
+ * the corner was where people looked. It is the same composer the canvas's double-click opens, and
+ * it saves through the same reconcile.
  */
 const composedContent: SchemaNode = {
   type: '$if',
@@ -1104,20 +1122,6 @@ const composedContent: SchemaNode = {
             overflow: 'hidden',
           },
           children: [{ type: 'BlockRenderer', props: { editorState: { $: COMPOSED } } }],
-        },
-        {
-          type: 'Row',
-          props: { ax: 'start' },
-          children: [
-            {
-              type: 'we-button',
-              props: { size: 'sm', variant: 'ghost', gap: '200', onClick: { $setLocal: 'noteOpen', value: true } },
-              children: [
-                { type: 'we-icon', props: { name: 'pencil-simple' } },
-                { type: 'we-text', props: { variant: 'footnote' }, children: ['Edit note'] },
-              ],
-            },
-          ],
         },
         // No `$if` of its own: the fragment mounts only while `noteOpen` is set, which is what
         // resets the editor between one note and the next.
@@ -1142,8 +1146,13 @@ const composedContent: SchemaNode = {
  * row is at the foot of the panel and shut by default — a model with twelve properties and three
  * filled in should read as three facts, not as nine gaps.
  *
- * `$animate` rather than `$if`, so closing it does not unmount a control somebody is halfway through
- * typing into — `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed.
+ * `keepMounted`, so closing it does not unmount a control somebody is halfway through typing into —
+ * `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed. Every other
+ * folding section here drops its contents, which is the right default and the wrong one for this.
+ *
+ * The heading is the same row the other sections use, which is a change from the sentence it was:
+ * "3 empty fields" said the count in words and left the section unnamed, so the one row in the
+ * panel that folded looked unlike the four that now do.
  */
 const emptyFields: SchemaNode = {
   type: '$if',
@@ -1151,42 +1160,12 @@ const emptyFields: SchemaNode = {
     condition: { $: EMPTY_COUNT },
     then: {
       type: 'Column',
-      props: { gap: '200', pt: '200', borderTop: '1px solid border' },
+      props: { gap: '200' },
       children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'bare',
-            width: '100%',
-            ax: 'start',
-            gap: '200',
-            onClick: { $toggleLocal: 'showEmpty' },
-          },
-          children: [
-            {
-              type: 'we-icon',
-              props: {
-                size: 'xs',
-                color: 'text-faint',
-                name: { $: "local.showEmpty ? 'caret-down' : 'caret-right'" },
-              },
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [{ $: `${EMPTY_COUNT} + ' empty ' + plural(${EMPTY_COUNT}, 'field', 'fields')` }],
-            },
-          ],
-        },
-        {
-          type: '$animate',
-          props: {
-            condition: { $: 'local.showEmpty' },
-            enterTransition: [
-              { type: 'reveal', duration: 200 },
-              { type: 'fade', duration: 150 },
-            ],
-          },
+        foldingSectionLabel({ label: 'Empty fields', count: EMPTY_COUNT, open: { field: 'showEmpty' } }),
+        foldingBody({
+          open: { field: 'showEmpty' },
+          keepMounted: true,
           children: [
             {
               type: 'Column',
@@ -1194,7 +1173,7 @@ const emptyFields: SchemaNode = {
               children: [fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, EMPTY_FIELDS)],
             },
           ],
-        },
+        }),
       ],
     },
   },
@@ -1331,43 +1310,6 @@ function endButton(opts: { id: string; type: string; icon: string; name: string;
 }
 
 /**
- * A section's caption, with a count beside it where the count is worth reading.
- *
- * Uppercase, and a step fainter than the faintest text role, so a section's name reads apart from
- * the properties under it and from a placeholder sentence like "Nobody is on this yet", which is
- * already `text-faint`. There is no role below that one, so the step is opacity — it follows the
- * theme either way, where a scale position would fix it to one theme's idea of grey.
- */
-function sectionCaption(label: string, count?: string): SchemaNode {
-  return {
-    type: 'Row',
-    props: { gap: '200', ay: 'center', opacity: 0.75 },
-    children: [
-      {
-        type: 'we-text',
-        props: { variant: 'footnote', uppercase: true, letterSpacing: 'wide', color: 'text-faint' },
-        children: [label],
-      },
-      ...(count
-        ? [
-            {
-              type: '$if',
-              props: {
-                condition: { $: count },
-                then: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: [{ $: count }],
-                },
-              },
-            } as SchemaNode,
-          ]
-        : []),
-    ],
-  };
-}
-
-/**
  * Everything this card is connected to — including what this canvas cannot draw.
  *
  * The canvas draws a line only when both of its ends are placed on it (see the `canvas` seed), which
@@ -1385,89 +1327,120 @@ function sectionCaption(label: string, count?: string): SchemaNode {
  */
 const cardConnections: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  props: { gap: '100' },
   children: [
-    sectionCaption('Connections', 'count(local.connections)'),
-    {
-      type: '$if',
-      props: {
-        condition: { $: 'count(local.connections)' },
-        then: {
-          type: '$each',
-          props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
-          children: [
-            {
-              type: 'Row',
-              props: { gap: '100', ay: 'center', width: '100%' },
-              children: [
-                endButton({
-                  id: 'conn.otherId',
-                  type: 'conn.otherType',
-                  icon: 'conn.icon',
-                  name: 'conn.name',
-                  lead: [
-                    {
-                      type: 'we-icon',
-                      props: {
-                        name: { $: 'conn.arrow' },
-                        size: 'xs',
-                        // The kind's own colour, where the community chose one — the same colour its
-                        // lines are drawn in on the knowledge map.
-                        color: { $: "conn.tint ? conn.tint : 'text-faint'" },
-                      },
-                    },
-                    {
-                      type: 'we-text',
-                      props: {
-                        variant: 'footnote',
-                        flexShrink: '0',
-                        color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
-                      },
-                      children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
-                    },
-                  ],
-                }),
-                {
-                  type: 'we-tooltip',
-                  props: { content: 'Open this connection' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        size: 'sm',
-                        square: true,
-                        flexShrink: '0',
-                        label: 'Open this connection',
-                        onClick: openRecord('conn.id', 'Relationship'),
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        /*
-          Nothing yet — said only once the query has answered, and said as what to do.
-
-          The connect handles appear on a selected card's edges and nowhere else, so the gesture is
-          easy to miss; this is the moment somebody is looking at a selected card and wondering.
-        */
-        else: {
+    foldingSectionLabel({
+      label: 'Connections',
+      count: 'count(local.connections)',
+      open: { field: 'connectionsOpen' },
+    }),
+    foldingBody({
+      open: { field: 'connectionsOpen' },
+      children: [
+        {
+          /*
+        Waiting, then counted — the same gate the thread below uses, and for the same reason: an
+        unanswered query and an empty one are both `count() == 0`, so a section that tests the count
+        alone declares itself empty on its first frame and fills a moment later. The connections
+        arrive after the card does, so that frame is visible.
+      */
           type: '$if',
           props: {
             condition: { $: 'local.connectionsLoaded' },
+            else: {
+              type: 'Column',
+              props: { gap: '200', py: '100' },
+              children: [1, 2].map(() => ({
+                type: 'Row',
+                props: { gap: '200', ay: 'center' },
+                children: [
+                  { type: 'we-skeleton', props: { width: '16px', height: '16px', bg: 'control-surface' } },
+                  { type: 'we-skeleton', props: { width: '60%', height: '12px', bg: 'control-surface' } },
+                ],
+              })),
+            },
             then: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+              type: '$if',
+              props: {
+                condition: { $: 'count(local.connections)' },
+                then: {
+                  type: '$each',
+                  props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '100', ay: 'center', width: '100%' },
+                      children: [
+                        endButton({
+                          id: 'conn.otherId',
+                          type: 'conn.otherType',
+                          icon: 'conn.icon',
+                          name: 'conn.name',
+                          lead: [
+                            {
+                              type: 'we-icon',
+                              props: {
+                                name: { $: 'conn.arrow' },
+                                size: 'xs',
+                                // The kind's own colour, where the community chose one — the same colour its
+                                // lines are drawn in on the knowledge map.
+                                color: { $: "conn.tint ? conn.tint : 'text-faint'" },
+                              },
+                            },
+                            {
+                              type: 'we-text',
+                              props: {
+                                variant: 'footnote',
+                                flexShrink: '0',
+                                color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
+                              },
+                              children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
+                            },
+                          ],
+                        }),
+                        {
+                          type: 'we-tooltip',
+                          props: { content: 'Open this connection' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                square: true,
+                                flexShrink: '0',
+                                label: 'Open this connection',
+                                onClick: openRecord('conn.id', 'Relationship'),
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                /*
+          Nothing yet — and said as what to do.
+
+          The connect handles appear on a selected card's edges and nowhere else, so the gesture is
+          easy to miss; this is the moment somebody is looking at a selected card and wondering.
+
+          No `Loaded` check of its own any more: the gate above only reaches here once the query has
+          answered, where before this was the only thing standing between a card and the claim that
+          it was connected to nothing.
+        */
+                else: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+                },
+              },
             },
           },
         },
-      },
-    },
+      ],
+    }),
   ],
 };
 
@@ -1480,28 +1453,33 @@ const cardConnections: SchemaNode = {
  */
 const linkEnds: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  props: { gap: '100' },
   children: [
-    sectionCaption('Connects'),
-    {
-      type: '$each',
-      props: { items: { $: LINK_END_ROWS }, as: 'end' },
+    foldingSectionLabel({ label: 'Connects', open: { field: 'connectsOpen' } }),
+    foldingBody({
+      open: { field: 'connectsOpen' },
       children: [
-        endButton({
-          id: 'end.id',
-          type: 'end.type',
-          icon: 'end.icon',
-          name: 'end.name',
-          lead: [
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
-              children: [{ $: 'end.role' }],
-            },
+        {
+          type: '$each',
+          props: { items: { $: LINK_END_ROWS }, as: 'end' },
+          children: [
+            endButton({
+              id: 'end.id',
+              type: 'end.type',
+              icon: 'end.icon',
+              name: 'end.name',
+              lead: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
+                  children: [{ $: 'end.role' }],
+                },
+              ],
+            }),
           ],
-        }),
+        },
       ],
-    },
+    }),
   ],
 };
 
@@ -1531,49 +1509,168 @@ const peopleSection: SchemaNode = {
     then: {
       type: 'Column',
       // The same gap under the caption as Connections has; the parts below keep a wider one.
-      props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+      props: { gap: '100' },
       children: [
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', width: '100%' },
-          children: [
-            sectionCaption('People'),
-            /*
-              One caption line tall, with the picker centred on it and spilling over either side.
+        foldingSectionLabel({
+          label: 'People',
+          count: `count(${ON_ROW}.people)`,
+          open: { field: 'peopleOpen' },
+          /*
+            `xs`, which is the size a section heading's aside is.
 
-              The button is the size of the header's pencil, which is taller than a footnote; left in
-              flow it made this caption row that tall, so People stood further from its first line
-              than Connections does from its own. Held to the caption's line, the two sections share
-              one rhythm and the button keeps the size it is pressed at.
-            */
+            It was `sm` — the size of the pencil and the bin in the panel's header — and a heading
+            is not the header: the kit reserves `--we-component-height-xs` for a heading's aside
+            precisely because they are the small end of the set, an xs button, a switch, a badge. At
+            `sm` this row came out 32px against everything else's 24, and since the row centres its
+            contents, "People" sat lower than the four names around it.
+
+            It used to wear a `height: '1lh'` wrapper meant to stop exactly that, and the wrapper
+            did not work: the button overflowed it and the row grew anyway. Measured, not guessed —
+            see the `section headings agree` case.
+          */
+          action: {
+            type: '$if',
+            props: {
+              // An event's answers have their own buttons on the calendar; the picker is for parts
+              // one member gives another, and an entity with none of those has nothing to pick.
+              condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+              then: {
+                type: 'DropdownMenu',
+                props: {
+                  triggerIcon: 'user-plus',
+                  triggerTitle: 'Who is on this',
+                  triggerVariant: 'ghost',
+                  size: 'xs',
+                  itemSize: 'sm',
+                  placement: 'bottom-end',
+                  searchable: true,
+                  searchPlaceholder: 'Find a member',
+                  items: {
+                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                  },
+                  onSelect: {
+                    $action: 'spaceStore.setInvolvement',
+                    args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                  },
+                },
+              },
+            },
+          },
+        }),
+        foldingBody({
+          open: { field: 'peopleOpen' },
+          children: [
             {
-              type: 'Row',
-              props: { ml: 'auto', fontSize: '100', height: '1lh', ay: 'center' },
+              type: 'Column',
+              props: { gap: '200' },
               children: [
+                {
+                  type: '$each',
+                  props: {
+                    items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
+                    as: 'part',
+                  },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '100' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } },
+                        },
+                        {
+                          type: '$each',
+                          props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center', width: '100%' },
+                              children: [
+                                {
+                                  type: 'AvatarStack',
+                                  props: {
+                                    size: 'xs',
+                                    avatars: {
+                                      $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                    },
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    fontSize: '200',
+                                    flex: '1',
+                                    minWidth: '0',
+                                    truncate: true,
+                                    text: {
+                                      $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                    },
+                                  },
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    // Anybody may take somebody off an assignment; only you may withdraw your own answer.
+                                    condition: { $: '!holder.reflexive || holder.did == me.did' },
+                                    then: {
+                                      type: 'we-tooltip',
+                                      props: {
+                                        content: {
+                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                        },
+                                      },
+                                      children: [
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            variant: 'ghost',
+                                            size: 'xs',
+                                            square: true,
+                                            label: {
+                                              $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                            },
+                                            onClick: {
+                                              $if: {
+                                                condition: { $: 'holder.reflexive' },
+                                                then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                                else: {
+                                                  $action: 'spaceStore.setInvolvement',
+                                                  args: [
+                                                    { $: 'row.id' },
+                                                    { $: 'holder.did' },
+                                                    { $: 'holder.kind' },
+                                                    false,
+                                                  ],
+                                                },
+                                              },
+                                            },
+                                          },
+                                          children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
                 {
                   type: '$if',
                   props: {
-                    // An event's answers have their own buttons on the calendar; the picker is for parts
-                    // one member gives another, and an entity with none of those has nothing to pick.
-                    condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+                    condition: { $: `!count(${ON_ROW}.people)` },
                     then: {
-                      type: 'DropdownMenu',
+                      type: 'we-text',
                       props: {
-                        triggerIcon: 'user-plus',
-                        triggerTitle: 'Who is on this',
-                        triggerVariant: 'ghost',
-                        // The size of the pencil and the bin in the panel's header — the controls it sits among.
-                        size: 'sm',
-                        itemSize: 'sm',
-                        placement: 'bottom-end',
-                        searchable: true,
-                        searchPlaceholder: 'Find a member',
-                        items: {
-                          $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
-                        },
-                        onSelect: {
-                          $action: 'spaceStore.setInvolvement',
-                          args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                        variant: 'footnote',
+                        color: 'text-faint',
+                        text: {
+                          $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
                         },
                       },
                     },
@@ -1582,115 +1679,7 @@ const peopleSection: SchemaNode = {
               ],
             },
           ],
-        },
-        {
-          type: 'Column',
-          props: { gap: '200' },
-          children: [
-            {
-              type: '$each',
-              props: {
-                items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
-                as: 'part',
-              },
-              children: [
-                {
-                  type: 'Column',
-                  props: { gap: '100' },
-                  children: [
-                    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } } },
-                    {
-                      type: '$each',
-                      props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
-                      children: [
-                        {
-                          type: 'Row',
-                          props: { gap: '200', ay: 'center', width: '100%' },
-                          children: [
-                            {
-                              type: 'AvatarStack',
-                              props: {
-                                size: 'xs',
-                                avatars: {
-                                  $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
-                                },
-                              },
-                            },
-                            {
-                              type: 'we-text',
-                              props: {
-                                fontSize: '200',
-                                flex: '1',
-                                minWidth: '0',
-                                truncate: true,
-                                text: {
-                                  $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
-                                },
-                              },
-                            },
-                            {
-                              type: '$if',
-                              props: {
-                                // Anybody may take somebody off an assignment; only you may withdraw your own answer.
-                                condition: { $: '!holder.reflexive || holder.did == me.did' },
-                                then: {
-                                  type: 'we-tooltip',
-                                  props: {
-                                    content: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
-                                  },
-                                  children: [
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        variant: 'ghost',
-                                        size: 'xs',
-                                        square: true,
-                                        label: {
-                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
-                                        },
-                                        onClick: {
-                                          $if: {
-                                            condition: { $: 'holder.reflexive' },
-                                            then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
-                                            else: {
-                                              $action: 'spaceStore.setInvolvement',
-                                              args: [{ $: 'row.id' }, { $: 'holder.did' }, { $: 'holder.kind' }, false],
-                                            },
-                                          },
-                                        },
-                                      },
-                                      children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
-                                    },
-                                  ],
-                                },
-                              },
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: `!count(${ON_ROW}.people)` },
-                then: {
-                  type: 'we-text',
-                  props: {
-                    variant: 'footnote',
-                    color: 'text-faint',
-                    text: {
-                      $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
-                    },
-                  },
-                },
-              },
-            },
-          ],
-        },
+        }),
       ],
     },
   },
@@ -1770,10 +1759,134 @@ const originLine: SchemaNode = {
   },
 };
 
+/**
+ * Whether a reply here may itself be replied to — the community's answer, in Settings → Features.
+ *
+ * Anything but the stored `'flat'` reads as branching, so a space that predates the setting behaves
+ * exactly as it did. The test is on the value rather than on its absence because `!=` over an
+ * unbound value is the trap this codebase keeps rediscovering; here it is client-side and safe, and
+ * written positively so the reading is the same either way.
+ */
+const FRACTAL_THREADS = "spaceStore.currentSpace.threadMode != 'flat'";
+
 /** The connection section for whatever is selected — a card's connections, or a line's two ends. */
 const connectionsSection: SchemaNode = {
   type: '$if',
   props: { condition: { $: IS_RELATIONSHIP }, then: linkEnds, else: cardConnections },
+};
+
+/**
+ * What people make of the selected record — its reactions, and the conversation about it.
+ *
+ * ## Why here rather than on the cards
+ *
+ * Because a canvas card is clipped and a board card is dragged. Both are previews the size of a
+ * postcard, and a row of controls on each is furniture competing with the gesture the card exists
+ * for — so the cards carry counts (`signalDisplay` at `compact`) and the panel carries the controls,
+ * is the whole reason this panel is worth opening: it already shows every field a record holds, and
+ * what the community *thinks* of the record is the part it was missing.
+ *
+ * ## A line gets both, exactly as a card does
+ *
+ * A `Relationship` is a `WeNode`, so nothing here is written twice: the same section reacts to a
+ * task and to the claim that the task blocks another one. `EdgeDetail` in the views package is the
+ * older surface for that and keeps its own modal; this is the canvas's answer, where opening a line
+ * must not take you off the arrangement it is part of.
+ */
+const reactionsSection: SchemaNode = {
+  type: 'Column',
+  /*
+    More room under this heading than the others have.
+
+    A section whose body is prose or a list of rows starts below its heading and reads as one
+    block. This one starts with a CONTROL, and a control sitting a hundred under a heading reads as
+    belonging to it — as though the heading were its label rather than the section's name.
+  */
+  props: { gap: '300', width: '100%' },
+  children: [
+    foldingSectionLabel({
+      label: 'Signals',
+      count: 'signalTally({ signals: row.signals })',
+      open: { field: 'reactionsOpen' },
+      /*
+        The plus goes here, beside the count, where every other per-section control in this panel
+        sits — not at the foot of the list as a full-width button.
+
+        A reaction type is a thing about the SECTION rather than about any reaction in it, and a
+        button under the last type reads as belonging to that type. The list keeps rendering the
+        form, from the flag declared on the panel; this only opens it.
+      */
+      action: newSignalTypeButton({ open: 'newSignalTypeOpen' }),
+    }),
+    foldingBody({
+      open: { field: 'reactionsOpen' },
+      children: [
+        signalDisplay({
+          record: 'row',
+          /*
+            The middle step.
+
+            `md` is the size a control is on a page rather than in a 320px column; `xs` is the size
+            it is on a card, among a row of marks, and in a panel somebody opened deliberately it
+            read as too small to aim at. At `sm` every mode comes out one line tall — a toggle, a
+            rating, a vote and a slider all 24px — which is also what lets each control sit on the
+            same line as the name beside it.
+          */
+          size: 'sm',
+          // The plus is in the section's heading, so the list draws none of its own. The form is
+          // still this fragment's, bound to the flag the panel declares.
+          newTypeOpen: 'newSignalTypeOpen',
+          /*
+        A space arrives with no reactions at all — nothing seeds a heart on a community's behalf, and
+        that is the design rather than an omission. Without this the section was a caption over empty
+        space, which reads as something failing to load; the line is also the only place anybody
+        would learn that a space names its own.
+      */
+          empty: emptyNote('No reactions here yet — a space names its own in Settings → Vocabulary.'),
+        }),
+      ],
+    }),
+  ],
+};
+
+/**
+ * The whole conversation, counted — not the top of it.
+ *
+ * `count(row.comments)` is the first level only: a thread of one reply carrying nine answers reads
+ * "1", and a caption over a conversation should count the conversation.
+ *
+ * This used to add up the three levels the panel draws, by hand, because a subtree could not be
+ * walked — each level was another hop, so a true descendant total was not expressible at any price
+ * and the number was right only as far down as it had been written. `$descendants` is a transitive
+ * count projection: one number, every level, no extra query. It falls back to the record's own
+ * count where the backend cannot walk a path, which reads low rather than wrong.
+ */
+const REPLY_TOTAL = 'first(local.card).$descendants ?? count(row.comments)';
+
+/** The thread, and the way into it. */
+const discussion: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '100%' },
+  children: [
+    foldingSectionLabel({ label: 'Discussion', count: REPLY_TOTAL, open: { field: 'discussionOpen' } }),
+    foldingBody({
+      open: { field: 'discussionOpen' },
+      children: [
+        /*
+      No depth or breadth of its own: the kit's [10, 5, 3] at three levels.
+
+      Three is right for THIS surface and the reason is arithmetic. Each level costs the gutter and
+      its gap — 32px — and the panel is 320px wide, so six levels would spend nearly two thirds of
+      the width on indent before a word is drawn. Depth past three is reached by re-rooting, which
+      gives the branch the top level's whole budget and is a better place to read it from anyway.
+
+      Said by saying nothing, so the number lives in one place. A template that restates a default
+      is a template that stops following it.
+    */
+        discussionSection({ record: 'row', fractal: FRACTAL_THREADS }),
+      ],
+    }),
+  ],
 };
 
 /**
@@ -1824,8 +1937,47 @@ const inspectorPanel: SchemaNode = {
   /*
     Whether the fields are controls or values — the pencil in the header. Ephemeral and per panel:
     it is a mode of looking, not a fact about the record, and it drops when the panel is rebuilt.
+
+    `noteOpen` is the other half of that same pencil, for a record whose substance is a document.
+    Declared HERE rather than inside the `$each` — where it used to sit, with the button that opened
+    it — because the header is outside the loop and a `$setLocal` only reaches a field an ancestor
+    of the BUTTON declared. It loses the per-record reset the inner scope gave it, which costs
+    nothing: the composer is modal, so the selection cannot change under it, and every way out of it
+    sets the flag false.
   */
-  $localState: { editing: { type: 'boolean', initial: false } },
+  $localState: {
+    editing: { type: 'boolean', initial: false },
+    noteOpen: { type: 'boolean', initial: false },
+    /*
+      Which sections are open — kept on the device, not in the URL.
+
+      A preference rather than view state: somebody who works from Connections and never opens
+      Discussion should find it that way tomorrow, and a link they send should not impose their
+      folding on the person who opens it. The extraction panel keeps its sections the same way.
+
+      Per panel rather than per record, which is the same decision: it is a way of working, not a
+      fact about the card.
+
+      CLOSED to begin with. The fields are the record, and the five sections are all things *about*
+      it — who is on it, what it is joined to, what people made of it, what was said. Opened, they
+      push the record's own properties off a 320px panel before a reader has decided they want any
+      of them; closed, each is one line saying what is there and how much, which is the question
+      most visits are answering.
+
+      The keys carry `Section` because an earlier version of this defaulted them open, and anybody
+      who has looked at the panel since then has `true` sitting in their device storage: a stored
+      preference outranks the declaration, so keeping the old keys would mean shipping a default
+      nobody who had already opened the inspector would ever see.
+    */
+    // Opened from the Signals heading, and read by the form `signalDisplay` renders — so it is
+    // declared above both of them.
+    newSignalTypeOpen: { type: 'boolean', initial: false },
+    connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
+    connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
+    peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },
+    reactionsOpen: { type: 'boolean', initial: false, persist: 'inspector.reactionsSection' },
+    discussionOpen: { type: 'boolean', initial: false, persist: 'inspector.discussionSection' },
+  },
   $queries: {
     /*
       The record itself, by id. `limit: 1` because an id names one thing — the list is the shape a
@@ -1840,6 +1992,26 @@ const inspectorPanel: SchemaNode = {
       entity: { $: 'routeStore.params.cardType' },
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
+      /*
+        The reactions, hydrated — what `signalDisplay` filters by type.
+
+        Safe for a type this template was not written for, which is the question worth asking of an
+        `include` on a query whose entity is an expression: every model a community defines extends
+        `WeNode` (see `shapeDraft`), so `signals` is declared on all of them. A model made before
+        that was true declares no such relation and the query would be refused outright rather than
+        answering without it — it becomes a node again the next time it is edited.
+      */
+      include: {
+        signals: true,
+        /*
+          The whole conversation under this card, as one number.
+
+          A count projection is already asked of every row at once and already grouped per row, so
+          `transitive` costs one character in the emitted path and no extra round trip. Without it
+          this is the direct replies only, which is not what a reader takes "42 replies" to mean.
+        */
+        $descendants: { from: 'comments', count: true, transitive: true },
+      },
       /*
         Not until there is an id to ask about — which is what kept the panel showing a record
         nobody had selected.
@@ -1903,15 +2075,36 @@ const inspectorPanel: SchemaNode = {
     involvements: { entity: 'Involvement', when: { $: `${CARD_ID} && !(${IS_RELATIONSHIP})` } },
     // The call's own record, for which of its records a model proposed — see `peopleSection`.
     inspectedCall: { entity: 'CollectionBlock', where: { id: CALL }, limit: 1, when: CALL },
+    /*
+      What this community reacts with — one subscription for the panel, read by the controls below
+      and by the counts on every reply in the thread.
+
+      Unconditional, like `relationshipKinds` and for the same reason: a space has a handful of
+      these, and gating it on something about the selection would tear the subscription down and set
+      it up again on every click to save nothing.
+    */
+    signalTypes: { entity: 'SignalType', subscribe: true },
   },
   children: [
     panelHeader({
       title: 'Inspector',
       /*
-        Unlock editing, in the header where a mode belongs. The inspector already shows every value
-        a record has, so it is the surface that edits them; a separate form would show the same
-        fields a second time. Offered only while a record is loaded and its model has a field worth
-        editing — a note's content is not one, and is edited where it is shown. Lit while it is on.
+        Edit, in the header where a mode belongs, for every kind of record the panel can open.
+
+        One control, two things underneath, and that is the point. A record whose substance is a set
+        of FIELDS unlocks in place: the inspector already shows every value it has, so it is the
+        surface that edits them and a separate form would show the same rows a second time. A
+        composed document — a note — has no fields to unlock; its substance is a document, and it
+        opens in the composer.
+
+        It used to be one control and a half. The pencil was gated on the model declaring an
+        editable field, so a note never had one, and its own "Edit note" button sat under the
+        content instead — which meant "how do I change this" had two answers depending on what you
+        had selected, and the one in the corner was the one people looked for first. A note is now
+        edited from the same place as everything else, and the button below it is gone.
+
+        Lit while the field mode is on; a note's press opens a modal, so there is no lasting state
+        for it to show.
       */
       aside: {
         type: 'Row',
@@ -1920,21 +2113,34 @@ const inspectorPanel: SchemaNode = {
           {
             type: '$if',
             props: {
-              condition: { $: `count(local.card) && ${HAS_EDITABLE_FIELDS}` },
+              condition: { $: `count(local.card) && (${HAS_EDITABLE_FIELDS} || ${COMPOSED_CARD})` },
               then: {
                 type: 'we-tooltip',
-                props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
+                props: {
+                  content: {
+                    $: `${COMPOSED_CARD} ? 'Edit this note' : (local.editing ? 'Done editing' : 'Edit this record')`,
+                  },
+                },
                 children: [
                   {
                     type: 'we-button',
                     props: {
                       size: 'sm',
                       square: true,
-                      variant: { $: "local.editing ? 'secondary' : 'ghost'" },
-                      onClick: { $toggleLocal: 'editing' },
+                      variant: { $: `!(${COMPOSED_CARD}) && local.editing ? 'secondary' : 'ghost'` },
+                      onClick: {
+                        $if: {
+                          condition: { $: COMPOSED_CARD },
+                          then: { $setLocal: 'noteOpen', value: true },
+                          else: { $toggleLocal: 'editing' },
+                        },
+                      },
                     },
                     children: [
-                      { type: 'we-icon', props: { name: { $: "local.editing ? 'check' : 'pencil-simple'" } } },
+                      {
+                        type: 'we-icon',
+                        props: { name: { $: `!(${COMPOSED_CARD}) && local.editing ? 'check' : 'pencil-simple'` } },
+                      },
                     ],
                   },
                 ],
@@ -2021,7 +2227,17 @@ const inspectorPanel: SchemaNode = {
               children: [
                 {
                   type: 'Column',
-                  props: { gap: '300' },
+                  /*
+                    The gap the extraction panel sets its sections apart with, and no rules between
+                    them.
+
+                    Each section drew a line above itself, which was the separation when a heading
+                    was a caption and a section was a caption with rows under it. They fold now, so
+                    every one already has a heading that reads as a heading — and six rules on a
+                    panel 320px wide is a lot of horizontal ink for a job the space between them
+                    does.
+                  */
+                  props: { gap: '400' },
                   /*
                     The model's own declaration, held for the subtree rather than read at each use.
 
@@ -2037,8 +2253,6 @@ const inspectorPanel: SchemaNode = {
                       opened to add something to *this* one.
                     */
                     showEmpty: { type: 'boolean', initial: false },
-                    /** The composer, open on this note's own document — see `composedContent`. */
-                    noteOpen: { type: 'boolean', initial: false },
                   },
                   children: [
                     /*
@@ -2264,6 +2478,11 @@ const inspectorPanel: SchemaNode = {
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
+                    // Last, and in this order: what the record *is* comes first, then who is on it
+                    // and what it is joined to, then what people make of it. The thread is last
+                    // because it is the only section with no ceiling on its height.
+                    reactionsSection,
+                    discussion,
                     /*
                       No "Open full record". There was a ghost button here that navigated to
                       `<space>/record/<type>?id=<id>` — the record page the host appends to every
@@ -2704,6 +2923,16 @@ const canvas: SchemaNode = {
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
         // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
         hiddenTypes: { $: HIDDEN_KINDS },
+        /*
+          How many reactions and replies each card has collected, as two numbers on its footer.
+
+          The counts ride in the reads the seed already makes — one projection each, no extra round
+          trip and no subscription per card, which is what a canvas of three hundred things needs.
+          The breakdown by type and the controls are the inspector's, one press away: a card here is
+          a preview inside an arrangement, and what it owes the reader is that there is something to
+          open.
+        */
+        counts: ['signals', 'comments'],
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
@@ -3644,6 +3873,12 @@ const kanbanRoute: RouteSchema = {
                             took on in this call".
                           */
                           people: true,
+                          /*
+                            And what people have made of each card — reactions and replies, as
+                            counts. The inspector is where either is given; a card says only that
+                            there is something to open, which is what a preview owes a reader.
+                          */
+                          social: true,
                           // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
                           suggestions: true,
                           /*
@@ -3743,6 +3978,9 @@ const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? ${witho
 
 /** An event a pass made that nobody has kept — drawn provisional, and put away with the board's switch. */
 const UNCONFIRMED_EVENT = (as: string) => `${as}.id in ${UNCONFIRMED}`;
+
+/** The event the inspector is open on — the same address the canvas and the board write. */
+const SELECTED_EVENT = "event.id == routeStore.params.card && routeStore.params.cardType == 'EventBlock'";
 
 /** Faded, for an event nobody chosen is on while the filter dims. */
 const DIMMED = (as: string) => `${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})`;
@@ -4064,11 +4302,31 @@ const eventList: SchemaNode = {
                     */
                     bg: 'surface',
                     r: '400',
-                    // A draft looks like one, as on the board: dashed, and a little faded.
-                    border: { $: `(${UNCONFIRMED_EVENT('event')}) ? '1px dashed border-strong' : '1px solid border'` },
+                    /*
+                      A draft looks like one, as on the board: dashed, and a little faded. A selected
+                      event takes the accent and a one-pixel ring outside it — the board card's
+                      treatment, because it is the same act on a different surface.
+                    */
+                    border: {
+                      $: `(${SELECTED_EVENT}) ? '1px solid accent' : (${UNCONFIRMED_EVENT('event')}) ? '1px dashed border-strong' : '1px solid border'`,
+                    },
+                    ring: { $: `(${SELECTED_EVENT}) ? '0 0 0 1px var(--we-role-accent)' : ''` },
                     p: '400',
                     opacity: { $: `(${DIMMED('event')}) ? 0.35 : (${UNCONFIRMED_EVENT('event')}) ? 0.75 : 1` },
                     transition: 'opacity 200 ease-in-out',
+                    /*
+                      Pressing an event opens it in the inspector, exactly as pressing a card on the
+                      canvas or the board does — the same two parameters, so the panel that was
+                      already on screen answers about the event and a link to this page carries the
+                      selection with it.
+
+                      This was the one surface of the four with no selection at all, which is why the
+                      inspector could say nothing about an event: there was no way to tell it about
+                      one. The type first and only then the id, so its query is never asked about an
+                      event under the wrong type for the instant between the two writes.
+                    */
+                    cursor: 'pointer',
+                    onClick: [{ $setLocal: 'pressedCard', value: true }, ...openRecord('event.id', 'EventBlock')],
                   },
                   children: [
                     {
@@ -4182,6 +4440,12 @@ const eventList: SchemaNode = {
                       ],
                     },
                     rsvp,
+                    /*
+                      What people have made of this event — the board card's line, on the surface
+                      that shares its records. Counts only: pressing the row opens the event in the
+                      inspector, which is where a reaction is given and the thread is read.
+                    */
+                    signalDisplay({ record: 'event', mode: 'compact', size: 'xs', readOnly: true, inline: true }),
                     // What a pass suggests changing about an agreed event, as old → new.
                     suggestedChanges({ record: 'event', collapseAfter: 3 }),
                   ],
@@ -4246,7 +4510,33 @@ const eventList: SchemaNode = {
 const calendarRoute: RouteSchema = {
   path: '/calendar',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
+  // A press anywhere on the page lets go of the selected event — unless it was a press on one. The
+  // kanban route's pattern, arriving here with the selection it exists to release; see there for why
+  // the card marks its own press rather than this second-guessing the event.
+  $localState: { pressedCard: { type: 'boolean', initial: false } },
+  props: {
+    width: '100%',
+    minHeight: '100%',
+    ax: 'center',
+    px: '400',
+    onClick: [
+      {
+        $if: {
+          condition: { $: 'local.pressedCard' },
+          then: { $setLocal: 'pressedCard', value: false },
+          else: {
+            $if: {
+              condition: { $: 'routeStore.params.card' },
+              then: [
+                { $action: 'routeStore.setParam', args: ['card', null] },
+                { $action: 'routeStore.setParam', args: ['cardType', null] },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  },
   children: [
     {
       type: 'Column',
@@ -4306,8 +4596,12 @@ const calendarRoute: RouteSchema = {
                   scope: anchorScope(CALL),
                   order: { startDate: 'asc' },
                   limit: 200,
-                  include: { location: true },
+                  // The place, and the reactions the row's counts read. `comments` needs no include —
+                  // a relation's own ids arrive anyway, which is what makes a reply count free.
+                  include: { location: true, signals: true },
                 },
+                // What this community reacts with, for those counts — one subscription for the month.
+                signalTypes: { entity: 'SignalType', subscribe: true },
                 // Who said they are coming to what. Space-wide, for the board's reason: an answer is
                 // not a child of anything, and there are as many as people have given.
                 involvements: { entity: 'Involvement' },
