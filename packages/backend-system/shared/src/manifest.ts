@@ -4,14 +4,14 @@
  * what the query IR is validated and compiled against (`include` needs to know a relation's target
  * and cardinality; filter/sort need to know a property's type).
  *
- * It is a *separate* artifact from any query and from any backend. A third-party host authors a
- * manifest for its own entities; the AD4M adapter produces one from its own models.
+ * It is a *separate* artifact from any query and from any backend: the source of truth an adapter
+ * compiles from, and what a module or a community's shape wizard authors.
  *
- * Relationship to the AD4M-specific manifest (`EntityManifestEntry` in `@we/app-shell`): that one
- * is the AD4M adapter's richer, flatter form — properties and relations in one list, plus RDF
- * binding (`predicate`, `resolveLanguage`, `targetClass`). This neutral form is the semantic
- * projection it maps onto: scalars vs relations separated, keyed by name, no backend binding. The
- * adapter keeps its RDF binding on its side; only this shape crosses into the schema engine.
+ * Relationship to the flat form (`EntityManifestEntry` in `manifestEntry.ts`): that one is the
+ * richer, flatter projection — properties and relations in one list, plus the storage binding
+ * (`predicate`, `resolveLanguage`, `targetClass`) an adapter minted. This is the declaration:
+ * scalars vs relations separated, keyed by name, bound to nothing but what the declaration itself
+ * states. Only this shape crosses into the schema engine.
  */
 import { z } from 'zod';
 
@@ -28,9 +28,8 @@ export interface PropertySchema {
   /**
    * How the value is *stored*, when that differs from an inline scalar. `'file'` means the
    * property holds binary content written through the host's file storage. Every backend has this
-   * problem and solves it differently — AD4M stores an expression through its file-storage
-   * language, a SQL host would keep a URL beside a blob store — so the manifest names the intent
-   * and each adapter supplies the mechanism.
+   * problem and solves it differently — a content-addressed store, a URL beside a blob store — so
+   * the manifest names the intent and each adapter supplies the mechanism.
    */
   format?: 'file';
 

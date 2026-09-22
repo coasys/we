@@ -26,7 +26,7 @@
  *
  * The structural pass stays as the last resort because it is the only one that can answer for a
  * model nobody declared and whose author named nothing conventionally — a community shape of
- * `species`/`count`/`notes`, or a foreign SHACL class synced in from another app. That case never
+ * `species`/`count`/`notes`, or a foreign class synced in from another app. That case never
  * goes away: a foreign model arrives as structure alone and no declaration can ever reach it, which
  * is why the guess is a permanent part of this and not a stepping stone to declaring everything.
  */
@@ -66,7 +66,7 @@ export interface NameableProperty {
  * The naming property of a bare property list — convention, then shape.
  *
  * Separate from {@link namePropertyOf} because half the callers have no declaration to consult: a
- * foreign model read back from SHACL, or the neutral shape the graph engine is handed.
+ * foreign model read back from stored schema, or the neutral shape the graph engine is handed.
  */
 export function nameFromProperties(properties: NameableProperty[]): string {
   const nameable = properties.filter((property) => property.type === 'string' && !property.isFile);

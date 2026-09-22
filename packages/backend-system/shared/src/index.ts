@@ -2,8 +2,8 @@
  * The backend contract.
  *
  * Everything about **getting data in and out, or talking to peers** — and nothing that knows what a
- * `SchemaNode` is. An adapter (`@we/backend-ad4m`, `@we/backend-inmemory`) implements these; the
- * shell and the modules consume them.
+ * `SchemaNode` is. The adapters under `backend-system/` implement these; the shell and the modules
+ * consume them.
  *
  * Split out of `@we/schema-shared`, which had accreted five unrelated concerns into 9,000 LOC that
  * every module peer-depended on in full — `@we/module-call` needed four exports and pulled the whole

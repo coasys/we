@@ -18,14 +18,13 @@
 import type { DatasetHandle } from './dataSource';
 
 export interface DatasetRef {
-  /** Backend-local id (AD4M: the perspective uuid). Stable within this backend. */
+  /** Backend-local id. Stable within this backend, and meaningless on another agent's machine. */
   id: string;
   name: string;
-  /** Global shared URI once published/joined (AD4M: `neighbourhood://<cid>`). Absent when local. */
+  /** Global shared URI once published/joined, scheme included. Absent when local. */
   sharedUri?: string;
   /**
-   * The scheme-less global id (AD4M: the neighbourhood CID) — what shared records store and
-   * compare. Minted by the adapter alongside `sharedUri` so no consumer ever parses a URI.
+   * The scheme-less global id — what shared records store and compare. Minted by the adapter alongside `sharedUri` so no consumer ever parses a URI.
    */
   sharedId?: string;
   /** The opaque handle query/model calls consume. See `DatasetHandle`. */
@@ -68,7 +67,7 @@ export interface DatasetLifecyclePort {
   remove(id: string): Promise<void>;
   /**
    * Publish an existing local dataset for sharing. Pass `linkLanguageTemplate` to choose
-   * which link language backs the neighbourhood; omit (or pass '') to use the first of
+   * which link language backs the shared dataset; omit (or pass '') to use the first of
    * `linkLanguageTemplates`.
    */
   publish?(id: string, linkLanguageTemplate?: string): Promise<{ uri: string; sharedId: string }>;

@@ -24,8 +24,8 @@ import type { TranscriptionPort } from './transcription';
  * already holds, discovering foreign schemas, and compiling declared (manifest-form) entities
  * into this backend's installable representation.
  *
- * Schema payloads are opaque (`unknown`) — for AD4M they are decorated model classes; another
- * backend stores manifests directly. Only the adapter that minted a payload interprets it, the
+ * Schema payloads are opaque (`unknown`) — one backend compiles them to model classes, another
+ * stores manifests directly. Only the adapter that minted a payload interprets it, the
  * same rule as `DatasetHandle`.
  */
 export interface SchemaPort {
@@ -83,7 +83,7 @@ export interface SchemaPort {
    * The read half of `declare`, and needed because a query's `scope` is resolved against a list of
    * entries rather than against the compiled classes: an adapter looks `via` up by name and reads
    * its predicate. A module declaring a relation and then drilling into it had no way to be in that
-   * list, so the drill-down failed with "no such relation in the current perspective's model
+   * list, so the drill-down failed with "no such relation in the current dataset's model
    * manifest" — which is a true statement about a list the entity was never added to.
    *
    * A port rather than a rule the host reapplies, because *this backend* decides what a declared
@@ -143,8 +143,8 @@ export interface EntityHintState {
 
 /**
  * The profile directory: read any agent's published profile, write the own profile, and store
- * binary payloads (avatars) retrievably. Backing storage is the backend's concern — public
- * dataset on AD4M, whatever another host has.
+ * binary payloads (avatars) retrievably. Backing storage is the backend's concern — an agent's
+ * public dataset, a directory service, whatever the host has.
  */
 export interface ProfileDirectoryPort {
   get(id: string): Promise<AgentProfileSummary>;

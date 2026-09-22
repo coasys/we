@@ -1,9 +1,9 @@
 /**
  * Entities over plain rows — the in-memory half of what a declared manifest means.
  *
- * The AD4M adapter compiles a manifest into decorated model classes that write triples against
- * minted predicates. This compiles the *same manifest* into classes that write objects into
- * arrays, and the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
+ * The production adapter compiles a manifest into model classes that write links against minted
+ * predicates. This compiles the *same manifest* into classes that write objects into arrays, and
+ * the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
  * `space.save()`, `settings.addInstalledTemplates(t)` all mean what they always meant.
  *
  * That equivalence is the point. Stores and the boot sequence can then be tested against real
@@ -131,8 +131,8 @@ export interface EntityClassLike {
 /**
  * The contract, checked: this backend's compiled entities present the same static surface the
  * entity proxies are typed as — which is what makes it a second *conforming* implementation
- * rather than a lookalike. (The AD4M lane cannot make this assertion structurally — its statics
- * are `this`-polymorphic — so this is also the one place the contract is compiler-verified
+ * rather than a lookalike. (The production lane cannot make this assertion structurally — its
+ * statics are `this`-polymorphic — so this is also the one place the contract is compiler-verified
  * end to end.)
  */
 type Satisfies<A extends B, B> = A;
@@ -534,8 +534,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
 
       /*
         The whole list at once, in this order — the accessor an *ordered* relation is written through.
-        `setChildren` on AD4M diffs the list against what it holds and records only what moved; here
-        the list simply becomes the row's, since nothing concurrent can happen to an in-memory table.
+        A backend with concurrent writers diffs the list against what it holds and records only what
+        moved; here the list simply becomes the row's, since nothing concurrent can happen to an
+        in-memory table.
         Without it a consumer that arranges a relation — a board column — had no accessor on this
         backend at all, and the fixtures could only append.
       */

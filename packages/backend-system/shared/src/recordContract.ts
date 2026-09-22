@@ -9,11 +9,11 @@
  * interfaces `@we/entities` generates from its manifest rather than off any one backend's
  * decorator metadata.
  *
- * The generics deliberately mirror the AD4M ORM's typed-query machinery, which is fully
- * structural — the shapes were proven there, and keeping them recognisable is what makes the AD4M
- * classes satisfy this contract without adaptation. Where this contract is *looser* (dataset
- * handles are `unknown`, write values tolerate backend-specific representations), that is the
- * neutrality: those are exactly the points where backends legitimately differ.
+ * The generics are fully structural, so a backend's own model classes satisfy this contract
+ * without adaptation wherever their statics have the same shape. Where the contract is *looser*
+ * than any one implementation (dataset handles are `unknown`, write values tolerate
+ * backend-specific representations), those are exactly the points where backends legitimately
+ * differ.
  */
 
 // ── Instance base ──────────────────────────────────────────────────────────────────────────────
@@ -46,12 +46,13 @@ export interface RecordInstance {
  * got. The declared relation cannot say, because saying is the thing it gave up by being untyped.
  *
  * A contract rather than a convenience, and worth stating plainly because the value is not this
- * repo's to choose: AD4M's executor writes this exact string, so what is written here is a *record*
- * of somebody else's wire format, and any backend answering a polymorphic read has to match it. The
+ * repo's to choose: the production backend writes this exact string, so what is written here is a
+ * *record* of somebody else's wire format, and any backend answering a polymorphic read has to
+ * match it. The
  * failure mode if one does not is quiet — records arrive with no type and every consumer falls back
  * to whatever it does for an unknown row, which looks the same as a relation that hydrated nothing.
  *
- * Named here rather than in the AD4M adapter so that the neutral layers reading it — the graph
+ * Named here rather than in an adapter so that the shared layers reading it — the graph
  * engine, anything picking a display per row — are not reaching into a `__`-prefixed literal they
  * would have to know an adapter's internals to justify.
  */
@@ -263,8 +264,8 @@ export type WriteProperties<T extends RecordInstance> = { [K in RecordDataKeys<T
 /**
  * The static surface every entity presents — what the entity proxies in `@we/entities` are typed
  * as, and what a backend's registered implementations must answer to. Dataset handles are
- * `unknown`: which kind of handle "a dataset" is, is the backend's business (an AD4M
- * `PerspectiveProxy`, an inmemory store, a connection).
+ * `unknown`: which kind of handle "a dataset" is, is the backend's business (a live proxy, an
+ * in-memory store, a connection).
  *
  * ## Why the relation writes below are statics
  *
@@ -305,8 +306,9 @@ export interface EntityStatic<T extends RecordInstance> {
    * The write a drag makes: a board column's cards after somebody rearranged them, a board's columns
    * after somebody moved one. `targetIds` is the list as it should now read, and a backend whose
    * relation is declared `ordered` is expected to preserve that order on the way back — where the
-   * ordering is *held* is its business (AD4M keeps position hints beside the membership links and
-   * merges them, so two people dragging at once converge rather than one write discarding the other).
+   * ordering is *held* is its business (a backend that keeps position hints beside the membership
+   * links and merges them lets two people dragging at once converge rather than one write
+   * discarding the other).
    *
    * Nothing here indexes, renumbers or breaks a tie. Handing over the whole list and letting the
    * backend diff it is what makes that possible: a backend that can merge has everything it needs,

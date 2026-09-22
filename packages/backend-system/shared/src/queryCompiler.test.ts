@@ -170,7 +170,7 @@ describe('irToFlatQuery', () => {
     });
   });
 
-  it('throws on shapes needing adapter resolution or that AD4M cannot express (scope, op, rel-filter, non-count agg)', () => {
+  it('throws on shapes needing adapter resolution or that the flat dialect cannot express (scope, op, rel-filter, non-count agg)', () => {
     // scope needs binding resolution — the adapter's job, not this translator
     expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
       /scope \(drill-down\)/,
@@ -195,7 +195,7 @@ describe('irToFlatQuery', () => {
     ).toThrow(/aggregate fn "sum"/);
   });
 
-  // The load-bearing guarantee the AD4M adapter rests on: crossing legacy → IR → legacy loses nothing,
+  // The load-bearing guarantee an adapter rests on: crossing legacy → IR → legacy loses nothing,
   // proven by re-deriving the IR from the reconstructed legacy and getting the identical IR back.
   const samples: FlatQuery[] = [
     {

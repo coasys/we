@@ -1,10 +1,9 @@
 /**
- * In-memory, AD4M-free backend — now a thin adapter over the shared QueryIR engine.
+ * The in-memory backend — a thin adapter over the shared QueryIR engine.
  *
- * The renderer passes the (legacy AD4M-flavored) query opts unchanged; this translates them to
- * QueryIR (the shim) and executes via executeQueryIR. So the harness proves the full chain live —
- * template `$query` → shim → QueryIR → engine → render — over a non-AD4M backend, with ZERO changes
- * to the shared renderer. No `@coasys/ad4m` anywhere in this app's dependency graph.
+ * The renderer passes the flat query opts unchanged; this lifts them to QueryIR and executes via
+ * executeQueryIR. So the harness proves the full chain live — template `$query` → QueryIR → engine →
+ * render — with no process to start and no changes to the shared renderer.
  */
 import { compileQuery, executeQueryIR, type InMemoryDataset, type Row } from '@we/backend-shared';
 

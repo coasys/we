@@ -1,9 +1,9 @@
 /**
  * Runtime administration — the settings that belong to the *backend process*, not to any dataset.
  *
- * Trust, peer networking, and which external apps hold credentials against this agent. On AD4M
- * these are what the launcher owns; a host that bundles the executor has no launcher to open, so
- * without this port those settings are unreachable rather than merely inconvenient.
+ * Trust, peer networking, and which external apps hold credentials against this agent. These are
+ * what a backend's own launcher owns; a host that bundles the backend process has no launcher to
+ * open, so without this port those settings are unreachable rather than merely inconvenient.
  *
  * Deliberately not neutral, and deliberately shaped like {@link BackendInterop}: the whole port is
  * optional, every member on it is optional, and callers feature-detect. A backend with no notion
@@ -14,16 +14,16 @@
  *
  * What is NOT here, on purpose: anything requiring privileged access to the host machine —
  * switching agents between config directories, log levels, data paths. Those are properties of how
- * a *host* launched the backend, not of the backend connection, and a port over a GraphQL client
- * cannot honestly answer them.
+ * a *host* launched the backend, not of the backend connection, and a port over a client
+ * connection cannot honestly answer them.
  */
 
 /**
  * Peer-discovery records, in the two forms they are needed in.
  *
  * `records` are exactly what the backend handed out, and exactly what `addPeerInfos` on another
- * node takes back. Opaque, and never to be re-serialized: on AD4M each one carries a signature over
- * its own bytes, so a record reformatted on the way through is a record the receiver rejects.
+ * node takes back. Opaque, and never to be re-serialized: each one may carry a signature over its
+ * own bytes, so a record reformatted on the way through is a record the receiver rejects.
  *
  * `readable` is the same records decoded for a person — indented, with whatever the backend packs
  * inside them unpacked. Display only; nothing reads it back. Separate from `records` rather than
@@ -68,8 +68,8 @@ export interface ConsentRequest {
 /**
  * A language plugin installed in this backend.
  *
- * "Language" is AD4M's word for the adapter that stores and retrieves a kind of expression — what
- * makes an image URL resolvable, or a neighbourhood's links syncable. They are addressed by content
+ * "Language" is the backend's word for the plugin that stores and retrieves a kind of content — what
+ * makes an image URL resolvable, or a shared dataset's links syncable. They are addressed by content
  * hash, which is why installing one is a matter of pasting an address rather than picking a package.
  */
 export interface InstalledLanguage {
@@ -275,8 +275,8 @@ export interface RuntimeAdminPort {
 /**
  * One capability a backend turned out not to have.
  *
- * `name` is the backend's own word for it, unmodified — an AD4M executor's RPC method name — so it
- * can be searched for in that backend's source and matched against its history. Translating it into
+ * `name` is the backend's own word for it, unmodified — its RPC method name — so it can be
+ * searched for in that backend's source and matched against its history. Translating it into
  * something friendlier would take away the only part that is actionable.
  */
 export interface UnsupportedCapability {
