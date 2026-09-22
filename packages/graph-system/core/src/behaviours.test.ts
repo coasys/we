@@ -143,6 +143,84 @@ describe('dragNodeBehaviour', () => {
     const ctx = fakeContext({ locked: () => true });
     expect(dragNodeBehaviour().onPointerDown!(input(100, 100), ctx)).toBeUndefined();
   });
+
+  it('carries the rest of the selection, each holding its offset', () => {
+    // n1 at (100,100) and n2 at (300,100): n2 is 200 to the right and must stay 200 to the right.
+    const ctx = fakeContext({ selection: () => ['n1', 'n2'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledWith('n1', { x: 100, y: 400 });
+    expect(ctx.pin).toHaveBeenCalledWith('n2', { x: 300, y: 400 });
+  });
+
+  it('reports everything that travelled on the drop', () => {
+    const ctx = fakeContext({ selection: () => ['n1', 'n2'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+    behaviour.onPointerUp!(input(100, 400), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'nodeDragEnd',
+        position: { x: 100, y: 400 },
+        moved: [{ id: 'n2', position: { x: 300, y: 400 } }],
+      }),
+    );
+  });
+
+  it('drags one card when the press lands outside the selection', () => {
+    const ctx = fakeContext({ selection: () => ['n2'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledTimes(1);
+    expect(ctx.pin).toHaveBeenCalledWith('n1', { x: 100, y: 400 });
+  });
+
+  it('says nothing about companions for an ordinary single-card drag', () => {
+    const ctx = fakeContext({ selection: () => ['n1'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(150, 100), ctx);
+    behaviour.onPointerUp!(input(150, 100), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(expect.not.objectContaining({ moved: expect.anything() }));
+  });
+
+  it('leaves out a selected node that has nowhere to be moved from', () => {
+    // Folded away, or not laid out yet: it has no position, and dragging it to the origin because
+    // of that would be worse than leaving it where it is.
+    const ctx = fakeContext({
+      selection: () => ['n1', 'ghost'],
+      positionOf: (id) => (id === 'n1' ? { x: 100, y: 100 } : null),
+    });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases every carried node when the layout stays in charge', () => {
+    const ctx = fakeContext({ selection: () => ['n1', 'n2'] });
+    const behaviour = dragNodeBehaviour();
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+    behaviour.onPointerUp!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledWith('n1', null);
+    expect(ctx.pin).toHaveBeenCalledWith('n2', null);
+  });
 });
 
 describe('selectBehaviour', () => {

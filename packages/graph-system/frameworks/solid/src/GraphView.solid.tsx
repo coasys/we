@@ -384,6 +384,7 @@ export function GraphView(props: GraphViewProps) {
   const [viewportVersion, setViewportVersion] = createSignal(0);
   const [statusVersion, setStatusVersion] = createSignal(0);
   const [connectionVersion, setConnectionVersion] = createSignal(0);
+  const [marqueeVersion, setMarqueeVersion] = createSignal(0);
   const [hovered, setHovered] = createSignal<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = createSignal<string | null>(null);
   /**
@@ -541,20 +542,31 @@ export function GraphView(props: GraphViewProps) {
           break;
         case 'nodeDragEnd': {
           const at = parseAddress(event.node.id);
+          /** One card that moved with the drag, as a record, or nothing when it does not stand for one. */
+          const asRecord = (id: string, x: number, y: number) => {
+            const address = parseAddress(id);
+            if (address?.kind !== 'entity' || !address.id) return [];
+            return [{ recordId: address.id, recordType: address.type ?? '', x, y }];
+          };
           /*
-            A fold travels with its contents.
+            Everything the gesture moved besides the card under the pointer, in one list.
 
-            Without this, folding a cluster and carrying it into a corner scatters everything back
-            where it was the moment you unfold — which makes the fold a way of hiding things rather
-            than a way of tidying, and the difference is the whole reason to have one. The cards are
-            reported rather than written, like every other gesture here: where a position lives is
+            Two sources, and they compose rather than competing. The rest of the **selection** moved
+            because somebody dragged several cards at once; a fold's **contents** moved because the
+            card they are hidden under did. A folded card inside a multi-card drag is both at once,
+            which is why the fold is asked about every node that travelled and not only the grabbed
+            one — miss that and carrying a selection containing a fold scatters its contents the next
+            time anyone opens it.
+
+            Reported rather than written, like every other gesture here: where a position lives is
             the interface's business.
           */
-          const carried = engine.foldedUnder(event.node.id).flatMap((row) => {
-            const address = parseAddress(row.id);
-            if (address?.kind !== 'entity' || !address.id) return [];
-            return [{ recordId: address.id, recordType: address.type ?? '', x: row.x, y: row.y }];
-          });
+          const carried = [
+            ...(event.moved ?? []).flatMap((row) => asRecord(row.id, row.position.x, row.position.y)),
+            ...[event.node.id, ...(event.moved ?? []).map((row) => row.id)].flatMap((id) =>
+              engine.foldedUnder(id).flatMap((row) => asRecord(row.id, row.x, row.y)),
+            ),
+          ];
           props.onNodeDragEnd?.({
             id: event.node.id,
             x: event.position.x,
@@ -575,6 +587,9 @@ export function GraphView(props: GraphViewProps) {
       if (reason === 'viewport') setViewportVersion((n) => n + 1);
       else if (reason === 'status') setStatusVersion((n) => n + 1);
       else if (reason === 'connection') setConnectionVersion((n) => n + 1);
+      // Its own signal, not the general one: a sweep fires on every pointer move and moves one
+      // rectangle, where `version` re-derives every node and every edge.
+      else if (reason === 'marquee') setMarqueeVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
   });
@@ -1221,6 +1236,18 @@ export function GraphView(props: GraphViewProps) {
   });
 
   /**
+   * The rectangle a selection sweep is drawing, in world units — see `getPendingMarquee`.
+   *
+   * World units, so it is drawn inside the same transformed group the nodes are and stays anchored
+   * to the canvas when the view moves under it. A screen-space rectangle would slide off whatever it
+   * had already caught the moment anything panned.
+   */
+  const marquee = createMemo(() => {
+    marqueeVersion();
+    return engine.getPendingMarquee();
+  });
+
+  /**
    * The colours the arrowheads have to exist in — the distinct ones anybody has asked for.
    *
    * Only edges that carry a colour of their own: an ordinary graph asks for none, emits no extra
@@ -1562,6 +1589,10 @@ export function GraphView(props: GraphViewProps) {
       at: { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) },
       buttons: 'buttons' in event ? event.buttons : 0,
       shiftKey: event.shiftKey,
+      // The platform's multi-select modifier, folded into one flag: Control everywhere, and Command
+      // on a Mac, where Control-click is the context menu. `metaKey` stays separate below for
+      // anything that genuinely means that key rather than this intent.
+      ctrlKey: event.ctrlKey || event.metaKey,
       metaKey: event.metaKey,
       delta: 'deltaY' in event ? event.deltaY : undefined,
     };
@@ -2611,6 +2642,30 @@ export function GraphView(props: GraphViewProps) {
                 stroke-dasharray="6 4"
                 vector-effect="non-scaling-stroke"
                 marker-end="url(#we-graph-arrow-pending)"
+              />
+            )}
+          </Show>
+          {/*
+            The rectangle a selection sweep is drawing.
+
+            In the transformed group with everything else, so it is anchored to the canvas rather than
+            to the window — pan mid-sweep and it keeps hold of what it has already caught.
+
+            `non-scaling-stroke` on the outline and a zoom-divided dash: the fill scales because it is
+            a region of the canvas, and the border does not because it is chrome. Without the divide
+            the dashes stretch into a solid line when you zoom in and vanish when you zoom out, which
+            is the one thing that would make it read as a drawn shape rather than a tool.
+          */}
+          <Show when={marquee()}>
+            {(bounds) => (
+              <rect
+                class="we-graph__marquee"
+                x={bounds().minX}
+                y={bounds().minY}
+                width={Math.max(0, bounds().maxX - bounds().minX)}
+                height={Math.max(0, bounds().maxY - bounds().minY)}
+                stroke-dasharray={`${4 / zoom()} ${3 / zoom()}`}
+                vector-effect="non-scaling-stroke"
               />
             )}
           </Show>

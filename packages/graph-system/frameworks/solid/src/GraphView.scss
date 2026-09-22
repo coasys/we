@@ -207,6 +207,23 @@
   pointer-events: none;
 }
 
+/*
+  The rectangle a selection sweep draws.
+
+  Accent rather than neutral, and deliberately the same colour a selected card's ring is: the sweep
+  and the rings it produces are one gesture, and two colours would read as two things happening.
+
+  The fill is barely there. A marquee is drawn *over* the cards it is selecting — that is how you see
+  which ones it has caught — so anything more opaque hides the answer to the question being asked.
+*/
+.we-graph__marquee {
+  fill: var(--we-color-primary-500);
+  fill-opacity: 0.08;
+  stroke: var(--we-color-primary-500);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 // A DOM label, positioned at the midpoint of its edge. See the note in `GraphView.solid.tsx` for why
 // this is not SVG text.
 .we-graph__edge-label {

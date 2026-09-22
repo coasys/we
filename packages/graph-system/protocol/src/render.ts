@@ -149,7 +149,18 @@ export type GraphEvent =
   | { type: 'nodeHover'; node: GraphNode | null }
   | { type: 'edgeClick'; edge: GraphEdge }
   | { type: 'selectionChange'; ids: string[] }
-  | { type: 'nodeDragEnd'; node: GraphNode; position: Point }
+  /**
+   * A drag ended, leaving the node here — and everything that travelled with it there.
+   *
+   * `moved` is the rest of the selection when several cards were dragged as one. It is on the event
+   * rather than left for the consumer to work out from the selection, because by the time a host
+   * hears about the drop the selection is merely *what is selected now*: it says nothing about which
+   * cards this gesture actually moved, and the two come apart the moment anything reselects.
+   *
+   * Absent for the ordinary single-card drag, so nothing that already handled this event had to
+   * learn about it.
+   */
+  | { type: 'nodeDragEnd'; node: GraphNode; position: Point; moved?: { id: string; position: Point }[] }
   /**
    * The user resized a card, giving it this box in world units.
    *

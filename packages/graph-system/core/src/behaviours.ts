@@ -67,13 +67,30 @@ export function panZoomBehaviour(rawOptions?: Record<string, unknown>): Behaviou
 }
 
 /**
- * Drag a node to reposition it. Pins while dragging; releases unless `pin` is set.
+ * Drag a node to reposition it — and every other selected node with it.
  *
  * The grab offset is the whole difference between this feeling like dragging and feeling like
  * teleporting. Setting the node's position *to* the pointer snaps its centre under the cursor the
  * instant you move — so grabbing a node near its edge makes it jump, which reads as a glitch even
  * though the drag then tracks correctly. Recording where inside the node you took hold of it, and
  * preserving that, means the node moves with your hand.
+ *
+ * ## A selection travels together
+ *
+ * Taking hold of a card that is part of a selection drags the whole selection, each member holding
+ * its offset from the one under the pointer. Anything else makes a selection almost useless on a
+ * canvas: the reason to gather six cards is nearly always to put them somewhere, and a drag that
+ * moved one of them and silently dropped the other five from the arrangement would be worse than no
+ * multi-select at all.
+ *
+ * Offsets are captured once, at the press, and never recomputed. Recomputing them mid-drag against
+ * live positions accumulates the floating-point error of every frame, and a group dragged twice
+ * across a canvas visibly spreads apart.
+ *
+ * **A press on a card that is not selected drags only that card**, and leaves the selection alone.
+ * That is `select`'s decision to make, not this one's — it already refuses to treat a drag as a
+ * click — and a gesture that quietly reselected would make the two disagree about what is selected
+ * for the length of the drag.
  */
 export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = { pin: false, ...(rawOptions as { pin?: boolean }) };
@@ -81,10 +98,12 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
   let moved = false;
   /** Node position minus grab position, in world units. Constant for the life of one drag. */
   let grabOffset = { x: 0, y: 0 };
+  /** The rest of the selection, each with its offset from the node under the pointer. */
+  let companions: { id: string; dx: number; dy: number }[] = [];
 
   return {
     id: 'drag-node',
-    description: 'Drag a node to move it, from wherever you took hold of it.',
+    description: 'Drag a node to move it, and the rest of the selection with it.',
     onPointerDown(input, ctx) {
       // Refused at the start of the gesture rather than by discarding its result: a drag that follows
       // the pointer and then snaps back has told you it worked and then taken it away.
@@ -96,6 +115,18 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
       moved = false;
       const at = ctx.positionOf(hit);
       grabOffset = at ? { x: at.x - world.x, y: at.y - world.y } : { x: 0, y: 0 };
+
+      const selection = ctx.selection();
+      companions =
+        at && selection.length > 1 && selection.includes(hit)
+          ? selection.flatMap((id) => {
+              if (id === hit) return [];
+              const other = ctx.positionOf(id);
+              // A selected node with no position is folded away or not laid out yet. It has nowhere
+              // to be moved from, so it is left out rather than dragged to the origin.
+              return other ? [{ id, dx: other.x - at.x, dy: other.y - at.y }] : [];
+            })
+          : [];
       return true;
     },
     onPointerMove(input, ctx) {
@@ -105,29 +136,46 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
       // ordering mistake that swallows the pointer-up again.
       if (input.buttons === 0) {
         dragging = null;
+        companions = [];
         return;
       }
       moved = true;
       const world = ctx.toWorld(input.at);
-      ctx.pin(dragging, { x: world.x + grabOffset.x, y: world.y + grabOffset.y });
+      const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
+      ctx.pin(dragging, at);
+      for (const other of companions) ctx.pin(other.id, { x: at.x + other.dx, y: at.y + other.dy });
       return true;
     },
     onPointerCancel() {
       dragging = null;
+      companions = [];
     },
     onPointerUp(input, ctx) {
       if (!dragging) return;
       const id = dragging;
+      const rest = companions;
       dragging = null;
+      companions = [];
       if (!moved) return;
       const world = ctx.toWorld(input.at);
       const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
       // Released rather than left pinned by default: on an explorer, a dragged node that stays put
       // fights the layout for every subsequent expansion. A canvas passes `pin: true`.
-      if (!options.pin) ctx.pin(id, null);
+      if (!options.pin) {
+        ctx.pin(id, null);
+        for (const other of rest) ctx.pin(other.id, null);
+      }
       // The node's position, not the pointer's — what a canvas persists has to be where the node
-      // actually ended up.
-      ctx.emit({ type: 'nodeDragEnd', node: { id, kind: 'entity', type: '' }, position: at });
+      // actually ended up. `moved` carries the same for everything that travelled with it, so one
+      // gesture is reported once and the consumer can write it as one act.
+      ctx.emit({
+        type: 'nodeDragEnd',
+        node: { id, kind: 'entity', type: '' },
+        position: at,
+        ...(rest.length
+          ? { moved: rest.map((other) => ({ id: other.id, position: { x: at.x + other.dx, y: at.y + other.dy } })) }
+          : {}),
+      });
       return true;
     },
   };

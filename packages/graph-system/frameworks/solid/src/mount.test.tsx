@@ -552,3 +552,70 @@ describe('GraphView folding', () => {
     ]);
   });
 });
+
+/**
+ * The selection sweep — the part of it that is DOM rather than engine.
+ *
+ * The rectangle's arithmetic and its claiming rules are tested against the behaviour in
+ * `@we/graph-core`. What only exists here is whether a sweep actually puts a rectangle on screen:
+ * the behaviour reports through `drawMarquee`, the engine holds it, a signal carries it and an SVG
+ * element draws it, and every one of those links is invisible if it breaks.
+ */
+describe('the selection marquee', () => {
+  const surfaceOf = (host: HTMLElement) => host.querySelector('.we-graph__surface') as HTMLElement;
+  const marqueeIn = (host: HTMLElement) => host.querySelector('.we-graph__marquee');
+
+  /** A pointer event carrying the button state a live drag has. */
+  const pointer = (type: string, x: number, y: number, extra: PointerEventInit = {}) =>
+    new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 1, ...extra });
+
+  function sweeping() {
+    const host = mount({ behaviours: ['marquee-select', 'select', 'pan-zoom'] });
+    const surface = surfaceOf(host);
+    surface.dispatchEvent(pointer('pointerdown', 10, 10, { shiftKey: true }));
+    surface.dispatchEvent(pointer('pointermove', 120, 90, { shiftKey: true }));
+    return { host, surface };
+  }
+
+  it('draws a rectangle spanning the sweep', () => {
+    const { host } = sweeping();
+
+    const rect = marqueeIn(host);
+    expect(rect).not.toBeNull();
+    expect(rect!.getAttribute('width')).toBe('110');
+    expect(rect!.getAttribute('height')).toBe('80');
+  });
+
+  it('takes it down on release', () => {
+    const { host, surface } = sweeping();
+    expect(marqueeIn(host)).not.toBeNull();
+
+    surface.dispatchEvent(pointer('pointerup', 120, 90, { buttons: 0, shiftKey: true }));
+
+    expect(marqueeIn(host)).toBeNull();
+  });
+
+  it('draws nothing for a plain drag, which still pans', () => {
+    // The modifier is the whole gate when the tool is not armed: without it the press belongs to
+    // `pan-zoom` and the canvas behaves exactly as it did before any of this existed.
+    const host = mount({ behaviours: ['marquee-select', 'select', 'pan-zoom'] });
+    const surface = surfaceOf(host);
+
+    surface.dispatchEvent(pointer('pointerdown', 10, 10));
+    surface.dispatchEvent(pointer('pointermove', 120, 90));
+
+    expect(marqueeIn(host)).toBeNull();
+  });
+
+  it('draws one for a plain drag when the template arms it', () => {
+    const host = mount({
+      behaviours: [{ type: 'marquee-select', options: { armed: true } }, 'select', 'pan-zoom'],
+    });
+    const surface = surfaceOf(host);
+
+    surface.dispatchEvent(pointer('pointerdown', 10, 10));
+    surface.dispatchEvent(pointer('pointermove', 120, 90));
+
+    expect(marqueeIn(host)).not.toBeNull();
+  });
+});
