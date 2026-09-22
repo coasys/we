@@ -1252,6 +1252,66 @@ describe('data overlay', () => {
     return engine;
   }
 
+  it('lays out again from an overlaid coordinate where position is the data', async () => {
+    /*
+      The whole basis of an optimistic *position*. `manual` reads a node's coordinate off its own
+      fields, so a host that writes a placement and draws it before the round trip has no route to
+      the screen unless the layout sees the overlay — the layout was the one consumer of `overlaid`
+      that was not getting it, which was invisible while the overlay only carried colours.
+    */
+    const placed = {
+      manual: () => ({
+        id: 'manual',
+        derivesPositions: false,
+        init: (input: { nodes: { id: string; data?: Record<string, unknown> }[] }) => ({
+          positions: new Map(
+            input.nodes.map((node) => [node.id, { x: Number(node.data?.x ?? 0), y: Number(node.data?.y ?? 0) }]),
+          ),
+        }),
+      }),
+    };
+    const seeded: SeedSource = {
+      id: 'placed',
+      async seed() {
+        return {
+          nodes: [{ id: 'a', kind: 'entity' as const, type: 'Card', label: 'A', data: { x: 10, y: 10 } }],
+          edges: [],
+        };
+      },
+    };
+    const registry = new PluginRegistry({ seeds: [seeded], expanders: [], layouts: placed });
+    const engine = engineWith({ seeds: { source: 'placed' }, layout: { type: 'manual' } }, registry);
+    await engine.start();
+    expect(engine.getPositions().get('a')).toMatchObject({ x: 10, y: 10 });
+
+    engine.setDataOverlay(new Map([['a', { x: 400, y: 250 }]]));
+
+    expect(engine.getPositions().get('a')).toMatchObject({ x: 400, y: 250 });
+  });
+
+  it('does not re-run a layout that derives its own positions', async () => {
+    // A force simulation reheated on every overlay change would restart itself every frame somebody
+    // drags a colour slider, which is why the question is `derivesPositions` and not "did it change".
+    let runs = 0;
+    const counting = {
+      grid: () => ({
+        id: 'grid',
+        init: (input: { nodes: { id: string }[] }) => {
+          runs += 1;
+          return { positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * 10, y: 0 }])) };
+        },
+      }),
+    };
+    const registry = new PluginRegistry({ seeds: [twoCards], expanders: [], layouts: counting });
+    const engine = engineWith({ seeds: { source: 'two' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    const before = runs;
+
+    engine.setDataOverlay(new Map([['a', { canvasColor: 'primary-500' }]]));
+
+    expect(runs).toBe(before);
+  });
+
   it('picks a node at its overlaid size', async () => {
     const engine = await canvasEngine();
     const at = engine.getPositions().get('a')!;

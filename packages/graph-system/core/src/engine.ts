@@ -1290,7 +1290,19 @@ export class GraphEngine {
 
     const { width, height } = this.viewport.get();
     const result = this.layout.init({
-      nodes: [...this.store.nodes()],
+      /*
+        Overlaid, which is the layout being treated as downstream of an optimistic edit like
+        everything else is.
+
+        `overlaid` calls itself "a node as everything downstream should see it", and the layout was
+        the one consumer not getting it. That was invisible while the overlay only carried a card's
+        colour and shape — nothing about those moves a node — and load-bearing the moment it carries
+        a coordinate: `manual` reads `x`/`y` off node data, so a position written and drawn before
+        the round trip has no way to reach the screen without this. It also quietly fixes a smaller
+        case that was always wrong, since `manual` sizes its tray slots from `canvasWidth`: a card
+        optimistically resized was parked around by its old size until the write came back.
+      */
+      nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
       edges: [...this.store.edges()],
       previous: this.positions,
       containment: this.containment(),
@@ -1464,10 +1476,22 @@ export class GraphEngine {
    */
   setDataOverlay(overlay: ReadonlyMap<string, Record<string, GraphValue>>): void {
     this.overlay = overlay;
-    this.reindex();
-    this.routeEdges();
-    // `graph` rather than `positions`: nothing moved, but a node's size, colour and shape can all
-    // have changed, and those are read off the node projection rather than off the placements.
+    /*
+      Laid out again where position *is* the data, and only there.
+
+      `manual` reads a node's coordinate off its own fields, so an overlay carrying one has moved the
+      layout's input and nothing will draw it until the layout is asked again. Every other layout
+      derives positions from the graph's shape instead, and re-running one on an overlay change would
+      reheat a force simulation every frame somebody drags a colour slider — so `derivesPositions` is
+      the question, which is the same flag that already decides whether pinning means anything here.
+    */
+    if (this.layout?.derivesPositions === false) this.relayout();
+    else {
+      this.reindex();
+      this.routeEdges();
+    }
+    // `graph` rather than `positions`: a node's size, colour and shape can all have changed, and
+    // those are read off the node projection rather than off the placements.
     this.notify('graph');
   }
 
