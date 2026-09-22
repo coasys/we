@@ -543,6 +543,27 @@ export interface GraphViewProps {
    * `when` is asked of **every** selected node and must match all of them, which is what keeps an
    * answer like "accept" off a selection where only some cards are asking a question.
    */
+  /**
+   * Whether the cards on this graph can be picked up and carried somewhere else.
+   *
+   * Off by default, like every other gesture here. On, a **grip** appears at the left of the action
+   * bar — a card's own, or the selection frame's — and dragging it begins the app's drag session
+   * carrying references to whatever is selected. Dropping is somebody else's business entirely: a
+   * Pocket panel, a folder, another space's feed.
+   *
+   * ## Why a grip rather than dragging the card itself
+   *
+   * Pressing a card and moving it already means something on a canvas, and it is the most-used
+   * gesture there is. Overloading it — drag inside the canvas to move, outside to carry — makes the
+   * meaning of a press depend on where it ends, which cannot be shown while it is happening and
+   * cannot be undone once it has. A separate grab area says which of the two is about to happen
+   * before the drag starts, works under a finger, and leaves the card drag exactly as it was.
+   *
+   * The graph carries **references**, never records: `{ entity, id }` per selected card, with the
+   * label and the composed document it already has on the node for whatever draws the ghost. No
+   * dataset is named, because the receiver stamps that — see `@we/drag`.
+   */
+  carry?: boolean;
   selectionActions?: NodeAction[];
   /**
    * One of {@link selectionActions} was pressed, for every record selected.

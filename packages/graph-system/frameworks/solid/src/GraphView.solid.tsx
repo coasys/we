@@ -24,7 +24,7 @@
  */
 import { Column, Row } from '@we/components/solid';
 import { ROLE_NAMES } from '@we/design-utils';
-import { dragSession } from '@we/drag';
+import { type DragItem, dragSession, watchPointerDrag } from '@we/drag';
 import type { EdgeWaypoint } from '@we/graph-core';
 import {
   bendPoints,
@@ -1121,6 +1121,77 @@ export function GraphView(props: GraphViewProps) {
       const at = parseAddress(entry.node.id);
       return at?.kind === 'entity' && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
     }),
+  );
+
+  /**
+   * The selection as things the app's drag session can carry.
+   *
+   * References, never records — `{ entity, id }` — which is what makes a card droppable somewhere
+   * the canvas has never heard of. No dataset is named: a receiver stamps that from whichever one
+   * was current when the drop happened, and a graph reading a store to answer it would be the graph
+   * learning what a dataset is.
+   *
+   * Everything in `preview` is already on the node, so building this costs a property read per card
+   * rather than a query. `editorState` is the composed document a post card draws from, handed over
+   * as the string it arrived as, so a ghost can draw the real card rather than a chip with a name on
+   * it.
+   */
+  const carriedItems = createMemo((): DragItem[] =>
+    selectedRows().flatMap(({ entry }) => {
+      const at = parseAddress(entry.node.id);
+      if (at?.kind !== 'entity' || !at.id) return [];
+      const editorState = entry.node.data?.editorState;
+      const thumbnail = entry.node.data?.src;
+      return [
+        {
+          ref: { entity: at.type ?? '', id: at.id },
+          label: entry.node.label ?? at.id,
+          ...(typeof editorState === 'string' && editorState ? { preview: { content: editorState } } : {}),
+          ...(typeof thumbnail === 'string' && thumbnail ? { preview: { thumbnail } } : {}),
+        },
+      ];
+    }),
+  );
+
+  /**
+   * Pick the selection up.
+   *
+   * `copy`, which is what carrying a card off a canvas means: the thing stays where it is and a
+   * reference to it goes somewhere else. A `move` would be a claim this gesture cannot honour —
+   * nothing here knows whether the receiver kept what it was given, and taking the card off the
+   * canvas on the strength of a drop that might have been refused is the one outcome worth refusing
+   * to risk.
+   *
+   * The watcher's own abandon function is handed to the session, which is what keeps a second finger
+   * landing elsewhere from driving this drag's ghost — see `BeginOptions.release`.
+   */
+  function beginCarry(event: PointerEvent): void {
+    const items = carriedItems();
+    if (!items.length || !surface) return;
+    event.stopPropagation();
+    const capture = event.currentTarget as Element;
+    const release = watchPointerDrag(event, {
+      capture,
+      onStart: (e) =>
+        dragSession.begin({
+          payload: { items, effect: 'copy' },
+          pointer: { x: e.clientX, y: e.clientY },
+          from: capture,
+          release: () => release(),
+        }),
+      onMove: (e) => dragSession.move({ x: e.clientX, y: e.clientY }),
+      onEnd: (e) => dragSession.drop({ x: e.clientX, y: e.clientY }),
+      onCancel: () => dragSession.cancel(),
+    });
+  }
+
+  /** The grip that starts a carry, for a bar to put at its left. See `GraphViewProps.carry`. */
+  const carryGrip = () => (
+    <we-tooltip content={carriedItems().length > 1 ? 'Drag to carry these elsewhere' : 'Drag to carry this elsewhere'}>
+      <div class="we-graph__carry" onPointerDown={beginCarry}>
+        <we-icon name="dots-six-vertical" />
+      </div>
+    </we-tooltip>
   );
 
   /**
@@ -3156,7 +3227,7 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show}>
+              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show || props.carry}>
                 {/*
                   `pointerdown` stopped, as well as the click — on the bar, once, for everything in
                   it. The canvas hit-tests in world space from a pointer press on the layer beneath,
@@ -3179,7 +3250,15 @@ export function GraphView(props: GraphViewProps) {
                   */}
                   <Row ay="center" gap="0" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
                     {/*
-                      The fold, first in the bar.
+                      The grip, before everything — including the fold, which is otherwise first.
+
+                      Left-most because it is the only thing in the bar that is not a button: it is a
+                      grab area, and a grab area between two buttons is one somebody presses by
+                      accident on the way to the second of them.
+                    */}
+                    <Show when={props.carry && carriedItems().length}>{carryGrip()}</Show>
+                    {/*
+                      The fold, first among the buttons.
 
                       First because it is the one control here that is about the card's *place in the
                       arrangement* rather than about the record or how the card is painted — and
@@ -3324,8 +3403,9 @@ export function GraphView(props: GraphViewProps) {
                 onClick={(event) => event.stopPropagation()}
               >
                 <Row ay="center" gap="100" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
+                  <Show when={props.carry && carriedItems().length}>{carryGrip()}</Show>
                   {/*
-                    How many, first — the one thing a frame cannot say for itself. A rectangle round
+                    How many, then — the one thing a frame cannot say for itself. A rectangle round
                     a dense patch of canvas does not tell you whether it caught nine cards or
                     eleven, and that is exactly what somebody about to press a bin wants to know.
                   */}

@@ -959,6 +959,38 @@
 }
 
 /*
+  The grip that carries a card, or a selection, off the canvas.
+
+  Sized like the square buttons beside it so the bar stays one row of even cells, but drawn as a
+  texture rather than a control: it is a grab area, and a glyph with a hover fill would read as a
+  button that does something when pressed — which is exactly what it does not do.
+
+  `grab` / `grabbing` is the whole affordance. Nothing else in the bar changes the cursor, so the one
+  thing you pick up rather than press says so before you touch it.
+*/
+.we-graph__carry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--we-component-height-md, 32px);
+  height: var(--we-component-height-md, 32px);
+  color: var(--we-color-text-faint);
+  cursor: grab;
+
+  // A drag that begins here must not also scroll the page under a finger — the session blocks that
+  // once it starts, and this covers the press before it decides.
+  touch-action: none;
+
+  &:hover {
+    color: var(--we-color-text-muted);
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+/*
   A host control in the header — a colour picker, a shape menu, a scale slider.
 
   The buttons beside it are `we-button`s, ghost and square, so a control's own trigger should be the

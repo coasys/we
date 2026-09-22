@@ -16,6 +16,7 @@
  * canvas contains — the geometry, the routing and the parsing are all tested where they live, and a
  * mount test that started asserting on markup would be a second, worse copy of those.
  */
+import { dragSession } from '@we/drag';
 import { entityAddress } from '@we/graph-protocol';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
@@ -742,5 +743,110 @@ describe('the chrome over a selection of several', () => {
       { recordId: 't1', recordType: 'TaskBlock' },
       { recordId: 't2', recordType: 'TaskBlock' },
     ]);
+  });
+});
+
+/**
+ * Carrying a selection off the canvas.
+ *
+ * The one gesture here that leaves the graph entirely: the canvas has always been a drop *zone* and
+ * was never a drag *source*, so nothing on it could be taken to a Pocket, a folder or another
+ * space — not even one card. What is tested is that the grip begins a real session carrying a
+ * reference per selected card, because everything downstream of that is `@we/drag`'s and is tested
+ * there.
+ */
+describe('the carry grip', () => {
+  const task = (id: string, x: number, y: number) => ({
+    id: entityAddress('ds', 'TaskBlock', id),
+    kind: 'entity' as const,
+    type: 'TaskBlock',
+    label: id,
+    data: { x, y },
+  });
+
+  const literal = { literal: true as const, nodes: [task('t1', 0, 0), task('t2', 200, 0)], edges: [] };
+
+  async function until(check: () => boolean, tries = 50): Promise<void> {
+    for (let i = 0; i < tries && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+  }
+
+  const pointer = (type: string, x: number, y: number, extra: PointerEventInit = {}) =>
+    new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 1, ...extra });
+
+  async function canvas(props: Parameters<typeof GraphView>[0] = {}) {
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      nodeStyle: [{ style: { shape: 'card', width: 60, height: 40 } }],
+      behaviours: [{ type: 'marquee-select', options: { armed: true } }, 'select', 'pan-zoom'],
+      carry: true,
+      ...props,
+    });
+    await until(() => host.querySelectorAll('.we-graph__node').length > 1);
+    return { host, surface: host.querySelector('.we-graph__surface') as HTMLElement };
+  }
+
+  /** Sweep a rectangle over however many cards `to` reaches, leaving them selected. */
+  async function select(host: HTMLElement, surface: HTMLElement, to: number) {
+    surface.dispatchEvent(pointer('pointerdown', -80, -60));
+    surface.dispatchEvent(pointer('pointermove', to, 60));
+    surface.dispatchEvent(pointer('pointerup', to, 60, { buttons: 0 }));
+    await until(() => host.querySelectorAll('.we-graph__node--selected').length > 0);
+  }
+
+  it('is not offered unless the graph opts in', async () => {
+    const { host, surface } = await canvas({ carry: false });
+    await select(host, surface, 60);
+
+    expect(host.querySelector('.we-graph__carry')).toBeNull();
+  });
+
+  it('appears on a single card and on a selection of several', async () => {
+    const one = await canvas();
+    await select(one.host, one.surface, 60);
+    expect(one.host.querySelectorAll('.we-graph__carry')).toHaveLength(1);
+
+    dispose?.();
+    dispose = undefined;
+
+    const many = await canvas();
+    await select(many.host, many.surface, 260);
+    expect(many.host.querySelectorAll('.we-graph__carry')).toHaveLength(1);
+  });
+
+  it('begins a session carrying one reference per selected card', async () => {
+    const { host, surface } = await canvas();
+    await select(host, surface, 260);
+    const grip = host.querySelector('.we-graph__carry') as HTMLElement;
+    grip.setPointerCapture = () => undefined;
+    grip.releasePointerCapture = () => undefined;
+
+    grip.dispatchEvent(pointer('pointerdown', 10, 10));
+    // Past the drag threshold, which is what turns a press into a session.
+    grip.dispatchEvent(pointer('pointermove', 60, 60));
+
+    expect(dragSession.active()?.items.map((item) => item.ref)).toEqual([
+      { entity: 'TaskBlock', id: 't1' },
+      { entity: 'TaskBlock', id: 't2' },
+    ]);
+    // `copy`: the cards stay on the canvas, because nothing here can know the drop was accepted.
+    expect(dragSession.active()?.effect).toBe('copy');
+    dragSession.cancel();
+  });
+
+  it('does not let the press reach the canvas underneath', async () => {
+    // The bar sits over the node layer, and the canvas hit-tests in world space from a press on it:
+    // a grip press that got through would start dragging the very card it belongs to.
+    const { host, surface } = await canvas();
+    await select(host, surface, 60);
+    const before = host.querySelector('.we-graph__node')?.getAttribute('style');
+    const grip = host.querySelector('.we-graph__carry') as HTMLElement;
+    grip.setPointerCapture = () => undefined;
+
+    grip.dispatchEvent(pointer('pointerdown', 10, 10));
+    surface.dispatchEvent(pointer('pointermove', 300, 300));
+
+    expect(host.querySelector('.we-graph__node')?.getAttribute('style')).toBe(before);
+    dragSession.cancel();
   });
 });
