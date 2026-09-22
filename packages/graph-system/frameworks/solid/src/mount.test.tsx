@@ -939,3 +939,116 @@ describe('the undo keys', () => {
     expect(surfaceOf(mount({ onUndo: () => undefined })).getAttribute('tabindex')).toBe('0');
   });
 });
+
+/**
+ * The two ways a selection used to be lost.
+ *
+ * Both were invisible from the code and obvious the moment somebody used it: shift-click built a
+ * selection that collapsed a frame later, and the keyboard stopped working after any press on the
+ * graph's own chrome. Neither is a rule about the engine — both are about how this adapter is wired
+ * to the interface around it, which is why they live here.
+ */
+describe('holding on to a selection', () => {
+  const task = (id: string, x: number, y: number) => ({
+    id: entityAddress('ds', 'TaskBlock', id),
+    kind: 'entity' as const,
+    type: 'TaskBlock',
+    label: id,
+    data: { x, y },
+  });
+
+  const literal = { literal: true as const, nodes: [task('t1', 0, 0), task('t2', 200, 0)], edges: [] };
+
+  async function until(check: () => boolean, tries = 50): Promise<void> {
+    for (let i = 0; i < tries && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+  }
+
+  const selectedLabels = (host: HTMLElement) =>
+    [...host.querySelectorAll('.we-graph__node--selected')].map((el) => el.textContent?.trim()).sort();
+
+  it('keeps a multi-selection when the interface focuses one of the cards in it', async () => {
+    /*
+      The workshop's wiring, reproduced: it binds `focus` to a route parameter that `onNodeClick`
+      writes, so every click round-trips through the address. Demanding a selection of exactly one
+      here meant shift-clicking a second card toggled it in and the returning focus immediately
+      replaced the pair with the one just clicked.
+    */
+    const [focus, setFocus] = createSignal('t1');
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(
+      () => (
+        <GraphView seeds={literal} layout={{ type: 'manual' }} behaviours={['select', 'pan-zoom']} focus={focus()} />
+      ),
+      host,
+    );
+    await until(() => selectedLabels(host).length > 0);
+
+    // Shift-click the second card, then let the interface's own focus catch up to it.
+    const surface = host.querySelector('.we-graph__surface') as HTMLElement;
+    const at = (type: string, extra: PointerEventInit = {}) =>
+      surface.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, cancelable: true, clientX: 200, clientY: 0, buttons: 1, ...extra }),
+      );
+    at('pointerdown', { shiftKey: true });
+    at('pointerup', { shiftKey: true, buttons: 0 });
+    await until(() => selectedLabels(host).length === 2);
+    setFocus('t2');
+    await until(() => false, 5);
+
+    expect(selectedLabels(host)).toEqual(['t1', 't2']);
+  });
+
+  it('still replaces the selection when the interface focuses something outside it', async () => {
+    const host = mount({ seeds: literal, layout: { type: 'manual' }, focus: 't1' });
+    await until(() => selectedLabels(host).length > 0);
+
+    expect(selectedLabels(host)).toEqual(['t1']);
+  });
+
+  it('answers the keyboard after a press on the graph’s own chrome', async () => {
+    /*
+      `.we-graph__surface` is self-closing — the chrome is a *sibling* of it — so focus landing on a
+      card's bar used to leave the listener unreachable. Delete had this from the start.
+    */
+    const seen: string[] = [];
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      nodeStyle: [{ style: { shape: 'card', width: 60, height: 40 } }],
+      focus: 't1',
+      nodeActions: [{ id: 'bin', icon: 'trash', title: 'Delete' }],
+      onNodeAction: () => undefined,
+      onUndo: () => seen.push('undo'),
+      onDeleteSelection: () => seen.push('delete'),
+    });
+    await until(() => host.querySelector('.we-graph__actions') !== null);
+
+    const button = host.querySelector('.we-graph__actions we-button') as HTMLElement;
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }));
+
+    expect(seen).toEqual(['undo', 'delete']);
+  });
+
+  it('leaves the keys alone while somebody is typing into the chrome', async () => {
+    // A colour control's hex field is an input inside the selected card's bar. Backspacing a wrong
+    // digit must not delete the card the colour is being chosen for.
+    const seen: string[] = [];
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 't1',
+      onUndo: () => seen.push('undo'),
+      onDeleteSelection: () => seen.push('delete'),
+    });
+    await until(() => host.querySelector('.we-graph__surface') !== null);
+
+    const field = document.createElement('input');
+    host.querySelector('.we-graph')!.append(field);
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
+
+    expect(seen).toEqual([]);
+  });
+});

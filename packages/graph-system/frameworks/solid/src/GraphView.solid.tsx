@@ -921,8 +921,20 @@ export function GraphView(props: GraphViewProps) {
       }
       applied = recordId;
       if (target.kind === 'node') {
-        const selection = engine.getSelection();
-        if (selection.length !== 1 || selection[0] !== target.id) engine.select([target.id]);
+        /*
+          Already selected is enough — it does not have to be the *only* thing selected.
+
+          This used to demand a selection of exactly one, which quietly made multi-select impossible
+          on any canvas that binds `focus`. Shift-clicking a second card toggles it in, the click
+          writes the record into the address, the address comes back here, and a selection of two
+          was replaced by a selection of one — correct for a single frame, then collapsed by the
+          interface's own inspector wiring. The workshop does exactly that and the canvas view does
+          not, which is why the gesture worked in one and not the other.
+
+          Every case this effect exists for still holds: an inspector opening a record that is *not*
+          selected still replaces the selection with it.
+        */
+        if (!engine.getSelection().includes(target.id)) engine.select([target.id]);
       } else {
         // `selectEdge` returns early for the line already open, so no guard is needed here.
         engine.selectEdge(target.id);
@@ -2447,7 +2459,27 @@ export function GraphView(props: GraphViewProps) {
    *
    * The listener writes nothing. See `onDeleteSelection` for why the graph reports rather than acts.
    */
+  /**
+   * An element that owns its own text input — the same test `we-sortable` makes, for the same reason.
+   *
+   * The keys below are bound on the graph's **root**, which contains the chrome as well as the hit
+   * surface (see the note there), and some of that chrome types: a colour control's hex field is an
+   * `input` inside a popup inside the selected card's bar. Without this, backspacing a wrong digit
+   * would delete the card the colour is being chosen for.
+   *
+   * `composedPath` rather than `target`, because a field inside a primitive's shadow root reports
+   * the host element as the target and the field itself only in the path.
+   */
+  const typingIn = (event: KeyboardEvent): boolean =>
+    event.composedPath().some((node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      return (
+        node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT' || node.isContentEditable
+      );
+    });
+
   function onKeyDown(event: KeyboardEvent) {
+    if (typingIn(event)) return;
     /*
       Undo and redo, on the surface for exactly the reason delete is.
 
@@ -2570,6 +2602,21 @@ export function GraphView(props: GraphViewProps) {
     <div
       class="we-graph"
       ref={surface}
+      /*
+        The keyboard, on the **root** rather than on the hit surface.
+
+        `.we-graph__surface` is a self-closing element: the node layer, every card's chrome and the
+        selection's own bar are *siblings* of it, not descendants. So a press on any of them — a bin
+        in a card's bar, a swatch, the selection's controls — moved focus outside the surface, and a
+        key pressed afterwards bubbled to this root and reached nothing. Delete had that from the
+        start; undo inherited it, and it reads as a key that is simply not wired up.
+
+        The root still answers the question the surface was chosen to answer — is the keyboard aimed
+        at this graph, or at the inspector beside it — and it now covers the graph's own furniture
+        as well, which was always part of the graph. `typingIn` guards the one thing that moves in
+        with it: chrome that takes text.
+      */
+      onKeyDown={onKeyDown}
       style={{
         width: props.width ?? '100%',
         height: props.height ?? '100%',
@@ -2613,7 +2660,6 @@ export function GraphView(props: GraphViewProps) {
           focus is a canvas only a mouse can delete from.
         */
         tabIndex={props.onDeleteSelection || props.onUndo || props.onRedo ? 0 : undefined}
-        onKeyDown={onKeyDown}
         onPointerDown={(event) => {
           (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
           /*
