@@ -118,8 +118,20 @@ const styles = css`
     display: contents;
   }
 
+  /*
+    Grows to fill the box when there is not enough content to fill it, and only then.
+
+    column-reverse packs its items at the *bottom*, so a panel holding less than a screenful put its
+    content down there — a transcript with nothing in it yet showed "Nothing has been said" sitting
+    on the floor of the panel instead of at the top where a placeholder belongs.
+
+    flex-grow is the whole fix: with spare room the box takes it and lays its own children out from
+    its top, which is ordinary document order; with none it keeps its content height and overflows
+    upward, which is the pinning. flex-shrink stays 0 so a long list is never squeezed to fit.
+  */
   :host([pin='end']) [part='content'] {
     display: block;
+    flex: 1 0 auto;
   }
 `;
 
@@ -196,10 +208,31 @@ export default class ScrollArea extends DesignSystemElement {
    * one is shown only when it would go somewhere — no button at the end you are already at — so
    * `'both'` on a short list draws nothing at all.
    *
-   * `'end'` also re-arms `pin`, which is the useful half in a live list: a reader who scrolled up
-   * to re-read something presses it once and goes back to being carried along.
+   * What pressing one *does* is not always a scroll — see `jumpAsks`.
    */
   @property({ type: String }) jump: '' | 'start' | 'end' | 'both' = '';
+  /**
+   * The ends whose button should **ask** rather than scroll: it fires `jumpstart` or `jumpend` and
+   * moves nothing, leaving the consumer to answer.
+   *
+   * For a windowed list, where the top of what is LOADED is not the beginning of anything. A
+   * scroll-to-top there would say "start" and deliver "as far back as we happened to fetch";
+   * reaching the real beginning is a different query and only the consumer can run it.
+   *
+   * ## Which end that is can change, which is why this is a prop and not a slot
+   *
+   * A transcript reads from one end or the other, and the answer flips with it. Anchored to the
+   * newest end, going back to the newest is a scroll through what is loaded — worth animating,
+   * because it says which way the content went — while going to the beginning is a different query.
+   * Read from the beginning, it is the other way round. So the element is told, per end, per render,
+   * which kind of thing the button is; and because the two cases use the same built-in button, there
+   * is one control with one appearance and one visibility rule rather than two that have to agree.
+   *
+   * This replaced a `jump-start` slot that let a consumer supply its own button. The slot could
+   * carry an action and could not carry a *scroll*, so it could only ever serve the half of the
+   * problem that was not a scroll — and it left the consumer restating the button.
+   */
+  @property({ type: String }) jumpAsks: '' | 'start' | 'end' | 'both' = '';
   /**
    * Say when the reader comes within this many pixels of an end, so a list can load what lies beyond
    * it — infinite scroll, in whichever direction the reader is going.
@@ -529,9 +562,24 @@ export default class ScrollArea extends DesignSystemElement {
     this._showEnd = scrollable && offers('end') && this.#fromEnd() > AT_END_PX;
   }
 
-  #onJumpStart = (): void => this.#scrollTo(this.#startTop());
+  /** Whether this end's button asks the consumer rather than scrolling — see `jumpAsks`. */
+  #asks(which: 'start' | 'end'): boolean {
+    return this.jumpAsks === which || this.jumpAsks === 'both';
+  }
+
+  #onJumpStart = (): void => {
+    if (this.#asks('start')) {
+      this.dispatchEvent(new CustomEvent('jumpstart', { bubbles: true, composed: true }));
+      return;
+    }
+    this.#scrollTo(this.#startTop());
+  };
 
   #onJumpEnd = (): void => {
+    if (this.#asks('end')) {
+      this.dispatchEvent(new CustomEvent('jumpend', { bubbles: true, composed: true }));
+      return;
+    }
     this.#scrollTo(this.#endTop());
     this.#syncControls();
   };
@@ -546,41 +594,20 @@ export default class ScrollArea extends DesignSystemElement {
         <div part="content"><slot></slot></div>
       </div>
       ${
-        /*
-          The start control, or whatever a consumer puts in its place.
-
-          The slot is here because "back to the start" is not always a scroll. A windowed list — a
-          transcript that loads the newest page first — has a top of *what is loaded*, which is not
-          the beginning of anything; pressing a scroll-to-top there would say "start" and deliver "as
-          far back as we happened to fetch". Reaching the real beginning is a different query, and
-          only the consumer can run it.
-
-          So the primitive keeps what it is actually expert in — where the control sits, over the
-          content and clear of the scrollbar, and *whether there is anywhere to go* — and hands back
-          only the part it cannot answer, which is what pressing it should do. Slotted content is
-          gated by `_showStart` exactly as the built-in button is, so a consumer opts in with
-          `jump="start"` (or `"both"`) and replaces the action, not the visibility.
-
-          No `jump-end` twin. Nothing needs one, and the case is weaker — the end of what is loaded
-          IS the end of a list that grows at the bottom, so the built-in control is already honest
-          there.
-        */
         this._showStart
           ? html`
               <div part="jump-start">
-                <slot name="jump-start">
-                  <we-button
-                    variant="secondary"
-                    size="sm"
-                    square
-                    r="pill"
-                    shadow="md"
-                    label="Jump to the start"
-                    @click=${this.#onJumpStart}
-                  >
-                    <we-icon name="caret-double-up"></we-icon>
-                  </we-button>
-                </slot>
+                <we-button
+                  variant="secondary"
+                  size="sm"
+                  square
+                  r="pill"
+                  shadow="md"
+                  label="Jump to the start"
+                  @click=${this.#onJumpStart}
+                >
+                  <we-icon name="caret-double-up"></we-icon>
+                </we-button>
               </div>
             `
           : nothing

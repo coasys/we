@@ -2897,6 +2897,21 @@ const noUtterances: SchemaNode = {
   },
 };
 
+/**
+ * "More is coming", for the edge a window grows from.
+ *
+ * One definition used at both ends, because the two are the same sentence about opposite directions
+ * and a copy each is how they come to disagree about their own spinner.
+ */
+const moreComing = (words: string): SchemaNode => ({
+  type: 'Row',
+  props: { ay: 'center', gap: '300', py: '200' },
+  children: [
+    { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
+    { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [words] },
+  ],
+});
+
 export const transcriptLines: SchemaNode = {
   type: 'Column',
   // The gap is the only thing separating one utterance from the next now that a row carries no
@@ -2951,76 +2966,28 @@ export const transcriptLines: SchemaNode = {
   },
   children: [
     /*
-      The window's controls, above the rows because the window grows *backwards* from the live end —
-      what is missing is earlier, so the way to it belongs at the top.
+      "More is coming", at the edge the window grows from.
 
-      Words rather than buttons, for the reason `commentThread`'s "N more in this thread" is: this is
-      the edge of a list, not an action beside it, and a filled control here reads as a block sitting
-      on the conversation.
+      Above the rows while the window grows backwards from the live end, and below them while it
+      grows forwards from the beginning — each at the boundary of what is loaded, which is the only
+      place the message means anything. A list that silently stops has no way to say it is not
+      finished, and the pages are fetched a panel's height ahead of the reader, so the only way to
+      see this is to outrun the prefetch: drag the scrollbar, or wait on a slow node. Both are real,
+      and both are exactly when somebody needs telling.
+
+      Words rather than a button, for the reason `commentThread`'s "N more in this thread" is: this
+      is the edge of a list, not an action beside it. There is nothing to press — reaching the edge
+      IS the request.
+
+      What used to be here in the from-start case was a header naming the end you were at, with a
+      "Latest" button beside it. Both went: the jump controls in the scroller's corner say which end
+      you are at by which of them is offered, and the down one IS "latest" now.
     */
     {
       type: '$if',
       props: {
-        condition: { $: TRANSCRIPT_FROM_START },
-        /*
-          Reading the beginning. Say so — the rows below look exactly like the live tail otherwise,
-          and somebody who pressed this a minute ago has no way to tell which end they are at.
-        */
-        then: {
-          type: 'Row',
-          props: { ay: 'center', gap: '300', pb: '200' },
-          children: [
-            { type: 'we-icon', props: { name: 'clock-counter-clockwise', size: 'xs', color: 'text-faint' } },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint', flex: '1', minWidth: '0' },
-              children: ['The start of the transcript.'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'bare',
-                size: 'sm',
-                color: 'text-faint',
-                hoverProps: { color: 'text' },
-                onClick: { $action: 'modules.transcribe.readTranscriptLive' },
-              },
-              children: ['Latest'],
-            },
-          ],
-        },
-        /*
-          Following the live end, with more behind: say that earlier lines are on their way, and
-          nothing else.
-
-          There was a "Show earlier" button here. It is gone because the scroll area now says when
-          the reader has come within reach of the top and the window grows on its own — reaching the
-          edge of a list IS the request, and a button asking them to confirm the scroll they just
-          made is a step nobody wanted. What is left is the reassurance that something is happening,
-          which a list that silently stops has no way to give.
-
-          "Jump to the start" left too, upward rather than away: it is the pinned control in the
-          scroller's own corner now — see `transcriptFeed` — where it sits beside "jump to the end"
-          and reads as its opposite instead of as a word in the margin.
-        */
-        else: {
-          type: '$if',
-          props: {
-            condition: { $: TRANSCRIPT_HAS_MORE },
-            then: {
-              type: 'Row',
-              props: { ay: 'center', gap: '300', pb: '200' },
-              children: [
-                { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
-                {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: ['Earlier in the conversation…'],
-                },
-              ],
-            },
-          },
-        },
+        condition: { $: `${TRANSCRIPT_HAS_MORE} && !${TRANSCRIPT_FROM_START}` },
+        then: moreComing('Earlier in the conversation…'),
       },
     },
     {
@@ -3586,6 +3553,17 @@ export const transcriptLines: SchemaNode = {
         },
       },
     },
+    /*
+      The same, at the other edge — see the note above. Below the rows, because read from its
+      beginning the window grows forwards and what is missing is later.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${TRANSCRIPT_HAS_MORE} && ${TRANSCRIPT_FROM_START}` },
+        then: moreComing('Later in the conversation…'),
+      },
+    },
   ],
 };
 
@@ -4113,30 +4091,22 @@ export const transcriptFeed: SchemaNode = panelScroll({
   */
   jump: 'both',
   /*
-    Read from the beginning — a different query, not a scroll, in the control that looks like one.
+    A jump is a scroll at the end you are anchored to, and a different query at the other one.
 
-    Pressing it while already reading from the start re-anchors to the start again, which is both
-    harmless and exactly what "take me to the beginning" should do from anywhere.
+    Anchored to the newest end, pressing "down" is a trip back through lines you have already loaded
+    — worth animating, because the movement is what says which way the content went. Pressing "up"
+    is not a longer version of that: the top of what is loaded is not the beginning of anything, and
+    reaching the real beginning means asking a different question. Read from the beginning, the two
+    swap over exactly.
+
+    So the anchor decides, per end, which kind of thing each button is, and the scroller draws one
+    control either way. The re-anchoring case needs no scrolling of its own: a mode change resets the
+    window and flips `pin`, and `scrollTop: 0` is the anchored end in both coordinate systems — the
+    newest under column-reverse, the oldest without it — so the new query lands where it should.
   */
-  jumpStart: {
-    type: 'we-tooltip',
-    props: { content: 'Read from the beginning', placement: 'left' },
-    children: [
-      {
-        type: 'we-button',
-        props: {
-          variant: 'secondary',
-          size: 'sm',
-          square: true,
-          r: 'pill',
-          shadow: 'md',
-          label: 'Read from the beginning',
-          onClick: { $action: 'modules.transcribe.readTranscriptFromStart' },
-        },
-        children: [{ type: 'we-icon', props: { name: 'caret-double-up' } }],
-      },
-    ],
-  },
+  jumpAsks: { $: `${TRANSCRIPT_FROM_START} ? 'end' : 'start'` },
+  onJumpStart: { $action: 'modules.transcribe.readTranscriptFromStart' },
+  onJumpEnd: { $action: 'modules.transcribe.readTranscriptLive' },
   /*
     More of the conversation loads as the reader reaches the edge of what is loaded, in whichever
     direction they are going, rather than on a button.

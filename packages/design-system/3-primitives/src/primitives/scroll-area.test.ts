@@ -31,6 +31,7 @@ import { describe, expect, it } from 'vitest';
 interface ScrollAreaEl extends HTMLElement {
   pin: '' | 'end';
   jump: '' | 'start' | 'end' | 'both';
+  jumpAsks: '' | 'start' | 'end' | 'both';
   nearStart: number;
   nearEnd: number;
   updateComplete: Promise<unknown>;
@@ -55,6 +56,7 @@ const settle = async () => {
 async function mount(options: {
   pin?: 'end';
   jump?: 'start' | 'end' | 'both';
+  jumpAsks?: 'start' | 'end' | 'both';
   nearStart?: number;
   nearEnd?: number;
   scrollHeight?: number;
@@ -63,6 +65,7 @@ async function mount(options: {
   const el = document.createElement('we-scroll-area') as ScrollAreaEl;
   if (options.pin) el.pin = options.pin;
   if (options.jump) el.jump = options.jump;
+  if (options.jumpAsks) el.jumpAsks = options.jumpAsks;
   if (options.nearStart) el.nearStart = options.nearStart;
   if (options.nearEnd) el.nearEnd = options.nearEnd;
   document.body.appendChild(el);
@@ -297,51 +300,72 @@ describe('we-scroll-area nearStart', () => {
 });
 
 /**
- * The `jump-start` slot: the scroller decides whether there is anywhere to go, the consumer decides
- * what going there means.
+ * `jumpAsks`: the scroller decides whether there is anywhere to go, the consumer decides what going
+ * there means — for the ends it names.
  *
- * For a windowed list the top of what is LOADED is not the beginning of anything, so a scroll-to-top
+ * For a windowed list the edge of what is LOADED is not the edge of anything, so a scroll there
  * would say "start" and deliver "as far back as we happened to fetch". Reaching the real beginning
- * is a different query and only the consumer can run it — but where the control sits and when it is
- * worth offering are still the scroller's to answer, so only the action is handed back.
+ * is a different query and only the consumer can run it.
+ *
+ * Which end that is can change, which is why this is a prop rather than a slot: a transcript
+ * anchored to its newest end wants the down button to scroll and the up one to re-anchor, and reads
+ * the other way round from its beginning. One built-in control serves both, so there is one
+ * appearance and one visibility rule instead of two that have to agree.
  */
-describe('we-scroll-area jump-start slot', () => {
-  it('draws its own button when nothing is slotted', async () => {
-    const { el, scrollFromEnd, controls } = await mount({ jump: 'both' });
+describe('we-scroll-area jumpAsks', () => {
+  const heard = (el: HTMLElement, type: string) => {
+    const seen: Event[] = [];
+    el.addEventListener(type, (event) => seen.push(event));
+    return seen;
+  };
+
+  it('scrolls, as before, for an end it was not asked about', async () => {
+    const { el, base, scrollFromEnd, press } = await mount({ jump: 'both' });
+    const seen = heard(el, 'jumpstart');
+
     scrollFromEnd(400);
-    expect((await controls()).start).toBe(true);
-    expect(el.shadowRoot!.querySelector('[part="jump-start"] we-button')).not.toBeNull();
+    await press('start');
+    expect(seen).toHaveLength(0);
+    expect(base.scrollTop).toBe(0);
   });
 
-  it('is still gated on there being somewhere to go', async () => {
-    // Visibility is not handed back. A consumer supplying a control does not get to show it at the
-    // oldest end, where "back to the start" means nothing.
-    const { el, controls } = await mount({ jump: 'both' });
-    el.innerHTML = '<button slot="jump-start">Beginning</button>';
-    await settle();
-    expect((await controls()).start).toBe(false);
+  it('asks instead, and moves nothing, for an end it was', async () => {
+    // Moving nothing is half the point: the consumer is about to replace the content, and a scroll
+    // through what is on screen on the way there would be a journey to somewhere that is leaving.
+    const { el, base, scrollFromEnd, press } = await mount({ jump: 'both', jumpAsks: 'start' });
+    const seen = heard(el, 'jumpstart');
+
+    scrollFromEnd(400);
+    const before = base.scrollTop;
+    await press('start');
+    expect(seen).toHaveLength(1);
+    expect(base.scrollTop).toBe(before);
   });
 
-  it('renders the consumer control in place of its own once there is', async () => {
-    const { el, scrollFromEnd, controls } = await mount({ jump: 'both' });
-    el.innerHTML = '<button slot="jump-start">Beginning</button>';
-    scrollFromEnd(400);
-    await settle();
+  it('takes the two ends separately, which is the case it exists for', async () => {
+    const { el, base, scrollFromStart, press, span } = await mount({ jump: 'both', jumpAsks: 'start' });
+    const asked = heard(el, 'jumpend');
 
-    expect((await controls()).start).toBe(true);
-    const slot = el.shadowRoot!.querySelector('[part="jump-start"] slot') as HTMLSlotElement;
-    expect(slot.assignedElements()).toHaveLength(1);
+    // The other end still scrolls: anchored one way, one button is a trip through loaded content and
+    // the other is a different question.
+    scrollFromStart(0);
+    await press('end');
+    expect(asked).toHaveLength(0);
+    expect(base.scrollTop).toBe(span());
+  });
+
+  it('asks about both when told to', async () => {
+    const { el, press, scrollFromEnd } = await mount({ jump: 'both', jumpAsks: 'both' });
+    const starts = heard(el, 'jumpstart');
+    const ends = heard(el, 'jumpend');
+
+    scrollFromEnd(400);
+    await press('start');
+    await press('end');
+    expect([starts.length, ends.length]).toEqual([1, 1]);
   });
 });
 
-/**
- * Both edges, and the first look that must say nothing.
- *
- * A window has two directions. A list anchored to its newest end grows backwards and watches the
- * top; the same list read from its beginning grows forwards and watches the bottom. Offering only
- * the first meant reading a conversation from the start walked you to the end of the first page and
- * stopped, with the rest unreachable — which is what these cover.
- */
 describe('we-scroll-area edges', () => {
   const heard = (el: HTMLElement, type: string) => {
     const seen: Event[] = [];

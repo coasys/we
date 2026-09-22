@@ -264,13 +264,21 @@ describe('a transcript with nothing in it', () => {
    * the feed below; what is left here is the reassurance, which is the part a silently-stopping list
    * cannot give.
    */
-  it('says earlier lines are coming rather than asking for a press', () => {
+  it('says more is coming at whichever edge the window grows from, and asks for nothing', () => {
+    /*
+      No buttons in the rows at all now. Loading is on approach, and both ways back are the jump
+      controls in the scroller's corner — including "latest", which used to be a word in a header
+      here beside the name of the end you were at. The header went with it: which end you are at is
+      said by which control is offered.
+    */
     expect(linesJson).not.toContain('modules.transcribe.showMoreTranscript');
     expect(linesJson).not.toContain('modules.transcribe.readTranscriptFromStart');
+    expect(linesJson).not.toContain('modules.transcribe.readTranscriptLive');
+    expect(linesJson).not.toContain('The start of the transcript');
+
+    // One sentence per direction, each gated on the anchor it belongs to.
     expect(linesJson).toContain('Earlier in the conversation');
-    // The way back to the live end stays: it is the one thing the from-start view cannot say with a
-    // scroll, since new lines do not belong below the oldest ones.
-    expect(linesJson).toContain('modules.transcribe.readTranscriptLive');
+    expect(linesJson).toContain('Later in the conversation');
   });
 
   /**
@@ -648,10 +656,17 @@ describe('the feed', () => {
    * action and it cost the affordance, so the split is now explicit — the scroller keeps deciding
    * WHETHER there is anywhere above to go, and the slot supplies what pressing it does.
    */
-  it('offers both ends, and replaces what the start one does', () => {
+  it('offers both ends, and makes each one a scroll or a query by which end is anchored', () => {
+    /*
+      A jump is a scroll at the end you are anchored to — worth animating, since the movement says
+      which way the content went — and a different query at the other, where the edge of what is
+      loaded is not the edge of anything. The anchor decides which is which, so one prop carries it
+      and the scroller draws the same control either way.
+    */
     expect(feedJson).toContain('"jump":"both"');
-    expect(feedJson).toContain('"slot":"jump-start"');
+    expect(feedJson).toContain("modules.transcribe.transcriptFromStart ? 'end' : 'start'");
     expect(feedJson).toContain('modules.transcribe.readTranscriptFromStart');
+    expect(feedJson).toContain('modules.transcribe.readTranscriptLive');
   });
 
   /**

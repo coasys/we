@@ -563,6 +563,27 @@ const pinnedPage = (rows: number) => (): Scenario => ({
   tables: {},
 });
 
+const pinnedShortContent = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { height: '320px', width: '100%' },
+    children: [
+      {
+        type: 'we-scroll-area',
+        props: { id: 'feed', pin: 'end', flex: '1', minHeight: '0' },
+        children: [
+          {
+            type: 'Column',
+            props: { gap: '300', p: '300' },
+            children: [{ type: 'we-text', props: { id: 'placeholder' }, children: ['Nothing has been said yet.'] }],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
 /**
  * Three folding section headings in a column — plain, with a count, and with a control beside it.
  *
@@ -622,5 +643,6 @@ export const scenarios: Record<string, () => Scenario> = {
   'ds:square-loading': squareLoading,
   'ds:pinned-page': pinnedPage(120),
   'ds:pinned-short': pinnedPage(20),
+  'ds:pinned-empty': pinnedShortContent,
   'panel:sections': panelSections,
 };

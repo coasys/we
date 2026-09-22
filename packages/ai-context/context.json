@@ -1410,6 +1410,12 @@
           "default": "''"
         },
         {
+          "name": "jumpAsks",
+          "type": "'' | 'start' | 'end' | 'both'",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "nearStart",
           "type": "number",
           "optional": false,

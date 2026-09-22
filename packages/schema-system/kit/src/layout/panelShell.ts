@@ -235,13 +235,17 @@ export interface PanelScrollOptions {
   nearEnd?: number;
   onNearEnd?: SchemaProp;
   /**
-   * A start control of the consumer's own, placed where the scroller puts its built-in one.
+   * The ends whose jump button should ask rather than scroll — `we-scroll-area`'s `jumpAsks` — with
+   * the handlers that answer.
    *
    * For a windowed list, where the top of what is loaded is not the beginning of anything and the
-   * way back is a different query rather than a scroll. Given one, the scroller draws no start
-   * button of its own.
+   * way there is a different query. An expression is allowed, because which end that is can change:
+   * a transcript anchored to its newest end wants the start button to re-anchor and the end button
+   * to scroll, and reads the other way round when it is read from the beginning.
    */
-  jumpStart?: SchemaNode;
+  jumpAsks?: string | ExpressionToken;
+  onJumpStart?: SchemaProp;
+  onJumpEnd?: SchemaProp;
 }
 
 /**
@@ -345,12 +349,10 @@ export function panelScroll(opts: PanelScrollOptions): SchemaNode {
       ...(opts.onNearStart ? { 'on:nearstart': opts.onNearStart } : {}),
       ...(opts.nearEnd ? { nearEnd: opts.nearEnd } : {}),
       ...(opts.onNearEnd ? { 'on:nearend': opts.onNearEnd } : {}),
+      ...(opts.jumpAsks ? { jumpAsks: opts.jumpAsks } : {}),
+      ...(opts.onJumpStart ? { 'on:jumpstart': opts.onJumpStart } : {}),
+      ...(opts.onJumpEnd ? { 'on:jumpend': opts.onJumpEnd } : {}),
     },
-    /*
-      The consumer's start control is a slotted child rather than a prop, because it is a node: it
-      goes in the scroller's own light DOM carrying `slot="jump-start"`, and the scroller positions
-      it. First, so it is out of the way of whatever the list is.
-    */
-    children: opts.jumpStart ? [{ ...opts.jumpStart, slot: 'jump-start' }, ...opts.children] : opts.children,
+    children: opts.children,
   };
 }

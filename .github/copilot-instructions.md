@@ -1360,7 +1360,7 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
 `separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
   Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', line: 'auto' | 'none' = 'auto', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
-  Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = '', jump: '' | 'start' | 'end' | 'both' = '', nearStart: number = 0, nearEnd: number = 0
+  Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = '', jump: '' | 'start' | 'end' | 'both' = '', jumpAsks: '' | 'start' | 'end' | 'both' = '', nearStart: number = 0, nearEnd: number = 0
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
