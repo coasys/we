@@ -2903,9 +2903,15 @@ const noUtterances: SchemaNode = {
  * One definition used at both ends, because the two are the same sentence about opposite directions
  * and a copy each is how they come to disagree about their own spinner.
  */
-const moreComing = (words: string): SchemaNode => ({
+const moreComing = (end: 'start' | 'end', words: string): SchemaNode => ({
   type: 'Row',
-  props: { ay: 'center', gap: '300', py: '200' },
+  /*
+    The marker is the same fact the line is: there is more beyond this end that is not loaded. The
+    scroller reads it to decide whether its jump button should scroll or ask — see `data-we-more` on
+    `we-scroll-area` — which is why it lives here rather than being restated as a prop somewhere that
+    cannot see the rows.
+  */
+  props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
   children: [
     { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
     { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [words] },
@@ -2987,7 +2993,7 @@ export const transcriptLines: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: `${TRANSCRIPT_HAS_MORE} && !${TRANSCRIPT_FROM_START}` },
-        then: moreComing('Earlier in the conversation…'),
+        then: moreComing('start', 'Earlier in the conversation…'),
       },
     },
     {
@@ -3542,9 +3548,25 @@ export const transcriptLines: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'modules.transcribe.collectionId' },
+                /*
+                  Answered empty, or not answered yet — and the difference is worth drawing.
+
+                  Not answered yet is now a real state rather than a blank: re-anchoring to the other
+                  end of a transcript throws the rows away and asks a different question, and on a
+                  remote node that is a second or two of nothing at all. A spinner in the middle of
+                  the panel says the press registered and something is on its way.
+                */
                 then: {
                   type: '$if',
-                  props: { condition: { $: 'local.utterancesLoaded' }, then: noUtterances },
+                  props: {
+                    condition: { $: 'local.utterancesLoaded' },
+                    then: noUtterances,
+                    else: {
+                      type: 'Column',
+                      props: { ax: 'center', ay: 'center', py: '800', width: '100%' },
+                      children: [{ type: 'we-spinner', props: { size: 'md', color: 'text-faint' } }],
+                    },
+                  },
                 },
                 else: noUtterances,
               },
@@ -3561,7 +3583,7 @@ export const transcriptLines: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: `${TRANSCRIPT_HAS_MORE} && ${TRANSCRIPT_FROM_START}` },
-        then: moreComing('Later in the conversation…'),
+        then: moreComing('end', 'Later in the conversation…'),
       },
     },
   ],
@@ -3810,12 +3832,18 @@ export const pendingUtterance: SchemaNode = {
       that obligatory, and nothing would have said so if it had been forgotten.
     */
     /*
-      `heard` rather than `pending`: speech still with the model counts as well as words buffered.
+      Only once there are words. Speech still with the model shows nothing.
 
-      Between somebody stopping and their words coming back there used to be nothing here at all —
-      a second or several on a CPU in which the panel looked exactly as it would had nobody spoken.
+      This used to be `heard`, which includes the gap between somebody stopping and their text coming
+      back, and it filled that gap with an empty box saying "Transcribing…". The intent was to say
+      the panel had not missed anything — but it is a box that appears, holds a word, and is replaced
+      a moment later by the words it was standing in for, on every utterance, for the length of a
+      call. It got in the way of the thing it was introducing.
+
+      The preview arriving a beat late is the better rendering. It says the same thing by existing,
+      and says it with content.
     */
-    condition: { $: `modules.transcribe.heard && (${VIEWING_LIVE_EXPR})` },
+    condition: { $: `modules.transcribe.pending && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
       props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
@@ -3831,10 +3859,15 @@ export const pendingUtterance: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted', uppercase: true },
-                  children: [{ $: "modules.transcribe.pending ? 'Not saved yet' : 'Transcribing…'" }],
+                  children: ['Not saved yet'],
                 },
-                // Beside the label rather than instead of it, so a line waiting to save and the next
-                // sentence still with the model can both be said at once.
+                /*
+                  The spinner stays, and it now means one thing rather than two.
+
+                  It says the NEXT sentence is still with the model while this one waits to be
+                  written — which is worth knowing, and is why it sits beside the label rather than
+                  instead of it. What it no longer does is appear on its own over an empty box.
+                */
                 {
                   type: '$if',
                   props: {
@@ -4099,12 +4132,15 @@ export const transcriptFeed: SchemaNode = panelScroll({
     reaching the real beginning means asking a different question. Read from the beginning, the two
     swap over exactly.
 
-    So the anchor decides, per end, which kind of thing each button is, and the scroller draws one
-    control either way. The re-anchoring case needs no scrolling of its own: a mode change resets the
-    window and flips `pin`, and `scrollTop: 0` is the anchored end in both coordinate systems — the
-    newest under column-reverse, the oldest without it — so the new query lands where it should.
+    Which end is which is not stated here. The scroller reads it from the `data-we-more` marker on
+    the "more is coming" line, which `transcriptLines` already renders under exactly that test — so
+    the two cannot disagree, and a transcript that has loaded whole simply scrolls at both ends
+    rather than re-asking for what it already has.
+
+    The re-anchoring case needs no scrolling of its own: a mode change resets the window and flips
+    `pin`, and `scrollTop: 0` is the anchored end in both coordinate systems — the newest under
+    column-reverse, the oldest without it — so the new query lands where it should.
   */
-  jumpAsks: { $: `${TRANSCRIPT_FROM_START} ? 'end' : 'start'` },
   onJumpStart: { $action: 'modules.transcribe.readTranscriptFromStart' },
   onJumpEnd: { $action: 'modules.transcribe.readTranscriptLive' },
   /*
@@ -4153,9 +4189,30 @@ export const transcriptFeed: SchemaNode = panelScroll({
       type: 'Column',
       props: { gap: '300' },
       children: [
+        /*
+          Rebuilt when the anchor changes, which is the only way to stop the old rows being drawn
+          under the new arrangement.
+
+          Re-anchoring asks a different question, but `pin` flips the moment it is pressed while the
+          answer takes a round trip — so for that second the previous window was laid out from the
+          wrong end, and a reader saw the last thing said appear at the top before the real content
+          replaced it. A hoisted query keeps its rows and keeps reporting itself loaded when its
+          parameters change, deliberately, because for an ordinary filter that is stale-while-
+          revalidate and the right behaviour. It is the wrong behaviour when the content is being
+          replaced wholesale.
+
+          Two branches holding the same node is what a key would be if the schema had one: `$if`
+          unmounts the outgoing branch, so the part is rebuilt, its `$queries` start again, and
+          `local.utterancesLoaded` is false until the new answer lands — which is what draws the
+          spinner above instead of somebody else's rows.
+        */
         {
-          type: '$part',
-          props: { id: 'transcribe.transcriptLines', subject: SUBJECT },
+          type: '$if',
+          props: {
+            condition: { $: TRANSCRIPT_FROM_START },
+            then: { type: '$part', props: { id: 'transcribe.transcriptLines', subject: SUBJECT } },
+            else: { type: '$part', props: { id: 'transcribe.transcriptLines', subject: SUBJECT } },
+          },
         },
         pendingUtterance,
       ],

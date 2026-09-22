@@ -546,8 +546,26 @@ describe('what belongs to the live microphone only', () => {
       it by hand, and nothing would have said so if it had been forgotten.
     */
     expect(JSON.stringify(pendingUtterance)).toContain(
-      'modules.transcribe.heard && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
+      'modules.transcribe.pending && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
     );
+  });
+
+  it('shows nothing at all until there are words, rather than a box saying it is listening', () => {
+    /*
+      It was gated on `heard`, which includes the gap between somebody stopping and their text coming
+      back, and filled that gap with an empty box reading "Transcribing…". The intent was to say the
+      panel had not missed anything; the effect was a box that appears, holds one word, and is
+      replaced a moment later by the words it was standing in for — on every utterance, for the
+      length of a call.
+
+      The preview arriving a beat late says the same thing by existing, and says it with content.
+    */
+    const json = JSON.stringify(pendingUtterance);
+    expect(json).not.toContain('Transcribing');
+    expect(json).not.toContain('modules.transcribe.heard');
+    // The spinner stays, and now means one thing: the NEXT sentence is still with the model while
+    // this one waits to be written.
+    expect(json).toContain('modules.transcribe.transcribing');
   });
 
   it('leaves the record button out where it could not work, rather than showing a dead one', () => {
@@ -656,17 +674,20 @@ describe('the feed', () => {
    * action and it cost the affordance, so the split is now explicit — the scroller keeps deciding
    * WHETHER there is anywhere above to go, and the slot supplies what pressing it does.
    */
-  it('offers both ends, and makes each one a scroll or a query by which end is anchored', () => {
+  it('offers both ends, and answers a jump that cannot be a scroll', () => {
     /*
-      A jump is a scroll at the end you are anchored to — worth animating, since the movement says
-      which way the content went — and a different query at the other, where the edge of what is
-      loaded is not the edge of anything. The anchor decides which is which, so one prop carries it
-      and the scroller draws the same control either way.
+      A jump is a scroll to an end that is loaded and a different query to one that is not. Which is
+      which is NOT stated here: the scroller reads it from the `data-we-more` marker on the "more is
+      coming" line, which `transcriptLines` renders under exactly that test. So a transcript that
+      has loaded whole scrolls at both ends rather than re-asking for what it already holds, and the
+      two cannot disagree about when there is more.
     */
     expect(feedJson).toContain('"jump":"both"');
-    expect(feedJson).toContain("modules.transcribe.transcriptFromStart ? 'end' : 'start'");
+    expect(feedJson).not.toContain('jumpAsks');
     expect(feedJson).toContain('modules.transcribe.readTranscriptFromStart');
     expect(feedJson).toContain('modules.transcribe.readTranscriptLive');
+    expect(linesJson).toContain('"data-we-more":"start"');
+    expect(linesJson).toContain('"data-we-more":"end"');
   });
 
   /**

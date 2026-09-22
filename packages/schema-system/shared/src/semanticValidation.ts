@@ -1085,6 +1085,20 @@ function checkProps(
     if (ctx.universalProps.has(propName)) continue;
     // Event handlers are always valid
     if (propName.startsWith('on') && propName.length > 2 && propName[2] === propName[2].toUpperCase()) continue;
+    /*
+      A data attribute is always valid, on anything.
+
+      They are how a consumer marks something for a primitive to find — `data-we-handle` says which
+      part of a sortable row is the grab area, `data-we-more` says a scroller has unloaded content
+      beyond an end — and the design system documents several. Nothing declares them as props,
+      because they are not props: they are attributes the renderer spreads through, and the element
+      that reads one is looking at the DOM rather than at a prop bag.
+
+      Refusing them pushed authors onto a bare `div` to carry a marker, which is why the existing
+      conventions are all documented against native elements. That is a workaround for this check
+      rather than a design.
+    */
+    if (propName.startsWith('data-')) continue;
 
     // Check if prop is known
     if (knownProps && !knownProps.has(propName)) {

@@ -235,15 +235,11 @@ export interface PanelScrollOptions {
   nearEnd?: number;
   onNearEnd?: SchemaProp;
   /**
-   * The ends whose jump button should ask rather than scroll — `we-scroll-area`'s `jumpAsks` — with
-   * the handlers that answer.
+   * What to do when a jump button asks instead of scrolling.
    *
-   * For a windowed list, where the top of what is loaded is not the beginning of anything and the
-   * way there is a different query. An expression is allowed, because which end that is can change:
-   * a transcript anchored to its newest end wants the start button to re-anchor and the end button
-   * to scroll, and reads the other way round when it is read from the beginning.
+   * Which ends ask is not set here: the scroller reads it from a `data-we-more` marker in its own
+   * content, so the answer comes from whatever is holding the rows. See `we-scroll-area`.
    */
-  jumpAsks?: string | ExpressionToken;
   onJumpStart?: SchemaProp;
   onJumpEnd?: SchemaProp;
 }
@@ -349,7 +345,6 @@ export function panelScroll(opts: PanelScrollOptions): SchemaNode {
       ...(opts.onNearStart ? { 'on:nearstart': opts.onNearStart } : {}),
       ...(opts.nearEnd ? { nearEnd: opts.nearEnd } : {}),
       ...(opts.onNearEnd ? { 'on:nearend': opts.onNearEnd } : {}),
-      ...(opts.jumpAsks ? { jumpAsks: opts.jumpAsks } : {}),
       ...(opts.onJumpStart ? { 'on:jumpstart': opts.onJumpStart } : {}),
       ...(opts.onJumpEnd ? { 'on:jumpend': opts.onJumpEnd } : {}),
     },

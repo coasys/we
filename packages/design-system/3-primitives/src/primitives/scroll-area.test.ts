@@ -31,7 +31,6 @@ import { describe, expect, it } from 'vitest';
 interface ScrollAreaEl extends HTMLElement {
   pin: '' | 'end';
   jump: '' | 'start' | 'end' | 'both';
-  jumpAsks: '' | 'start' | 'end' | 'both';
   nearStart: number;
   nearEnd: number;
   updateComplete: Promise<unknown>;
@@ -56,7 +55,8 @@ const settle = async () => {
 async function mount(options: {
   pin?: 'end';
   jump?: 'start' | 'end' | 'both';
-  jumpAsks?: 'start' | 'end' | 'both';
+  /** Ends with unloaded content beyond them, marked the way a consumer marks them. */
+  more?: ('start' | 'end')[];
   nearStart?: number;
   nearEnd?: number;
   scrollHeight?: number;
@@ -65,7 +65,11 @@ async function mount(options: {
   const el = document.createElement('we-scroll-area') as ScrollAreaEl;
   if (options.pin) el.pin = options.pin;
   if (options.jump) el.jump = options.jump;
-  if (options.jumpAsks) el.jumpAsks = options.jumpAsks;
+  for (const end of options.more ?? []) {
+    const marker = document.createElement('div');
+    marker.setAttribute('data-we-more', end);
+    el.appendChild(marker);
+  }
   if (options.nearStart) el.nearStart = options.nearStart;
   if (options.nearEnd) el.nearEnd = options.nearEnd;
   document.body.appendChild(el);
@@ -300,26 +304,27 @@ describe('we-scroll-area nearStart', () => {
 });
 
 /**
- * `jumpAsks`: the scroller decides whether there is anywhere to go, the consumer decides what going
- * there means — for the ends it names.
+ * `data-we-more`: a jump scrolls to an end that is loaded, and asks for one that is not.
  *
  * For a windowed list the edge of what is LOADED is not the edge of anything, so a scroll there
  * would say "start" and deliver "as far back as we happened to fetch". Reaching the real beginning
- * is a different query and only the consumer can run it.
+ * is a different query and only the consumer can run it — but once the whole thing IS loaded, both
+ * ends are reachable and both buttons should simply scroll.
  *
- * Which end that is can change, which is why this is a prop rather than a slot: a transcript
- * anchored to its newest end wants the down button to scroll and the up one to re-anchor, and reads
- * the other way round from its beginning. One built-in control serves both, so there is one
- * appearance and one visibility rule instead of two that have to agree.
+ * The consumer marks the ends it has not finished loading, and the scroller reads the marker on the
+ * press. A prop naming those ends came first and was wrong: the fragment that knows is the one
+ * holding the rows, which sits *inside* the scroller, while the prop is set by the fragment outside
+ * it — so it could only ever approximate, and a fully-loaded short list jumped where it should have
+ * scrolled.
  */
-describe('we-scroll-area jumpAsks', () => {
+describe('we-scroll-area data-we-more', () => {
   const heard = (el: HTMLElement, type: string) => {
     const seen: Event[] = [];
     el.addEventListener(type, (event) => seen.push(event));
     return seen;
   };
 
-  it('scrolls, as before, for an end it was not asked about', async () => {
+  it('scrolls to an end with nothing unloaded beyond it', async () => {
     const { el, base, scrollFromEnd, press } = await mount({ jump: 'both' });
     const seen = heard(el, 'jumpstart');
 
@@ -329,10 +334,10 @@ describe('we-scroll-area jumpAsks', () => {
     expect(base.scrollTop).toBe(0);
   });
 
-  it('asks instead, and moves nothing, for an end it was', async () => {
+  it('asks instead, and moves nothing, for an end that is marked', async () => {
     // Moving nothing is half the point: the consumer is about to replace the content, and a scroll
     // through what is on screen on the way there would be a journey to somewhere that is leaving.
-    const { el, base, scrollFromEnd, press } = await mount({ jump: 'both', jumpAsks: 'start' });
+    const { el, base, scrollFromEnd, press } = await mount({ jump: 'both', more: ['start'] });
     const seen = heard(el, 'jumpstart');
 
     scrollFromEnd(400);
@@ -343,7 +348,7 @@ describe('we-scroll-area jumpAsks', () => {
   });
 
   it('takes the two ends separately, which is the case it exists for', async () => {
-    const { el, base, scrollFromStart, press, span } = await mount({ jump: 'both', jumpAsks: 'start' });
+    const { el, base, scrollFromStart, press, span } = await mount({ jump: 'both', more: ['start'] });
     const asked = heard(el, 'jumpend');
 
     // The other end still scrolls: anchored one way, one button is a trip through loaded content and
@@ -354,8 +359,8 @@ describe('we-scroll-area jumpAsks', () => {
     expect(base.scrollTop).toBe(span());
   });
 
-  it('asks about both when told to', async () => {
-    const { el, press, scrollFromEnd } = await mount({ jump: 'both', jumpAsks: 'both' });
+  it('asks about both when both are marked', async () => {
+    const { el, press, scrollFromEnd } = await mount({ jump: 'both', more: ['start', 'end'] });
     const starts = heard(el, 'jumpstart');
     const ends = heard(el, 'jumpend');
 
@@ -363,6 +368,26 @@ describe('we-scroll-area jumpAsks', () => {
     await press('start');
     await press('end');
     expect([starts.length, ends.length]).toEqual([1, 1]);
+  });
+
+  it('goes back to scrolling once the marker is gone, which is the case that prompted this', async () => {
+    /*
+      A short transcript that has loaded whole has nothing beyond either end, so both buttons should
+      simply scroll — and under the prop this replaced they went on re-anchoring, jumping where a
+      scroll was both possible and nicer. Read on the press rather than cached, so the moment the
+      last page lands the buttons change their minds.
+    */
+    const { el, base, scrollFromEnd, press } = await mount({ jump: 'both', more: ['start'] });
+    const seen = heard(el, 'jumpstart');
+
+    scrollFromEnd(400);
+    await press('start');
+    expect(seen).toHaveLength(1);
+
+    el.querySelector('[data-we-more]')?.remove();
+    await press('start');
+    expect(seen).toHaveLength(1);
+    expect(base.scrollTop).toBe(0);
   });
 });
 

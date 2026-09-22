@@ -208,59 +208,34 @@ export default class ScrollArea extends DesignSystemElement {
    * one is shown only when it would go somewhere — no button at the end you are already at — so
    * `'both'` on a short list draws nothing at all.
    *
-   * What pressing one *does* is not always a scroll — see `jumpAsks`.
+   * What pressing one *does* is not always a scroll — see `data-we-more` below.
    */
   @property({ type: String }) jump: '' | 'start' | 'end' | 'both' = '';
   /**
-   * The ends whose button should **ask** rather than scroll: it fires `jumpstart` or `jumpend` and
-   * moves nothing, leaving the consumer to answer.
+   * ## When a jump asks instead of scrolling: `data-we-more`
    *
-   * For a windowed list, where the top of what is LOADED is not the beginning of anything. A
-   * scroll-to-top there would say "start" and deliver "as far back as we happened to fetch";
-   * reaching the real beginning is a different query and only the consumer can run it.
+   * A jump is a scroll when the end it names is *loaded*, and a different question when it is not.
+   * A windowed list has both cases and they swap around: a transcript anchored to its newest end can
+   * scroll back down to it, but the top of what it has fetched is not the beginning of anything —
+   * and read from the beginning, the same is true the other way. Load the whole conversation and
+   * both ends become reachable, at which point both buttons should simply scroll.
    *
-   * ## Which end that is can change, which is why this is a prop and not a slot
+   * None of that is knowable from here, so the consumer says it: put `data-we-more="start"` (or
+   * `"end"`) on any element inside the scroller while there is content beyond that end which is not
+   * loaded. A jump toward a marked end fires `jumpstart` / `jumpend` and moves nothing, leaving the
+   * consumer to go and get it; a jump toward an unmarked end scrolls, smoothly, as it always did.
    *
-   * A transcript reads from one end or the other, and the answer flips with it. Anchored to the
-   * newest end, going back to the newest is a scroll through what is loaded — worth animating,
-   * because it says which way the content went — while going to the beginning is a different query.
-   * Read from the beginning, it is the other way round. So the element is told, per end, per render,
-   * which kind of thing the button is; and because the two cases use the same built-in button, there
-   * is one control with one appearance and one visibility rule rather than two that have to agree.
+   * ## Why a marker and not a prop
    *
-   * This replaced a `jump-start` slot that let a consumer supply its own button. The slot could
-   * carry an action and could not carry a *scroll*, so it could only ever serve the half of the
-   * problem that was not a scroll — and it left the consumer restating the button.
-   */
-  @property({ type: String }) jumpAsks: '' | 'start' | 'end' | 'both' = '';
-  /**
-   * Say when the reader comes within this many pixels of an end, so a list can load what lies beyond
-   * it — infinite scroll, in whichever direction the reader is going.
+   * This was `jumpAsks`, a prop naming the ends to ask about, and it was wrong in a way worth
+   * recording. The consumer that knows whether there is more is the one holding the rows — which in
+   * a composed panel is a fragment *inside* this element, while the prop is set by the fragment
+   * *outside* it. So the answer had to be approximated by something the outer one could see, which
+   * was the anchor: it asked at the far end always, and a fully-loaded short transcript therefore
+   * jumped where it should have scrolled.
    *
-   * Opt-in, and a distance rather than a flag, because the right distance is the consumer's
-   * question: it is how far ahead of the reader a page has to be fetched to arrive before they get
-   * there, which depends on how big a page is and how slow the backend is. `0` is off, and off is
-   * the default — an event nobody listens to is API kept working for nothing.
-   *
-   * They fire `nearstart` and `nearend`, **once per approach**: sitting at an edge does not repeat
-   * it, and scrolling away past the threshold re-arms it. So a consumer's handler is "fetch the next
-   * page", not "fetch the next page if I am not already fetching one". The first observation never
-   * fires — a list at rest is already against one of its ends, and reporting that as an approach is
-   * a page nobody asked for. See `#checkEdge`.
-   *
-   * ## Both, because a window has two directions
-   *
-   * A list anchored to its newest end grows backwards and wants `nearStart`. The same list read from
-   * its beginning grows forwards and wants `nearEnd` — and a transcript does both, depending on
-   * which end the reader asked to read from. Offering only one meant that reading a conversation
-   * from the start stopped dead at the bottom of the first page, with no way to go on.
-   *
-   * ## Nothing needs to hold the reader's place
-   *
-   * Content loaded in above a reader would ordinarily push everything they are looking at down by
-   * its own height. Under `pin='end'` it does not: the scroll position is measured from the bottom,
-   * so a prepend leaves them exactly where they were. That is the browser's doing, not ours — an
-   * earlier version of this spent a stored distance, a deadline and a restore pass on it.
+   * A marker is read where the knowledge is. It also removes a duplicated condition: the element
+   * that carries it is the "more is coming" line, which is already rendered under exactly this test.
    */
   @property({ type: Number }) nearStart = 0;
   /** The same, for the other end — see `nearStart`. */
@@ -562,9 +537,16 @@ export default class ScrollArea extends DesignSystemElement {
     this._showEnd = scrollable && offers('end') && this.#fromEnd() > AT_END_PX;
   }
 
-  /** Whether this end's button asks the consumer rather than scrolling — see `jumpAsks`. */
+  /**
+   * Whether this end's button asks the consumer rather than scrolling.
+   *
+   * Read from the light DOM on the press rather than watched, because it is only ever needed at the
+   * moment somebody presses — and reading it then is also what makes it current: the marker appears
+   * and disappears as pages load, and a cached answer would be one page out of date exactly when it
+   * mattered.
+   */
   #asks(which: 'start' | 'end'): boolean {
-    return this.jumpAsks === which || this.jumpAsks === 'both';
+    return Boolean(this.querySelector(`[data-we-more='${which}']`));
   }
 
   #onJumpStart = (): void => {
