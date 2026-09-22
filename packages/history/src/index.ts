@@ -143,19 +143,22 @@ export function createHistory(signal: SignalFactory, options: { limit?: number }
   */
   let running = false;
 
+  /** The entry a press would replay, which is the top of the stack. */
+  const top = (stack: HistoryEntry[]) => (stack.length ? stack[stack.length - 1] : undefined);
+
   function publish(): void {
     setState({
       canUndo: past.length > 0,
       canRedo: future.length > 0,
-      undoLabel: past.at(-1)?.label ?? '',
-      redoLabel: future.at(-1)?.label ?? '',
+      undoLabel: top(past)?.label ?? '',
+      redoLabel: top(future)?.label ?? '',
     });
   }
 
   /** Drop entries the world has moved past, from the top down, and hand back the first that holds. */
   function nextApplicable(stack: HistoryEntry[], direction: 'undo' | 'redo'): HistoryEntry | undefined {
     while (stack.length) {
-      const entry = stack[stack.length - 1];
+      const entry = stack[stack.length - 1]!;
       if (entry.scope !== scope || entry.stale?.(direction) === true) {
         stack.pop();
         continue;
