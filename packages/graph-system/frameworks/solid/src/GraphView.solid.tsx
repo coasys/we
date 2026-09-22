@@ -184,6 +184,16 @@ const ARROW_LENGTH = 6;
 const PENDING_WIDTH = 2;
 
 /**
+ * The frame round a multi-card selection, as a node id.
+ *
+ * It is not a node and never reaches the store, the index, a layout or a metric — it exists so the
+ * frame can be placed by `anchorStyle`, which takes a `NodeEntry`. Given an id at all so that
+ * anything reading one off the chrome layer during a debug session sees a name rather than an empty
+ * string it might mistake for a real node's.
+ */
+const SELECTION_FRAME_ID = 'we-graph://selection';
+
+/**
  * How near a node's centre an anchor drag counts as "no side at all", as a fraction of its half-size.
  *
  * The way back out. An anchor overrules the geometry for as long as it exists, so there has to be a
@@ -1076,6 +1086,42 @@ export function GraphView(props: GraphViewProps) {
    * leaves the chrome mounted — a picker the bar opened stays open, for the reason the rows exist.
    */
   const selectedRows = createMemo(() => nodeRows().filter((row) => row.entry.selected));
+
+  /**
+   * Whether the selection is a *set* rather than a card.
+   *
+   * The line the whole chrome layer turns on. One card wears its own furniture — eight resize
+   * handles, four connect dots and a bar of controls about that record. Twelve cards wearing the
+   * same thing is not a busier version of that, it is a different and unusable screen: ninety-six
+   * grab targets over the content they exist to reveal, and twelve identical bars none of which is
+   * the one you meant. So above one, the per-card chrome goes away entirely and a single frame round
+   * the selection takes its place. The frame itself is built further down, where `boxOf` is.
+   */
+  const multiSelected = createMemo(() => selectedRows().length > 1);
+
+  /**
+   * Which selection-wide controls are offered.
+   *
+   * `when` has to hold for **every** selected node rather than for any of them: "accept" over a
+   * selection where two cards are suggestions and nine are settled would be a button that does
+   * something to a fifth of what is highlighted, which is the shape of mistake nobody notices until
+   * afterwards.
+   */
+  const selectionActions = createMemo(() => {
+    const rows = selectedRows();
+    if (rows.length < 2) return [];
+    return (props.selectionActions ?? []).filter((action) =>
+      rows.every(({ entry }) => matches(entry.node, action.when)),
+    );
+  });
+
+  /** Every selected node that stands for a record — what a selection-wide action is reported with. */
+  const selectedRecords = createMemo(() =>
+    selectedRows().flatMap(({ entry }) => {
+      const at = parseAddress(entry.node.id);
+      return at?.kind === 'entity' && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
+    }),
+  );
 
   /**
    * The rows wearing a fold count — folded cards, less any that is selected.
@@ -2233,6 +2279,57 @@ export function GraphView(props: GraphViewProps) {
     };
   }
 
+  /**
+   * The box round everything selected, in world units — centre and size, as a node reports itself.
+   *
+   * Deliberately the same shape a node's own box has, so the frame and its bar are placed by
+   * `anchorStyle` and by exactly the stylesheet rules that place a card's. The bar then sits the
+   * same distance above a selection as it does above one card and scales with the camera the same
+   * way, with no second copy of that placement to drift out of step with the first.
+   *
+   * Measured through `boxOf`, so a card mid-resize contributes the size it is being dragged to
+   * rather than the one the data still holds.
+   *
+   * Declared here rather than beside `selectedRows` because `createMemo` runs its body eagerly, and
+   * `boxOf` reads the `resizing` signal declared above this line — see the note in `mount.test.tsx`
+   * about the last memo that reached backwards.
+   */
+  const selectionBox = createMemo(() => {
+    const rows = selectedRows();
+    if (rows.length < 2) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const { entry } of rows) {
+      const box = boxOf(entry);
+      const halfWidth = (box.width ?? entry.visual.size * 2) / 2;
+      const halfHeight = (box.height ?? entry.visual.size * 2) / 2;
+      minX = Math.min(minX, box.x - halfWidth);
+      minY = Math.min(minY, box.y - halfHeight);
+      maxX = Math.max(maxX, box.x + halfWidth);
+      maxY = Math.max(maxY, box.y + halfHeight);
+    }
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, width: maxX - minX, height: maxY - minY };
+  });
+
+  /**
+   * The selection frame, dressed as a node so `anchorStyle` can place it.
+   *
+   * A synthetic entry rather than a second placement path: everything downstream — the transform,
+   * `--node-width`, `--node-height`, the bar's lift — is written against a `NodeEntry`, and giving
+   * the frame its own arithmetic would mean maintaining the two in step forever.
+   */
+  const selectionEntry = createMemo(() => {
+    const box = selectionBox();
+    if (!box) return null;
+    return {
+      node: { id: SELECTION_FRAME_ID, kind: 'selection', type: '' },
+      at: { x: box.x, y: box.y },
+      visual: { shape: 'rect', size: 0, width: box.width, height: box.height },
+    } as unknown as NodeEntry;
+  });
+
   /** This graph's endpoint grips, at the camera's scale — see `edgeEndAt`. */
   const edgeEndUnder = (at: Point): string | null =>
     /*
@@ -2302,13 +2399,16 @@ export function GraphView(props: GraphViewProps) {
     const ids = engine.getSelection();
     if (!ids.length) return;
     // Only an entity node stands for a record. A property, a literal or a synthetic cluster has
-    // nothing to delete, so it reports as a selection with no id rather than as no press at all.
+    // nothing to delete, so it is left out of `records` rather than reported as an empty one.
+    const records = selectedRecords();
     const at = ids.length === 1 ? parseAddress(ids[0]) : null;
     event.preventDefault();
     report({
       count: ids.length,
-      ...(ids.length === 1 && { kind: 'node' as const }),
+      kind: 'node',
+      // Still filled for a selection of one, which is what every existing consumer reads.
       ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(records.length ? { records } : {}),
     });
   }
 
@@ -2955,8 +3055,12 @@ export function GraphView(props: GraphViewProps) {
 
           Same anchor and the same custom properties the node publishes, so the stylesheet places
           everything exactly as it did against the node.
+
+          **One card only.** Above that the selection wears a single frame instead — see the layer
+          after this one. Handles, dots and a bar are all statements about *this record*, and twelve
+          copies of them is ninety-six grab targets over the content they exist to reveal.
         */}
-        <For each={selectedRows()}>
+        <For each={multiSelected() ? [] : selectedRows()}>
           {({ entry }) => (
             <div
               class="we-graph__chrome"
@@ -3194,6 +3298,115 @@ export function GraphView(props: GraphViewProps) {
             </div>
           )}
         </For>
+
+        {/*
+          The frame round a selection of several, and the one bar that acts on it.
+
+          It replaces the per-card chrome rather than joining it — see the `multiSelected` gate on
+          the layer above. What is drawn is deliberately little: an outline saying what is caught,
+          a count saying how much, and whatever the interface offers for a set.
+
+          Placed by `anchorStyle` off a synthetic entry, so the bar is lifted and counter-scaled by
+          the same stylesheet rules that place a single card's. The outline is a `div` sized from the
+          same two custom properties rather than an SVG rect, because it belongs to the chrome layer
+          — which is already the transformed, per-node coordinate space these vars are written in.
+        */}
+        <Show when={selectionEntry()}>
+          {(entry) => (
+            <div class="we-graph__chrome" style={anchorStyle(entry())}>
+              <div class="we-graph__selection" />
+              <div
+                class="we-graph__actions"
+                // The same two presses the per-card bar stops, and for the same reason: the canvas
+                // hit-tests in world space from a press on the layer beneath, so one that reached it
+                // would start dragging whichever card happens to be under the bar.
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Row ay="center" gap="100" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
+                  {/*
+                    How many, first — the one thing a frame cannot say for itself. A rectangle round
+                    a dense patch of canvas does not tell you whether it caught nine cards or
+                    eleven, and that is exactly what somebody about to press a bin wants to know.
+                  */}
+                  <we-text variant="label" color="text-muted" px="200">
+                    {`${selectedRows().length} selected`}
+                  </we-text>
+                  <For each={selectionActions()}>
+                    {(action) => {
+                      const report = (extra: { value?: unknown; preview?: boolean } = {}) =>
+                        props.onSelectionAction?.({
+                          action: action.id,
+                          records: selectedRecords(),
+                          count: selectedRecords().length,
+                          ...extra,
+                        });
+                      const control = () => (action.control ? props.host?.nodeControls?.[action.control] : undefined);
+                      return (
+                        <Show
+                          when={control()}
+                          fallback={
+                            <we-tooltip content={action.title ?? action.id}>
+                              <we-button
+                                variant="ghost"
+                                square
+                                size="md"
+                                label={action.title ?? action.id}
+                                color={
+                                  action.tone === 'positive'
+                                    ? 'success-text'
+                                    : action.tone === 'danger'
+                                      ? 'danger-text'
+                                      : 'text-muted'
+                                }
+                                prop:hoverProps={
+                                  action.tone === 'positive'
+                                    ? { color: 'success' }
+                                    : action.tone === 'danger'
+                                      ? { color: 'danger' }
+                                      : { color: 'text' }
+                                }
+                                onClick={() => report()}
+                              >
+                                <we-icon name={action.icon ?? 'dot'} />
+                              </we-button>
+                            </we-tooltip>
+                          }
+                        >
+                          {(component) => (
+                            <div class="we-graph__control">
+                              {/*
+                                A set has no single value, so the control opens on the first selected
+                                card that carries one. That is a starting point for what is about to
+                                be set, not a readout of what the set is — and saying nothing at all
+                                would leave a colour picker opening on black every time.
+                              */}
+                              <Dynamic
+                                component={component()}
+                                node={selectedRows()[0]?.entry.node}
+                                value={
+                                  action.value
+                                    ? selectedRows()
+                                        .map(({ entry: row }) => readField(row.node, action.value!.from))
+                                        .find((value) => value !== undefined && value !== '')
+                                    : undefined
+                                }
+                                fill={color(selectedRows()[0]?.entry.visual.color, 'primary-500')}
+                                title={action.title}
+                                onPreview={(value: unknown) => report({ value, preview: true })}
+                                onChange={(value: unknown) => report({ value })}
+                              />
+                            </div>
+                          )}
+                        </Show>
+                      );
+                    }}
+                  </For>
+                </Row>
+              </div>
+            </div>
+          )}
+        </Show>
 
         {/*
           What a folded card is holding, on the card, whether or not anybody has selected it.

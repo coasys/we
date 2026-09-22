@@ -319,6 +319,40 @@
   --actions-lift: calc(var(--connect-reach) + var(--connect-hit) / 2 + 4px);
 }
 
+/*
+  The outline round a selection of several cards.
+
+  Dashed, where a single card's selection ring is solid, because the two say different things: a ring
+  is drawn on a thing, and this is drawn round a group that has no edges of its own. Dashes are the
+  ordinary way to spell "this boundary is the tool's, not the content's".
+
+  Sized from the same two custom properties a card's chrome is, and centred on the anchor the same
+  way — so the bar above it lands exactly where a card's bar lands. Every length is divided by the
+  camera, so the outline stays one screen pixel and its clearance stays eight at any zoom, which is
+  what the hover ring and the connect handles already do.
+*/
+.we-graph__selection {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: content-box;
+  width: var(--node-width);
+  height: var(--node-height);
+
+  // Centres the box on the anchor, which is the middle of the selection.
+  transform: translate(-50%, -50%);
+
+  // Room to read the outline as surrounding the cards rather than resting on them. The negative
+  // margin takes the padding back out of the box so the centring above still lands.
+  padding: calc(8px / var(--graph-zoom));
+  margin: calc(-8px / var(--graph-zoom));
+  border: calc(1px / var(--graph-zoom)) dashed var(--we-color-primary-500);
+  border-radius: calc(6px / var(--graph-zoom));
+
+  // Chrome, not content: it must never take a press meant for a card underneath it.
+  pointer-events: none;
+}
+
 .we-graph__dot {
   position: absolute;
   left: 0;

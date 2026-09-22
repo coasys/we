@@ -497,12 +497,18 @@ export interface GraphViewProps {
    * keystrokes from whatever is around it.
    *
    * Fires only when something is selected — a press with an empty selection means nothing and has
-   * nothing to report. `recordId`/`recordType` are filled **only when the selection is exactly one
-   * record**: one selected node, or the selected edge, which are alternatives rather than layers (see
-   * the engine's `selectEdge`). `count` says how many, so an interface can tell one from several
-   * rather than guessing from an absence. Several is left unhandled deliberately — the host's delete
-   * confirmation is modal and per record, so firing it N times would stack N dialogs, and a batch
-   * confirmation is a thing to design rather than to fall into.
+   * nothing to report. `recordId`/`recordType` are filled when the selection is exactly one record:
+   * one selected node, or the selected edge, which are alternatives rather than layers (see the
+   * engine's `selectEdge`). `count` says how many.
+   *
+   * `records` carries **every** selected node that stands for one, so a multi-card selection can be
+   * acted on as a set. It is the whole selection rather than the difference: a caller wanting the
+   * single case reads `recordId` as it always did, and one wanting the set reads this, which holds
+   * that one record too.
+   *
+   * Nothing here loops the host's confirmation. A delete of several is one question about a set —
+   * see `spaceStore.deleteRecords`, which asks it once — and firing a per-record confirmation N
+   * times would stack N dialogs.
    *
    * Backspace counts as delete. On a Mac it is *the* delete key, and a canvas that answered only to
    * the one the manual calls Delete would be inoperable on half the keyboards it runs on.
@@ -512,8 +518,45 @@ export interface GraphViewProps {
     recordType?: string;
     /** Which of the two selections this was, for an interface that treats them differently. */
     kind?: 'node' | 'edge';
-    /** How many things are selected. `1` is the case the ids above are filled for. */
+    /** How many things are selected. */
     count: number;
+    /** Every selected node that stands for a record. Empty for a selected edge, or for synthetic nodes. */
+    records?: { recordId: string; recordType: string }[];
+  }) => void;
+  /**
+   * Controls offered above the selection when **several** cards are selected.
+   *
+   * Its own list rather than a flag on `nodeActions`, because the two answer different questions and
+   * mostly have different answers. A card's own bar is about *that* card — connect it, resize it,
+   * accept the suggestion it is making — and almost none of that means anything said about twelve
+   * cards at once. What does is a small set: recolour them, take them off the canvas, delete them.
+   *
+   * Drawn on a bounding box round the whole selection, and the per-card chrome is **not** drawn
+   * while it is up. Twelve selected cards used to mean twelve action bars, forty-eight connect dots
+   * and ninety-six resize handles over the canvas, which is not a busier version of the single-card
+   * case but a different and unusable one.
+   *
+   * Reported through {@link onSelectionAction}, once, with every record in the selection. A set has
+   * no single colour, so a `control`'s `value` opens on the first selected card that carries one —
+   * a starting point for what is about to be set rather than a readout of what the set is.
+   *
+   * `when` is asked of **every** selected node and must match all of them, which is what keeps an
+   * answer like "accept" off a selection where only some cards are asking a question.
+   */
+  selectionActions?: NodeAction[];
+  /**
+   * One of {@link selectionActions} was pressed, for every record selected.
+   *
+   * The counterpart of `onNodeAction` and deliberately not a repeat of it: a set is reported once
+   * with its members, rather than once per member, so an interface writes one confirmation and one
+   * commit instead of looping something that was designed to be asked about a single card.
+   */
+  onSelectionAction?: (payload: {
+    action: string;
+    records: { recordId: string; recordType: string }[];
+    count: number;
+    value?: unknown;
+    preview?: boolean;
   }) => void;
   /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.

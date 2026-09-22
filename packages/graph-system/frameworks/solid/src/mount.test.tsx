@@ -619,3 +619,128 @@ describe('the selection marquee', () => {
     expect(marqueeIn(host)).not.toBeNull();
   });
 });
+
+/**
+ * A selection of several wears one frame, not one set of furniture per card.
+ *
+ * The rule the whole chrome layer turns on, and the reason multi-select needed design rather than
+ * just a bigger Set: handles, connect dots and an action bar are each a statement about *this
+ * record*, and twelve copies of them is ninety-six grab targets over the content they exist to
+ * reveal. Worth a test because nothing about it fails loudly — the wrong version renders, it is
+ * simply unusable.
+ */
+describe('the chrome over a selection of several', () => {
+  const task = (id: string, x: number, y: number) => ({
+    id: entityAddress('ds', 'TaskBlock', id),
+    kind: 'entity' as const,
+    type: 'TaskBlock',
+    label: id,
+    data: { x, y },
+  });
+
+  const literal = { literal: true as const, nodes: [task('t1', 0, 0), task('t2', 200, 0)], edges: [] };
+
+  async function until(check: () => boolean, tries = 50): Promise<void> {
+    for (let i = 0; i < tries && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+  }
+
+  const pointer = (type: string, x: number, y: number, extra: PointerEventInit = {}) =>
+    new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 1, ...extra });
+
+  /** Mount a canvas of two cards and sweep a rectangle over however many `to` reaches. */
+  async function swept(to: number, props: Parameters<typeof GraphView>[0] = {}) {
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      nodeStyle: [{ style: { shape: 'card', width: 60, height: 40 } }],
+      behaviours: [{ type: 'marquee-select', options: { armed: true } }, 'select', 'pan-zoom'],
+      onNodeResize: () => undefined,
+      onEdgeCreate: () => undefined,
+      ...props,
+    });
+    await until(() => host.querySelectorAll('.we-graph__node').length > 1);
+    const surface = host.querySelector('.we-graph__surface') as HTMLElement;
+    surface.dispatchEvent(pointer('pointerdown', -80, -60));
+    surface.dispatchEvent(pointer('pointermove', to, 60));
+    surface.dispatchEvent(pointer('pointerup', to, 60, { buttons: 0 }));
+    await until(() => host.querySelectorAll('.we-graph__node--selected').length > 0);
+    return host;
+  }
+
+  it('draws one frame and no per-card furniture', async () => {
+    const host = await swept(260);
+
+    expect(host.querySelectorAll('.we-graph__node--selected')).toHaveLength(2);
+    expect(host.querySelector('.we-graph__selection')).not.toBeNull();
+    expect(host.querySelectorAll('.we-graph__resize')).toHaveLength(0);
+    expect(host.querySelectorAll('.we-graph__connect')).toHaveLength(0);
+  });
+
+  it('keeps the per-card furniture when the sweep caught only one', async () => {
+    const host = await swept(60);
+
+    expect(host.querySelectorAll('.we-graph__node--selected')).toHaveLength(1);
+    expect(host.querySelector('.we-graph__selection')).toBeNull();
+    expect(host.querySelectorAll('.we-graph__resize')).toHaveLength(8);
+  });
+
+  it('says how many are caught, which the outline cannot', async () => {
+    const host = await swept(260);
+
+    expect(host.querySelector('.we-graph__actions')?.textContent).toContain('2 selected');
+  });
+
+  it('reports a selection action once, with every record in it', async () => {
+    const seen: unknown[] = [];
+    const host = await swept(260, {
+      selectionActions: [{ id: 'remove', icon: 'trash', title: 'Remove' }],
+      onSelectionAction: (payload) => seen.push(payload),
+    });
+
+    (host.querySelector('.we-graph__actions we-button') as HTMLElement)?.click();
+
+    expect(seen).toEqual([
+      {
+        action: 'remove',
+        count: 2,
+        records: [
+          { recordId: 't1', recordType: 'TaskBlock' },
+          { recordId: 't2', recordType: 'TaskBlock' },
+        ],
+      },
+    ]);
+  });
+
+  it('offers only what holds for every card in the selection', async () => {
+    // `when` over a set has to mean "all of them". A control that acted on a fifth of what is
+    // highlighted is the kind of mistake nobody notices until afterwards.
+    const host = await swept(260, {
+      selectionActions: [
+        { id: 'both', icon: 'check', title: 'Both', when: { type: 'TaskBlock' } },
+        { id: 'neither', icon: 'x', title: 'Neither', when: { label: 't1' } },
+      ],
+    });
+
+    // Read as a property rather than an attribute: the renderer assigns to custom elements as DOM
+    // properties, which is how a `we-*` primitive takes anything that is not a string.
+    const labels = [...host.querySelectorAll('.we-graph__actions we-button')].map(
+      (el) => (el as HTMLElement & { label?: string }).label,
+    );
+    expect(labels).toEqual(['Both']);
+  });
+
+  it('reports every selected record on a delete press', async () => {
+    const seen: { count: number; records?: unknown[] }[] = [];
+    const host = await swept(260, { onDeleteSelection: (payload) => seen.push(payload) });
+    const surface = host.querySelector('.we-graph__surface') as HTMLElement;
+
+    surface.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].count).toBe(2);
+    expect(seen[0].records).toEqual([
+      { recordId: 't1', recordType: 'TaskBlock' },
+      { recordId: 't2', recordType: 'TaskBlock' },
+    ]);
+  });
+});
