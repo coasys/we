@@ -429,9 +429,24 @@ export interface RecordStore {
    * the canvas owns survives as an unplaced one in the tray, where it can be dragged back or deleted
    * outright.
    *
-   * Takes one id or a list of them; a selection is not a special case. **Undoable**, and that is why
-   * it is what the canvas binds its Delete key to — tidying an arrangement is a decision somebody
-   * can take back, where `deleteRecords` is not.
+   * Takes one id or a list of them; a selection is not a special case, and it is undoable.
+   *
+   * ## It is not "get this off my screen", and the difference is not visible from here
+   *
+   * This deletes the *placement*. Whether that removes the card depends on something this action
+   * cannot see: how the record got onto the canvas in the first place.
+   *
+   * - A record **placed** on a canvas it does not belong to — something dragged in from elsewhere in
+   *   the space — really does come off. This is the action for that.
+   * - A record the canvas **owns** does not. The canvas seed reads owned-but-unplaced records back
+   *   as *the tray* (see `canvas.ts`), so the card returns on the next read and the `manual` layout
+   *   parks it in the corner of the view. On the workshop's canvas, where almost every card is
+   *   extraction output owned by the call, that is every card: erasing one teleports it to the
+   *   top-left rather than removing it.
+   *
+   * So do **not** offer this as a general "remove" control beside a delete — it was, briefly, and it
+   * read as cards vanishing to somewhere nobody could find. A surface that can tell the two cases
+   * apart (the inspector knows the record) may reasonably offer it for the first.
    */
   removeFromCanvas: (canvas: string, node: string | string[]) => Promise<void>;
   /**
@@ -443,7 +458,9 @@ export interface RecordStore {
    * dialog per card, which is why this exists.
    *
    * Irreversible, and outside the undo history on purpose: an AD4M delete drops the links, and a
-   * re-create earns a new id that nothing pointing at the old one would follow.
+   * re-create earns a new id that nothing pointing at the old one would follow. That is also why it
+   * is safe to bind to the Delete key despite being irreversible — the host's dialog is in front of
+   * it, and there is no reversible neighbour to offer instead (see `removeFromCanvas`).
    */
   deleteRecords: (records: { recordId?: string; recordType?: string }[] | undefined) => Promise<void>;
   /**

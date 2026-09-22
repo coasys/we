@@ -742,27 +742,36 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('"args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"}]');
   });
 
-  it('answers the delete key on cards by taking them off the canvas, not by ending them', () => {
+  it('asks once about a whole selection rather than once per card', () => {
     /*
-      The deliberate change, and the reason to pin it: this key used to call `record.delete` on a
-      single selected card.
-
-      A rubber-band selection is nearly always somebody tidying. "These do not belong here" is what
-      they mean far more often than "these should not exist", and the first is undoable where the
-      second is not — an AD4M delete drops the links and a re-create earns a new id. So the reflex
-      key does the reversible thing to any number of cards, and ending records is on the selection's
-      own bar, where it has to be reached for.
+      The host's delete confirmation is modal and phrased per record, so a template looping
+      `record.delete` over a selection stacks a dialog per card. `deleteRecords` raises one and
+      counts what is in the list, which is what made multi-select delete a thing to design.
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain('"$action":"recordStore.removeFromCanvas"');
-    expect(json).toContain('"condition":{"$":"count(event.records)"}');
-
-    // Ending them is offered, once, for the whole set — `deleteRecords` raises the host's own
-    // confirmation a single time, where a template looping `record.delete` would stack a dialog per
-    // card. That is what made multi-select delete a thing to design rather than to fall into.
     expect(json).toContain('"$action":"recordStore.deleteRecords"');
+    expect(json).toContain('"condition":{"$":"count(event.records)"}');
     expect(json).toContain('"id":"delete"');
+  });
+
+  it('offers no "take off the canvas" beside the delete, because it could not work here', () => {
+    /*
+      Pinned as an absence, which is the only way a decision like this survives.
+
+      There was one, briefly, on the argument that a reflex key should do the reversible thing. It
+      is wrong on *this* canvas: almost every card is extraction output owned by the call, and the
+      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
+      returned the card on the next read and the `manual` layout parked it in the corner. The
+      control read as cards vanishing to somewhere nobody could find.
+
+      `recordStore.removeFromCanvas` is still right for a record merely *placed* here, which is a
+      distinction a bar over a mixed selection cannot draw.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).not.toContain('"eraser"');
+    expect(json).not.toContain('recordStore.removeFromCanvas');
   });
 
   it('can sweep a selection, carry it away, and put an arrangement back', () => {
@@ -783,6 +792,24 @@ describe('the workshop template’s call selection', () => {
     // "point the stack here" call for this template to have forgotten.
     expect(json).toContain('"$action":"recordStore.undoCanvas"');
     expect(json).toContain('"$action":"recordStore.redoCanvas"');
+  });
+
+  it('puts undo where it can be reached without the canvas having focus', () => {
+    /*
+      The keys answer only while the canvas has focus, and clicking into the inspector to edit a
+      label takes focus away — so the press that follows goes nowhere. This canvas has no toolbar of
+      its own, so the buttons live in the workshop's top chrome, which is already a row of pills.
+
+      Gated on the canvas page: the kanban and the calendar have no history of their own, and a
+      permanently disabled pill beside them would be furniture that never does anything.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"arrow-u-up-left"');
+    expect(json).toContain('"arrow-u-up-right"');
+    expect(json).toContain('!recordStore.canvasHistory.canUndo');
+    // Disabled rather than hidden, and each says what it would put back.
+    expect(json).toContain('recordStore.canvasHistory.undoLabel');
   });
 
   it('offers a connection’s kind where the line is read, not only where it was drawn', () => {

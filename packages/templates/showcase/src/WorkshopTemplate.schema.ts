@@ -804,6 +804,98 @@ const CHROME_BOTTOM = `calc(${CHROME_TOP} + ${PILL_HEIGHT})`;
  * *content*, computed from the sidebar and dock insets, so a neighbour that changes width — or
  * disappears — is nothing to it.
  */
+/**
+ * Undo and redo, as a pill of their own beside the call's.
+ *
+ * ## Why a pill rather than a control on the canvas
+ *
+ * The canvas has no toolbar — its chrome is the workshop's panels — so there was nowhere to put
+ * these, and the keys alone are not enough. They answer only while the *canvas* has focus, and
+ * clicking into the inspector to edit a label takes focus away, so the press that follows goes
+ * nowhere. Buttons work wherever focus is. They are also the only sign anywhere that the canvas
+ * remembers what you did to it, which a key by itself can never be.
+ *
+ * This bar is already a row of pills, each sized by its own contents and none disturbing the
+ * others, so a third one costs nothing and reads as what it is.
+ *
+ * ## Only where there is something to undo
+ *
+ * Gated on the canvas page: the kanban and the calendar have no history of their own yet, and a
+ * permanently disabled pill beside them would be furniture that never does anything. Within the
+ * canvas the buttons *are* disabled rather than hidden — a control that appears and disappears as
+ * you work is harder to aim at than one that greys — and each says what it would put back, which is
+ * the one thing a pair of arrows cannot.
+ */
+const historyPill: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${PAGE_EXPR} == '${ROUTE.canvas}'` },
+    then: {
+      type: 'Row',
+      props: {
+        gap: '100',
+        ay: 'center',
+        p: '200',
+        // The same family as the pills beside it — see the switcher for why the theme's control
+        // shape rather than a fixed radius.
+        r: 'control',
+        bg: 'surface-raised',
+        border: '1px solid border',
+        shadow: 'lg',
+        // Two square controls and nothing that can grow: it must not absorb room a truncating
+        // title next to it is giving up.
+        flexShrink: '0',
+      },
+      children: [
+        {
+          type: 'we-tooltip',
+          props: {
+            placement: 'bottom',
+            content: {
+              $: "recordStore.canvasHistory.undoLabel ? `Undo ${recordStore.canvasHistory.undoLabel}` : 'Nothing to undo'",
+            },
+          },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                square: true,
+                label: 'Undo',
+                disabled: { $: '!recordStore.canvasHistory.canUndo' },
+                onClick: { $action: 'recordStore.undoCanvas', args: [CALL] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-u-up-left' } }],
+            },
+          ],
+        },
+        {
+          type: 'we-tooltip',
+          props: {
+            placement: 'bottom',
+            content: {
+              $: "recordStore.canvasHistory.redoLabel ? `Redo ${recordStore.canvasHistory.redoLabel}` : 'Nothing to redo'",
+            },
+          },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                square: true,
+                label: 'Redo',
+                disabled: { $: '!recordStore.canvasHistory.canRedo' },
+                onClick: { $action: 'recordStore.redoCanvas', args: [CALL] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-u-up-right' } }],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const callChrome: SchemaNode = {
   type: 'Row',
   props: {
@@ -834,7 +926,7 @@ const callChrome: SchemaNode = {
     */
     minHeight: PILL_HEIGHT,
   },
-  children: [callPill],
+  children: [callPill, historyPill],
 };
 
 /** The model the selected card is of — the inspector's whole subject, named once. */
@@ -3281,26 +3373,25 @@ const canvas: SchemaNode = {
       of those is disproportionate — tidying up a canvas, where the answer to "this line is wrong" is
       wanted in the same beat as noticing it.
 
-      **On cards it takes them off the canvas rather than ending them**, which is a change from what
-      this key used to do, and the deliberate one. A rubber-band selection is nearly always somebody
-      tidying, "these do not belong here" is the thing they mean far more often than "these should
-      not exist", and taking a card off a canvas is undoable where deleting a community's content is
-      not. Ending records is still offered, on the selection's own bar, where it has to be reached
-      for rather than pressed by reflex — and there it goes through `deleteRecords`, which asks once
-      for the whole set instead of stacking a dialog per card.
+      Cards go through `deleteRecords`, which raises the host's confirmation **once** for the whole
+      selection. Looping `record.delete` over a set stacks a dialog per card, which is what made
+      multi-select delete a thing to design rather than to fall into.
 
-      A line is the exception and keeps the old behaviour: a connection has no placement to remove,
-      so taking it off the canvas and deleting it are the same act. It goes through `record.delete`,
-      which the host guards, so the keystroke still asks before it destroys anything.
+      It was briefly the case that this took cards *off the canvas* instead, on the argument that the
+      reversible act is the better one to put behind a reflex key. That was wrong here, and worth
+      recording: almost every card on this canvas is extraction output owned by the call, and the
+      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
+      returned the card on the next read and parked it in the corner. The reversible act does not
+      exist on this canvas, so the guard in front of the key is the dialog.
+
+      A line goes through `record.delete`, which is the same guard by a different route: a connection
+      is a single record and there is no set to count.
     */
     onDeleteSelection: [
       {
         $if: {
           condition: { $: 'count(event.records)' },
-          then: {
-            $action: 'recordStore.removeFromCanvas',
-            args: [CALL, { $: 'event.records.map(r, r.recordId)' }],
-          },
+          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
         },
       },
       {
@@ -3332,24 +3423,17 @@ const canvas: SchemaNode = {
     */
     carry: true,
     /*
-      What a selection of several offers. Three, and they are the three that mean something said
-      about a set — recolour them, take them off this canvas, end them.
+      What a selection of several offers. Two, and they are the two that mean something said about a
+      set — recolour them, or end them.
+
+      A "take off the canvas" sat here and has gone; see `onDeleteSelection` for why it could not
+      work on this canvas.
     */
     selectionActions: [
       { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
-      { id: 'remove', icon: 'eraser', title: 'Take off the canvas' },
       { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
     ],
     onSelectionAction: [
-      {
-        $if: {
-          condition: { $: "event.action == 'remove'" },
-          then: {
-            $action: 'recordStore.removeFromCanvas',
-            args: [CALL, { $: 'event.records.map(r, r.recordId)' }],
-          },
-        },
-      },
       {
         $if: {
           condition: { $: "event.action == 'delete'" },

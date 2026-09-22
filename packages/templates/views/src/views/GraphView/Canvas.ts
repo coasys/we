@@ -188,32 +188,26 @@ const canvasCards: SchemaNode = {
     /*
       What a selection of several offers.
 
-      A short list on purpose. Connect, resize and "open this card" are statements about one record
-      and mean nothing said about twelve at once; recolouring, taking them off the canvas and
-      deleting them are the three that do.
+      Two, and deliberately not three. Connect, resize and "open this card" are statements about one
+      record and mean nothing said about twelve at once; recolouring and deleting are what is left.
+
+      There was a "take off the canvas" here and it has gone, because it did not do what its icon
+      promised. A card the canvas *owns* has no position to lose: the seed reads owned-but-unplaced
+      records back as the tray, so erasing one returns it on the next read and the `manual` layout
+      parks it in the corner. See `recordStore.removeFromCanvas` — it is still the right action for
+      a record merely placed here, which is a distinction a bar over a mixed selection cannot draw.
     */
     selectionActions: [
       { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
-      { id: 'remove', icon: 'eraser', title: 'Take off the canvas' },
       { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
     ],
     /*
       One handler for the bar, branching on which was pressed — the shape a handler array is for.
 
-      `remove` takes the cards off this canvas and leaves the records alone, which is undoable;
-      `delete` ends them for everybody, which is not, and goes through the store action that raises
-      the host's confirmation **once** for the whole set rather than once per card.
+      `delete` ends the records for everybody, through the store action that raises the host's
+      confirmation **once** for the whole set rather than once per card.
     */
     onSelectionAction: [
-      {
-        $if: {
-          condition: { $: "event.action == 'remove'" },
-          then: {
-            $action: 'recordStore.removeFromCanvas',
-            args: [CANVAS, { $: 'event.records.map(r, r.recordId)' }],
-          },
-        },
-      },
       {
         $if: {
           condition: { $: "event.action == 'delete'" },
@@ -231,20 +225,20 @@ const canvasCards: SchemaNode = {
       },
     ],
     /*
-      Delete takes the cards off the canvas; it does not end the records.
+      Delete ends the records, whether one is selected or twenty.
 
-      The reversible half of the pair, and that is why it is what the key does. Tidying an
-      arrangement is nearly always what a rubber-band selection is for, and it is a decision
-      somebody can take back — where deleting a community's content is not. Ending the records is
-      offered too, on the bar, where it has to be reached for rather than pressed by reflex.
+      Through `deleteRecords` rather than `record.delete` because the host's confirmation is modal
+      and phrased per record: looping it over a selection stacks a dialog per card, which is what
+      made multi-select delete a thing to design rather than to fall into. One question, counting
+      what is in the list.
+
+      There is no reversible version of this to offer instead — taking a card off a canvas it is
+      owned by does not remove it — so the guard in front of the key is the dialog, not an undo.
     */
     onDeleteSelection: {
       $if: {
         condition: { $: 'count(event.records)' },
-        then: {
-          $action: 'recordStore.removeFromCanvas',
-          args: [CANVAS, { $: 'event.records.map(r, r.recordId)' }],
-        },
+        then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
       },
     },
     onNodeClick: selectNode,
