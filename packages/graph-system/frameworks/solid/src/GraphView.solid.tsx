@@ -2440,6 +2440,27 @@ export function GraphView(props: GraphViewProps) {
    * The listener writes nothing. See `onDeleteSelection` for why the graph reports rather than acts.
    */
   function onKeyDown(event: KeyboardEvent) {
+    /*
+      Undo and redo, on the surface for exactly the reason delete is.
+
+      A document-level listener would revert a card move while somebody is typing a label into the
+      inspector beside the canvas — the keystroke belongs to whatever has focus, and focus is the
+      only thing that can answer which of the two the reader meant. The cost is real and worth
+      stating: undo works while the canvas has focus and not while the inspector does. The
+      alternative silently steals the key from every text field on the page.
+
+      Both spellings of redo, because both are in use: Ctrl+Shift+Z everywhere, and Ctrl+Y on
+      Windows, where a good many people will only ever try that one.
+    */
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z' || event.key === 'y')) {
+      const redoing = event.key === 'y' || event.shiftKey;
+      const report = redoing ? props.onRedo : props.onUndo;
+      if (!report) return;
+      event.preventDefault();
+      report();
+      return;
+    }
+
     if (event.key !== 'Delete' && event.key !== 'Backspace') return;
     const report = props.onDeleteSelection;
     if (!report) return;
@@ -2576,14 +2597,14 @@ export function GraphView(props: GraphViewProps) {
         classList={{ 'we-graph__surface--pointer-focus': pointerFocused() }}
         onBlur={() => setPointerFocused(false)}
         /*
-          Focusable only where the delete key is bound — see `onDeleteSelection`.
+          Focusable only where a key is bound to something — see `onDeleteSelection` and `onUndo`.
 
-          A graph with no answer for the key has no reason to be a tab stop, and making every one of
-          them focusable would add a stop to every page holding a map, for a focus that does nothing.
-          `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can focus is
-          a canvas only a mouse can delete from.
+          A graph with no answer for any of them has no reason to be a tab stop, and making every one
+          of them focusable would add a stop to every page holding a map, for a focus that does
+          nothing. `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can
+          focus is a canvas only a mouse can delete from.
         */
-        tabIndex={props.onDeleteSelection ? 0 : undefined}
+        tabIndex={props.onDeleteSelection || props.onUndo || props.onRedo ? 0 : undefined}
         onKeyDown={onKeyDown}
         onPointerDown={(event) => {
           (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);

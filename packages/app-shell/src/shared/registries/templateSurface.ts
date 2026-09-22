@@ -755,7 +755,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     undoCanvas: action('content'),
     redoCanvas: action('content'),
-    scopeCanvasHistory: action('content'),
     canvasHistory: state('content'),
     resizeOnCanvas: action('content'),
     anchorOnCanvas: action('content'),

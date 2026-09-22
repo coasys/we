@@ -580,6 +580,21 @@ export interface GraphViewProps {
     preview?: boolean;
   }) => void;
   /**
+   * Ctrl/Cmd+Z, while the graph has focus.
+   *
+   * Reported, never performed — the graph has no write path, so what undoing *means* is the
+   * interface's, exactly as deleting is. On a canvas it is `recordStore.undoCanvas`; on a map with
+   * nothing to write it should be left unbound, and the key stays inert rather than doing something
+   * nobody can see.
+   *
+   * On the surface rather than the document, which is the same trade `onDeleteSelection` makes and
+   * has the same consequence: it works while the canvas has focus and not while the inspector beside
+   * it does. The alternative is stealing the key from every text field on the page.
+   */
+  onUndo?: () => void;
+  /** Ctrl/Cmd+Shift+Z, and Ctrl+Y — both spellings, because both are in use. */
+  onRedo?: () => void;
+  /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */

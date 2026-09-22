@@ -455,25 +455,23 @@ export interface RecordStore {
    */
   canvasHistory: Accessor<HistoryState>;
   /**
-   * Put back the last thing this agent did to the arrangement of the canvas on screen.
+   * Put back the last thing this agent did to the arrangement of **this** canvas.
    *
    * Arrangement only — a move, a resize, a colour, a card taken off. It is replayed as a **new
    * write** rather than as a rollback, so a peer's changes in between are not discarded, and a card
    * a peer has moved since is skipped rather than dragged back out from under them. See
    * `@we/history` for why that is the only honest shape on shared data.
-   */
-  undoCanvas: () => Promise<void>;
-  /** Do again what `undoCanvas` put back, on the same terms. */
-  redoCanvas: () => Promise<void>;
-  /**
-   * Point the undo stack at a canvas, forgetting anything remembered about another.
    *
-   * Called by whatever knows which canvas is on screen — the template, as its picker changes. Undo
-   * is about what the reader can see, and replaying a move onto a canvas they navigated away from
-   * is the most confusing thing the key could do. Idempotent, so it is safe to bind to a value that
-   * re-resolves on every render.
+   * **The canvas is an argument rather than something the store is told about separately**, and
+   * that is the whole of the scoping. Undo is about what the reader can see, so replaying a move
+   * onto a canvas they navigated away from is the most confusing thing the key could do — and a
+   * separate "point the stack here" action is one a template can forget to wire, with no symptom
+   * until somebody switches canvas and presses the key. Passing it at the point of use cannot be
+   * forgotten, because there is nothing else to pass.
    */
-  scopeCanvasHistory: (canvas: string) => void;
+  undoCanvas: (canvas: string) => Promise<void>;
+  /** Do again what `undoCanvas` put back, on the same terms and with the same argument. */
+  redoCanvas: (canvas: string) => Promise<void>;
   /**
    * Resize a card on a canvas. Takes the graph's `onNodeResize` payload as it arrives.
    *
@@ -2299,9 +2297,21 @@ export function RecordStoreProvider(props: ParentProps) {
     removeFromCanvas,
     deleteRecords,
     canvasHistory: history.state,
-    undoCanvas: history.undo,
-    redoCanvas: history.redo,
-    scopeCanvasHistory: history.scopeTo,
+    /*
+      Scoped on the way in, every time.
+
+      A canvas passes its own id with the press, so the stack cannot be replaying somewhere the
+      reader has left — and `scopeTo` is idempotent, so the overwhelmingly common case (pressing
+      undo twice on the same canvas) costs a string comparison.
+    */
+    undoCanvas: async (canvas: string) => {
+      history.scopeTo(canvas);
+      await history.undo();
+    },
+    redoCanvas: async (canvas: string) => {
+      history.scopeTo(canvas);
+      await history.redo();
+    },
     pendingCardStyle,
     confirmPending,
     previewCardStyle,

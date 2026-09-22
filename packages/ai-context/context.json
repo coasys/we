@@ -3408,7 +3408,32 @@
         },
         {
           "name": "onDeleteSelection",
-          "type": "((payload: { recordId?: string; recordType?: string; kind?: \"node\" | \"edge\"; count: number; }) => void)",
+          "type": "((payload: { recordId?: string; recordType?: string; kind?: \"node\" | \"edge\"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "carry",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "selectionActions",
+          "type": "NodeAction[]",
+          "optional": true
+        },
+        {
+          "name": "onSelectionAction",
+          "type": "((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "onUndo",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onRedo",
+          "type": "(() => void)",
           "optional": true
         },
         {
@@ -6147,6 +6172,9 @@
         },
         "relationshipKind": {
           "type": "string"
+        },
+        "canvasHistory": {
+          "type": "object"
         }
       },
       "actions": [
@@ -6174,6 +6202,9 @@
         "bringIn",
         "updateRecordField",
         "removeFromCanvas",
+        "deleteRecords",
+        "undoCanvas",
+        "redoCanvas",
         "resizeOnCanvas",
         "anchorOnCanvas",
         "rerouteOnCanvas",

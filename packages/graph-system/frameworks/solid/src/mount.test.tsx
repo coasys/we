@@ -850,3 +850,55 @@ describe('the carry grip', () => {
     dragSession.cancel();
   });
 });
+
+/**
+ * Undo, on the keyboard.
+ *
+ * The graph reports and never performs, exactly as it does for delete — so what is testable here is
+ * which presses it claims, which it leaves alone, and that binding the keys is what makes the canvas
+ * a tab stop at all.
+ */
+describe('the undo keys', () => {
+  const surfaceOf = (host: HTMLElement) => host.querySelector('.we-graph__surface') as HTMLElement;
+
+  const press = (el: HTMLElement, key: string, extra: KeyboardEventInit = {}) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra }));
+
+  it('reports undo and both spellings of redo', () => {
+    const seen: string[] = [];
+    const surface = surfaceOf(mount({ onUndo: () => seen.push('undo'), onRedo: () => seen.push('redo') }));
+
+    press(surface, 'z', { ctrlKey: true });
+    press(surface, 'z', { metaKey: true });
+    press(surface, 'z', { ctrlKey: true, shiftKey: true });
+    // Windows' own redo, which a good many people will only ever try.
+    press(surface, 'y', { ctrlKey: true });
+
+    expect(seen).toEqual(['undo', 'undo', 'redo', 'redo']);
+  });
+
+  it('leaves an unmodified z alone, so typing near a focused canvas still works', () => {
+    const seen: string[] = [];
+    const surface = surfaceOf(mount({ onUndo: () => seen.push('undo') }));
+
+    press(surface, 'z');
+    press(surface, 'a', { ctrlKey: true });
+
+    expect(seen).toEqual([]);
+  });
+
+  it('leaves the event alone when nothing is bound', () => {
+    const surface = surfaceOf(mount({ onDeleteSelection: () => undefined }));
+    const event = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+
+    surface.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('makes the canvas a tab stop on its own', () => {
+    // Binding a key is what earns the focus, and undo is a key — a canvas with undo and no delete
+    // would otherwise be one the keyboard could never reach.
+    expect(surfaceOf(mount({ onUndo: () => undefined })).getAttribute('tabindex')).toBe('0');
+  });
+});

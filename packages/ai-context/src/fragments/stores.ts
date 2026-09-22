@@ -1266,10 +1266,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         deleteRecords:
           "(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — an AD4M delete drops the links and a re-create earns a new id, so anything pointing at the old record breaks",
         undoCanvas:
-          '(): puts back the last thing this agent did to the arrangement of the canvas on screen — a move, a resize, a colour, a card taken off. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Gate a control on recordStore.canvasHistory.canUndo',
-        redoCanvas: '(): does again what undoCanvas put back, on the same terms',
-        scopeCanvasHistory:
-          '(canvas: string): points the undo stack at a canvas, forgetting what it remembered about another. Bind it to the canvas picker’s value — replaying a move onto a canvas the reader has navigated away from is the most confusing thing the key could do. Idempotent, so it is safe on a value that re-resolves every render',
+          '(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo',
+        redoCanvas:
+          '(canvas: string): does again what undoCanvas put back, on the same terms and with the same argument',
         resizeOnCanvas:
           "(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected",
         anchorOnCanvas:

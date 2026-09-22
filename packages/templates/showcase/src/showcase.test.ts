@@ -724,18 +724,65 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    // Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record
-    // — the host's delete confirmation is modal and per record, so N of them would stack N dialogs.
     expect(json).toContain('"onDeleteSelection"');
-    expect(json).toContain('"condition":{"$":"event.recordId"}');
 
-    // Through `record.delete` in both places, so the host's own confirmation stands in front of a
-    // keystroke that has no undo behind it.
+    /*
+      A line has no placement, so taking it off the canvas and deleting it are the same act — and it
+      goes through `record.delete`, which the host guards, so the keystroke still asks before it
+      destroys anything.
+
+      Guarded on `kind == 'edge'` rather than on `recordId` alone, because a *card* now answers the
+      same key differently: see the test below.
+    */
+    expect(json).toContain('"condition":{"$":"event.kind == \'edge\' && event.recordId"}');
     expect(json).toContain('"$action":"record.delete"');
 
     // And the panel's own, which takes the id from the address rather than from a node payload —
     // the inspector is a panel, so the selection reaches it as parameters and nothing else.
     expect(json).toContain('"args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"}]');
+  });
+
+  it('answers the delete key on cards by taking them off the canvas, not by ending them', () => {
+    /*
+      The deliberate change, and the reason to pin it: this key used to call `record.delete` on a
+      single selected card.
+
+      A rubber-band selection is nearly always somebody tidying. "These do not belong here" is what
+      they mean far more often than "these should not exist", and the first is undoable where the
+      second is not — an AD4M delete drops the links and a re-create earns a new id. So the reflex
+      key does the reversible thing to any number of cards, and ending records is on the selection's
+      own bar, where it has to be reached for.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"$action":"recordStore.removeFromCanvas"');
+    expect(json).toContain('"condition":{"$":"count(event.records)"}');
+
+    // Ending them is offered, once, for the whole set — `deleteRecords` raises the host's own
+    // confirmation a single time, where a template looping `record.delete` would stack a dialog per
+    // card. That is what made multi-select delete a thing to design rather than to fall into.
+    expect(json).toContain('"$action":"recordStore.deleteRecords"');
+    expect(json).toContain('"id":"delete"');
+  });
+
+  it('can sweep a selection, carry it away, and put an arrangement back', () => {
+    const json = JSON.stringify(workshop);
+
+    /*
+      No armed toggle here, unlike the canvas view's: this canvas has no toolbar of its own — its
+      chrome is the workshop's panels — so Shift and Ctrl/Cmd are the whole gesture, which is what
+      every other canvas people use has taught them anyway.
+    */
+    expect(json).toContain('"marquee-select"');
+
+    // The canvas has always received drops and could never be dragged from, so nothing on it could
+    // reach the Pocket — which is the one thing that carries between spaces.
+    expect(json).toContain('"carry":true');
+
+    // Undo takes the canvas as an argument, which is the whole of the scoping: there is no separate
+    // "point the stack here" call for this template to have forgotten.
+    expect(json).toContain('"$action":"recordStore.undoCanvas"');
+    expect(json).toContain('"$action":"recordStore.redoCanvas"');
   });
 
   it('offers a connection’s kind where the line is read, not only where it was drawn', () => {

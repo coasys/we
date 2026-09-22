@@ -3038,6 +3038,16 @@ const canvas: SchemaNode = {
       // The two halves of a double-click: on a note it opens, on empty canvas it asks what to make.
       'node-double-click',
       'canvas-double-click',
+      /*
+        Sweep a rectangle to select several cards, before `pan-zoom` claims the background press.
+
+        Not armed here, unlike the canvas view's: this canvas has no toolbar of its own — its chrome
+        is the workshop's panels — so there is nowhere to put a mode toggle that would not be a new
+        control competing with the call for the top of the screen. Shift and Ctrl/Cmd reach it,
+        which is what every other canvas people use has taught them, and a plain drag goes on
+        panning.
+      */
+      'marquee-select',
       'select',
       { type: 'drag-node', options: { pin: true } },
       // Last, because it is the background fallback — listed earlier it claims the press `select`
@@ -3263,7 +3273,7 @@ const canvas: SchemaNode = {
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],
     /*
-      Delete, on whatever is selected — a card or a line, the same key for both.
+      Delete, on whatever is selected — a card, several cards, or a line.
 
       An accelerator, not the only path: a card's own bar carries a bin (see `nodeActions`), and the
       inspector carries one for whichever of the two is open. A key that was the sole way to remove
@@ -3271,21 +3281,91 @@ const canvas: SchemaNode = {
       of those is disproportionate — tidying up a canvas, where the answer to "this line is wrong" is
       wanted in the same beat as noticing it.
 
-      Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record.
-      That is the whole of the multi-select story here and it is deliberately small: `record.delete`
-      raises the host's own confirmation, so firing it per member of a selection would stack a dialog
-      per card. A batch confirmation is a thing to design rather than to arrive at by looping.
+      **On cards it takes them off the canvas rather than ending them**, which is a change from what
+      this key used to do, and the deliberate one. A rubber-band selection is nearly always somebody
+      tidying, "these do not belong here" is the thing they mean far more often than "these should
+      not exist", and taking a card off a canvas is undoable where deleting a community's content is
+      not. Ending records is still offered, on the selection's own bar, where it has to be reached
+      for rather than pressed by reflex — and there it goes through `deleteRecords`, which asks once
+      for the whole set instead of stacking a dialog per card.
 
-      Through `record.delete` for `nodeActions`' reason — it is guarded by the host, so a keystroke
-      asks before it destroys anything. Which is also what makes the key safe to offer at all: there
-      is no undo behind it.
+      A line is the exception and keeps the old behaviour: a connection has no placement to remove,
+      so taking it off the canvas and deleting it are the same act. It goes through `record.delete`,
+      which the host guards, so the keystroke still asks before it destroys anything.
     */
-    onDeleteSelection: {
-      $if: {
-        condition: { $: 'event.recordId' },
-        then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+    onDeleteSelection: [
+      {
+        $if: {
+          condition: { $: 'count(event.records)' },
+          then: {
+            $action: 'recordStore.removeFromCanvas',
+            args: [CALL, { $: 'event.records.map(r, r.recordId)' }],
+          },
+        },
       },
-    },
+      {
+        $if: {
+          condition: { $: "event.kind == 'edge' && event.recordId" },
+          then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+        },
+      },
+    ],
+    /*
+      Undo, over this canvas's arrangement — a move, a resize, a colour, a card taken off.
+
+      Replayed as new forward writes rather than as a rollback, so a peer rearranging the same canvas
+      during a call does not lose what they did, and a card they have moved since is left alone
+      rather than dragged back out from under them. Deleting a record is outside it, which is the
+      other half of why the key above no longer deletes.
+
+      Scoped to the call this canvas is about, so walking to another call's canvas does not leave a
+      press that would move cards on a canvas nobody is looking at.
+    */
+    onUndo: { $action: 'recordStore.undoCanvas', args: [CALL] },
+    onRedo: { $action: 'recordStore.redoCanvas', args: [CALL] },
+    /*
+      Cards can be carried off this canvas — into the Pocket, and from there into any other space.
+
+      The canvas beside a live call is exactly where somebody finds a thing worth keeping, and until
+      now there was no gesture that could take it anywhere: the graph received drops and could not
+      be dragged from.
+    */
+    carry: true,
+    /*
+      What a selection of several offers. Three, and they are the three that mean something said
+      about a set — recolour them, take them off this canvas, end them.
+    */
+    selectionActions: [
+      { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
+      { id: 'remove', icon: 'eraser', title: 'Take off the canvas' },
+      { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
+    ],
+    onSelectionAction: [
+      {
+        $if: {
+          condition: { $: "event.action == 'remove'" },
+          then: {
+            $action: 'recordStore.removeFromCanvas',
+            args: [CALL, { $: 'event.records.map(r, r.recordId)' }],
+          },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'delete'" },
+          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'color'" },
+          then: {
+            $action: 'recordStore.setCardStyle',
+            args: [CALL, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+    ],
     /*
       Clearing on a background click, and only then.
 

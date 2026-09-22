@@ -38,7 +38,7 @@ const { store: world, Placement } = vi.hoisted(() => {
     Placement: {
       create: async (_p: unknown, data: Record<string, unknown>, options?: { parent?: { id: string } }) => {
         const row: Row = {
-          ...(data as Row),
+          ...(data as unknown as Row),
           // The ORM takes a relation as a list and stores the single target.
           node: Array.isArray(data.node) ? (data.node[0] as string) : (data.node as string),
           id: `placement-${state.nextId++}`,
@@ -103,7 +103,6 @@ function mount(): RecordStore {
       <Capture />
     </RecordStoreProvider>
   ));
-  store.scopeCanvasHistory(CANVAS);
   return store;
 }
 
@@ -129,7 +128,7 @@ describe('undoing a move', () => {
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 400, 300);
     expect(spotOf('n1')).toEqual({ x: 400, y: 300 });
 
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
     expect(spotOf('n1')).toEqual({ x: 10, y: 10 });
     expect(store.canvasHistory().canRedo).toBe(true);
@@ -139,9 +138,9 @@ describe('undoing a move', () => {
     const store = mount();
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 400, 300);
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
-    await store.redoCanvas();
+    await store.redoCanvas(CANVAS);
 
     expect(spotOf('n1')).toEqual({ x: 400, y: 300 });
   });
@@ -151,7 +150,7 @@ describe('undoing a move', () => {
     const store = mount();
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 400, 300);
 
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
     expect(spotOf('n1')).toBeNull();
   });
@@ -169,7 +168,7 @@ describe('undoing a move', () => {
     const row = rowOf('n1')!;
     row.x = 900;
     row.y = 900;
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
     expect(spotOf('n1')).toEqual({ x: 900, y: 900 });
   });
@@ -193,19 +192,25 @@ describe('undoing a move', () => {
     // restore both rather than half of them.
     expect(store.canvasHistory().undoLabel).toBe('move 2 cards');
 
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
     expect(spotOf('n1')).toEqual({ x: 0, y: 0 });
     expect(spotOf('n2')).toEqual({ x: 100, y: 0 });
   });
 
-  it('forgets everything when the canvas changes', async () => {
+  it('replays nothing once another canvas is the one being asked about', async () => {
+    /*
+      The canvas travels with the press rather than being set separately, which is what makes this
+      impossible to get wrong: there is no "point the stack here" call for a template to forget, and
+      a press on another canvas cannot reach an entry belonging to this one.
+    */
     const store = mount();
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 400, 300);
     expect(store.canvasHistory().canUndo).toBe(true);
 
-    store.scopeCanvasHistory('canvas-2');
+    await store.undoCanvas('canvas-2');
 
+    expect(spotOf('n1')).toEqual({ x: 400, y: 300 });
     expect(store.canvasHistory().canUndo).toBe(false);
   });
 });
@@ -220,7 +225,7 @@ describe('taking cards off a canvas', () => {
     expect(spotOf('n1')).toBeNull();
     expect(spotOf('n2')).toBeNull();
 
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
     expect(spotOf('n1')).toEqual({ x: 10, y: 10 });
     expect(spotOf('n2')).toEqual({ x: 20, y: 20 });
@@ -234,7 +239,7 @@ describe('taking cards off a canvas', () => {
     await store.setCardStyle(CANVAS, 'n1', 'color', 'warning-500');
 
     await store.removeFromCanvas(CANVAS, 'n1');
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
     expect(rowOf('n1')?.color).toBe('warning-500');
   });
@@ -261,7 +266,7 @@ describe('restyling a selection', () => {
     const colourOf = (node: string) => rowOf(node)?.color;
     expect([colourOf('n1'), colourOf('n2')]).toEqual(['danger-500', 'danger-500']);
 
-    await store.undoCanvas();
+    await store.undoCanvas(CANVAS);
 
     expect([colourOf('n1'), colourOf('n2')]).toEqual(['primary-500', 'success-500']);
   });
