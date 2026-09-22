@@ -265,7 +265,7 @@ describe('a transcript with nothing in it', () => {
    * cannot give.
    */
   it('says earlier lines are coming rather than asking for a press', () => {
-    expect(linesJson).not.toContain('modules.transcribe.showEarlierTranscript');
+    expect(linesJson).not.toContain('modules.transcribe.showMoreTranscript');
     expect(linesJson).not.toContain('modules.transcribe.readTranscriptFromStart');
     expect(linesJson).toContain('Earlier in the conversation');
     // The way back to the live end stays: it is the one thing the from-start view cannot say with a
@@ -662,10 +662,20 @@ describe('the feed', () => {
    * event reaches its ancestors rather than its descendants. Anchored to the start there is nothing
    * above at all, and that case is refused outright.
    */
-  it('loads earlier lines on approach, and not when already at the beginning', () => {
+  it('loads more of the conversation on approach, at whichever end the window grows from', () => {
+    /*
+      Both, because the window has two directions and a list that paginates one way stops dead at
+      the other. Following the live end it grows backwards, so the edge worth watching is the top;
+      read from the beginning it grows forwards and the edge is the bottom. With only the first,
+      choosing "read from the start" walked you to the end of the first page and stopped, with the
+      rest of the conversation unreachable.
+    */
     expect(feedJson).toContain('"nearStart":400');
-    expect(feedJson).toContain('modules.transcribe.showEarlierTranscript');
+    expect(feedJson).toContain('"nearEnd":400');
+    expect(feedJson).toContain('modules.transcribe.showMoreTranscript');
+    // Each guarded on the anchor it belongs to, so only one of them can answer at a time.
     expect(feedJson).toContain('!modules.transcribe.transcriptFromStart');
+    expect(feedJson).toContain('"condition":{"$":"modules.transcribe.transcriptFromStart"}');
   });
 
   it('times a row by the clock once the call is over, and relatively while it is not', () => {

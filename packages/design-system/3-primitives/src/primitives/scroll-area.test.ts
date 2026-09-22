@@ -32,6 +32,7 @@ interface ScrollAreaEl extends HTMLElement {
   pin: '' | 'end';
   jump: '' | 'start' | 'end' | 'both';
   nearStart: number;
+  nearEnd: number;
   updateComplete: Promise<unknown>;
 }
 
@@ -55,6 +56,7 @@ async function mount(options: {
   pin?: 'end';
   jump?: 'start' | 'end' | 'both';
   nearStart?: number;
+  nearEnd?: number;
   scrollHeight?: number;
   clientHeight?: number;
 }) {
@@ -62,6 +64,7 @@ async function mount(options: {
   if (options.pin) el.pin = options.pin;
   if (options.jump) el.jump = options.jump;
   if (options.nearStart) el.nearStart = options.nearStart;
+  if (options.nearEnd) el.nearEnd = options.nearEnd;
   document.body.appendChild(el);
   await el.updateComplete;
 
@@ -263,6 +266,8 @@ describe('we-scroll-area nearStart', () => {
     const { el, scrollFromStart } = await mount({ pin: 'end', nearStart: 400 });
     const seen = nearStarts(el);
 
+    // Out of reach first: the first look only records where the reader is — see `#checkEdge`.
+    scrollFromStart(900);
     scrollFromStart(300);
     scrollFromStart(200);
     scrollFromStart(100);
@@ -277,6 +282,7 @@ describe('we-scroll-area nearStart', () => {
   it('measures from the oldest end in an unpinned list too', async () => {
     const { el, scrollFromStart } = await mount({ nearStart: 400 });
     const seen = nearStarts(el);
+    scrollFromStart(900);
     scrollFromStart(100);
     expect(seen).toHaveLength(1);
   });
@@ -325,5 +331,80 @@ describe('we-scroll-area jump-start slot', () => {
     expect((await controls()).start).toBe(true);
     const slot = el.shadowRoot!.querySelector('[part="jump-start"] slot') as HTMLSlotElement;
     expect(slot.assignedElements()).toHaveLength(1);
+  });
+});
+
+/**
+ * Both edges, and the first look that must say nothing.
+ *
+ * A window has two directions. A list anchored to its newest end grows backwards and watches the
+ * top; the same list read from its beginning grows forwards and watches the bottom. Offering only
+ * the first meant reading a conversation from the start walked you to the end of the first page and
+ * stopped, with the rest unreachable — which is what these cover.
+ */
+describe('we-scroll-area edges', () => {
+  const heard = (el: HTMLElement, type: string) => {
+    const seen: Event[] = [];
+    el.addEventListener(type, (event) => seen.push(event));
+    return seen;
+  };
+
+  it('says nothing on the first look, however close to an edge that is', async () => {
+    /*
+      The bug this exists for, and it cost a whole extra page on every open. A list at rest is
+      already against one of its ends, so a latch seeded `false` reports an approach nobody made the
+      instant anything is first measured.
+
+      It was worse in the app: `pin` is a reactive prop and arrives AFTER the first render, so until
+      it did, a pinned list still read its position the ordinary way round — `scrollTop` of zero,
+      which is the *start* — and every transcript fetched a second page before the reader touched
+      anything. That is the scrollbar thumb dropping twice while a transcript loads.
+    */
+    const { el, scrollFromStart } = await mount({ pin: 'end', nearStart: 400 });
+    const seen = heard(el, 'nearstart');
+
+    // Mounted sitting inside the threshold. Observing that is not an approach.
+    scrollFromStart(0);
+    expect(seen).toHaveLength(0);
+
+    // Leaving and coming back is.
+    scrollFromStart(900);
+    scrollFromStart(100);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('watches the far end too, which is how a list read from its start goes on', async () => {
+    const { el, scrollFromEnd } = await mount({ nearEnd: 400 });
+    const seen = heard(el, 'nearend');
+
+    scrollFromEnd(900);
+    scrollFromEnd(100);
+    expect(seen).toHaveLength(1);
+
+    // Once per approach, exactly as the other end.
+    scrollFromEnd(50);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('keeps the two independent, so one firing does not arm the other', async () => {
+    const { el, scrollFromStart, scrollFromEnd } = await mount({ nearStart: 400, nearEnd: 400 });
+    const starts = heard(el, 'nearstart');
+    const ends = heard(el, 'nearend');
+
+    scrollFromStart(900);
+    scrollFromStart(100);
+    expect([starts.length, ends.length]).toEqual([1, 0]);
+
+    scrollFromEnd(100);
+    expect([starts.length, ends.length]).toEqual([1, 1]);
+  });
+
+  it('answers the same way round in a pinned list, where the coordinates are inverted', async () => {
+    const { el, scrollFromEnd } = await mount({ pin: 'end', nearEnd: 400 });
+    const seen = heard(el, 'nearend');
+
+    scrollFromEnd(900);
+    scrollFromEnd(100);
+    expect(seen).toHaveLength(1);
   });
 });

@@ -201,31 +201,37 @@ export default class ScrollArea extends DesignSystemElement {
    */
   @property({ type: String }) jump: '' | 'start' | 'end' | 'both' = '';
   /**
-   * Say when the reader comes within this many pixels of the start, so a list can load what is
-   * before it — infinite scroll, upwards.
+   * Say when the reader comes within this many pixels of an end, so a list can load what lies beyond
+   * it — infinite scroll, in whichever direction the reader is going.
    *
    * Opt-in, and a distance rather than a flag, because the right distance is the consumer's
    * question: it is how far ahead of the reader a page has to be fetched to arrive before they get
    * there, which depends on how big a page is and how slow the backend is. `0` is off, and off is
    * the default — an event nobody listens to is API kept working for nothing.
    *
-   * It fires `nearstart`, once per approach: sitting at the top does not repeat it, and scrolling
-   * away past the threshold re-arms it. So a consumer's handler is "fetch the next page", not "fetch
-   * the next page if I am not already fetching one".
+   * They fire `nearstart` and `nearend`, **once per approach**: sitting at an edge does not repeat
+   * it, and scrolling away past the threshold re-arms it. So a consumer's handler is "fetch the next
+   * page", not "fetch the next page if I am not already fetching one". The first observation never
+   * fires — a list at rest is already against one of its ends, and reporting that as an approach is
+   * a page nobody asked for. See `#checkEdge`.
    *
-   * ## It holds the reader's place across what arrives
+   * ## Both, because a window has two directions
    *
-   * Loading earlier content puts it *above* what is on screen, which moves everything the reader is
-   * looking at down by the height of the new rows — so without this, asking for more is punished by
-   * losing your place, repeatedly, while scrolling. After firing, the scroller remembers its distance
-   * from the *bottom* and restores it when the content next grows, which is exactly right for a
-   * prepend and needs no cooperation from the consumer.
+   * A list anchored to its newest end grows backwards and wants `nearStart`. The same list read from
+   * its beginning grows forwards and wants `nearEnd` — and a transcript does both, depending on
+   * which end the reader asked to read from. Offering only one meant that reading a conversation
+   * from the start stopped dead at the bottom of the first page, with no way to go on.
    *
-   * Distance from the bottom rather than an anchor element on purpose: a list re-rendered from a
-   * re-run query rebuilds every row, so there is no node whose identity survives the growth to
-   * anchor to. The bottom is the one edge that does not move when content is added above it.
+   * ## Nothing needs to hold the reader's place
+   *
+   * Content loaded in above a reader would ordinarily push everything they are looking at down by
+   * its own height. Under `pin='end'` it does not: the scroll position is measured from the bottom,
+   * so a prepend leaves them exactly where they were. That is the browser's doing, not ours — an
+   * earlier version of this spent a stored distance, a deadline and a restore pass on it.
    */
   @property({ type: Number }) nearStart = 0;
+  /** The same, for the other end — see `nearStart`. */
+  @property({ type: Number }) nearEnd = 0;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   /** Whether each control would currently go anywhere. Reactive, so growth reveals them. */
@@ -255,8 +261,14 @@ export default class ScrollArea extends DesignSystemElement {
 
   /** The scroller. Assigned on first render; `null` before then and after disconnect. */
   #base: HTMLElement | null = null;
-  /** Whether the reader is currently inside the `nearStart` threshold, so it fires once per approach. */
-  #nearStart = false;
+  /**
+   * Whether the reader was within reach of each edge when this last looked.
+   *
+   * `null` until the first observation, which is what stops a list reporting an approach nobody made
+   * — see `#checkEdge`.
+   */
+  #nearStart: boolean | null = null;
+  #nearEnd: boolean | null = null;
   #mutations?: MutationObserver;
   #resize?: ResizeObserver;
 
@@ -449,25 +461,49 @@ export default class ScrollArea extends DesignSystemElement {
    * implementation spent a `#holdBottom`, a deadline and a restore pass on is simply how the box
    * behaves.
    */
-  #checkNearStart(): void {
-    if (!this.nearStart || this.#span() <= AT_END_PX) return;
+  #checkEdges(): void {
+    this.#nearStart = this.#checkEdge(this.nearStart, this.#fromStart(), this.#nearStart, 'nearstart');
+    this.#nearEnd = this.#checkEdge(this.nearEnd, this.#fromEnd(), this.#nearEnd, 'nearend');
+  }
 
-    const near = this.#fromStart() <= this.nearStart;
-    if (near === this.#nearStart) return;
-    this.#nearStart = near;
-    if (!near) return;
+  /**
+   * One edge: has the reader just come within reach of it?
+   *
+   * ## The first look never fires
+   *
+   * That is the whole of the `null` state, and it is not defensiveness. A list at rest is already
+   * within reach of the end it rests against, so a latch seeded `false` reports an approach that
+   * nobody made, the instant the element first measures anything — and the consumer dutifully loads
+   * a page that was not asked for.
+   *
+   * It was worse than that in practice, because `pin` is a reactive prop and arrives *after* the
+   * first render. Until it does, this element still thinks it is an ordinary scroller, so
+   * `#fromStart` reads `scrollTop` — zero — and every pinned list fired `nearstart` on open and
+   * fetched a second page before the reader had touched anything. That is the scrollbar thumb
+   * dropping twice while a transcript loads.
+   *
+   * So the first observation records where the reader is and says nothing. An *approach* is a
+   * transition into reach from outside it, which is the only thing a consumer's "fetch the next
+   * page" should answer to.
+   */
+  #checkEdge(threshold: number, distance: number, latch: boolean | null, event: string): boolean | null {
+    // Nothing to be near the edge OF: a scroller with no overflow is at both ends at once.
+    if (!threshold || this.#span() <= AT_END_PX) return latch;
 
-    this.dispatchEvent(new CustomEvent('nearstart', { bubbles: true, composed: true }));
+    const near = distance <= threshold;
+    if (near === latch) return latch;
+    if (latch !== null && near) this.dispatchEvent(new CustomEvent(event, { bubbles: true, composed: true }));
+    return near;
   }
 
   #onScrolled = (): void => {
-    this.#checkNearStart();
+    this.#checkEdges();
     this.#syncControls();
   };
 
   #contentChanged(): void {
     this.#probeWatch('content');
-    this.#checkNearStart();
+    this.#checkEdges();
     this.#syncControls();
   }
 

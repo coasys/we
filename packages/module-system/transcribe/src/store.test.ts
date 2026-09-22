@@ -2875,9 +2875,9 @@ describe('the transcript window', () => {
       would turn a scroll through a long transcript into twenty re-fetches of a growing list.
     */
     const h = harness();
-    h.store.showEarlierTranscript();
+    h.store.showMoreTranscript();
     expect(h.store.transcriptShown()).toBe(250);
-    h.store.showEarlierTranscript();
+    h.store.showMoreTranscript();
     expect(h.store.transcriptShown()).toBe(450);
   });
 
@@ -2890,8 +2890,8 @@ describe('the transcript window', () => {
   */
   it('re-anchors to the beginning, at one page again', () => {
     const h = harness();
-    h.store.showEarlierTranscript();
-    h.store.showEarlierTranscript();
+    h.store.showMoreTranscript();
+    h.store.showMoreTranscript();
 
     h.store.readTranscriptFromStart();
     expect(h.store.transcriptFromStart()).toBe(true);
@@ -2901,7 +2901,7 @@ describe('the transcript window', () => {
   it('goes back to following the end', () => {
     const h = harness();
     h.store.readTranscriptFromStart();
-    h.store.showEarlierTranscript();
+    h.store.showMoreTranscript();
 
     h.store.readTranscriptLive();
     expect(h.store.transcriptFromStart()).toBe(false);
@@ -2921,7 +2921,7 @@ describe('the transcript window', () => {
 
     // Read back into it, and from the other end — both are state the next call must not inherit.
     h.store.readTranscriptFromStart();
-    h.store.showEarlierTranscript();
+    h.store.showMoreTranscript();
     expect(h.store.transcriptShown()).toBe(250);
     expect(h.store.transcriptFromStart()).toBe(true);
 
@@ -2939,7 +2939,7 @@ describe('the transcript window', () => {
   it('leaves the window alone while the call on screen is the same', async () => {
     const h = harness([], { callOnScreen: () => 'call-one' });
 
-    h.store.showEarlierTranscript();
+    h.store.showMoreTranscript();
     await h.settle();
 
     expect(h.store.transcriptShown()).toBe(250);

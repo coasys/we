@@ -2583,7 +2583,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       transcriptFromStart,
       'Whether the transcript is being read from its beginning rather than following the live end.',
     ),
-    showEarlierTranscript: action(
+    showMoreTranscript: action(
       () => setTranscriptShown(transcriptShown() + TRANSCRIPT_PAGE),
       'Loads one more page of the transcript, in whichever direction it is being read.',
     ),

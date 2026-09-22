@@ -515,6 +515,7 @@ export const contextData: ContextData = {
         { name: 'pin', type: "'' | 'end'", optional: false, default: "''" },
         { name: 'jump', type: "'' | 'start' | 'end' | 'both'", optional: false, default: "''" },
         { name: 'nearStart', type: 'number', optional: false, default: '0' },
+        { name: 'nearEnd', type: 'number', optional: false, default: '0' },
       ],
     },
     {
@@ -3447,7 +3448,7 @@ export const contextData: ContextData = {
         { name: 'rejectProposal', kind: 'action', doc: 'Drops a suggestion.' },
         { name: 'setProposalField', kind: 'action', doc: 'Sets one field of the open draft, by property name.' },
         {
-          name: 'showEarlierTranscript',
+          name: 'showMoreTranscript',
           kind: 'action',
           doc: 'Loads one more page of the transcript, in whichever direction it is being read.',
         },

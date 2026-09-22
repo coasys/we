@@ -4138,16 +4138,20 @@ export const transcriptFeed: SchemaNode = panelScroll({
     ],
   },
   /*
-    Earlier lines load as the reader reaches them, rather than on a button.
+    More of the conversation loads as the reader reaches the edge of what is loaded, in whichever
+    direction they are going, rather than on a button.
+
+    Both ends, because the window has two. Following the live end it grows backwards, so the edge
+    worth watching is the top. Reading the same conversation from its beginning it grows forwards,
+    and the edge is the bottom — without that pair, choosing "read from the start" walked you to the
+    end of the first page and stopped, with the rest of the conversation unreachable.
 
     The distance is about a panel's height of runway, so a page is asked for before the reader
-    arrives at the edge rather than when they hit it. The scroller holds their place across what
-    lands — content added *above* would otherwise push everything they are reading down by the
-    height of the new rows, on every load, which is the thing that makes an infinite scroll upwards
-    unusable.
+    arrives at the edge rather than when they hit it. Nothing has to hold their place: the scroller
+    is anchored to its newest end, so content arriving above them does not move them.
 
-    Guarded on following the live end, and NOT on there being more — which is a real imprecision
-    and a deliberate one.
+    Guarded on which end is anchored, and NOT on there being more — which is a real imprecision and
+    a deliberate one.
 
     "May have more" is `count(local.utterances) >= transcriptShown`, and those rows are a local of
     `transcriptLines`, which is placed as a part *inside* this scroller. An event dispatched on the
@@ -4155,17 +4159,23 @@ export const transcriptFeed: SchemaNode = panelScroll({
     node that cannot be asked. The alternatives were each worse than the cost: a count projection is
     a round trip to avoid a re-run, and a count reported back from a render is a write from drawing.
 
-    What it costs: reaching the top of a fully-loaded transcript raises the window by a page and
-    re-runs the query, which comes back with the same rows. The list is unchanged, the "earlier"
-    line correctly disappears, and nothing is drawn wrongly — it is one wasted read per trip to the
-    top, and the read is bounded by what exists rather than by the window. Anchored to the start
-    there is nothing above at all, which is the case worth refusing outright, and it is refused.
+    What it costs: reaching the far edge of a fully-loaded transcript raises the window by a page and
+    re-runs the query, which comes back with the same rows. The list is unchanged, the "earlier" line
+    correctly disappears, and nothing is drawn wrongly — one wasted read per trip to that edge, and
+    the read is bounded by what exists rather than by the window.
   */
   nearStart: 400,
   onNearStart: {
     $if: {
       condition: { $: `!${TRANSCRIPT_FROM_START}` },
-      then: { $action: 'modules.transcribe.showEarlierTranscript' },
+      then: { $action: 'modules.transcribe.showMoreTranscript' },
+    },
+  },
+  nearEnd: 400,
+  onNearEnd: {
+    $if: {
+      condition: { $: TRANSCRIPT_FROM_START },
+      then: { $action: 'modules.transcribe.showMoreTranscript' },
     },
   },
   children: [

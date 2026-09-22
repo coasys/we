@@ -220,15 +220,20 @@ export interface PanelScrollOptions {
   /** Jump-to-end controls — `we-scroll-area`'s `jump`. */
   jump?: string;
   /**
-   * Load what is before the window as the reader reaches it — `we-scroll-area`'s `nearStart`, in
-   * pixels from the top, with the handler that fetches the next page.
+   * Load what lies beyond an end as the reader reaches it — `we-scroll-area`'s `nearStart` and
+   * `nearEnd`, in pixels, each with the handler that fetches the next page.
    *
-   * Both or neither: a distance with nothing listening is a measurement nobody reads, and a handler
-   * with no distance never fires. The scroller holds the reader's place across what arrives, so a
-   * consumer's handler is only ever "fetch more".
+   * Both halves of a pair or neither: a distance with nothing listening is a measurement nobody
+   * reads, and a handler with no distance never fires.
+   *
+   * A window has two directions and a list that only paginates one way stops dead at the other. A
+   * transcript anchored to its newest end grows backwards and wants the first pair; the same
+   * transcript read from its beginning grows forwards and wants the second.
    */
   nearStart?: number;
   onNearStart?: SchemaProp;
+  nearEnd?: number;
+  onNearEnd?: SchemaProp;
   /**
    * A start control of the consumer's own, placed where the scroller puts its built-in one.
    *
@@ -338,6 +343,8 @@ export function panelScroll(opts: PanelScrollOptions): SchemaNode {
       ...(opts.jump ? { jump: opts.jump } : {}),
       ...(opts.nearStart ? { nearStart: opts.nearStart } : {}),
       ...(opts.onNearStart ? { 'on:nearstart': opts.onNearStart } : {}),
+      ...(opts.nearEnd ? { nearEnd: opts.nearEnd } : {}),
+      ...(opts.onNearEnd ? { 'on:nearend': opts.onNearEnd } : {}),
     },
     /*
       The consumer's start control is a slotted child rather than a prop, because it is a node: it
