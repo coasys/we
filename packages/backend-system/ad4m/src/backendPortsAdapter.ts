@@ -75,7 +75,18 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     },
 
     declare(manifest: EntityManifest, opts) {
-      const classes = compileManifest(manifest, opts as Parameters<typeof compileManifest>[1]);
+      const classes = compileManifest(manifest, {
+        ...(opts as Parameters<typeof compileManifest>[1]),
+        // A module manifest holds only its own entities, so a relation it INHERITS — `signals`,
+        // the one typed edge on WeNode — names a class the manifest cannot see. Without a
+        // resolver the target thunk answers undefined, the shape loses `sh:class` and
+        // `ad4m:targetClassName`, and `include: { signals: true }` on that entity then fails the
+        // whole query at read time ("the relation declares no target class"). No dataset here, so
+        // this reads the global registry, where the native classes are registered before any
+        // module compiles — and the thunk is lazy, so the order does not matter either way.
+        resolveExternal: (name) =>
+          (opts.resolveExternal?.(name) ?? getEntitiesForPerspective(name)) as typeof Ad4mModel | undefined,
+      });
       for (const [name, cls] of Object.entries(classes)) registerEntity(name, cls as EntityClass);
       return classes;
     },
