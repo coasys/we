@@ -5,10 +5,12 @@
  * disagreed about was never the look — it was the hit target, the markup, and whether anything said
  * the section was open. Those are the three things here.
  */
+import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { foldingBody, foldingSectionLabel, isOpen } from './foldingSection.ts';
 
+/** What `walk` hands back: every node loosely, since it descends into props and children alike. */
 type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] };
 
 /** Every node in a fragment, depth first. */
@@ -53,7 +55,7 @@ describe('the heading is one control, not a glyph at the end of a row', () => {
       an `action` splits the heading in two — the name, and the count with its caret — each folding
       the same section, with the action in the gap between them.
     */
-    const action: Node = { type: 'we-button', props: { label: 'Export' } };
+    const action: SchemaNode = { type: 'we-button', props: { label: 'Export' } };
     const heading = foldingSectionLabel({ label: 'Logs', count: '3', open: { field: 'logsOpen' }, action });
     const nested = walk(heading).filter((n) => n.type === 'we-button' && buttons(n.children).length > 0);
     expect(nested, 'a button ended up inside another button').toEqual([]);
