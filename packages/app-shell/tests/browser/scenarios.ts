@@ -5,6 +5,8 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
+import { transcriptLines } from '@we/module-transcribe';
+import { panelScroll } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 
@@ -631,7 +633,55 @@ const panelSections = (): Scenario => ({
   tables: {},
 });
 
-export const scenarios: Record<string, () => Scenario> = {
+/**
+ * A call's transcript at whatever length a case asks for — the real `transcriptLines`.
+ *
+ * The real fragment rather than a stand-in, because the subject is what that fragment costs: its
+ * query, its `$agent` per row, its speaker grouping. A hand-written list of `we-text` would measure
+ * something nobody ships.
+ *
+ * Utterances vary in length and rotate between three speakers on purpose. Equal-length lines all
+ * wrap identically and make layout cost look flatter than it is, and one speaker means the grouping
+ * branch is never taken — both would flatter the thing being measured.
+ */
+const SPEAKERS = ['did:peer-a', 'did:peer-b', 'did:peer-c'];
+const CALL = 'call-record-1';
+
+const transcriptAt = (rows: number): Scenario => ({
+  /*
+    The feed's real shape: the rows inside a scroll area that follows the tail.
+
+    Composed here rather than importing `transcriptFeed`, which reaches its rows through `$part` and
+    so needs the module registry the harness does not mount. What matters is that the scroll area is
+    PRESENT — it observes its own size and reads `scrollTop`/`scrollHeight` whenever that changes,
+    which is the entire cost of resizing a panel full of transcript. Mounting the rows bare measures
+    a resize with nobody watching, which is a different and much cheaper thing.
+  */
+  node: panelScroll({ pin: 'end', jump: 'both', children: [transcriptLines] }),
+  tables: {
+    CollectionBlock: [{ id: CALL, kind: 'call', title: 'Standup', createdAt: '2026-09-01T09:00' }],
+    TextBlock: Array.from({ length: rows }, (_, i) => ({
+      id: `utterance-${i}`,
+      // What the scope drill-down resolves through — without it the relation finds nothing and the
+      // scenario measures an empty list very quickly.
+      parentId: CALL,
+      text: `${'A line of what somebody said. '.repeat(1 + (i % 4))}(${i})`,
+      author: SPEAKERS[i % SPEAKERS.length],
+      // Ordered, and lexicographically sortable, so `order: { createdAt }` means something.
+      createdAt: `2026-09-01T09:${String(Math.floor(i / 60) % 60).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`,
+    })),
+  },
+  relations: {
+    CollectionBlock: { children: { type: 'hasMany', target: 'TextBlock', foreignKey: 'parentId' } },
+  },
+  stores: {
+    profileStore: { profiles: SPEAKERS.map((did, i) => ({ did, name: `Peer ${i + 1}` })) },
+    modules: { transcribe: { collectionId: CALL, callOnScreenLive: true } },
+  },
+});
+
+export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'perf:transcript': (scale) => transcriptAt(scale ?? 100),
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
   'cards:counts': countControls,

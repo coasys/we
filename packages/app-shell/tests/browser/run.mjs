@@ -141,10 +141,26 @@ async function main() {
   let failures = 0;
   for (const file of files) {
     const mod = await import(join(HERE, 'cases', file));
-    for (const width of mod.widths ?? [320]) {
-      await page.evaluate(([s, w]) => window.__harness.mount(s, w), [mod.scenario, width]);
+    /*
+      The second sweep axis, beside width.
+
+      Width asks "does this layout hold when the panel is narrow"; scale asks "does this still hold
+      when there is a lot of it". They are the two questions a surface fails at, and a case declares
+      whichever it is about — a case with no `scales` sweeps `[undefined]`, so every layout case
+      written before this axis existed runs exactly as it did.
+
+      Flattened into one list rather than nested, so the body below is unchanged: a perf axis is not
+      worth re-indenting every layout assertion in the suite for.
+    */
+    const combos = [];
+    for (const scale of mod.scales ?? [undefined]) for (const w of mod.widths ?? [320]) combos.push([scale, w]);
+
+    for (const [scale, width] of combos) {
+      await page.evaluate(([s, w, n]) => window.__harness.mount(s, w, n), [mod.scenario, width, scale]);
       // One frame for the primitives to upgrade and lay out.
       await page.waitForTimeout(250);
+      /** Lines a case wants printed under its label — a measurement is a report, not a verdict. */
+      const notes = [];
       const api = {
         measure: (sel) => page.evaluate((s) => window.__harness.measure(s), sel),
         measureAll: (sel) => page.evaluate((s) => window.__harness.measureAll(s), sel),
@@ -242,6 +258,41 @@ async function main() {
         },
         /** What a page-level listener recorded — for counting what a gesture actually emitted. */
         recorded: (key) => page.evaluate((k) => globalThis[k] ?? [], key),
+
+        // ── Performance ────────────────────────────────────────────────────
+        /*
+          What an interaction cost. See `instrument.ts` for what the numbers are and are not.
+
+          The interaction is named rather than passed, because it has to run INSIDE the page: a
+          Playwright callback would be a round trip per step and would time the protocol rather than
+          the app. So a case says `profile('resize', [320, 520])` and the page does the rest.
+        */
+        profile: (action, args = []) =>
+          page.evaluate(
+            ([a, rest]) => {
+              const h = window.__harness;
+              const run = {
+                resize: () => h.resizeMount(...rest),
+                addRow: () => h.addRow(...rest),
+                addProfile: () => h.addProfile(...rest),
+                // Nothing at all, for the same number of frames — the baseline every other figure
+                // is read against. See `idleFrames` for why it has to match the shape of what it is
+                // compared with rather than being a single frame.
+                idle: () => h.idleFrames(...rest),
+              }[a];
+              if (!run) throw new Error(`no profiled action "${a}"`);
+              return h.profile(run);
+            },
+            [action, args],
+          ),
+        /**
+         * A line printed under the case, whatever the verdict.
+         *
+         * Measurements are reported and assertions are separate, deliberately: a wall-clock figure
+         * from one machine must never decide whether a suite passes, and a suite that prints nothing
+         * when it passes cannot be used to watch a number move.
+         */
+        note: (text) => notes.push(text),
         /**
          * Collect an event's `detail` under `key`, listening at the document.
          *
@@ -258,8 +309,8 @@ async function main() {
             [type, key],
           ),
       };
-      const problems = (await mod.check(api, width)) ?? [];
-      const label = `${mod.name} @ ${width}px`;
+      const problems = (await mod.check(api, width, scale)) ?? [];
+      const label = scale === undefined ? `${mod.name} @ ${width}px` : `${mod.name} @ ${width}px n=${scale}`;
       if (process.env.WE_BROWSER_CHAIN) {
         const rows = await page.evaluate((t) => window.__harness.chain(t), process.env.WE_BROWSER_CHAIN);
         console.log(`  chain above "${process.env.WE_BROWSER_CHAIN}" at ${width}px:`);
@@ -281,6 +332,9 @@ async function main() {
       } else {
         console.log(`  ✓ ${label}`);
       }
+      // After the verdict either way: a measurement is worth reading when the case passes, which is
+      // most of the time and is exactly when a number quietly drifting would otherwise go unseen.
+      for (const n of notes) console.log(`      ${n}`);
     }
   }
 

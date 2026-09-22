@@ -19,9 +19,16 @@ import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { RenderSchema } from '@we/schema-solid';
+import { createStore } from 'solid-js/store';
 import { render } from 'solid-js/web';
 
+import { installLayoutCounter, profile } from './instrument';
 import { type Scenario, scenarios } from './scenarios';
+
+installLayoutCounter();
+
+/** Set by `mount`, so an interaction can make a profile arrive the way the network does. */
+let arriveProfile: ((profile: { did: string } & Record<string, unknown>) => void) | undefined;
 
 /** Store members every schema reads, whatever it is. A scenario overrides what it cares about. */
 function defaultStores(): Record<string, unknown> {
@@ -36,18 +43,30 @@ function defaultStores(): Record<string, unknown> {
 }
 
 let disposeMount: (() => void) | undefined;
+/**
+ * The backend the mounted scenario is reading, kept so an interaction can write to it.
+ *
+ * A perf case's subject is usually not the first paint but what one more row costs — and the honest
+ * way to ask that is to put a row in the same way the app does, through the backend, so the whole
+ * path runs: the subscription fires, the query re-answers, the renderer reconciles and the browser
+ * lays out. A case that poked the DOM directly would be measuring itself.
+ */
+let mountedBackend: ReturnType<typeof createInMemoryBackend> | undefined;
 
-function mount(name: string, width: number): void {
+function mount(name: string, width: number, scale?: number): void {
   disposeMount?.();
   const make = scenarios[name];
   if (!make) throw new Error(`unknown scenario "${name}" — have: ${Object.keys(scenarios).join(', ')}`);
-  const scenario: Scenario = make();
+  // A scenario that takes a scale seeds that many rows; one that does not ignores it, so every
+  // existing layout case is untouched by the axis being there.
+  const scenario: Scenario = make(scale);
 
   const backend = createInMemoryBackend({
     id: 'space-1',
     tables: scenario.tables as never,
     relations: scenario.relations,
   });
+  mountedBackend = backend;
 
   const host = document.getElementById('mount') as HTMLElement;
   host.innerHTML = '';
@@ -61,9 +80,22 @@ function mount(name: string, width: number): void {
     port is a reactive cache over a network fetch; here every profile the scenario declares is
     already present, so `get` answers and `fetch` has nothing to do.
   */
-  const profiles = (stores.profileStore as { profiles?: { did: string }[] } | undefined)?.profiles ?? [];
+  /*
+    Reactive, and keyed, because the app's is both and the difference is measurable.
+
+    A static array cannot show what a profile ARRIVING costs — which is the whole shape of a live
+    call, where peers resolve one at a time while rows are already on screen. And keying it is what
+    lets a row depend on its own agent rather than on the cache: a `find` over one array makes every
+    `$agent` in the tree a reader of every profile, so one peer landing wakes all of them. Modelling
+    the port as an array here would hide exactly the cost a perf case is looking for.
+  */
+  const seeded = (stores.profileStore as { profiles?: { did: string }[] } | undefined)?.profiles ?? [];
+  const [identityOf, setIdentity] = createStore<Record<string, unknown>>(
+    Object.fromEntries(seeded.map((p) => [p.did, p])),
+  );
+  arriveProfile = (profile: { did: string } & Record<string, unknown>) => setIdentity(profile.did, profile);
   stores.$identities = {
-    get: (did: string) => profiles.find((p) => p.did === did),
+    get: (did: string) => identityOf[did],
     fetch: () => {},
   };
   disposeMount = render(
@@ -231,9 +263,69 @@ function html(): string {
   return document.getElementById('mount')?.innerHTML ?? '';
 }
 
+/**
+ * Resize the box the schema is laid out in, the way dragging a panel edge does.
+ *
+ * The panel's own resize handle is app chrome and is not mounted here, so this drives the thing the
+ * handle ultimately does — the container's width changes — rather than the path it takes to do it.
+ * That is the right simplification for what is being measured: the cost is the reflow and whatever
+ * observers wake on it, none of which can tell how the width was set. What it deliberately does NOT
+ * cover is the dock's own bookkeeping, which is a separate subject with its own surface.
+ *
+ * `steps` because one jump is not a drag: a real resize is a width change per frame, and the
+ * interesting costs — an observer that forces layout each time — are per frame rather than per
+ * gesture. A single set would under-report them by the length of the drag.
+ */
+async function resizeMount(from: number, to: number, steps = 8): Promise<void> {
+  const host = document.getElementById('mount') as HTMLElement;
+  for (let i = 1; i <= steps; i += 1) {
+    host.style.width = `${Math.round(from + ((to - from) * i) / steps)}px`;
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+  }
+}
+
+/**
+ * Add one row and let the subscription carry it, as a write does.
+ *
+ * The whole point of measuring an append rather than a mount: what a live call actually costs is
+ * one more utterance against everything already said, and that path runs the subscription, the
+ * query, the reconcile and the layout. `mutate` notifies subscribers exactly as the real backend's
+ * change handlers do, so all of that happens; anything that skipped to the DOM would be measuring
+ * the harness instead of the app.
+ */
+function addRow(table: string, row: Record<string, unknown>): void {
+  if (!mountedBackend) throw new Error('nothing mounted to write into');
+  mountedBackend.mutate((tables) => {
+    (tables[table] ??= []).push(row as never);
+  });
+}
+
+/** Make a peer's profile land, the way a fetch resolving does mid-call. */
+function addProfile(did: string, name: string): void {
+  if (!arriveProfile) throw new Error('nothing mounted to receive a profile');
+  arriveProfile({ did, name, firstName: name, lastName: '', handle: name, bio: '' });
+}
+
+/**
+ * Do nothing, for the same number of frames as the interaction being measured.
+ *
+ * The baseline every other figure is read against, and it has to match the *shape* of what it is
+ * compared with or it is not a baseline. A drag is one width change per frame, so measuring it
+ * spends eight frames waiting whatever the app does — and at ~16ms a frame that is most of the
+ * number. Subtracting an idle run of the same length leaves the work rather than the waiting.
+ */
+async function idleFrames(frames = 1): Promise<void> {
+  for (let i = 0; i < frames; i += 1) await new Promise((r) => requestAnimationFrame(() => r(null)));
+}
+
 injectDSInteropStyles();
 (window as unknown as Record<string, unknown>).__harness = {
   mount,
+  profile,
+  resizeMount,
+  addRow,
+  addProfile,
+  idleFrames,
   measure,
   measureAll,
   measurePart,
