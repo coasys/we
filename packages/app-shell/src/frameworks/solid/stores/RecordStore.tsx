@@ -47,6 +47,7 @@ import {
 } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
+import { createHistory, type HistoryState } from '@we/history';
 import { createOptimism, keyOf, sameValue } from '@we/optimism';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -143,6 +144,17 @@ async function createPlacement(
 }
 
 /**
+ * A stored placement, as this file reads one back.
+ *
+ * Loose beyond the three fields anything here names, because the interesting use is putting a
+ * *whole* placement back: undoing "take these cards off the canvas" has to restore the size, colour,
+ * shape and stacking they were wearing, and a type listing those by name would have to be extended
+ * every time a placement grows a field — which is precisely the day it would be forgotten and the
+ * undo would quietly restore a card stripped of its presentation.
+ */
+type PlacementRow = { id: string; node?: string; tier?: string } & Record<string, unknown>;
+
+/**
  * The placement a canvas draws for one node — the row a write to that card has to land on.
  *
  * Chosen by `resolvePlacement`, the canvas seed's own rule, rather than by `find`. Two people placing
@@ -159,12 +171,11 @@ async function drawnPlacement(
   dataset: unknown,
   parent: { id: string; predicate: string },
   nodeId: string,
-): Promise<{ id: string } | undefined> {
-  const existing = (await Placement.findAll(dataset as never, { parent } as Record<string, unknown>)) as {
-    id: string;
-    node?: string;
-    tier?: string;
-  }[];
+): Promise<PlacementRow | undefined> {
+  const existing = (await Placement.findAll(
+    dataset as never,
+    { parent } as Record<string, unknown>,
+  )) as unknown as PlacementRow[];
   const rows = existing.filter((row) => row.node === nodeId);
   const drawn = resolvePlacement(rows);
   if (!drawn) return undefined;
@@ -410,15 +421,59 @@ export interface RecordStore {
    */
   updateRecordField: (entity: string, id: string, field: string, value: unknown) => Promise<void>;
   /**
-   * Take a record off a canvas, leaving the record itself alone.
+   * Take a record — or a whole selection — off a canvas, leaving the records themselves alone.
    *
-   * Deleting the placement and nothing else — which is the whole payoff of placement being
+   * Deleting the placement and nothing else, which is the whole payoff of placement being
    * membership. Being on a canvas was never what made a record exist, so coming off one cannot be
    * what ends it: a task removed from a canvas is still owned by the call it came out of, and a card
    * the canvas owns survives as an unplaced one in the tray, where it can be dragged back or deleted
    * outright.
+   *
+   * Takes one id or a list of them; a selection is not a special case. **Undoable**, and that is why
+   * it is what the canvas binds its Delete key to — tidying an arrangement is a decision somebody
+   * can take back, where `deleteRecords` is not.
    */
-  removeFromCanvas: (canvas: string, nodeId: string) => Promise<void>;
+  removeFromCanvas: (canvas: string, node: string | string[]) => Promise<void>;
+  /**
+   * Delete several records, for everyone in the space, asking **once**.
+   *
+   * Takes the graph's `onDeleteSelection` or `onSelectionAction` records as they arrive. The host
+   * raises its own confirmation, as it does for every destructive action a template can name, and
+   * that confirmation counts the list — a template looping `record.delete` instead would stack one
+   * dialog per card, which is why this exists.
+   *
+   * Irreversible, and outside the undo history on purpose: an AD4M delete drops the links, and a
+   * re-create earns a new id that nothing pointing at the old one would follow.
+   */
+  deleteRecords: (records: { recordId?: string; recordType?: string }[] | undefined) => Promise<void>;
+  /**
+   * Whether the canvas on screen has anything to undo or redo, and what — `{ canUndo, canRedo,
+   * undoLabel, redoLabel }`.
+   *
+   * Gate a control on `canUndo` rather than hiding it: a greyed key with a tooltip naming what it
+   * would put back says more about the state of the canvas than an absence does.
+   */
+  canvasHistory: Accessor<HistoryState>;
+  /**
+   * Put back the last thing this agent did to the arrangement of the canvas on screen.
+   *
+   * Arrangement only — a move, a resize, a colour, a card taken off. It is replayed as a **new
+   * write** rather than as a rollback, so a peer's changes in between are not discarded, and a card
+   * a peer has moved since is skipped rather than dragged back out from under them. See
+   * `@we/history` for why that is the only honest shape on shared data.
+   */
+  undoCanvas: () => Promise<void>;
+  /** Do again what `undoCanvas` put back, on the same terms. */
+  redoCanvas: () => Promise<void>;
+  /**
+   * Point the undo stack at a canvas, forgetting anything remembered about another.
+   *
+   * Called by whatever knows which canvas is on screen — the template, as its picker changes. Undo
+   * is about what the reader can see, and replaying a move onto a canvas they navigated away from
+   * is the most confusing thing the key could do. Idempotent, so it is safe to bind to a value that
+   * re-resolves on every render.
+   */
+  scopeCanvasHistory: (canvas: string) => void;
   /**
    * Resize a card on a canvas. Takes the graph's `onNodeResize` payload as it arrives.
    *
@@ -457,14 +512,17 @@ export interface RecordStore {
    */
   retargetOnCanvas: (canvas: string, payload: unknown) => Promise<void>;
   /**
-   * Set one presentation property of one card on one canvas — colour, shape, content scale,
-   * rotation, stacking.
+   * Set one presentation property of one card — or of a whole selection — on one canvas: colour,
+   * shape, content scale, rotation, stacking.
    *
    * Takes the property name, so one action serves every control, which is the only shape that works
-   * when a swatch, a picker and a slider all write to the same record. Nothing here touches the
-   * record being displayed: every one of these is undone by taking the card off the canvas.
+   * when a swatch, a picker and a slider all write to the same record. Takes one node id or a list
+   * of them, so a selection is not a special case. Nothing here touches the record being displayed.
+   *
+   * Undoable, and each card keeps its own baseline — so putting back a colour applied to nine cards
+   * restores nine different colours rather than one.
    */
-  setCardStyle: (canvas: string, nodeId: string, field: string, value: unknown) => Promise<void>;
+  setCardStyle: (canvas: string, node: string | string[], field: string, value: unknown) => Promise<void>;
   /**
    * Placement fields written but not yet read back, keyed by the placed record's id.
    *
@@ -1244,37 +1302,88 @@ export function RecordStoreProvider(props: ParentProps) {
    * the space: the parent link is what makes a placement belong to a canvas, so asking the canvas is
    * both cheaper and the only phrasing that stays correct when the same record sits on two.
    */
-  async function placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): Promise<void> {
+  /**
+   * One card moved, with the coordinate it had before — which is what makes the move undoable.
+   *
+   * The baseline costs nothing. This is a read-then-write already (a card dragged twice must not
+   * leave two placements), so the value an undo would put back is in hand at the moment of writing
+   * and no extra round trip is paid for keeping it.
+   *
+   * `expect` is the concurrency guard, and it is *here* rather than in `@we/history` because this is
+   * the only place that reads the current value. An undo says "put it back, if it is still where I
+   * left it"; a peer who has moved the card since means the answer is no, and the press does nothing
+   * rather than teleporting the card out from under them. Folding the check into the write is what
+   * keeps an undo one round trip instead of two.
+   *
+   * Answers with the move it made, or null when it made none.
+   */
+  async function writePlacement(
+    canvas: string,
+    nodeId: string,
+    nodeType: string,
+    x: number,
+    y: number,
+    expect?: { x: number; y: number } | null,
+  ): Promise<{ from: { x: number; y: number } | null; to: { x: number; y: number } } | null> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !nodeId) return;
+    if (!dataset || !canvas || !nodeId) return null;
     const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
 
+    /*
+      Held before the read, not after it.
+
+      The whole value of this on an undo is that the card moves on the keystroke; holding after the
+      read would put a round trip in front of the very thing the hold exists to hide. Dropped again
+      below if the guard refuses or the write fails, so the only cost of being eager is that a
+      refused undo shows the card moving and coming back — which is the honest drawing of what
+      happened.
+    */
+    hold(nodeId, { x, y });
     try {
       const already = await drawnPlacement(dataset.handle, parent, nodeId);
-      if (already) {
-        await Placement.update(dataset.handle, already.id, { x, y });
-        return;
+      const from = already ? { x: Number(already.x) || 0, y: Number(already.y) || 0 } : null;
+
+      if (expect !== undefined) {
+        const matches = expect === null ? already === undefined : from !== null && sameSpot(from, expect);
+        if (!matches) {
+          drop(nodeId, { x, y });
+          return null;
+        }
       }
 
-      await createPlacement(dataset.handle, parent, nodeId, nodeType, { x, y });
+      if (already) await Placement.update(dataset.handle, already.id, { x, y });
+      else await createPlacement(dataset.handle, parent, nodeId, nodeType, { x, y });
+      done(nodeId, { x, y });
+      return { from, to: { x, y } };
     } catch (error) {
+      drop(nodeId, { x, y });
       console.error('RecordStore: placing a record on a canvas failed', error);
       toastService.error('Could not save that position.');
+      return null;
     }
   }
 
+  async function placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): Promise<void> {
+    const moved = await writePlacement(canvas, nodeId, nodeType, x, y);
+    if (moved) rememberMoves(canvas, [{ recordId: nodeId, recordType: nodeType, ...moved }]);
+  }
+
   /**
-   * One drag, written: the card that moved, plus whatever a fold was holding.
+   * One drag, written: every card that travelled, and whatever a fold was holding.
    *
    * Sequential rather than in parallel, and that is deliberate. Each placement is a read-then-write
    * against the same canvas's children, so issuing them together would have every one of them read
    * the state before any of the others wrote — which is exactly how a canvas ends up with two
-   * placements for one card. A fold holds a handful of cards, so the cost is a handful of round
+   * placements for one card. A drag holds a handful of cards, so the cost is a handful of round
    * trips on a gesture that happens when somebody lets go of a mouse.
    *
-   * A carried card whose write fails leaves the fold where it was dropped and that card where it
-   * was; `placeOnCanvas` says so once per failure. Better than the alternative of unwinding the
-   * lot, which would move the card back out from under the reader's cursor.
+   * A carried card whose write fails leaves the rest where they were dropped and that card where it
+   * was; `writePlacement` says so once per failure. Better than the alternative of unwinding the
+   * lot, which would move cards back out from under the reader's cursor.
+   *
+   * **One history entry for the whole gesture.** Twelve cards dragged as one have to come back as
+   * one press — a stack that recorded them separately would need twelve, which is not undo, it is
+   * counting.
    */
   async function dragOnCanvas(
     canvas: string,
@@ -1287,11 +1396,17 @@ export function RecordStoreProvider(props: ParentProps) {
     },
   ): Promise<void> {
     if (!payload?.recordId || !payload.recordType) return;
-    await placeOnCanvas(canvas, payload.recordId, payload.recordType, payload.x, payload.y);
-    for (const card of payload.carried ?? []) {
-      if (!card?.recordId || !card.recordType) continue;
-      await placeOnCanvas(canvas, card.recordId, card.recordType, card.x, card.y);
+    const cards = [
+      { recordId: payload.recordId, recordType: payload.recordType, x: payload.x, y: payload.y },
+      ...(payload.carried ?? []).filter((card) => card?.recordId && card.recordType),
+    ];
+
+    const moves: CardMove[] = [];
+    for (const card of cards) {
+      const moved = await writePlacement(canvas, card.recordId, card.recordType, card.x, card.y);
+      if (moved) moves.push({ recordId: card.recordId, recordType: card.recordType, ...moved });
     }
+    rememberMoves(canvas, moves);
   }
 
   /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
@@ -1322,6 +1437,69 @@ export function RecordStoreProvider(props: ParentProps) {
     Object.keys(cardStyle.holds())
       .filter((key) => key.startsWith(`${nodeId}\u0000`))
       .map((key) => key.slice(nodeId.length + 1));
+
+  // ─── Undo, for a canvas ──────────────────────────────────────────────────────
+
+  /**
+   * What this agent has done to the canvas on screen, so it can be put back.
+   *
+   * Scoped to one canvas and cleared when that changes — see `@we/history` for why undo on shared,
+   * last-write-wins data is a stack of forward writes rather than a set of snapshots, and why it is
+   * private to this agent rather than shared with the space.
+   *
+   * **Arrangement only.** A move, a resize, a colour, a card taken off the canvas: all of these are
+   * scalar upserts on a `Placement`, which the write path already reads before it writes, so the
+   * value an undo needs is in hand for nothing. Deleting a *record* is not here and will not be —
+   * an AD4M delete drops the links, a re-create earns a new id, and everything pointing at the old
+   * one breaks silently. `deleteRecords` says as much in the host's own confirmation.
+   */
+  const history = createHistory(createSignal);
+
+  /** One card's move, with where it came from — `from` is null for a card that was not on the canvas. */
+  type CardMove = {
+    recordId: string;
+    recordType: string;
+    from: { x: number; y: number } | null;
+    to: { x: number; y: number };
+  };
+
+  /**
+   * Two coordinates within a pixel of each other.
+   *
+   * Exact equality is the wrong test against a value that has been through a float, a JSON encode
+   * and a peer: a card that came back as 400.00000000000006 is a card nobody moved, and an undo
+   * that refused because of it would be refusing for a reason no person could see.
+   */
+  const sameSpot = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1;
+
+  /** Replay a set of moves in one direction, skipping any card a peer has moved since. */
+  async function replayMoves(canvas: string, moves: CardMove[], direction: 'undo' | 'redo'): Promise<void> {
+    for (const move of moves) {
+      const [expect, at] = direction === 'undo' ? [move.to, move.from] : [move.from, move.to];
+      // A card that was not on the canvas before goes back to not being on it — the undo of
+      // "something was dropped here" is not a placement at the origin.
+      if (at) await writePlacement(canvas, move.recordId, move.recordType, at.x, at.y, expect);
+      else await clearPlacement(canvas, move.recordId, expect ?? undefined);
+    }
+  }
+
+  /**
+   * Record a gesture's moves as one undoable act.
+   *
+   * One entry however many cards moved: twelve dragged together have to come back on one press.
+   * Nothing is recorded for a gesture that moved nothing, so a drag the data refused does not leave
+   * an entry whose undo would do nothing either.
+   */
+  function rememberMoves(canvas: string, moves: CardMove[]): void {
+    if (!canvas || !moves.length) return;
+    history.push({
+      scope: canvas,
+      label: moves.length > 1 ? `move ${moves.length} cards` : 'move card',
+      undo: () => replayMoves(canvas, moves, 'undo'),
+      redo: () => replayMoves(canvas, moves, 'redo'),
+    });
+  }
 
   /** The holds a drawer takes: record → field → value, with anything expired already gone. */
   const pendingCardStyle: Accessor<PendingWrites> = () => {
@@ -1365,9 +1543,13 @@ export function RecordStoreProvider(props: ParentProps) {
    * the tray, and a placement minted here would have to invent a position — putting the card at the
    * canvas's origin as a side effect of choosing a colour.
    */
-  async function stylePlacement(canvas: string, nodeId: string, patch: Record<string, unknown>): Promise<void> {
+  async function stylePlacement(
+    canvas: string,
+    nodeId: string,
+    patch: Record<string, unknown>,
+  ): Promise<unknown | undefined> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !nodeId || !Object.keys(patch).length) return;
+    if (!dataset || !canvas || !nodeId || !Object.keys(patch).length) return undefined;
     // Before the write, not after it: the point is that the card changes on the gesture rather than
     // on the round trip. Dropped again below if the write turns out not to be possible.
     hold(nodeId, patch);
@@ -1376,16 +1558,29 @@ export function RecordStoreProvider(props: ParentProps) {
       if (!already) {
         drop(nodeId, patch);
         toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
-        return;
+        return undefined;
       }
+      /*
+        What the field held before, read off the row this write is about to land on — the baseline an
+        undo puts back, costing nothing because the read has already happened.
+
+        The sentinel rather than `undefined` for a field that held nothing: undoing "give these cards
+        a colour" has to be able to say "back to no colour at all", and an empty value is exactly
+        what `Ad4mModel`'s update skips. See `PLACEMENT_UNSET`.
+      */
+      const [field] = Object.keys(patch);
+      const before = already[field] === undefined || already[field] === '' ? PLACEMENT_UNSET : already[field];
+
       await Placement.update(dataset.handle, already.id, patch);
       // The write is back, so the hold stops being exempt from what the next draw says — see
       // `BoardDeps.done` for why that is not the same as releasing it.
       done(nodeId, patch);
+      return before;
     } catch (error) {
       drop(nodeId, patch);
       console.error('RecordStore: styling a card on a canvas failed', error);
       toastService.error('Could not save that.');
+      return undefined;
     }
   }
 
@@ -1606,10 +1801,40 @@ export function RecordStoreProvider(props: ParentProps) {
     cardStyle.preview(keyOf(nodeId, field), scalar);
   }
 
-  async function setCardStyle(canvas: string, nodeId: string, field: string, value: unknown): Promise<void> {
+  /**
+   * Set one presentation property on one card — or on a whole selection.
+   *
+   * A list rather than a second action named for the plural, the same choice `removeFromCanvas`
+   * makes: one card is not a special case of several, and a template holding a selection should not
+   * have to find a different action to hand it to.
+   *
+   * One history entry for the gesture, holding each card's own previous value — so undoing a colour
+   * applied to nine cards puts nine different colours back rather than one.
+   */
+  async function setCardStyle(canvas: string, node: string | string[], field: string, value: unknown): Promise<void> {
     const scalar = cardStyleValue(field, value);
     if (scalar === undefined) return;
-    await stylePlacement(canvas, nodeId, { [field]: scalar });
+    const nodeIds = (Array.isArray(node) ? node : [node]).filter(Boolean);
+    if (!nodeIds.length) return;
+
+    const changed: { nodeId: string; before: unknown }[] = [];
+    for (const nodeId of nodeIds) {
+      const before = await stylePlacement(canvas, nodeId, { [field]: scalar });
+      // `undefined` is a write that did not happen — an unplaced card, or one the write failed for.
+      if (before !== undefined) changed.push({ nodeId, before });
+    }
+    if (!canvas || !changed.length) return;
+
+    history.push({
+      scope: canvas,
+      label: changed.length > 1 ? `restyle ${changed.length} cards` : 'restyle card',
+      undo: async () => {
+        for (const { nodeId, before } of changed) await stylePlacement(canvas, nodeId, { [field]: before });
+      },
+      redo: async () => {
+        for (const { nodeId } of changed) await stylePlacement(canvas, nodeId, { [field]: scalar });
+      },
+    });
   }
 
   async function setTypeColor(canvas: string, nodeType: string, color: unknown): Promise<void> {
@@ -1807,21 +2032,149 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
-  async function removeFromCanvas(canvas: string, nodeId: string): Promise<void> {
+  /**
+   * Take one card off a canvas, answering with everything it was wearing.
+   *
+   * The whole row rather than its coordinate, because the undo has to put the card back as it was —
+   * its size, colour, shape and stacking live on the placement too, and a restore that returned a
+   * card to the right spot stripped of its presentation is a worse outcome than not offering the
+   * undo at all.
+   *
+   * `expect` refuses where the card has moved since, the same guard `writePlacement` carries.
+   */
+  async function clearPlacement(
+    canvas: string,
+    nodeId: string,
+    expect?: { x: number; y: number },
+  ): Promise<PlacementRow | null> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !nodeId) return;
+    if (!dataset || !canvas || !nodeId) return null;
     try {
       const existing = (await Placement.findAll(dataset.handle, {
         parent: { id: canvas, predicate: PREDICATES.CHILDREN },
-      } as Record<string, unknown>)) as { id: string; node?: string }[];
+      } as Record<string, unknown>)) as unknown as PlacementRow[];
+      const rows = existing.filter((placement) => placement.node === nodeId);
+      if (!rows.length) return null;
+
+      const drawn = resolvePlacement(rows) ?? rows[0];
+      if (expect && !sameSpot({ x: Number(drawn.x) || 0, y: Number(drawn.y) || 0 }, expect)) return null;
+
       // Every placement for this node, not the first: a duplicate should not survive the removal and
       // silently put the thing back on the canvas at the next refresh.
-      for (const row of existing.filter((placement) => placement.node === nodeId)) {
-        await Placement.delete(dataset.handle, row.id);
-      }
+      for (const row of rows) await Placement.delete(dataset.handle, row.id);
+      return drawn;
     } catch (error) {
       console.error('RecordStore: removing a record from a canvas failed', error);
       toastService.error('Could not remove that.');
+      return null;
+    }
+  }
+
+  /**
+   * Put a card back exactly as it came off — position, size, colour, shape, stacking.
+   *
+   * Built from the row `clearPlacement` answered with, minus the two fields that identify the row
+   * rather than describe it. A fresh record, so it carries a new id: nothing points at a placement,
+   * so there is nothing for that to break — which is exactly why *this* is reversible where deleting
+   * a record is not.
+   */
+  async function restorePlacement(canvas: string, nodeId: string, row: PlacementRow): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    const { id: _id, node: _node, ...fields } = row;
+    try {
+      await Placement.create(
+        dataset.handle as never,
+        { ...fields, node: [nodeId] } as never,
+        {
+          parent: { id: canvas, predicate: PREDICATES.CHILDREN },
+        } as never,
+      );
+    } catch (error) {
+      console.error('RecordStore: putting a card back on a canvas failed', error);
+      toastService.error('Could not put that back.');
+    }
+  }
+
+  /**
+   * Take a card — or a whole selection — off a canvas, leaving the records themselves alone.
+   *
+   * One action for one and for many rather than a second named for the plural: the argument is the
+   * only thing that differs, a selection of one is not a special case, and a template that has a
+   * list in hand should not have to find a different action to pass it to.
+   *
+   * Reversible, and deliberately the thing the Delete key does. Tidying a canvas is what a
+   * rubber-band selection is nearly always for, and "remove these from here" is a decision about an
+   * arrangement that somebody can take back — where deleting the records is a decision about a
+   * community's content that nobody can.
+   */
+  async function removeFromCanvas(canvas: string, node: string | string[]): Promise<void> {
+    const nodeIds = (Array.isArray(node) ? node : [node]).filter(Boolean);
+    if (!canvas || !nodeIds.length) return;
+
+    const removed: { nodeId: string; row: PlacementRow }[] = [];
+    for (const nodeId of nodeIds) {
+      const row = await clearPlacement(canvas, nodeId);
+      if (row) removed.push({ nodeId, row });
+    }
+    if (!removed.length) return;
+
+    history.push({
+      scope: canvas,
+      label: removed.length > 1 ? `remove ${removed.length} cards` : 'remove card',
+      undo: async () => {
+        for (const { nodeId, row } of removed) await restorePlacement(canvas, nodeId, row);
+      },
+      redo: async () => {
+        for (const { nodeId } of removed) await clearPlacement(canvas, nodeId);
+      },
+    });
+  }
+
+  /**
+   * Delete several records, for everyone, as one act.
+   *
+   * The whole reason this exists rather than a template looping `record.delete`: the host's
+   * confirmation is modal and phrased per record, so a loop stacks one dialog per card. This is
+   * marked `destructive` like any other delete, so the host raises **one** question — and
+   * `describeDestructive` counts what is in the list, which is the number somebody about to answer
+   * it actually needs.
+   *
+   * **Not undoable, and deliberately outside the history.** An AD4M delete removes the links; a
+   * re-create earns a new id, so every relation pointing at the old record breaks with nothing to
+   * say it did. Taking a card *off a canvas* is the reversible neighbour of this and is what the
+   * Delete key does; this is the one a person has to ask for.
+   *
+   * One write group, so a canvas of peers sees the set go at once rather than thinning out over a
+   * second — and so a failure part-way leaves nothing half-done.
+   */
+  async function deleteRecords(records: { recordId?: string; recordType?: string }[] | undefined): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    const rows = (records ?? []).filter((row) => row?.recordId && row.recordType);
+    if (!dataset || !rows.length) return;
+
+    try {
+      await runEntityTransaction(dataset.handle, async (tx) => {
+        for (const row of rows) {
+          const Model = entityClass(row.recordType!, dataset.handle);
+          if (!Model) continue;
+          const found = (await Model.findOne(dataset.handle as never, { where: { id: row.recordId } } as never)) as
+            { delete?: (batch?: string) => Promise<unknown> } | undefined;
+          await found?.delete?.(tx.batchId);
+        }
+      });
+      /*
+        Anything undone-able that mentioned these is now a lie.
+
+        A move entry naming a record that no longer exists would replay into nothing — or worse,
+        write a placement for a deleted record and put a card nobody can open back on the canvas. The
+        cheap, correct answer is to forget the arrangement history rather than to filter it: a delete
+        is rare, and a lost undo stack is a smaller surprise than an undo that resurrects a ghost.
+      */
+      history.clear();
+    } catch (error) {
+      console.error('RecordStore: deleting records failed', error);
+      toastService.error('Could not delete those.');
     }
   }
 
@@ -1944,6 +2297,11 @@ export function RecordStoreProvider(props: ParentProps) {
     placeOnCanvas,
     dragOnCanvas,
     removeFromCanvas,
+    deleteRecords,
+    canvasHistory: history.state,
+    undoCanvas: history.undo,
+    redoCanvas: history.redo,
+    scopeCanvasHistory: history.scopeTo,
     pendingCardStyle,
     confirmPending,
     previewCardStyle,

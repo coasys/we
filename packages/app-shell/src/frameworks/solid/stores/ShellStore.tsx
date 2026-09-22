@@ -145,6 +145,24 @@ function describeDestructive(path: string, args: unknown[]): { title: string; bo
         title: entity ? `Delete this ${entity}?` : 'Delete this record?',
         body: 'It will be removed for everyone in this space. This cannot be undone.',
       };
+    case 'recordStore.deleteRecords': {
+      /*
+        The number is the point of this case existing.
+
+        A person about to answer "delete these?" over a rubber-band selection cannot count what is
+        inside a dashed rectangle on a dense canvas, and the difference between three and thirty is
+        the difference between yes and no. The count comes from the argument rather than from
+        anything the template said, so it is true however the template phrased the press.
+      */
+      const count = Array.isArray(args[0]) ? args[0].length : 0;
+      return {
+        title: count === 1 ? 'Delete this record?' : `Delete ${count} records?`,
+        body:
+          count === 1
+            ? 'It will be removed for everyone in this space. This cannot be undone.'
+            : 'They will be removed for everyone in this space. This cannot be undone.',
+      };
+    }
     case 'spaceStore.deleteCollection':
       // Deliberately not "the post". A collection is kind-agnostic — a post, a recorded call and a
       // notes collection are the same shape and the same recursive delete — so naming one of them

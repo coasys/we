@@ -739,6 +739,24 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     placeOnCanvas: action('content'),
     dragOnCanvas: action('content'),
     removeFromCanvas: action('content'),
+    /*
+      Destructive, where `removeFromCanvas` beside it is not, and the pair is the whole point.
+
+      Taking a card off a canvas ends a placement; this ends the records, for everybody, with no way
+      back. So the host asks — once for the whole list, which is why this exists rather than a
+      template looping `record.delete` and stacking a dialog per card.
+    */
+    deleteRecords: destructive('content'),
+    /*
+      Undo over a canvas's arrangement. Not destructive: every entry it replays is itself an
+      ordinary `content` write that was already granted when it was made, so guarding the replay
+      would be asking a second time about a decision the reader has already taken — and asking it
+      about a key press, which is the interaction least able to carry a modal.
+    */
+    undoCanvas: action('content'),
+    redoCanvas: action('content'),
+    scopeCanvasHistory: action('content'),
+    canvasHistory: state('content'),
     resizeOnCanvas: action('content'),
     anchorOnCanvas: action('content'),
     rerouteOnCanvas: action('content'),

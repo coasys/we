@@ -527,6 +527,9 @@ importers:
       '@we/graph-solid':
         specifier: workspace:*
         version: link:../graph-system/frameworks/solid
+      '@we/history':
+        specifier: workspace:*
+        version: link:../history
       '@we/module-call':
         specifier: workspace:*
         version: link:../module-system/call

@@ -45,6 +45,8 @@ const SOLID_TESTS = [
   // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
   // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
   'tests/dockStowAndReveal.test.tsx',
+  // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
+  'tests/canvasHistory.test.tsx',
 ];
 
 export default defineConfig({
