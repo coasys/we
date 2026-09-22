@@ -2856,18 +2856,29 @@ describe('a stream that went away', () => {
  * speaking grew with the length of the conversation.
  */
 describe('the transcript window', () => {
-  it('starts at one page, following the live end', () => {
+  it('opens on a small page, following the live end', () => {
+    /*
+      Fifty, not the two hundred it grows by. Opening is paid by everybody on every call, and a
+      page that size is also a hundred-odd custom elements laying out in one pass — which is what
+      made the panel open a couple of lines short of the bottom.
+    */
     const h = harness();
-    expect(h.store.transcriptShown()).toBe(200);
+    expect(h.store.transcriptShown()).toBe(50);
     expect(h.store.transcriptFromStart()).toBe(false);
   });
 
-  it('grows by a page at a time rather than opening the lot', () => {
+  it('grows by more than it opened with, because the two answer different questions', () => {
+    /*
+      The asymmetry is the point. The window grows by re-running the query at a bigger limit rather
+      than by fetching a page and appending, so reading backwards is quadratic in the number of
+      loads — and the loads are automatic now, on scroll, rather than one press each. A small step
+      would turn a scroll through a long transcript into twenty re-fetches of a growing list.
+    */
     const h = harness();
     h.store.showEarlierTranscript();
-    expect(h.store.transcriptShown()).toBe(400);
+    expect(h.store.transcriptShown()).toBe(250);
     h.store.showEarlierTranscript();
-    expect(h.store.transcriptShown()).toBe(600);
+    expect(h.store.transcriptShown()).toBe(450);
   });
 
   /*
@@ -2884,7 +2895,7 @@ describe('the transcript window', () => {
 
     h.store.readTranscriptFromStart();
     expect(h.store.transcriptFromStart()).toBe(true);
-    expect(h.store.transcriptShown()).toBe(200);
+    expect(h.store.transcriptShown()).toBe(50);
   });
 
   it('goes back to following the end', () => {
@@ -2894,7 +2905,7 @@ describe('the transcript window', () => {
 
     h.store.readTranscriptLive();
     expect(h.store.transcriptFromStart()).toBe(false);
-    expect(h.store.transcriptShown()).toBe(200);
+    expect(h.store.transcriptShown()).toBe(50);
   });
 
   /*
@@ -2911,13 +2922,13 @@ describe('the transcript window', () => {
     // Read back into it, and from the other end — both are state the next call must not inherit.
     h.store.readTranscriptFromStart();
     h.store.showEarlierTranscript();
-    expect(h.store.transcriptShown()).toBe(400);
+    expect(h.store.transcriptShown()).toBe(250);
     expect(h.store.transcriptFromStart()).toBe(true);
 
     onScreen = 'call-two';
     await h.settle();
 
-    expect(h.store.transcriptShown()).toBe(200);
+    expect(h.store.transcriptShown()).toBe(50);
     expect(h.store.transcriptFromStart()).toBe(false);
   });
 
@@ -2931,6 +2942,6 @@ describe('the transcript window', () => {
     h.store.showEarlierTranscript();
     await h.settle();
 
-    expect(h.store.transcriptShown()).toBe(400);
+    expect(h.store.transcriptShown()).toBe(250);
   });
 });

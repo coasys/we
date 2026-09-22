@@ -255,21 +255,29 @@ describe('a transcript with nothing in it', () => {
   });
 
   /**
-   * Both ways back, and they answer different questions: one more page is "I missed something a
-   * moment ago", the start is "I want to read this properly" — a different query, not a longer
-   * scroll, and unreachable by pressing the first enough times.
+   * Neither way back is a button in the rows any more.
+   *
+   * Earlier lines load as the reader reaches them — reaching the edge of a list IS the request, and
+   * a button asking them to confirm the scroll they just made is a step nobody wanted. The
+   * beginning went the other way, up into the scroller's own corner beside "jump to the end", where
+   * it reads as that control's opposite rather than as a word in the margin. Both are asserted from
+   * the feed below; what is left here is the reassurance, which is the part a silently-stopping list
+   * cannot give.
    */
-  it('offers one more page, and the beginning', () => {
-    expect(linesJson).toContain('modules.transcribe.showEarlierTranscript');
-    expect(linesJson).toContain('modules.transcribe.readTranscriptFromStart');
+  it('says earlier lines are coming rather than asking for a press', () => {
+    expect(linesJson).not.toContain('modules.transcribe.showEarlierTranscript');
+    expect(linesJson).not.toContain('modules.transcribe.readTranscriptFromStart');
+    expect(linesJson).toContain('Earlier in the conversation');
+    // The way back to the live end stays: it is the one thing the from-start view cannot say with a
+    // scroll, since new lines do not belong below the oldest ones.
     expect(linesJson).toContain('modules.transcribe.readTranscriptLive');
   });
 
   /**
-   * The offer is withdrawn once everything is loaded — a page that came back short is the exact
-   * answer to "is there more", even though a full one is only a probable yes.
+   * The reassurance is withdrawn once everything is loaded — a page that came back short is the
+   * exact answer to "is there more", even though a full one is only a probable yes.
    */
-  it('offers more only while a page came back full', () => {
+  it('says it only while a page came back full', () => {
     expect(linesJson).toContain('count(local.utterances) >= modules.transcribe.transcriptShown');
   });
 
@@ -629,19 +637,35 @@ describe('the feed', () => {
   });
 
   /**
-   * A way back to the end, and deliberately NOT one to the start.
+   * A way back to each end, with the start one meaning something the scroller could not mean alone.
    *
    * `pin` lets go of a reader who scrolls up and offers nothing to undo that; in a live transcript
-   * the bottom keeps moving, so scrolling back to it by hand is a chase — that half stands.
+   * the bottom keeps moving, so scrolling back to it by hand is a chase — that half always stood.
    *
-   * The start half went when the window arrived. The scroll area can only reach the top of what is
-   * LOADED, which is no longer the beginning of the conversation, so the button would have said
-   * "start" and delivered "as far back as we happened to fetch". Reaching the real beginning is a
-   * different query, offered in `transcriptLines` where it can be answered honestly.
+   * The start half was dropped when the window arrived, because the scroll area can only reach the
+   * top of what is LOADED, which is not the beginning of the conversation: the button would have
+   * said "start" and delivered "as far back as we happened to fetch". That was right about the
+   * action and it cost the affordance, so the split is now explicit — the scroller keeps deciding
+   * WHETHER there is anywhere above to go, and the slot supplies what pressing it does.
    */
-  it('offers a way back to the live end, and leaves the start to the window', () => {
-    expect(feedJson).toContain('"jump":"end"');
-    expect(feedJson).not.toContain('"jump":"both"');
+  it('offers both ends, and replaces what the start one does', () => {
+    expect(feedJson).toContain('"jump":"both"');
+    expect(feedJson).toContain('"slot":"jump-start"');
+    expect(feedJson).toContain('modules.transcribe.readTranscriptFromStart');
+  });
+
+  /**
+   * Earlier lines load as the reader reaches them, and their place is kept across what arrives.
+   *
+   * The guard is on the anchor rather than on there being more: the rows that could answer "is
+   * there more" are a local of `transcriptLines`, which is placed INSIDE this scroller, and an
+   * event reaches its ancestors rather than its descendants. Anchored to the start there is nothing
+   * above at all, and that case is refused outright.
+   */
+  it('loads earlier lines on approach, and not when already at the beginning', () => {
+    expect(feedJson).toContain('"nearStart":400');
+    expect(feedJson).toContain('modules.transcribe.showEarlierTranscript');
+    expect(feedJson).toContain('!modules.transcribe.transcriptFromStart');
   });
 
   it('times a row by the clock once the call is over, and relatively while it is not', () => {

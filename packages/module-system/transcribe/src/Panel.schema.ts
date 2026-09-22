@@ -2990,10 +2990,18 @@ export const transcriptLines: SchemaNode = {
           ],
         },
         /*
-          Following the live end, with more behind. Two offers, because they answer different
-          questions: one more page is "I missed something a moment ago", and the start is "I want to
-          read this properly" — which is a different query, not a longer scroll, and cannot be
-          reached by pressing the first one enough times in any reasonable number of presses.
+          Following the live end, with more behind: say that earlier lines are on their way, and
+          nothing else.
+
+          There was a "Show earlier" button here. It is gone because the scroll area now says when
+          the reader has come within reach of the top and the window grows on its own — reaching the
+          edge of a list IS the request, and a button asking them to confirm the scroll they just
+          made is a step nobody wanted. What is left is the reassurance that something is happening,
+          which a list that silently stops has no way to give.
+
+          "Jump to the start" left too, upward rather than away: it is the pinned control in the
+          scroller's own corner now — see `transcriptFeed` — where it sits beside "jump to the end"
+          and reads as its opposite instead of as a word in the margin.
         */
         else: {
           type: '$if',
@@ -3003,32 +3011,11 @@ export const transcriptLines: SchemaNode = {
               type: 'Row',
               props: { ay: 'center', gap: '300', pb: '200' },
               children: [
-                {
-                  type: 'we-button',
-                  props: {
-                    variant: 'bare',
-                    size: 'sm',
-                    color: 'text-faint',
-                    hoverProps: { color: 'text' },
-                    onClick: { $action: 'modules.transcribe.showEarlierTranscript' },
-                  },
-                  children: ['Show earlier'],
-                },
+                { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-faint' },
-                  children: ['·'],
-                },
-                {
-                  type: 'we-button',
-                  props: {
-                    variant: 'bare',
-                    size: 'sm',
-                    color: 'text-faint',
-                    hoverProps: { color: 'text' },
-                    onClick: { $action: 'modules.transcribe.readTranscriptFromStart' },
-                  },
-                  children: ['Jump to the start'],
+                  children: ['Earlier in the conversation…'],
                 },
               ],
             },
@@ -4113,15 +4100,74 @@ export const transcriptFeed: SchemaNode = panelScroll({
   */
   pin: { $: `${'modules.transcribe.transcriptFromStart'} ? '' : 'end'` },
   /*
-    `end` rather than `both`, now that the window is bounded.
+    Both ends, and the start one does something the scroller could not do for itself.
 
-    The scroll area's start button goes to the top of what is *loaded*, which since the window
-    arrived is not the start of the conversation — it would say "start" and deliver "as far back as
-    we happened to fetch". Reaching the real beginning is a different query, so it is offered where
-    it can be answered honestly: `transcriptLines`' own "Jump to the start", which re-anchors the
-    window rather than scrolling within it.
+    It was `end` alone, because the scroller's own start button goes to the top of what is *loaded*
+    — which, since the window arrived, is not the beginning of the conversation. It would have said
+    "start" and delivered "as far back as we happened to fetch".
+
+    That was the right call about the *action* and it cost the affordance. So the visibility stays
+    the scroller's — it is the one that knows whether there is anywhere above to go — and the action
+    comes from here, through the `jump-start` slot below. The button is the scroller's own, in its
+    own corner, and it means what it says.
   */
-  jump: 'end',
+  jump: 'both',
+  /*
+    Read from the beginning — a different query, not a scroll, in the control that looks like one.
+
+    Pressing it while already reading from the start re-anchors to the start again, which is both
+    harmless and exactly what "take me to the beginning" should do from anywhere.
+  */
+  jumpStart: {
+    type: 'we-tooltip',
+    props: { content: 'Read from the beginning', placement: 'left' },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          variant: 'secondary',
+          size: 'sm',
+          square: true,
+          r: 'pill',
+          shadow: 'md',
+          label: 'Read from the beginning',
+          onClick: { $action: 'modules.transcribe.readTranscriptFromStart' },
+        },
+        children: [{ type: 'we-icon', props: { name: 'caret-double-up' } }],
+      },
+    ],
+  },
+  /*
+    Earlier lines load as the reader reaches them, rather than on a button.
+
+    The distance is about a panel's height of runway, so a page is asked for before the reader
+    arrives at the edge rather than when they hit it. The scroller holds their place across what
+    lands — content added *above* would otherwise push everything they are reading down by the
+    height of the new rows, on every load, which is the thing that makes an infinite scroll upwards
+    unusable.
+
+    Guarded on following the live end, and NOT on there being more — which is a real imprecision
+    and a deliberate one.
+
+    "May have more" is `count(local.utterances) >= transcriptShown`, and those rows are a local of
+    `transcriptLines`, which is placed as a part *inside* this scroller. An event dispatched on the
+    scroller reaches its ancestors, never its descendants, so the node that could answer is the one
+    node that cannot be asked. The alternatives were each worse than the cost: a count projection is
+    a round trip to avoid a re-run, and a count reported back from a render is a write from drawing.
+
+    What it costs: reaching the top of a fully-loaded transcript raises the window by a page and
+    re-runs the query, which comes back with the same rows. The list is unchanged, the "earlier"
+    line correctly disappears, and nothing is drawn wrongly — it is one wasted read per trip to the
+    top, and the read is bounded by what exists rather than by the window. Anchored to the start
+    there is nothing above at all, which is the case worth refusing outright, and it is refused.
+  */
+  nearStart: 400,
+  onNearStart: {
+    $if: {
+      condition: { $: `!${TRANSCRIPT_FROM_START}` },
+      then: { $action: 'modules.transcribe.showEarlierTranscript' },
+    },
+  },
   children: [
     {
       type: 'Column',

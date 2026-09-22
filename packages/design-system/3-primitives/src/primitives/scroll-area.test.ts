@@ -298,3 +298,193 @@ describe('we-scroll-area jump', () => {
     expect(base.scrollTop).toBe(0);
   });
 });
+
+/**
+ * The settle pass: following keeps checking until the end stops moving.
+ *
+ * One frame used to be the whole budget, and content is not on a budget. A page of rows arriving at
+ * once is a hundred-odd custom elements each rendering their own shadow content, and when that does
+ * not finish inside a single frame the follow measures a list mid-layout and lands short of a bottom
+ * that keeps moving. That is a transcript opening with its last couple of lines under the edge of
+ * the panel, which is exactly what was reported.
+ *
+ * Driven by hand rather than through real frames: `frame()` is one turn of the pass, which is what
+ * the rAF callback would have done.
+ */
+describe('we-scroll-area follows content that is still laying out', () => {
+  /** Run the pending settle frame, if there is one, and let its follow land. */
+  const frame = async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    await Promise.resolve();
+  };
+
+  it('keeps following while the content is still growing', async () => {
+    const { base, scrollTo, addRow, grow, end } = await mount({ pin: 'end' });
+
+    scrollTo(800);
+    await addRow();
+
+    // Three frames of a list that is still rendering itself. Under the old single-frame pass only
+    // the first of these was followed, and the view stayed wherever that left it.
+    for (const by of [240, 180, 90]) {
+      grow(by);
+      await frame();
+    }
+
+    expect(base.scrollTop).toBe(end());
+  });
+
+  it('stops once two frames agree, rather than spinning for its whole budget', async () => {
+    const { base, scrollTo, addRow, grow, end } = await mount({ pin: 'end' });
+
+    scrollTo(800);
+    await addRow();
+    grow(240);
+    await frame();
+    // Settled: the next frame measures the same height and schedules nothing further.
+    await frame();
+    const settledAt = base.scrollTop;
+    expect(settledAt).toBe(end());
+
+    // Growth after the pass has stopped is NOT chased — that is the reflow-arriving-late case the
+    // element deliberately leaves alone, since by then the reader is looking at it.
+    grow(500);
+    await frame();
+    expect(base.scrollTop).toBe(settledAt);
+  });
+
+  it('gives the scroller back the moment the reader touches it', async () => {
+    const { el, base, scrollTo, addRow, grow } = await mount({ pin: 'end' });
+
+    scrollTo(800);
+    await addRow();
+    const before = base.scrollTop;
+
+    // A gesture mid-settle. Finishing a movement the reader did not ask for is the whole job; doing
+    // it through their gesture is the yanking `pin` exists to avoid.
+    el.dispatchEvent(new Event('wheel'));
+    grow(240);
+    await frame();
+
+    expect(base.scrollTop).toBe(before);
+  });
+});
+
+/**
+ * `nearStart`: say when the reader is within reach of the top, and keep their place across what
+ * lands above them.
+ *
+ * The event is what replaces a "show earlier" button — reaching the edge of a list IS the request.
+ * The hold is what makes that bearable: content added above moves everything the reader is looking
+ * at down by its own height, so without it, asking for more is punished by losing your place, on
+ * every load, while scrolling.
+ */
+describe('we-scroll-area nearStart', () => {
+  const nearStarts = (el: HTMLElement) => {
+    const seen: Event[] = [];
+    el.addEventListener('nearstart', (event) => seen.push(event));
+    return seen;
+  };
+
+  it('says nothing unless a distance was asked for', async () => {
+    const { el, scrollTo } = await mount({ pin: 'end' });
+    const seen = nearStarts(el);
+
+    scrollTo(0);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('fires once per approach, not once per scroll event', async () => {
+    const { el, scrollTo } = await mount({ pin: 'end' });
+    (el as unknown as { nearStart: number }).nearStart = 400;
+    const seen = nearStarts(el);
+
+    scrollTo(300);
+    scrollTo(200);
+    scrollTo(100);
+    // A consumer's handler is "fetch the next page", not "fetch the next page unless I already am".
+    expect(seen).toHaveLength(1);
+
+    // Scrolling back out past the threshold re-arms it.
+    scrollTo(700);
+    scrollTo(100);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('says nothing on a list with nothing to scroll', async () => {
+    // Without this a short list fires on mount: a scroller with no overflow sits at zero, which is
+    // inside any threshold.
+    const { el, scrollTo } = await mount({ pin: 'end', scrollHeight: 200, clientHeight: 200 });
+    (el as unknown as { nearStart: number }).nearStart = 400;
+    const seen = nearStarts(el);
+
+    scrollTo(0);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('puts the reader back where they were once the earlier rows arrive', async () => {
+    const { el, base, scrollTo, addRow, grow } = await mount({ pin: 'end' });
+    (el as unknown as { nearStart: number }).nearStart = 400;
+
+    scrollTo(100);
+    // 1000 - 100 = 900 from the bottom, which is the distance that has to survive.
+    grow(600);
+    await addRow();
+
+    expect(base.scrollHeight - base.scrollTop).toBe(900);
+    expect(base.scrollTop).toBe(700);
+  });
+
+  it('leaves a line arriving at the tail alone, which is not a prepend', async () => {
+    const { el, base, scrollTo, addRow, grow } = await mount({ pin: 'end' });
+    const seen = nearStarts(el);
+
+    // Never went near the top, so nothing is held and an ordinary live line moves nobody.
+    (el as unknown as { nearStart: number }).nearStart = 400;
+    scrollTo(500);
+    grow(60);
+    await addRow();
+
+    expect(seen).toHaveLength(0);
+    expect(base.scrollTop).toBe(500);
+  });
+});
+
+/**
+ * The `jump-start` slot: the scroller decides whether there is anywhere to go, the consumer decides
+ * what going there means.
+ *
+ * For a windowed list the top of what is LOADED is not the beginning of anything, so a
+ * scroll-to-top would say "start" and deliver "as far back as we happened to fetch". Reaching the
+ * real beginning is a different query and only the consumer can run it — but where the control sits
+ * and when it is worth offering are still the scroller's to answer, so only the action is handed
+ * back.
+ */
+describe('we-scroll-area jump-start slot', () => {
+  it('draws its own button when nothing is slotted', async () => {
+    const { el, scrollTo, controls } = await mount({ jump: 'both' });
+    scrollTo(500);
+    expect((await controls()).start).toBe(true);
+    expect(el.shadowRoot!.querySelector('[part="jump-start"] we-button')).not.toBeNull();
+  });
+
+  it('is still gated on there being somewhere to go', async () => {
+    // Visibility is not handed back. A consumer supplying a control does not get to show it at the
+    // top of the list, where "back to the start" means nothing.
+    const { el, controls } = await mount({ jump: 'both' });
+    el.innerHTML = '<button slot="jump-start">Beginning</button>';
+    await settle();
+    expect((await controls()).start).toBe(false);
+  });
+
+  it('renders the consumer control in place of its own once there is', async () => {
+    const { el, scrollTo, controls } = await mount({ jump: 'both' });
+    el.innerHTML = '<button slot="jump-start">Beginning</button>';
+    scrollTo(500);
+    await settle();
+
+    expect((await controls()).start).toBe(true);
+    const slot = el.shadowRoot!.querySelector('[part="jump-start"] slot') as HTMLSlotElement;
+    expect(slot.assignedElements()).toHaveLength(1);
+  });
+});

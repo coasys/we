@@ -485,6 +485,72 @@ const squareLoading = (): Scenario => ({
 });
 
 /**
+ * A pinned scroll area opening onto a page of rows that all arrive at once.
+ *
+ * The shape of a transcript opening: a bounded window, so the rows do not trickle in — the whole
+ * page mounts in one pass, and each row is several custom elements that render their own shadow
+ * content. Laying that out takes more than the single frame the follow used to allow, so the view
+ * landed short of a bottom that was still moving and the last couple of lines stayed under the edge
+ * of the panel.
+ *
+ * Rows of real text at a real width, because the thing being measured is layout taking time: a
+ * scenario of fixed-height boxes settles in one frame and proves nothing.
+ */
+const pinnedPage = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { height: '320px', width: '100%' },
+    children: [
+      {
+        type: 'we-scroll-area',
+        props: { id: 'feed', pin: 'end', flex: '1', minHeight: '0' },
+        children: [
+          {
+            type: 'Column',
+            props: { gap: '300', p: '300' },
+            children: [
+              {
+                type: '$each',
+                props: {
+                  items: Array.from({ length: 120 }, (_, i) => ({
+                    id: `row-${i}`,
+                    text: `Line ${i} — something somebody said that runs on for long enough to wrap`,
+                    last: i === 119,
+                  })),
+                  as: 'row',
+                },
+                children: [
+                  {
+                    type: 'Row',
+                    props: { gap: '200', ay: 'start' },
+                    children: [
+                      { type: 'we-avatar', props: { hash: { $: 'row.id' }, size: 'xs' } },
+                      {
+                        type: 'we-text',
+                        props: {
+                          variant: 'body',
+                          flex: '1',
+                          minWidth: '0',
+                          // The last row is findable, so the case can ask the only question that
+                          // matters: is the newest line actually on screen.
+                          id: { $: "row.last ? 'last-line' : ''" },
+                        },
+                        children: [{ $: 'row.text' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * Three folding section headings in a column — plain, with a count, and with a control beside it.
  *
  * The heading with a control is a different tree from the other two: a button around the whole row
@@ -541,5 +607,6 @@ export const scenarios: Record<string, () => Scenario> = {
   'ds:nested-interactive': nestedInteractive,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
+  'ds:pinned-page': pinnedPage,
   'panel:sections': panelSections,
 };

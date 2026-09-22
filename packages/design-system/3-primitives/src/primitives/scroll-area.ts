@@ -93,6 +93,30 @@ const AT_END_PX = 24;
 const SMOOTH_MAX_PX = 1200;
 
 /**
+ * How long a follow keeps re-checking that the end has stopped moving, in milliseconds.
+ *
+ * One frame is a fixed budget and content is not. A page of rows arriving at once is a hundred-odd
+ * custom elements each rendering their own shadow content, and on a slower machine, a wider panel or
+ * a longer page that does not finish inside a single frame — so the follow measured a list mid-layout
+ * and landed short of a bottom that kept moving. That is the "two lines still hidden under the edge"
+ * a reader then has to scroll for by hand.
+ *
+ * Bounded by time rather than by a frame count so the cost is the same whatever the frame rate, and
+ * it stops the moment two consecutive frames agree. Nothing spins for this long in practice: a list
+ * that has settled settles in two frames.
+ */
+const SETTLE_MS = 600;
+
+/**
+ * How long after asking for earlier content the scroller will hold the reader's place, in
+ * milliseconds.
+ *
+ * Long enough to cover a round trip to a remote node, short enough that a page arriving after the
+ * reader has given up and scrolled elsewhere does not move them. See `#holdBottom`.
+ */
+const HOLD_MS = 4_000;
+
+/**
  * Gestures that mean the reader has taken the scroller back.
  *
  * `keydown` is in the list for the same reason the others are — Page Down and End scroll — and
@@ -147,6 +171,32 @@ export default class ScrollArea extends DesignSystemElement {
    * to re-read something presses it once and goes back to being carried along.
    */
   @property({ type: String }) jump: '' | 'start' | 'end' | 'both' = '';
+  /**
+   * Say when the reader comes within this many pixels of the start, so a list can load what is
+   * before it — infinite scroll, upwards.
+   *
+   * Opt-in, and a distance rather than a flag, because the right distance is the consumer's
+   * question: it is how far ahead of the reader a page has to be fetched to arrive before they get
+   * there, which depends on how big a page is and how slow the backend is. `0` is off, and off is
+   * the default — an event nobody listens to is API kept working for nothing.
+   *
+   * It fires `nearstart`, once per approach: sitting at the top does not repeat it, and scrolling
+   * away past the threshold re-arms it. So a consumer's handler is "fetch the next page", not "fetch
+   * the next page if I am not already fetching one".
+   *
+   * ## It holds the reader's place across what arrives
+   *
+   * Loading earlier content puts it *above* what is on screen, which moves everything the reader is
+   * looking at down by the height of the new rows — so without this, asking for more is punished by
+   * losing your place, repeatedly, while scrolling. After firing, the scroller remembers its distance
+   * from the *bottom* and restores it when the content next grows, which is exactly right for a
+   * prepend and needs no cooperation from the consumer.
+   *
+   * Distance from the bottom rather than an anchor element on purpose: a list re-rendered from a
+   * re-run query rebuilds every row, so there is no node whose identity survives the growth to
+   * anchor to. The bottom is the one edge that does not move when content is added above it.
+   */
+  @property({ type: Number }) nearStart = 0;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   /** Whether each control would currently go anywhere. Reactive, so growth reveals them. */
@@ -188,8 +238,22 @@ export default class ScrollArea extends DesignSystemElement {
   #following = false;
   /** The opening jump has happened, so later follows may animate. */
   #opened = false;
-  /** A pending second follow, scheduled for after layout. */
+  /** A pending follow, scheduled for after layout. */
   #frame = 0;
+  /** When the current settle pass gives up, as a timestamp. Zero when none is running. */
+  #settleUntil = 0;
+  /** The scroll height the last settle frame saw, so a frame that changed nothing can stop. */
+  #settleHeight = -1;
+  /**
+   * The distance from the bottom to restore when content next grows, or `-1` for none.
+   *
+   * Armed when `nearstart` fires and the consumer is therefore about to prepend. See `nearStart`.
+   */
+  #holdBottom = -1;
+  /** When that hold expires, as a timestamp. */
+  #holdUntil = 0;
+  /** Whether the reader is currently inside the `nearStart` threshold, so it fires once per approach. */
+  #nearStart = false;
   #mutations?: MutationObserver;
   #resize?: ResizeObserver;
 
@@ -203,11 +267,11 @@ export default class ScrollArea extends DesignSystemElement {
    *
    * Neither catches an image loading inside a row that was already there, which reflows without
    * mutating. Rows of text do not have that problem, and a log is rows of text; it is worth knowing
-   * rather than worth a third observer. The frame-later pass in `#followAfterLayout` does cover the
-   * near case — content that grows between the mutation and the paint, which every custom element
-   * rendering its own shadow content does — so what is left uncovered is a reflow arriving later
-   * than that, and following it would mean yanking the view for something the reader has by then
-   * been looking at.
+   * rather than worth a third observer. The settle pass in `#followUntilSettled` covers the near
+   * case — content that keeps growing for a few frames after the mutation, which a page of custom
+   * elements rendering their own shadow content does — so what is left uncovered is a reflow
+   * arriving later than that, and following it would mean yanking the view for something the reader
+   * has by then been looking at.
    */
   connectedCallback(): void {
     super.connectedCallback();
@@ -295,9 +359,40 @@ export default class ScrollArea extends DesignSystemElement {
     this.#atEnd = false;
   };
 
+  /**
+   * Say when the reader has come within reach of the start, once per approach.
+   *
+   * Latched, so sitting at the top does not fire it on every frame of a rubber-band and a consumer's
+   * handler can be the plain "fetch the next page". Scrolling back out past the threshold re-arms it.
+   *
+   * A pending hold is re-measured on every scroll rather than frozen when it was armed: the reader
+   * usually carries on scrolling while the page is being fetched, and restoring them to where they
+   * were when they crossed the line would undo the scrolling they did in between.
+   */
+  #checkNearStart(): void {
+    const base = this.#base;
+    if (!base || !this.nearStart) return;
+
+    if (this.#holdBottom >= 0) this.#holdBottom = base.scrollHeight - base.scrollTop;
+
+    // Nothing to be near the start of. Without this a short list fires on mount, since a scroller
+    // with no overflow sits at zero.
+    if (base.scrollHeight - base.clientHeight <= AT_END_PX) return;
+
+    const near = base.scrollTop <= this.nearStart;
+    if (near === this.#nearStart) return;
+    this.#nearStart = near;
+    if (!near) return;
+
+    this.#holdBottom = base.scrollHeight - base.scrollTop;
+    this.#holdUntil = Date.now() + HOLD_MS;
+    this.dispatchEvent(new CustomEvent('nearstart', { bubbles: true, composed: true }));
+  }
+
   /** Every scroll moves at least one control's answer, including the frames of our own follow. */
   #onScrolled = (): void => {
     this.#onScroll();
+    this.#checkNearStart();
     this.#syncControls();
   };
 
@@ -365,14 +460,36 @@ export default class ScrollArea extends DesignSystemElement {
   }
 
   #contentChanged(): void {
+    this.#restoreHold();
     this.#follow();
     this.#syncControls();
+  }
+
+  /**
+   * Put the reader back where they were, now that what they asked for has arrived above them.
+   *
+   * Only ever after `nearstart`, and only while the hold has not expired — so an ordinary line
+   * arriving at the tail of a live list is never mistaken for a prepend and does not move anybody.
+   */
+  #restoreHold(): void {
+    const base = this.#base;
+    if (!base || this.#holdBottom < 0) return;
+    if (Date.now() > this.#holdUntil) {
+      this.#holdBottom = -1;
+      return;
+    }
+    const target = Math.max(0, base.scrollHeight - this.#holdBottom);
+    // Nothing arrived above: the height is unchanged, so restoring would be a scroll for no reason.
+    if (Math.abs(target - base.scrollTop) < 1) return;
+    this.#holdBottom = -1;
+    base.scrollTop = target;
+    this.#writtenTop = base.scrollTop;
   }
 
   #follow(): void {
     if (this.pin !== 'end' || !this.#atEnd) return;
     this.#toEnd({ smooth: this.#opened });
-    this.#followAfterLayout();
+    this.#followUntilSettled();
   }
 
   /**
@@ -409,19 +526,62 @@ export default class ScrollArea extends DesignSystemElement {
    * about to move down again. This is what leaves a multi-line utterance half under the edge of
    * the panel.
    */
-  #followAfterLayout(): void {
-    if (typeof requestAnimationFrame !== 'function' || this.#frame) return;
-    this.#frame = requestAnimationFrame(() => {
-      this.#frame = 0;
-      // The first honest measurement of the frame, so the controls are settled here too.
-      this.#syncControls();
-      if (this.pin !== 'end' || !this.#atEnd) return;
-      this.#toEnd({ smooth: this.#opened });
-    });
+  #followUntilSettled(): void {
+    if (typeof requestAnimationFrame !== 'function') return;
+    // Every follow extends the deadline: content still arriving is the case this exists for, and a
+    // pass that expired mid-arrival would leave the view exactly as short as having no pass at all.
+    this.#settleUntil = Date.now() + SETTLE_MS;
+    this.#settleHeight = -1;
+    if (this.#frame) return;
+    this.#frame = requestAnimationFrame(this.#settleFrame);
   }
 
+  /**
+   * One frame of the settle pass: measure, follow if the end moved, and stop once it holds still.
+   *
+   * The stopping condition is the *content* having stopped growing rather than a frame count,
+   * because what is being waited for is layout finishing and that has no fixed duration. Two
+   * consecutive frames at the same height is the earliest honest moment to say it has.
+   */
+  #settleFrame = (): void => {
+    this.#frame = 0;
+    // The first honest measurement of the frame, so the controls are settled here too.
+    this.#syncControls();
+
+    const base = this.#base;
+    if (!base) return;
+    /*
+      The budget, checked BEFORE following rather than after.
+
+      A frame is already scheduled when the reader's gesture cancels the pass, and it runs whatever
+      the deadline now says — so a check that came after the follow would let exactly one more
+      unwanted jump through, which is the one the reader is looking at.
+    */
+    if (Date.now() > this.#settleUntil) return;
+    if (this.pin !== 'end' || !this.#atEnd) return;
+
+    const height = base.scrollHeight;
+    const settled = height === this.#settleHeight;
+    this.#settleHeight = height;
+    // Keep going while it is still moving. A settled list costs exactly the two frames it takes to
+    // prove it is settled.
+    if (settled) return;
+    this.#toEnd({ smooth: this.#opened });
+    this.#frame = requestAnimationFrame(this.#settleFrame);
+  };
+
+  /**
+   * The reader has taken the scroller back.
+   *
+   * The settle pass stops with it: it exists to finish a movement the reader did not ask for, and
+   * carrying on through their gesture is precisely the yanking `pin` is careful to avoid. The hold
+   * is deliberately NOT cleared — a reader scrolling up is how `nearstart` fires in the first place,
+   * so dropping it on their input would mean it never survived to be used. `#onScroll` keeps it
+   * measured against wherever they have got to instead.
+   */
   #onUserInput = (): void => {
     this.#following = false;
+    this.#settleUntil = 0;
   };
 
   #onJumpStart = (): void => this.#toStart();
@@ -441,20 +601,41 @@ export default class ScrollArea extends DesignSystemElement {
         <slot></slot>
       </div>
       ${
+        /*
+          The start control, or whatever a consumer puts in its place.
+
+          The slot is here because "back to the start" is not always a scroll. A windowed list — a
+          transcript that loads the newest page first — has a top of *what is loaded*, which is not
+          the beginning of anything; pressing a scroll-to-top there would say "start" and deliver "as
+          far back as we happened to fetch". Reaching the real beginning is a different query, and
+          only the consumer can run it.
+
+          So the primitive keeps what it is actually expert in — where the control sits, over the
+          content and clear of the scrollbar, and *whether there is anywhere to go* — and hands back
+          only the part it cannot answer, which is what pressing it should do. Slotted content is
+          gated by `_showStart` exactly as the built-in button is, so a consumer opts in with
+          `jump="start"` (or `"both"`) and replaces the action, not the visibility.
+
+          No `jump-end` twin. Nothing needs one, and the case is weaker — the end of what is loaded
+          IS the end of a list that grows at the bottom, so the built-in control is already honest
+          there.
+        */
         this._showStart
           ? html`
               <div part="jump-start">
-                <we-button
-                  variant="secondary"
-                  size="sm"
-                  square
-                  r="pill"
-                  shadow="md"
-                  label="Jump to the start"
-                  @click=${this.#onJumpStart}
-                >
-                  <we-icon name="caret-double-up"></we-icon>
-                </we-button>
+                <slot name="jump-start">
+                  <we-button
+                    variant="secondary"
+                    size="sm"
+                    square
+                    r="pill"
+                    shadow="md"
+                    label="Jump to the start"
+                    @click=${this.#onJumpStart}
+                  >
+                    <we-icon name="caret-double-up"></we-icon>
+                  </we-button>
+                </slot>
               </div>
             `
           : nothing

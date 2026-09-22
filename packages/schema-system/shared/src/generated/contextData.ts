@@ -514,6 +514,7 @@ export const contextData: ContextData = {
         { name: 'maxWidth', type: 'string', optional: false, default: "''" },
         { name: 'pin', type: "'' | 'end'", optional: false, default: "''" },
         { name: 'jump', type: "'' | 'start' | 'end' | 'both'", optional: false, default: "''" },
+        { name: 'nearStart', type: 'number', optional: false, default: '0' },
       ],
     },
     {

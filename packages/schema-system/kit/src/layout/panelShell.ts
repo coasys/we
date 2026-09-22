@@ -1,4 +1,4 @@
-import type { ExpressionToken, SchemaNode } from '@we/schema-shared';
+import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { helpTip } from '../overlays/helpTip.ts';
 
@@ -219,6 +219,24 @@ export interface PanelScrollOptions {
   pin?: string | ExpressionToken;
   /** Jump-to-end controls — `we-scroll-area`'s `jump`. */
   jump?: string;
+  /**
+   * Load what is before the window as the reader reaches it — `we-scroll-area`'s `nearStart`, in
+   * pixels from the top, with the handler that fetches the next page.
+   *
+   * Both or neither: a distance with nothing listening is a measurement nobody reads, and a handler
+   * with no distance never fires. The scroller holds the reader's place across what arrives, so a
+   * consumer's handler is only ever "fetch more".
+   */
+  nearStart?: number;
+  onNearStart?: SchemaProp;
+  /**
+   * A start control of the consumer's own, placed where the scroller puts its built-in one.
+   *
+   * For a windowed list, where the top of what is loaded is not the beginning of anything and the
+   * way back is a different query rather than a scroll. Given one, the scroller draws no start
+   * button of its own.
+   */
+  jumpStart?: SchemaNode;
 }
 
 /**
@@ -318,7 +336,14 @@ export function panelScroll(opts: PanelScrollOptions): SchemaNode {
       scrollbarGutter: 'stable',
       ...(opts.pin ? { pin: opts.pin } : {}),
       ...(opts.jump ? { jump: opts.jump } : {}),
+      ...(opts.nearStart ? { nearStart: opts.nearStart } : {}),
+      ...(opts.onNearStart ? { 'on:nearstart': opts.onNearStart } : {}),
     },
-    children: opts.children,
+    /*
+      The consumer's start control is a slotted child rather than a prop, because it is a node: it
+      goes in the scroller's own light DOM carrying `slot="jump-start"`, and the scroller positions
+      it. First, so it is out of the way of whatever the list is.
+    */
+    children: opts.jumpStart ? [{ ...opts.jumpStart, slot: 'jump-start' }, ...opts.children] : opts.children,
   };
 }

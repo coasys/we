@@ -92,12 +92,31 @@ const MAX_CHARS = 1000;
 const FLUSH_AFTER_MS = 3_000;
 
 /**
- * How many lines a transcript loads at a time.
+ * How many lines a transcript opens with.
  *
- * Big enough that the window is rarely reached in a short call and a reader scrolling back a little
- * never meets a button; small enough that the per-utterance cost stays flat in a long one, which is
- * the whole reason there is a window. Both ends grow by this, and pressing "earlier" adds one page
- * rather than opening the lot.
+ * Small, and smaller than it was. The figure used to be the same as the growth step below, and was
+ * argued for on the grounds that a reader scrolling back a little should never meet a button —
+ * which stopped being a reason the moment there was no button: earlier lines now load as the reader
+ * reaches them. What is left is the cost of opening, and that is paid by everybody on every call.
+ *
+ * Two hundred rows arriving at once is also a hundred-odd custom elements laying out in one pass,
+ * which is what made the panel open a couple of lines short of the bottom — see `SETTLE_MS` in
+ * `we-scroll-area`. That has its own fix, and this makes the case rarer as well as cheaper.
+ */
+const TRANSCRIPT_FIRST_PAGE = 50;
+
+/**
+ * How many more lines each load adds.
+ *
+ * Deliberately larger than the first page, and the asymmetry is the point. The window grows by
+ * re-running the query at a bigger `limit` rather than by fetching a page and appending — the
+ * backend has no cursor and a module's data surface is write-only, so there is nowhere to
+ * accumulate pages. That makes reading backwards quadratic in the number of loads: at fifty a step,
+ * reaching a thousand lines fetches ten and a half thousand rows across twenty re-renders; at two
+ * hundred it fetches three thousand across five.
+ *
+ * So the two numbers answer different questions. The first page is how much opening costs, and
+ * wants to be small. The step is how much scrolling back costs, and wants to be large.
  */
 const TRANSCRIPT_PAGE = 200;
 
@@ -457,7 +476,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     while `pin` lives on the scroll area *around* it — two nodes that have to agree, with no common
     local scope. See `transcriptFeed`.
   */
-  const [transcriptShown, setTranscriptShown] = signal(TRANSCRIPT_PAGE);
+  const [transcriptShown, setTranscriptShown] = signal(TRANSCRIPT_FIRST_PAGE);
   const [transcriptFromStart, setTranscriptFromStart] = signal(false);
 
   /*
@@ -474,7 +493,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const record = deps.callOnScreen?.() ?? null;
     if (record === windowedCall) return;
     windowedCall = record;
-    setTranscriptShown(TRANSCRIPT_PAGE);
+    setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
     setTranscriptFromStart(false);
   });
 
@@ -2581,11 +2600,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     readTranscriptFromStart: action(() => {
       setTranscriptFromStart(true);
-      setTranscriptShown(TRANSCRIPT_PAGE);
+      setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
     }, 'Shows the beginning of the transcript, to be read forwards.'),
     readTranscriptLive: action(() => {
       setTranscriptFromStart(false);
-      setTranscriptShown(TRANSCRIPT_PAGE);
+      setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
     }, 'Goes back to following the end of the transcript.'),
 
     /*
