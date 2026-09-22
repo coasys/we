@@ -15,38 +15,38 @@
  *     identifiable through the swap (their tone hz never changes).
  */
 
-import { Scenario, ScenarioContext, ScenarioResult } from "../scenario.js";
-import { MeshHost, connectAll } from "../mesh.js";
-import { WebRtcPeer } from "../peer.js";
-import { provisionPeers, disconnectPeers, registerSfuMembers } from "../users.js";
-import { wireRenegotiation, RenegotiationWire } from "../renegotiation.js";
+import { Scenario, ScenarioContext, ScenarioResult } from '../scenario.js';
+import { MeshHost, connectAll } from '../mesh.js';
+import { WebRtcPeer } from '../peer.js';
+import { provisionPeers, disconnectPeers, registerSfuMembers } from '../users.js';
+import { wireRenegotiation, RenegotiationWire } from '../renegotiation.js';
 
-const ROOM_NAME = "m2-sfu-to-mesh";
+const ROOM_NAME = 'm2-sfu-to-mesh';
 const NEIGHBOURHOOD = `windtunnel://m2`;
 const SFU_PEER_COUNT = 5;
 const FINAL_MESH_COUNT = 2;
 const PHASE_SEC = 8;
 
 export const m2SfuToMesh: Scenario = {
-  id: "m2-sfu",
-  name: "SFU → mesh degradation",
-  description: "5 peers on SFU, 3 leave, remaining 2 swap onto mesh transport",
+  id: 'm2-sfu',
+  name: 'SFU → mesh degradation',
+  description: '5 peers on SFU, 3 leave, remaining 2 swap onto mesh transport',
 
   async run(ctx: ScenarioContext): Promise<ScenarioResult> {
     const { client, branch } = ctx;
     const startTime = Date.now();
-    const samples: ScenarioResult["samples"] = [];
+    const samples: ScenarioResult['samples'] = [];
     const metrics: Record<string, unknown> = {};
 
     try {
-      await client.call("sfu.startRoom", { neighbourhoodUrl: NEIGHBOURHOOD, roomName: ROOM_NAME });
+      await client.call('sfu.startRoom', { neighbourhoodUrl: NEIGHBOURHOOD, roomName: ROOM_NAME });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("not yet available")) {
-        metrics["skipped"] = true;
-        metrics["skip_reason"] = msg;
+      if (msg.includes('not yet available')) {
+        metrics['skipped'] = true;
+        metrics['skip_reason'] = msg;
         return {
-          scenario: "m2-sfu-to-mesh",
+          scenario: 'm2-sfu-to-mesh',
           branch,
           passed: true,
           startTime,
@@ -65,7 +65,7 @@ export const m2SfuToMesh: Scenario = {
       admin: client,
       port: ctx.port,
       count: SFU_PEER_COUNT,
-      labelPrefix: "m2-sfu",
+      labelPrefix: 'm2-sfu',
     });
     await registerSfuMembers({ admin: client, neighbourhoodUrl: NEIGHBOURHOOD, sessions });
 
@@ -93,7 +93,7 @@ export const m2SfuToMesh: Scenario = {
           participantId: string;
           redirectTo?: string;
           streamMapping: string[];
-        }>("sfu.callJoin", {
+        }>('sfu.callJoin', {
           neighbourhoodUrl: NEIGHBOURHOOD,
           roomName: ROOM_NAME,
           sdpOffer: JSON.stringify(offer),
@@ -107,8 +107,8 @@ export const m2SfuToMesh: Scenario = {
       await sleep(PHASE_SEC * 1000);
       sfuPeers.forEach((p) => p.stopStats());
       const sfuUploads = sfuPeers.map((p) => p.getLastStats()?.bytesSent ?? 0);
-      metrics["sfuUploadBytesPerPeer"] = sfuUploads;
-      metrics["sfuUploadMean"] = mean(sfuUploads);
+      metrics['sfuUploadBytesPerPeer'] = sfuUploads;
+      metrics['sfuUploadMean'] = mean(sfuUploads);
 
       // Phase B: 3 peers leave the SFU room, last 2 stay (for now).
       const leavingCount = SFU_PEER_COUNT - FINAL_MESH_COUNT;
@@ -117,7 +117,7 @@ export const m2SfuToMesh: Scenario = {
       const leavingWires = wires.splice(0, leavingCount);
       for (let i = 0; i < leavingPeers.length; i++) {
         try {
-          await leavingSessions[i].client.call("sfu.callLeave", {
+          await leavingSessions[i].client.call('sfu.callLeave', {
             neighbourhoodUrl: NEIGHBOURHOOD,
             roomName: ROOM_NAME,
           });
@@ -130,18 +130,14 @@ export const m2SfuToMesh: Scenario = {
       await sleep(500);
 
       // Confirm the SFU has 2 left.
-      const midRooms = await client.call<Array<{ roomName: string; participantCount: number }>>(
-        "sfu.listRooms",
-        {},
-      );
-      metrics["sfuParticipantsAfterLeave"] =
-        midRooms.find((r) => r.roomName === ROOM_NAME)?.participantCount ?? -1;
+      const midRooms = await client.call<Array<{ roomName: string; participantCount: number }>>('sfu.listRooms', {});
+      metrics['sfuParticipantsAfterLeave'] = midRooms.find((r) => r.roomName === ROOM_NAME)?.participantCount ?? -1;
 
       // Phase C: transition the remaining 2 from SFU → mesh.
       const transitionStart = Date.now();
       for (let i = 0; i < sfuPeers.length; i++) {
         try {
-          await sessions[i].client.call("sfu.callLeave", {
+          await sessions[i].client.call('sfu.callLeave', {
             neighbourhoodUrl: NEIGHBOURHOOD,
             roomName: ROOM_NAME,
           });
@@ -155,15 +151,15 @@ export const m2SfuToMesh: Scenario = {
       wires.length = 0;
 
       const meshHosts: MeshHost[] = [
-        new MeshHost("m2-mesh-a", { audioToneHz: 440 + 3 * 50 }),
-        new MeshHost("m2-mesh-b", { audioToneHz: 440 + 4 * 50 }),
+        new MeshHost('m2-mesh-a', { audioToneHz: 440 + 3 * 50 }),
+        new MeshHost('m2-mesh-b', { audioToneHz: 440 + 4 * 50 }),
       ];
       try {
         await connectAll(meshHosts);
         const transitionMs = Date.now() - transitionStart;
-        metrics["transitionMs"] = transitionMs;
+        metrics['transitionMs'] = transitionMs;
         samples.push({
-          name: "sfu_to_mesh_transition",
+          name: 'sfu_to_mesh_transition',
           durationMs: transitionMs,
           timestamp: Date.now(),
         });
@@ -175,9 +171,9 @@ export const m2SfuToMesh: Scenario = {
 
         const meshUploads = meshHosts.map((h) => h.totalBytesSent());
         const meshLost = meshHosts.map((h) => h.totalPacketsLost());
-        metrics["meshUploadBytesPerHost"] = meshUploads;
-        metrics["meshUploadMean"] = mean(meshUploads);
-        metrics["meshPacketsLostTotal"] = meshLost.reduce((a, b) => a + b, 0);
+        metrics['meshUploadBytesPerHost'] = meshUploads;
+        metrics['meshUploadMean'] = mean(meshUploads);
+        metrics['meshPacketsLostTotal'] = meshLost.reduce((a, b) => a + b, 0);
 
         // Hard assertion: mesh phase shows media flowing on remaining peers.
         passed = meshUploads.every((b) => b > 0);
@@ -186,14 +182,14 @@ export const m2SfuToMesh: Scenario = {
       }
     } finally {
       try {
-        await client.call("sfu.stopRoom", { neighbourhoodUrl: NEIGHBOURHOOD, roomName: ROOM_NAME });
+        await client.call('sfu.stopRoom', { neighbourhoodUrl: NEIGHBOURHOOD, roomName: ROOM_NAME });
       } catch {}
       await disconnectPeers(sessions);
     }
 
     const endTime = Date.now();
     return {
-      scenario: "m2-sfu-to-mesh",
+      scenario: 'm2-sfu-to-mesh',
       branch,
       passed,
       startTime,
@@ -202,8 +198,8 @@ export const m2SfuToMesh: Scenario = {
       metrics,
       samples,
       summary:
-        `M2: degrade — sfuUpload=${metrics["sfuUploadMean"]}B → meshUpload=${metrics["meshUploadMean"]}B ` +
-        `(transition=${metrics["transitionMs"]}ms; sfu participants after leave=${metrics["sfuParticipantsAfterLeave"]})`,
+        `M2: degrade — sfuUpload=${metrics['sfuUploadMean']}B → meshUpload=${metrics['meshUploadMean']}B ` +
+        `(transition=${metrics['transitionMs']}ms; sfu participants after leave=${metrics['sfuParticipantsAfterLeave']})`,
     };
   },
 };

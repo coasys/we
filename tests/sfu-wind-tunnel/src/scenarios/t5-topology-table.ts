@@ -25,11 +25,11 @@
  * even when the unit suite isn't run.
  */
 
-import { Scenario, ScenarioContext, ScenarioResult } from "../scenario.js";
+import { Scenario, ScenarioContext, ScenarioResult } from '../scenario.js';
 
-type Mode = "mesh" | "sfu" | "cascaded";
-type Topology = "mesh" | "sfu" | "cascaded";
-type Avail = "none" | "single" | "multi";
+type Mode = 'mesh' | 'sfu' | 'cascaded';
+type Topology = 'mesh' | 'sfu' | 'cascaded';
+type Avail = 'none' | 'single' | 'multi';
 
 interface Case {
   mode: Mode;
@@ -39,24 +39,24 @@ interface Case {
   expected: Topology;
 }
 
-function resolve(c: Omit<Case, "expected">): Topology {
-  if (c.mode === "mesh") return "mesh";
-  if (c.mode === "cascaded") {
-    if (c.avail === "multi") return "cascaded";
-    if (c.avail === "single") return "sfu";
-    return "mesh";
+function resolve(c: Omit<Case, 'expected'>): Topology {
+  if (c.mode === 'mesh') return 'mesh';
+  if (c.mode === 'cascaded') {
+    if (c.avail === 'multi') return 'cascaded';
+    if (c.avail === 'single') return 'sfu';
+    return 'mesh';
   }
   // mode === "sfu"
-  if (c.avail === "none") return "mesh";
-  if (c.participantCount <= c.maxMesh) return "mesh";
-  return "sfu";
+  if (c.avail === 'none') return 'mesh';
+  if (c.participantCount <= c.maxMesh) return 'mesh';
+  return 'sfu';
 }
 
 function buildMatrix(): Case[] {
-  const modes: Mode[] = ["mesh", "sfu", "cascaded"];
+  const modes: Mode[] = ['mesh', 'sfu', 'cascaded'];
   const counts = [1, 3, 5, 8, 12];
   const maxes = [3, 5];
-  const avails: Avail[] = ["none", "single", "multi"];
+  const avails: Avail[] = ['none', 'single', 'multi'];
   const out: Case[] = [];
   for (const mode of modes) {
     for (const participantCount of counts) {
@@ -77,14 +77,14 @@ function buildMatrix(): Case[] {
 }
 
 export const t5TopologyTable: Scenario = {
-  id: "t5",
-  name: "Topology resolution table",
-  description: "Cross-product of (mode × participantCount × maxMesh × peerAvailability) → topology",
+  id: 't5',
+  name: 'Topology resolution table',
+  description: 'Cross-product of (mode × participantCount × maxMesh × peerAvailability) → topology',
 
   async run(ctx: ScenarioContext): Promise<ScenarioResult> {
     const { branch } = ctx;
     const startTime = Date.now();
-    const samples: ScenarioResult["samples"] = [];
+    const samples: ScenarioResult['samples'] = [];
     const metrics: Record<string, unknown> = {};
 
     const matrix = buildMatrix();
@@ -97,17 +97,17 @@ export const t5TopologyTable: Scenario = {
       }
     }
 
-    metrics["totalCases"] = matrix.length;
-    metrics["failureCount"] = failures.length;
-    metrics["failures"] = failures;
+    metrics['totalCases'] = matrix.length;
+    metrics['failureCount'] = failures.length;
+    metrics['failures'] = failures;
 
     // Cell counts by topology — sanity check that we exercise every branch.
     const byTopology: Record<Topology, number> = { mesh: 0, sfu: 0, cascaded: 0 };
     for (const c of matrix) byTopology[c.expected]++;
-    metrics["cellsByTopology"] = byTopology;
+    metrics['cellsByTopology'] = byTopology;
 
     samples.push({
-      name: "matrix_eval",
+      name: 'matrix_eval',
       durationMs: Date.now() - startTime,
       timestamp: Date.now(),
     });
@@ -117,7 +117,7 @@ export const t5TopologyTable: Scenario = {
       throw new Error(`T5: ${failures.length}/${matrix.length} cells diverged from expected`);
     }
     return {
-      scenario: "t5-topology-table",
+      scenario: 't5-topology-table',
       branch,
       passed: failures.length === 0,
       startTime,

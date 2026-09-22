@@ -2,7 +2,7 @@
  * Scenario Interface and Registry
  */
 
-import { InstrumentedClient } from "./client.js";
+import { InstrumentedClient } from './client.js';
 
 export interface ScenarioResult {
   scenario: string;

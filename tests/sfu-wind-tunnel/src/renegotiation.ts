@@ -13,9 +13,9 @@
  *
  * Returns a detach function the scenario calls during teardown.
  */
-import { WebRtcPeer } from "./peer.js";
-import { InstrumentedClient } from "./client.js";
-import { EventsClient, EventFrame } from "./events.js";
+import { WebRtcPeer } from './peer.js';
+import { InstrumentedClient } from './client.js';
+import { EventsClient, EventFrame } from './events.js';
 
 export interface RenegotiationWireConfig {
   /** Authenticated client used to post the server's answer back. */
@@ -54,21 +54,23 @@ export async function wireRenegotiation(cfg: RenegotiationWireConfig): Promise<R
   let failed = 0;
   let pending: Promise<void> = Promise.resolve();
 
-  const off = events.on("sfu-call-renegotiation-offer", (frame: EventFrame) => {
-    pending = pending.then(() => applyOffer(frame).catch((e) => {
-      failed += 1;
-      console.error(`[renegotiation:${cfg.peer.id}] apply failed:`, e);
-    }));
+  const off = events.on('sfu-call-renegotiation-offer', (frame: EventFrame) => {
+    pending = pending.then(() =>
+      applyOffer(frame).catch((e) => {
+        failed += 1;
+        console.error(`[renegotiation:${cfg.peer.id}] apply failed:`, e);
+      }),
+    );
   });
 
   async function applyOffer(frame: EventFrame): Promise<void> {
     if (frame.neighbourhoodUrl !== cfg.neighbourhoodUrl) return;
     if (frame.roomName !== cfg.roomName) return;
     const sdpOfferJson = frame.sdpOffer;
-    if (typeof sdpOfferJson !== "string") return;
+    if (typeof sdpOfferJson !== 'string') return;
     const offer = JSON.parse(sdpOfferJson) as RTCSessionDescriptionInit;
     const answer = await cfg.peer.createAnswer(offer);
-    await cfg.client.call("sfu.callAnswerServerOffer", {
+    await cfg.client.call('sfu.callAnswerServerOffer', {
       neighbourhoodUrl: cfg.neighbourhoodUrl,
       roomName: cfg.roomName,
       sdpAnswer: JSON.stringify(answer),

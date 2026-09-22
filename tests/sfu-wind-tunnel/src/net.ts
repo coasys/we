@@ -11,17 +11,17 @@
  * gracefully error out if it would prompt.
  */
 
-import { execSync } from "node:child_process";
+import { execSync } from 'node:child_process';
 
-const DEFAULT_IFACE = process.env.WT_NET_IFACE ?? "lo";
+const DEFAULT_IFACE = process.env.WT_NET_IFACE ?? 'lo';
 
 function tcAvailable(): boolean {
-  if (process.platform !== "linux") return false;
+  if (process.platform !== 'linux') return false;
   try {
     // Probe the actual command directly — /usr/sbin may not appear on
     // PATH, and sudoers may allow tc specifically without blanket
     // NOPASSWD (so `sudo -n true` would fail).
-    execSync("sudo -n tc qdisc show dev lo", { stdio: "pipe" });
+    execSync('sudo -n tc qdisc show dev lo', { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -32,7 +32,7 @@ function tcAvailable(): boolean {
 export function clearNet(iface: string = DEFAULT_IFACE): void {
   if (!tcAvailable()) return;
   try {
-    execSync(`sudo -n tc qdisc del dev ${iface} root`, { stdio: "pipe" });
+    execSync(`sudo -n tc qdisc del dev ${iface} root`, { stdio: 'pipe' });
   } catch {
     /* nothing to delete */
   }
@@ -54,7 +54,7 @@ export interface NetemOptions {
  */
 export function setNetem(opts: NetemOptions, iface: string = DEFAULT_IFACE): boolean {
   if (!tcAvailable()) return false;
-  const parts: string[] = ["netem"];
+  const parts: string[] = ['netem'];
   if (opts.lossPct != null) parts.push(`loss ${opts.lossPct}%`);
   if (opts.delayMs != null) {
     parts.push(`delay ${opts.delayMs}ms`);
@@ -63,14 +63,14 @@ export function setNetem(opts: NetemOptions, iface: string = DEFAULT_IFACE): boo
   if (parts.length === 1) return false;
   try {
     // Try replace first; fall back to add if no root qdisc exists yet.
-    execSync(`sudo -n tc qdisc replace dev ${iface} root ${parts.join(" ")}`, {
-      stdio: "pipe",
+    execSync(`sudo -n tc qdisc replace dev ${iface} root ${parts.join(' ')}`, {
+      stdio: 'pipe',
     });
     return true;
   } catch (e) {
     try {
-      execSync(`sudo -n tc qdisc add dev ${iface} root ${parts.join(" ")}`, {
-        stdio: "pipe",
+      execSync(`sudo -n tc qdisc add dev ${iface} root ${parts.join(' ')}`, {
+        stdio: 'pipe',
       });
       return true;
     } catch {
@@ -87,13 +87,13 @@ export function netAvailable(): boolean {
   return tcAvailable();
 }
 
-const PARTITION_CHAIN = "WT_PARTITION";
+const PARTITION_CHAIN = 'WT_PARTITION';
 
 function iptablesAvailable(): boolean {
-  if (process.platform !== "linux") return false;
+  if (process.platform !== 'linux') return false;
   try {
     // Probe directly — /usr/sbin may not appear on PATH.
-    execSync("sudo -n iptables -L -n", { stdio: "pipe" });
+    execSync('sudo -n iptables -L -n', { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -113,30 +113,27 @@ export function dropTcpPorts(ports: number[]): boolean {
   if (!iptablesAvailable()) return false;
   // Wipe + recreate the chain so repeated calls are idempotent.
   try {
-    execSync(`sudo -n iptables -D INPUT -j ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -D INPUT -j ${PARTITION_CHAIN}`, { stdio: 'pipe' });
   } catch {
     /* not yet attached */
   }
   try {
-    execSync(`sudo -n iptables -F ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -F ${PARTITION_CHAIN}`, { stdio: 'pipe' });
   } catch {
     /* chain may not exist */
   }
   try {
-    execSync(`sudo -n iptables -X ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -X ${PARTITION_CHAIN}`, { stdio: 'pipe' });
   } catch {
     /* not present */
   }
   if (ports.length === 0) return true;
   try {
-    execSync(`sudo -n iptables -N ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -N ${PARTITION_CHAIN}`, { stdio: 'pipe' });
     for (const port of ports) {
-      execSync(
-        `sudo -n iptables -A ${PARTITION_CHAIN} -p tcp --dport ${port} -j DROP`,
-        { stdio: "pipe" },
-      );
+      execSync(`sudo -n iptables -A ${PARTITION_CHAIN} -p tcp --dport ${port} -j DROP`, { stdio: 'pipe' });
     }
-    execSync(`sudo -n iptables -I INPUT -j ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -I INPUT -j ${PARTITION_CHAIN}`, { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -147,14 +144,14 @@ export function dropTcpPorts(ports: number[]): boolean {
 export function clearPartition(): void {
   if (!iptablesAvailable()) return;
   try {
-    execSync(`sudo -n iptables -D INPUT -j ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -D INPUT -j ${PARTITION_CHAIN}`, { stdio: 'pipe' });
   } catch {
     /* not attached */
   }
   try {
-    execSync(`sudo -n iptables -F ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -F ${PARTITION_CHAIN}`, { stdio: 'pipe' });
   } catch {}
   try {
-    execSync(`sudo -n iptables -X ${PARTITION_CHAIN}`, { stdio: "pipe" });
+    execSync(`sudo -n iptables -X ${PARTITION_CHAIN}`, { stdio: 'pipe' });
   } catch {}
 }

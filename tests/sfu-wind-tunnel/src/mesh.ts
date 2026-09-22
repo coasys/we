@@ -22,7 +22,7 @@
  * as O(N-1).
  */
 
-import { WebRtcPeer, pairPeers, PeerStats, PeerOptions } from "./peer.js";
+import { WebRtcPeer, pairPeers, PeerStats, PeerOptions } from './peer.js';
 
 export class MeshHost {
   readonly id: string;

@@ -5,8 +5,8 @@
  * and/or CLI arguments. CLI args take precedence over env vars.
  */
 
-import { tmpdir } from "os";
-import { join } from "path";
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 export interface WindTunnelConfig {
   /** Path to the AD4M repo (for building executor from source) */
@@ -32,19 +32,19 @@ function parseConfigArgs(): Partial<WindTunnelConfig> {
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
-      case "--ad4m-repo":
+      case '--ad4m-repo':
         result.adamRepoPath = args[++i];
         break;
-      case "--admin-token":
+      case '--admin-token':
         result.adminToken = args[++i];
         break;
-      case "--tmp-dir":
+      case '--tmp-dir':
         result.tmpDirBase = args[++i];
         break;
-      case "--base-port":
+      case '--base-port':
         result.basePort = parseInt(args[++i], 10);
         break;
-      case "--results-dir":
+      case '--results-dir':
         result.resultsDir = args[++i];
         break;
     }
@@ -61,25 +61,11 @@ function resolveConfig(): WindTunnelConfig {
   const systemTmp = tmpdir();
 
   return {
-    adamRepoPath:
-      cliArgs.adamRepoPath
-      ?? process.env.AD4M_REPO
-      ?? "",
-    adminToken:
-      cliArgs.adminToken
-      ?? process.env.AD4M_ADMIN_TOKEN
-      ?? "test123",
-    tmpDirBase:
-      cliArgs.tmpDirBase
-      ?? process.env.AD4M_WT_TMPDIR
-      ?? systemTmp,
-    basePort:
-      cliArgs.basePort
-      ?? (process.env.AD4M_WT_BASE_PORT ? parseInt(process.env.AD4M_WT_BASE_PORT, 10) : 12100),
-    resultsDir:
-      cliArgs.resultsDir
-      ?? process.env.AD4M_WT_RESULTS_DIR
-      ?? join(process.cwd(), "results"),
+    adamRepoPath: cliArgs.adamRepoPath ?? process.env.AD4M_REPO ?? '',
+    adminToken: cliArgs.adminToken ?? process.env.AD4M_ADMIN_TOKEN ?? 'test123',
+    tmpDirBase: cliArgs.tmpDirBase ?? process.env.AD4M_WT_TMPDIR ?? systemTmp,
+    basePort: cliArgs.basePort ?? (process.env.AD4M_WT_BASE_PORT ? parseInt(process.env.AD4M_WT_BASE_PORT, 10) : 12100),
+    resultsDir: cliArgs.resultsDir ?? process.env.AD4M_WT_RESULTS_DIR ?? join(process.cwd(), 'results'),
   };
 }
 
@@ -93,9 +79,9 @@ export const config = resolveConfig();
 export function validateAdamRepo(): void {
   if (!config.adamRepoPath) {
     console.error(
-      "[config] AD4M repo path is required.\n" +
-      "  Set via: --ad4m-repo <path>, or AD4M_REPO env var.\n" +
-      "  Example: AD4M_REPO=/path/to/ad4m npx tsx src/main.ts"
+      '[config] AD4M repo path is required.\n' +
+        '  Set via: --ad4m-repo <path>, or AD4M_REPO env var.\n' +
+        '  Example: AD4M_REPO=/path/to/ad4m npx tsx src/main.ts',
     );
     process.exit(1);
   }

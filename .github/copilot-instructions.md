@@ -3164,21 +3164,25 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - active — Whether this agent is in a call right now.
   - arrangement — The { columns, rows } the stage is currently laid out in.
   - callId — The id of the call this agent is in, or null between calls.
-  - callRecordId — The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.
+  - callRecordId — The id of the call record this agent's call writes into.
   - callSpace — The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.
   - canCall — Whether a call could be started here — false in a personal space, which has nobody to call.
   - elsewhere — Whether the call this agent is in belongs to a space other than the one on screen.
-  - focusedId — Whose tile the stage is giving most of its room to, or null for an even grid.
-  - liveCalls — Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.
-  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.
+  - focusedId — Whose tile the stage gives most room to, or null for an even grid.
+  - hasSessionBackend — Whether this call uses a Session backend.
+  - liveCalls — Every call running in the space on screen.
+  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled }.
   - ongoing — Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.
-  - problem — Why the call could not start or a device could not be reached, as a sentence to show, or null.
+  - problem — Why the call could not start or a device could not be reached, or null.
+  - qualityPreference — The SFU quality layer this agent prefers.
   - solo — Whether the spotlight has the stage to itself, with everyone else hidden.
-  - tiles — One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.
-  - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.
+  - tiles — One entry per participant in the call.
+  - tileStates — Each participant's volatile flags by id.
+  - topology — Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').
 - Actions (`{ "$action": "modules.call.<name>" }`):
   - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
   - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
+  - cycleQuality — Cycle through quality presets: high, medium, low.
   - dismissProblem — Dismiss the problem message.
   - focusTile — Give the participant with this id the spotlight, or take it back if they already have it.
   - goToCall — Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.
@@ -3186,8 +3190,12 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - joinCall — Join a running call by its id, as liveCalls lists it, leaving any call this agent is in.
   - leave — Leave the call, releasing the camera, the microphone and every connection.
   - reconnectPeer — Build one peer's connection again from scratch, without leaving the call.
+  - refreshSfuNodes — Re-scan the neighbourhood for SFU-capable executor nodes.
   - returnToCall — Go back to the space the call is in; does nothing outside a call.
+  - saveCallConfig — Replace the entire call config.
   - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.
+  - setCallConfigField — Write one field of the call config.
+  - setQualityPreference — Set the SFU quality layer preference.
   - startCall — Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.
   - toggleAudio — Mute or unmute this agent’s microphone.
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.

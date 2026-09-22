@@ -17,7 +17,7 @@
  * `user.login` on behalf of every synthetic peer.
  */
 
-import { InstrumentedClient } from "./client.js";
+import { InstrumentedClient } from './client.js';
 
 export interface PeerSession {
   /** Stable identifier used in logging — e.g. `t1-peer-3`. */
@@ -61,8 +61,8 @@ function randomSuffix(): string {
 }
 
 export async function provisionPeers(opts: ProvisionOptions): Promise<PeerSession[]> {
-  const host = opts.host ?? "127.0.0.1";
-  const labelPrefix = opts.labelPrefix ?? "peer";
+  const host = opts.host ?? '127.0.0.1';
+  const labelPrefix = opts.labelPrefix ?? 'peer';
   const emailDomain = opts.emailDomain ?? `windtunnel-${randomSuffix()}.local`;
 
   const sessions: PeerSession[] = [];
@@ -75,21 +75,17 @@ export async function provisionPeers(opts: ProvisionOptions): Promise<PeerSessio
       did: string;
       success: boolean;
       error?: string;
-    }>("user.create", { email, password });
+    }>('user.create', { email, password });
     if (!create.success) {
-      throw new Error(
-        `provisionPeers: user.create failed for ${label} (${email}): ${
-          create.error ?? "unknown"
-        }`,
-      );
+      throw new Error(`provisionPeers: user.create failed for ${label} (${email}): ${create.error ?? 'unknown'}`);
     }
 
-    const token = await opts.admin.call<string>("user.login", {
+    const token = await opts.admin.call<string>('user.login', {
       email,
       password,
-      appName: "wind-tunnel",
+      appName: 'wind-tunnel',
     });
-    if (typeof token !== "string" || token.length === 0) {
+    if (typeof token !== 'string' || token.length === 0) {
       throw new Error(`provisionPeers: user.login returned empty token for ${label}`);
     }
 
@@ -132,7 +128,7 @@ export async function registerSfuMembers(opts: {
   sessions: PeerSession[];
 }): Promise<void> {
   for (const s of opts.sessions) {
-    await opts.admin.call("sfu.ensureMembership", {
+    await opts.admin.call('sfu.ensureMembership', {
       neighbourhoodUrl: opts.neighbourhoodUrl,
       did: s.did,
     });
@@ -176,7 +172,7 @@ export async function provisionClusterPeers(opts: {
   labelPrefix?: string;
   emailDomain?: string;
 }): Promise<ClusterPeerSession[]> {
-  const labelPrefix = opts.labelPrefix ?? "peer";
+  const labelPrefix = opts.labelPrefix ?? 'peer';
   const emailDomain = opts.emailDomain ?? `windtunnel-${randomSuffix()}.local`;
   const out: ClusterPeerSession[] = [];
 
@@ -191,25 +187,23 @@ export async function provisionClusterPeers(opts: {
         did: string;
         success: boolean;
         error?: string;
-      }>("user.create", { email, password });
+      }>('user.create', { email, password });
       if (!create.success) {
         throw new Error(
-          `provisionClusterPeers: user.create failed on ${node.nodeId} for ${label}: ${
-            create.error ?? "unknown"
-          }`,
+          `provisionClusterPeers: user.create failed on ${node.nodeId} for ${label}: ${create.error ?? 'unknown'}`,
         );
       }
-      const token = await node.admin.call<string>("user.login", {
+      const token = await node.admin.call<string>('user.login', {
         email,
         password,
-        appName: "wind-tunnel",
+        appName: 'wind-tunnel',
       });
-      if (typeof token !== "string" || token.length === 0) {
+      if (typeof token !== 'string' || token.length === 0) {
         throw new Error(`provisionClusterPeers: empty token on ${node.nodeId} for ${label}`);
       }
       const client = new InstrumentedClient({
         port: node.port,
-        host: node.host ?? "127.0.0.1",
+        host: node.host ?? '127.0.0.1',
         adminToken: token,
       });
       await client.connect();
@@ -256,7 +250,7 @@ export async function registerClusterSfuMembers(opts: {
     // Register every DID on every node so the user can join anywhere.
     for (const did of allDids) {
       for (const node of opts.nodes) {
-        await node.admin.call("sfu.ensureMembership", {
+        await node.admin.call('sfu.ensureMembership', {
           neighbourhoodUrl: opts.neighbourhoodUrl,
           did,
         });

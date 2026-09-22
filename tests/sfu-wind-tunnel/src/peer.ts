@@ -22,8 +22,8 @@
  * owns its `RTCPeerConnection` lifecycle.
  */
 
-import { EventEmitter } from "node:events";
-import { createRequire } from "node:module";
+import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
 
 // `@roamhq/wrtc` is the Node-native libwebrtc binding.  When it's not
 // installed the scenarios fail at scenario-run time (not import time)
@@ -33,7 +33,7 @@ import { createRequire } from "node:module";
 const require_ = createRequire(import.meta.url);
 let wrtc: any;
 try {
-  wrtc = require_("@roamhq/wrtc");
+  wrtc = require_('@roamhq/wrtc');
 } catch (_e) {
   wrtc = null;
 }
@@ -58,7 +58,7 @@ export interface PeerStats {
   /** Same for the remote side. */
   selectedRemoteCandidateType: string | null;
   // For SFU scenarios
-  simulcastLayerInUse: "f" | "h" | "q" | null;
+  simulcastLayerInUse: 'f' | 'h' | 'q' | null;
   /** Per-rid outbound-rtp stats when simulcast encoding produces multiple layers. */
   simulcastLayers: Array<{
     rid: string;
@@ -75,11 +75,7 @@ export interface PeerStats {
 // Returns the magnitude (unitless, proportional to amplitude²) for
 // `targetHz` over `samples.length` samples at the given `sampleRate`.
 // ---------------------------------------------------------------------------
-export function goertzelMagnitude(
-  samples: Int16Array,
-  sampleRate: number,
-  targetHz: number,
-): number {
+export function goertzelMagnitude(samples: Int16Array, sampleRate: number, targetHz: number): number {
   const N = samples.length;
   if (N === 0) return 0;
   const k = Math.round((N * targetHz) / sampleRate);
@@ -125,10 +121,7 @@ class AudioFingerprinter {
     this.candidateHz = candidateHz;
     const { RTCAudioSink } = wrtcImpl.nonstandard;
     this.sink = new RTCAudioSink(track);
-    this.sink.ondata = (data: {
-      samples: Int16Array;
-      sampleRate: number;
-    }) => {
+    this.sink.ondata = (data: { samples: Int16Array; sampleRate: number }) => {
       if (this._result) return; // already resolved
       this.buffer.push(new Int16Array(data.samples)); // copy — the buffer gets reused
       this.totalSamples += data.samples.length;
@@ -198,7 +191,7 @@ export interface PeerOptions {
   /** ICE servers — defaults to Google STUN. */
   iceServers?: RTCIceServer[];
   /** ICE transport policy — "all" (default) or "relay" (force TURN). */
-  iceTransportPolicy?: "all" | "relay";
+  iceTransportPolicy?: 'all' | 'relay';
   /**
    * Pre-allocate this many recv-only audio + video transceivers in the
    * initial offer.  The SFU's server-pushed renegotiation pipeline is
@@ -255,34 +248,26 @@ export class WebRtcPeer extends EventEmitter {
     }
     if (!impl) {
       throw new Error(
-        "WebRtcPeer: @roamhq/wrtc not available. Run `npm install --include=optional @roamhq/wrtc` " +
-          "to enable the WebRTC scenarios.",
+        'WebRtcPeer: @roamhq/wrtc not available. Run `npm install --include=optional @roamhq/wrtc` ' +
+          'to enable the WebRTC scenarios.',
       );
     }
     const { RTCPeerConnection } = impl;
     this.pc = new RTCPeerConnection({
-      iceServers: opts.iceServers ?? [{ urls: "stun:stun.l.google.com:19302" }],
-      iceTransportPolicy: opts.iceTransportPolicy ?? "all",
+      iceServers: opts.iceServers ?? [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceTransportPolicy: opts.iceTransportPolicy ?? 'all',
     } as any);
-    this.pc.addEventListener("track", (event: any) => {
+    this.pc.addEventListener('track', (event: any) => {
       if (this.firstFrameAt === null) this.firstFrameAt = Date.now();
-      this.emit("remote-track", { track: event.track, streams: event.streams });
+      this.emit('remote-track', { track: event.track, streams: event.streams });
       // Auto-fingerprint audio tracks when enabled.
-      if (
-        this.fingerprintCandidates &&
-        event.track &&
-        event.track.kind === "audio"
-      ) {
-        const fp = new AudioFingerprinter(
-          event.track,
-          this.fingerprintCandidates,
-          this.wrtcImpl,
-        );
+      if (this.fingerprintCandidates && event.track && event.track.kind === 'audio') {
+        const fp = new AudioFingerprinter(event.track, this.fingerprintCandidates, this.wrtcImpl);
         this.fingerprinters.push(fp);
       }
     });
-    this.pc.addEventListener("iceconnectionstatechange", () => {
-      this.emit("ice-state", this.pc.iceConnectionState);
+    this.pc.addEventListener('iceconnectionstatechange', () => {
+      this.emit('ice-state', this.pc.iceConnectionState);
     });
   }
 
@@ -334,7 +319,7 @@ export class WebRtcPeer extends EventEmitter {
   async attachSyntheticStream(opts: PeerOptions = {}): Promise<void> {
     const impl = opts.wrtcImpl ?? wrtc;
     if (!impl?.nonstandard) {
-      throw new Error("WebRtcPeer: synthetic media requires @roamhq/wrtc nonstandard sources.");
+      throw new Error('WebRtcPeer: synthetic media requires @roamhq/wrtc nonstandard sources.');
     }
     const { RTCAudioSource, RTCVideoSource } = impl.nonstandard;
 
@@ -409,13 +394,11 @@ export class WebRtcPeer extends EventEmitter {
     const simEnc = opts.simulcastEncodings;
     if (simEnc && simEnc.length > 0) {
       (this.pc as any).addTransceiver(videoTrack, {
-        direction: "sendonly",
+        direction: 'sendonly',
         sendEncodings: simEnc.map((e) => ({
           rid: e.rid,
           ...(e.maxBitrate != null ? { maxBitrate: e.maxBitrate } : {}),
-          ...(e.scaleResolutionDownBy != null
-            ? { scaleResolutionDownBy: e.scaleResolutionDownBy }
-            : {}),
+          ...(e.scaleResolutionDownBy != null ? { scaleResolutionDownBy: e.scaleResolutionDownBy } : {}),
         })),
       });
       // Store rids if not already set from constructor.
@@ -433,8 +416,8 @@ export class WebRtcPeer extends EventEmitter {
     const recvSlots = opts.recvSlots ?? 0;
     for (let i = 0; i < recvSlots; i++) {
       try {
-        (this.pc as any).addTransceiver?.("audio", { direction: "recvonly" });
-        (this.pc as any).addTransceiver?.("video", { direction: "recvonly" });
+        (this.pc as any).addTransceiver?.('audio', { direction: 'recvonly' });
+        (this.pc as any).addTransceiver?.('video', { direction: 'recvonly' });
       } catch {
         // Some @roamhq/wrtc versions ignore addTransceiver; safe to
         // skip — the scenarios will fall back to downloadMean=0.
@@ -472,7 +455,7 @@ export class WebRtcPeer extends EventEmitter {
    * short-circuits when those lines already exist.
    */
   async acceptAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
-    let sdp = answer.sdp ?? "";
+    let sdp = answer.sdp ?? '';
     if (this.simulcastRids.length > 0) {
       sdp = mungeAnswerForSimulcast(sdp, this.simulcastRids);
     }
@@ -487,9 +470,9 @@ export class WebRtcPeer extends EventEmitter {
         const reports = await this.pc.getStats();
         const aggregated = aggregateStats(reports);
         this.lastStats = aggregated;
-        this.emit("stats", aggregated);
+        this.emit('stats', aggregated);
       } catch (e) {
-        this.emit("stats-error", e);
+        this.emit('stats-error', e);
       }
     }, 1000);
   }
@@ -556,13 +539,12 @@ function aggregateStats(reports: Map<string, any>): PeerStats {
   let remoteCandidateId: string | null = null;
   let inboundRtpCount = 0;
   for (const report of reports.values()) {
-    if (report.type === "outbound-rtp") {
+    if (report.type === 'outbound-rtp') {
       stats.bytesSent += report.bytesSent ?? 0;
       stats.packetsSent += report.packetsSent ?? 0;
       stats.framesEncoded += report.framesEncoded ?? 0;
       if (report.rid) {
-        stats.simulcastLayerInUse =
-          (report.rid as "f" | "h" | "q") ?? stats.simulcastLayerInUse;
+        stats.simulcastLayerInUse = (report.rid as 'f' | 'h' | 'q') ?? stats.simulcastLayerInUse;
         stats.simulcastLayers.push({
           rid: report.rid as string,
           bytesSent: report.bytesSent ?? 0,
@@ -571,7 +553,7 @@ function aggregateStats(reports: Map<string, any>): PeerStats {
           active: (report.bytesSent ?? 0) > 0,
         });
       }
-    } else if (report.type === "inbound-rtp") {
+    } else if (report.type === 'inbound-rtp') {
       stats.bytesReceived += report.bytesReceived ?? 0;
       stats.packetsReceived += report.packetsReceived ?? 0;
       stats.packetsLost += report.packetsLost ?? 0;
@@ -579,9 +561,8 @@ function aggregateStats(reports: Map<string, any>): PeerStats {
       inboundRtpCount++;
       stats.framesDecoded += report.framesDecoded ?? 0;
       stats.framesDropped += report.framesDropped ?? 0;
-    } else if (report.type === "candidate-pair" && report.nominated) {
-      stats.currentRoundTripTimeMs =
-        report.currentRoundTripTime != null ? report.currentRoundTripTime * 1000 : null;
+    } else if (report.type === 'candidate-pair' && report.nominated) {
+      stats.currentRoundTripTimeMs = report.currentRoundTripTime != null ? report.currentRoundTripTime * 1000 : null;
       stats.selectedCandidatePair = `${report.localCandidateId}↔${report.remoteCandidateId}`;
       localCandidateId = report.localCandidateId ?? null;
       remoteCandidateId = report.remoteCandidateId ?? null;
@@ -625,37 +606,33 @@ function aggregateStats(reports: Map<string, any>): PeerStats {
  * @returns    The (possibly munged) SDP string.
  */
 export function mungeAnswerForSimulcast(sdp: string, rids: string[]): string {
-  if (sdp.includes("a=simulcast:")) return sdp;
+  if (sdp.includes('a=simulcast:')) return sdp;
   if (rids.length === 0) return sdp;
 
-  const lines = sdp.split("\r\n");
+  const lines = sdp.split('\r\n');
   const result: string[] = [];
   let inVideo = false;
   let inserted = false;
 
   for (const line of lines) {
-    if (line.startsWith("m=video")) inVideo = true;
-    else if (line.startsWith("m=") && !line.startsWith("m=video")) {
+    if (line.startsWith('m=video')) inVideo = true;
+    else if (line.startsWith('m=') && !line.startsWith('m=video')) {
       inVideo = false;
     }
 
     result.push(line);
 
     // Insert right after a=recvonly or a=sendrecv in the video section.
-    if (
-      inVideo &&
-      !inserted &&
-      (line === "a=recvonly" || line === "a=sendrecv")
-    ) {
+    if (inVideo && !inserted && (line === 'a=recvonly' || line === 'a=sendrecv')) {
       for (const rid of rids) {
         result.push(`a=rid:${rid} recv`);
       }
-      result.push(`a=simulcast:recv ${rids.join(";")}`);
+      result.push(`a=simulcast:recv ${rids.join(';')}`);
       inserted = true;
     }
   }
 
-  return result.join("\r\n");
+  return result.join('\r\n');
 }
 
 /** Manual SDP + ICE exchange between two peers — the mesh signalling helper.
@@ -665,18 +642,18 @@ export function mungeAnswerForSimulcast(sdp: string, rids: string[]): string {
  * candidates and the peers never establish a media path (you see
  * `iceConnectionState === "checking"` indefinitely and zero bytes flow). */
 export async function pairPeers(a: WebRtcPeer, b: WebRtcPeer): Promise<void> {
-  a.peerConnection().addEventListener("icecandidate", (ev: any) => {
+  a.peerConnection().addEventListener('icecandidate', (ev: any) => {
     if (ev.candidate) {
       b.peerConnection()
         .addIceCandidate(ev.candidate)
-        .catch((e: any) => a.emit("ice-error", e));
+        .catch((e: any) => a.emit('ice-error', e));
     }
   });
-  b.peerConnection().addEventListener("icecandidate", (ev: any) => {
+  b.peerConnection().addEventListener('icecandidate', (ev: any) => {
     if (ev.candidate) {
       a.peerConnection()
         .addIceCandidate(ev.candidate)
-        .catch((e: any) => b.emit("ice-error", e));
+        .catch((e: any) => b.emit('ice-error', e));
     }
   });
 

@@ -3,18 +3,18 @@
  * Reads results from ./results/ and generates comparison.md
  */
 
-import { readdirSync, readFileSync, existsSync } from "fs";
-import { join } from "path";
-import { ScenarioResult } from "./scenario.js";
-import { comparisonReport, consoleReport } from "./reporters.js";
+import { readdirSync, readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { ScenarioResult } from './scenario.js';
+import { comparisonReport, consoleReport } from './reporters.js';
 
-const RESULTS_DIR = join(process.cwd(), "results");
+const RESULTS_DIR = join(process.cwd(), 'results');
 
 function loadResults(): Map<string, ScenarioResult[]> {
   const allResults = new Map<string, ScenarioResult[]>();
 
   if (!existsSync(RESULTS_DIR)) {
-    console.error("No results directory found. Run scenarios first.");
+    console.error('No results directory found. Run scenarios first.');
     process.exit(1);
   }
 
@@ -24,11 +24,11 @@ function loadResults(): Map<string, ScenarioResult[]> {
 
   for (const branch of branches) {
     const branchDir = join(RESULTS_DIR, branch);
-    const files = readdirSync(branchDir).filter((f) => f.endsWith(".json"));
+    const files = readdirSync(branchDir).filter((f) => f.endsWith('.json'));
     const results: ScenarioResult[] = [];
 
     for (const file of files) {
-      const content = readFileSync(join(branchDir, file), "utf-8");
+      const content = readFileSync(join(branchDir, file), 'utf-8');
       results.push(JSON.parse(content));
     }
 
@@ -51,7 +51,7 @@ function main(): void {
 
   // Comparison report
   if (allResults.size > 1) {
-    const comparisonPath = join(RESULTS_DIR, "comparison.md");
+    const comparisonPath = join(RESULTS_DIR, 'comparison.md');
     comparisonReport(allResults, comparisonPath);
   }
 }

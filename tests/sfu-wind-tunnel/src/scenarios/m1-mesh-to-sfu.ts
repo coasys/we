@@ -19,39 +19,39 @@
  * `SfuManager` (which would require flux's full Vue/SolidJS stack).
  */
 
-import { Scenario, ScenarioContext, ScenarioResult } from "../scenario.js";
-import { MeshHost, connectAll } from "../mesh.js";
-import { WebRtcPeer } from "../peer.js";
-import { provisionPeers, disconnectPeers, registerSfuMembers } from "../users.js";
-import { wireRenegotiation, RenegotiationWire } from "../renegotiation.js";
+import { Scenario, ScenarioContext, ScenarioResult } from '../scenario.js';
+import { MeshHost, connectAll } from '../mesh.js';
+import { WebRtcPeer } from '../peer.js';
+import { provisionPeers, disconnectPeers, registerSfuMembers } from '../users.js';
+import { wireRenegotiation, RenegotiationWire } from '../renegotiation.js';
 
-const ROOM_NAME = "m1-mesh-to-sfu";
+const ROOM_NAME = 'm1-mesh-to-sfu';
 const MAX_MESH = 4;
 
 export const m1MeshToSfu: Scenario = {
-  id: "m1-sfu",
-  name: "Mesh → SFU promotion",
-  description: "4 mesh hosts; 5th joins; verify transition to SFU + final per-host upload is O(1)",
+  id: 'm1-sfu',
+  name: 'Mesh → SFU promotion',
+  description: '4 mesh hosts; 5th joins; verify transition to SFU + final per-host upload is O(1)',
 
   async run(ctx: ScenarioContext): Promise<ScenarioResult> {
     const { client, branch } = ctx;
     const startTime = Date.now();
-    const samples: ScenarioResult["samples"] = [];
+    const samples: ScenarioResult['samples'] = [];
     const metrics: Record<string, unknown> = {};
 
     const neighbourhoodUrl = `windtunnel://m1`;
-    metrics["neighbourhoodUrl"] = neighbourhoodUrl;
+    metrics['neighbourhoodUrl'] = neighbourhoodUrl;
 
     // Probe SFU availability before committing.
     try {
-      await client.call("sfu.getConfig", { neighbourhoodUrl });
+      await client.call('sfu.getConfig', { neighbourhoodUrl });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("not yet available") || msg.includes("Unknown type")) {
-        metrics["skipped"] = true;
-        metrics["skip_reason"] = `SFU not available: ${msg}`;
+      if (msg.includes('not yet available') || msg.includes('Unknown type')) {
+        metrics['skipped'] = true;
+        metrics['skip_reason'] = `SFU not available: ${msg}`;
         return {
-          scenario: "m1-mesh-to-sfu",
+          scenario: 'm1-mesh-to-sfu',
           branch,
           passed: true,
           startTime,
@@ -72,24 +72,24 @@ export const m1MeshToSfu: Scenario = {
       meshHosts.push(new MeshHost(`mesh-${i}`, { audioToneHz: 440 + i * 60 }));
     }
     const meshPairWall = await connectAll(meshHosts);
-    samples.push({ name: "mesh_phase_paired", durationMs: meshPairWall, timestamp: Date.now() });
+    samples.push({ name: 'mesh_phase_paired', durationMs: meshPairWall, timestamp: Date.now() });
     await sleep(3000);
     meshHosts.forEach((h) => h.startStats());
     await sleep(10_000);
     meshHosts.forEach((h) => h.stopStats());
     const meshUploads = meshHosts.map((h) => h.totalBytesSent());
-    metrics["meshUploadBytesPerHost"] = meshUploads;
-    metrics["meshUploadMean"] = mean(meshUploads);
+    metrics['meshUploadBytesPerHost'] = meshUploads;
+    metrics['meshUploadMean'] = mean(meshUploads);
 
     // Phase B: tear down mesh, all peers join SFU.
     await Promise.all(meshHosts.map((h) => h.close().catch(() => {})));
-    await client.call("sfu.startRoom", { neighbourhoodUrl, roomName: ROOM_NAME });
+    await client.call('sfu.startRoom', { neighbourhoodUrl, roomName: ROOM_NAME });
 
     const sessions = await provisionPeers({
       admin: client,
       port: ctx.port,
       count: MAX_MESH + 1,
-      labelPrefix: "m1-sfu",
+      labelPrefix: 'm1-sfu',
     });
     await registerSfuMembers({ admin: client, neighbourhoodUrl, sessions });
 
@@ -118,7 +118,7 @@ export const m1MeshToSfu: Scenario = {
           participantId: string;
           redirectTo?: string;
           streamMapping: string[];
-        }>("sfu.callJoin", {
+        }>('sfu.callJoin', {
           neighbourhoodUrl,
           roomName: ROOM_NAME,
           sdpOffer: JSON.stringify(offer),
@@ -129,9 +129,9 @@ export const m1MeshToSfu: Scenario = {
         await peer.acceptAnswer(JSON.parse(joinResp.sdpAnswer));
       }
       const transitionMs = Date.now() - transitionStart;
-      metrics["transitionMs"] = transitionMs;
+      metrics['transitionMs'] = transitionMs;
       samples.push({
-        name: "sfu_phase_joined",
+        name: 'sfu_phase_joined',
         durationMs: transitionMs,
         timestamp: Date.now(),
       });
@@ -142,13 +142,13 @@ export const m1MeshToSfu: Scenario = {
       sfuPeers.forEach((p) => p.stopStats());
 
       const sfuUploads = sfuPeers.map((p) => p.getLastStats()?.bytesSent ?? 0);
-      metrics["sfuUploadBytesPerPeer"] = sfuUploads;
-      metrics["sfuUploadMean"] = mean(sfuUploads);
+      metrics['sfuUploadBytesPerPeer'] = sfuUploads;
+      metrics['sfuUploadMean'] = mean(sfuUploads);
 
       // The interesting comparison: post-promotion per-peer upload
       // should be ~constant relative to the mesh case which scaled.
-      metrics["sfuVsMeshUploadRatio"] = +(
-        (metrics["sfuUploadMean"] as number) / (metrics["meshUploadMean"] as number)
+      metrics['sfuVsMeshUploadRatio'] = +(
+        (metrics['sfuUploadMean'] as number) / (metrics['meshUploadMean'] as number)
       ).toFixed(2);
 
       // Hard assertion: SFU join succeeded and all peers sent media.
@@ -161,7 +161,7 @@ export const m1MeshToSfu: Scenario = {
       }
       for (let i = 0; i < sfuPeers.length; i++) {
         try {
-          await sessions[i]?.client.call("sfu.callLeave", {
+          await sessions[i]?.client.call('sfu.callLeave', {
             neighbourhoodUrl,
             roomName: ROOM_NAME,
           });
@@ -171,14 +171,14 @@ export const m1MeshToSfu: Scenario = {
         } catch {}
       }
       try {
-        await client.call("sfu.stopRoom", { neighbourhoodUrl, roomName: ROOM_NAME });
+        await client.call('sfu.stopRoom', { neighbourhoodUrl, roomName: ROOM_NAME });
       } catch {}
       await disconnectPeers(sessions);
     }
 
     const endTime = Date.now();
     return {
-      scenario: "m1-mesh-to-sfu",
+      scenario: 'm1-mesh-to-sfu',
       branch,
       passed,
       startTime,
@@ -187,8 +187,8 @@ export const m1MeshToSfu: Scenario = {
       metrics,
       samples,
       summary:
-        `M1: promotion — meshUpload=${metrics["meshUploadMean"]}B sfuUpload=${metrics["sfuUploadMean"]}B ` +
-        `(ratio=${metrics["sfuVsMeshUploadRatio"]}x; <1 = SFU saving)`,
+        `M1: promotion — meshUpload=${metrics['meshUploadMean']}B sfuUpload=${metrics['sfuUploadMean']}B ` +
+        `(ratio=${metrics['sfuVsMeshUploadRatio']}x; <1 = SFU saving)`,
     };
   },
 };

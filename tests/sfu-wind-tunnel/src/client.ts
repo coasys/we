@@ -2,7 +2,7 @@
  * Instrumented AD4M Client — WebSocket RPC
  */
 
-import WebSocket from "ws";
+import WebSocket from 'ws';
 
 export interface TimedResult<T> {
   data: T;
@@ -22,10 +22,7 @@ export class InstrumentedClient {
   private ws: WebSocket | null = null;
   private wsReady: Promise<void> | null = null;
   private requestId = 0;
-  private pendingRequests = new Map<
-    string,
-    { resolve: (v: any) => void; reject: (e: any) => void }
-  >();
+  private pendingRequests = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>();
 
   public metrics = {
     totalRequests: 0,
@@ -35,7 +32,7 @@ export class InstrumentedClient {
   };
 
   constructor(config: ClientConfig) {
-    this.config = { host: "127.0.0.1", ...config };
+    this.config = { host: '127.0.0.1', ...config };
   }
 
   get baseUrl(): string {
@@ -49,9 +46,9 @@ export class InstrumentedClient {
   async connect(): Promise<void> {
     this.wsReady = new Promise((resolve, reject) => {
       this.ws = new WebSocket(this.wsUrl);
-      this.ws.on("open", () => resolve());
-      this.ws.on("error", (err) => reject(err));
-      this.ws.on("message", (data) => {
+      this.ws.on('open', () => resolve());
+      this.ws.on('error', (err) => reject(err));
+      this.ws.on('message', (data) => {
         try {
           const msg = JSON.parse(data.toString());
           if (msg.id) {
@@ -67,9 +64,9 @@ export class InstrumentedClient {
           }
         } catch {}
       });
-      this.ws.on("close", () => {
+      this.ws.on('close', () => {
         for (const [, p] of this.pendingRequests) {
-          p.reject(new Error("WebSocket closed"));
+          p.reject(new Error('WebSocket closed'));
         }
         this.pendingRequests.clear();
       });
@@ -95,7 +92,7 @@ export class InstrumentedClient {
 
   private async wsCall<T>(method: string, params: any): Promise<T> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error("WebSocket not connected");
+      throw new Error('WebSocket not connected');
     }
     const id = String(++this.requestId);
     return new Promise<T>((resolve, reject) => {
@@ -140,91 +137,79 @@ export class InstrumentedClient {
   }
 
   async generateAgent(passphrase: string): Promise<TimedResult<any>> {
-    return this.timed(() => this.wsCall("agent.generate", { passphrase }));
+    return this.timed(() => this.wsCall('agent.generate', { passphrase }));
   }
 
   async createPerspective(name: string): Promise<TimedResult<any>> {
-    return this.timed(() => this.wsCall("perspective.create", { name }));
+    return this.timed(() => this.wsCall('perspective.create', { name }));
   }
 
-  async addLink(
-    perspectiveUuid: string,
-    source: string,
-    predicate: string,
-    target: string
-  ): Promise<TimedResult<any>> {
+  async addLink(perspectiveUuid: string, source: string, predicate: string, target: string): Promise<TimedResult<any>> {
     return this.timed(() =>
-      this.wsCall("perspective.addLink", {
+      this.wsCall('perspective.addLink', {
         uuid: perspectiveUuid,
         link: { source, predicate, target },
-      })
+      }),
     );
   }
 
   async queryLinks(
     perspectiveUuid: string,
-    params?: { source?: string; predicate?: string; target?: string }
+    params?: { source?: string; predicate?: string; target?: string },
   ): Promise<TimedResult<any>> {
     return this.timed(() =>
-      this.wsCall("perspective.queryLinks", {
+      this.wsCall('perspective.queryLinks', {
         uuid: perspectiveUuid,
         query: params || {},
-      })
+      }),
     );
   }
 
   async runProlog(perspectiveUuid: string, query: string): Promise<TimedResult<any>> {
-    return this.timed(() =>
-      this.wsCall("perspective.queryProlog", { uuid: perspectiveUuid, query })
-    );
+    return this.timed(() => this.wsCall('perspective.queryProlog', { uuid: perspectiveUuid, query }));
   }
 
   async querySparql(perspectiveUuid: string, query: string): Promise<TimedResult<any>> {
-    return this.timed(() =>
-      this.wsCall("perspective.querySparql", { uuid: perspectiveUuid, query })
-    );
+    return this.timed(() => this.wsCall('perspective.querySparql', { uuid: perspectiveUuid, query }));
   }
 
   async publishLanguage(
     languagePath: string,
-    languageMeta: { name: string; description?: string; sourceCodeLink?: string; possibleTemplateParams?: string[] }
+    languageMeta: { name: string; description?: string; sourceCodeLink?: string; possibleTemplateParams?: string[] },
   ): Promise<TimedResult<any>> {
     return this.timed(() =>
-      this.wsCall("language.publish", {
+      this.wsCall('language.publish', {
         languagePath,
         languageMeta: {
           name: languageMeta.name,
-          description: languageMeta.description ?? "",
-          sourceCodeLink: languageMeta.sourceCodeLink ?? "",
-          possibleTemplateParams: languageMeta.possibleTemplateParams ?? ["uid", "name"],
+          description: languageMeta.description ?? '',
+          sourceCodeLink: languageMeta.sourceCodeLink ?? '',
+          possibleTemplateParams: languageMeta.possibleTemplateParams ?? ['uid', 'name'],
         },
-      })
+      }),
     );
   }
 
-  async applyTemplateAndPublish(
-    sourceLanguageHash: string,
-    templateData: string
-  ): Promise<TimedResult<any>> {
+  async applyTemplateAndPublish(sourceLanguageHash: string, templateData: string): Promise<TimedResult<any>> {
     return this.timed(() =>
-      this.wsCall("language.applyTemplate", {
+      this.wsCall('language.applyTemplate', {
         sourceLanguageHash,
         templateData,
-      })
+      }),
     );
   }
 
   async publishNeighbourhood(
     perspectiveUuid: string,
     linkLanguageAddress: string,
-    meta?: { links?: any[] }
+    meta?: { links?: any[] },
   ): Promise<TimedResult<any>> {
     return this.timed(() =>
-      this.wsCall("neighbourhood.publish", {
+      this.wsCall('neighbourhood.publish', {
         perspectiveUuid,
         linkLanguage: linkLanguageAddress,
         meta: meta || { links: [] },
-      })
+      }),
     );
   }
 

@@ -14,12 +14,12 @@
  * The wind tunnel TCP transport is one of several backends.
  */
 
-import { existsSync, mkdirSync, rmSync, openSync, writeSync, closeSync } from "node:fs";
-import { spawn, execSync, ChildProcess } from "node:child_process";
+import { existsSync, mkdirSync, rmSync, openSync, writeSync, closeSync } from 'node:fs';
+import { spawn, execSync, ChildProcess } from 'node:child_process';
 
-import { InstrumentedClient } from "./client.js";
+import { InstrumentedClient } from './client.js';
 
-const ADMIN_TOKEN = process.env.AD4M_ADMIN_TOKEN ?? "test123";
+const ADMIN_TOKEN = process.env.AD4M_ADMIN_TOKEN ?? 'test123';
 
 export interface CascadeNode {
   id: string;
@@ -74,7 +74,7 @@ function initDataDir(bin: string, dataPath: string): void {
     rmSync(dataPath, { recursive: true, force: true });
   }
   mkdirSync(dataPath, { recursive: true });
-  execSync(`${bin} init --data-path ${dataPath}`, { stdio: "pipe" });
+  execSync(`${bin} init --data-path ${dataPath}`, { stdio: 'pipe' });
 }
 
 export async function startCluster(opts: CascadeClusterOptions): Promise<CascadeCluster> {
@@ -93,7 +93,7 @@ export async function startCluster(opts: CascadeClusterOptions): Promise<Cascade
     const gossipPort = gossipBasePort + i;
     for (const port of [wsPort, gossipPort]) {
       try {
-        execSync(`fuser -k -KILL ${port}/tcp 2>/dev/null || true`, { stdio: "pipe" });
+        execSync(`fuser -k -KILL ${port}/tcp 2>/dev/null || true`, { stdio: 'pipe' });
       } catch {
         /* fuser exits non-zero if no process held the port — fine */
       }
@@ -125,24 +125,35 @@ export async function startCluster(opts: CascadeClusterOptions): Promise<Cascade
     const peerEntries = plannedNodes
       .filter((_, j) => j !== i)
       .map((p) => `${p.did}=127.0.0.1:${p.gossipPort}`)
-      .join(",");
+      .join(',');
 
     const args: string[] = [
-      "run",
-      "--app-data-path", planned.dataPath,
-      "--port", String(planned.port),
-      "--admin-credential", ADMIN_TOKEN,
-      "--run-dapp-server", "false",
-      "--hc-use-bootstrap", "false",
-      "--hc-use-proxy", "false",
-      "--enable-multi-user", "true",
-      "--connect-holochain", "false",
-      "--sfu-local-did", planned.did,
-      "--sfu-max-participants-per-node", String(opts.maxParticipantsPerNode),
-      "--sfu-cascade-listen", `127.0.0.1:${planned.gossipPort}`,
+      'run',
+      '--app-data-path',
+      planned.dataPath,
+      '--port',
+      String(planned.port),
+      '--admin-credential',
+      ADMIN_TOKEN,
+      '--run-dapp-server',
+      'false',
+      '--hc-use-bootstrap',
+      'false',
+      '--hc-use-proxy',
+      'false',
+      '--enable-multi-user',
+      'true',
+      '--connect-holochain',
+      'false',
+      '--sfu-local-did',
+      planned.did,
+      '--sfu-max-participants-per-node',
+      String(opts.maxParticipantsPerNode),
+      '--sfu-cascade-listen',
+      `127.0.0.1:${planned.gossipPort}`,
     ];
     if (peerEntries) {
-      args.push("--sfu-cascade-peers", peerEntries);
+      args.push('--sfu-cascade-peers', peerEntries);
     }
 
     // Capture executor stdout+stderr to per-node log files — when
@@ -151,15 +162,15 @@ export async function startCluster(opts: CascadeClusterOptions): Promise<Cascade
     // wedged on.  Otherwise stdout/stderr just buffer into the
     // ChildProcess pipes and we never read them.
     const proc = spawn(bin, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, RUST_LOG: "info" },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, RUST_LOG: 'info' },
     });
     const logPath = `/tmp/ad4m-cascade-node-${i}.log`;
     try {
-      const fd = openSync(logPath, "w");
-      proc.stdout?.on("data", (d) => writeSync(fd, d));
-      proc.stderr?.on("data", (d) => writeSync(fd, d));
-      proc.on("close", () => {
+      const fd = openSync(logPath, 'w');
+      proc.stdout?.on('data', (d) => writeSync(fd, d));
+      proc.stderr?.on('data', (d) => writeSync(fd, d));
+      proc.on('close', () => {
         try {
           closeSync(fd);
         } catch {}
@@ -190,13 +201,11 @@ export async function startCluster(opts: CascadeClusterOptions): Promise<Cascade
     spawnedClients.map(async (c, i) => {
       const planned = plannedNodes[i];
       const gen = await Promise.race([
-        c.generateAgent("wind-tunnel-cascade"),
-        sleep(180_000).then(() => ({ error: "agent.generate timeout (180s)" })),
+        c.generateAgent('wind-tunnel-cascade'),
+        sleep(180_000).then(() => ({ error: 'agent.generate timeout (180s)' })),
       ]);
       if (gen && (gen as any).error && !/already/i.test((gen as any).error)) {
-        throw new Error(
-          `cascade: node ${planned.id} agent.generate failed: ${(gen as any).error}`,
-        );
+        throw new Error(`cascade: node ${planned.id} agent.generate failed: ${(gen as any).error}`);
       }
     }),
   );
@@ -222,7 +231,7 @@ export async function startCluster(opts: CascadeClusterOptions): Promise<Cascade
           await n.client.disconnect();
         } catch {}
         try {
-          n.process.kill("SIGTERM");
+          n.process.kill('SIGTERM');
         } catch {}
       }
       // Wait for SIGTERM to take effect — ad4m-executor's holochain
@@ -242,7 +251,7 @@ export async function startCluster(opts: CascadeClusterOptions): Promise<Cascade
       for (const n of nodes) {
         if (n.process.exitCode === null) {
           try {
-            n.process.kill("SIGKILL");
+            n.process.kill('SIGKILL');
           } catch {}
         }
       }

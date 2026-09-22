@@ -3014,11 +3014,7 @@ export const contextData: ContextData = {
           doc: 'Make the running call about the record whose id is given, without rejoining it.',
         },
         { name: 'callId', kind: 'state', doc: 'The id of the call this agent is in, or null between calls.' },
-        {
-          name: 'callRecordId',
-          kind: 'state',
-          doc: "The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.",
-        },
+        { name: 'callRecordId', kind: 'state', doc: "The id of the call record this agent's call writes into." },
         {
           name: 'callSpace',
           kind: 'state',
@@ -3034,17 +3030,14 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Pick a past call back up by its record id, joining anyone already in it and writing no new record.',
         },
+        { name: 'cycleQuality', kind: 'action', doc: 'Cycle through quality presets: high, medium, low.' },
         { name: 'dismissProblem', kind: 'action', doc: 'Dismiss the problem message.' },
         {
           name: 'elsewhere',
           kind: 'state',
           doc: 'Whether the call this agent is in belongs to a space other than the one on screen.',
         },
-        {
-          name: 'focusedId',
-          kind: 'state',
-          doc: 'Whose tile the stage is giving most of its room to, or null for an even grid.',
-        },
+        { name: 'focusedId', kind: 'state', doc: 'Whose tile the stage gives most room to, or null for an even grid.' },
         {
           name: 'focusTile',
           kind: 'action',
@@ -3055,6 +3048,7 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.',
         },
+        { name: 'hasSessionBackend', kind: 'state', doc: 'Whether this call uses a Session backend.' },
         {
           name: 'joinAnchoredCall',
           kind: 'action',
@@ -3070,16 +3064,8 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Leave the call, releasing the camera, the microphone and every connection.',
         },
-        {
-          name: 'liveCalls',
-          kind: 'state',
-          doc: 'Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.',
-        },
-        {
-          name: 'media',
-          kind: 'state',
-          doc: "This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.",
-        },
+        { name: 'liveCalls', kind: 'state', doc: 'Every call running in the space on screen.' },
+        { name: 'media', kind: 'state', doc: "This agent's own { audioEnabled, videoEnabled, screenShareEnabled }." },
         {
           name: 'ongoing',
           kind: 'state',
@@ -3088,23 +3074,28 @@ export const contextData: ContextData = {
         {
           name: 'problem',
           kind: 'state',
-          doc: 'Why the call could not start or a device could not be reached, as a sentence to show, or null.',
+          doc: 'Why the call could not start or a device could not be reached, or null.',
         },
+        { name: 'qualityPreference', kind: 'state', doc: 'The SFU quality layer this agent prefers.' },
         {
           name: 'reconnectPeer',
           kind: 'action',
           doc: "Build one peer's connection again from scratch, without leaving the call.",
         },
+        { name: 'refreshSfuNodes', kind: 'action', doc: 'Re-scan the neighbourhood for SFU-capable executor nodes.' },
         {
           name: 'returnToCall',
           kind: 'action',
           doc: 'Go back to the space the call is in; does nothing outside a call.',
         },
+        { name: 'saveCallConfig', kind: 'action', doc: 'Replace the entire call config.' },
         {
           name: 'setArrangement',
           kind: 'action',
           doc: 'Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.',
         },
+        { name: 'setCallConfigField', kind: 'action', doc: 'Write one field of the call config.' },
+        { name: 'setQualityPreference', kind: 'action', doc: 'Set the SFU quality layer preference.' },
         {
           name: 'solo',
           kind: 'state',
@@ -3115,16 +3106,8 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.',
         },
-        {
-          name: 'tiles',
-          kind: 'state',
-          doc: 'One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.',
-        },
-        {
-          name: 'tileStates',
-          kind: 'state',
-          doc: "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.",
-        },
+        { name: 'tiles', kind: 'state', doc: 'One entry per participant in the call.' },
+        { name: 'tileStates', kind: 'state', doc: "Each participant's volatile flags by id." },
         { name: 'toggleAudio', kind: 'action', doc: 'Mute or unmute this agent’s microphone.' },
         {
           name: 'toggleScreenShare',
@@ -3140,6 +3123,11 @@ export const contextData: ContextData = {
           name: 'toggleVideo',
           kind: 'action',
           doc: 'Turn this agent’s camera on or off, reporting through problem when it is refused.',
+        },
+        {
+          name: 'topology',
+          kind: 'state',
+          doc: "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').",
         },
       ],
       parts: [

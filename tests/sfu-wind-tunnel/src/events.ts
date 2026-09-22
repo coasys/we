@@ -10,7 +10,7 @@
  * events targeted at their per-peer DID.
  */
 
-import WebSocket from "ws";
+import WebSocket from 'ws';
 
 export type EventFrame = { type: string; [k: string]: unknown };
 export type EventListener = (frame: EventFrame) => void;
@@ -29,25 +29,23 @@ export class EventsClient {
   constructor(public readonly config: EventsClientConfig) {}
 
   get wsUrl(): string {
-    const host = this.config.host ?? "127.0.0.1";
-    return `ws://${host}:${this.config.port}/api/v1/ws/events?token=${encodeURIComponent(
-      this.config.token,
-    )}`;
+    const host = this.config.host ?? '127.0.0.1';
+    return `ws://${host}:${this.config.port}/api/v1/ws/events?token=${encodeURIComponent(this.config.token)}`;
   }
 
   async connect(): Promise<void> {
     this.ready = new Promise((resolve, reject) => {
       this.ws = new WebSocket(this.wsUrl);
-      this.ws.on("open", () => resolve());
-      this.ws.on("error", (err) => reject(err));
-      this.ws.on("message", (data) => {
+      this.ws.on('open', () => resolve());
+      this.ws.on('error', (err) => reject(err));
+      this.ws.on('message', (data) => {
         let frame: EventFrame;
         try {
           frame = JSON.parse(data.toString()) as EventFrame;
         } catch {
           return;
         }
-        if (!frame || typeof frame.type !== "string") return;
+        if (!frame || typeof frame.type !== 'string') return;
         const handlers = this.listenersByType.get(frame.type);
         if (handlers) {
           for (const h of handlers) {
@@ -59,7 +57,7 @@ export class EventsClient {
           }
         }
       });
-      this.ws.on("close", () => {
+      this.ws.on('close', () => {
         // Best-effort: handlers can re-subscribe on reconnect if they
         // care, the wind tunnel scenarios don't need durability.
       });
