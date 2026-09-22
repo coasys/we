@@ -128,8 +128,12 @@ function emitEntity(name, def) {
   if (Object.values(e.properties).some((p) => p.readAs === 'dataUri')) ad4mImports.add('fileToDataUri');
 
   const relations = Object.entries(e.relations);
-  if (relations.some(([, r]) => r.cardinality === 'many')) ad4mImports.add('HasMany');
-  if (relations.some(([, r]) => r.cardinality === 'one')) ad4mImports.add('HasOne');
+  const owns = ([, r]) => !r.reverseOf;
+  const borrows = ([, r]) => Boolean(r.reverseOf);
+  if (relations.filter(owns).some(([, r]) => r.cardinality === 'many')) ad4mImports.add('HasMany');
+  if (relations.filter(owns).some(([, r]) => r.cardinality === 'one')) ad4mImports.add('HasOne');
+  if (relations.filter(borrows).some(([, r]) => r.cardinality === 'many')) ad4mImports.add('BelongsToMany');
+  if (relations.filter(borrows).some(([, r]) => r.cardinality === 'one')) ad4mImports.add('BelongsToOne');
   const manyMethods = (def.methodRelations ?? []).filter((r) => e.relations[r]?.cardinality === 'many');
   if (manyMethods.length) ad4mImports.add('HasManyMethods');
 
@@ -187,20 +191,32 @@ function emitEntity(name, def) {
 
   for (const [rname, spec] of Object.entries(e.relations)) {
     if (memberDocs[rname]) L.push(indentDoc(memberDocs[rname], '  '));
+    /*
+      A relation declaring `reverseOf` is the non-owning side: the link lives on the target and this
+      end reads it backwards, which AD4M spells `@BelongsTo*`. The predicate is the same one — there
+      is one link, read from either end — so the options are unchanged; only the direction differs.
+
+      No `add`/`remove` companions are generated, and that is the point rather than an omission:
+      writing through this side would have to write a link the other end owns, and two relations
+      able to write one link is how they drift apart.
+    */
+    const reverse = Boolean(spec.reverseOf);
     if (spec.cardinality === 'one') {
       // An untyped to-one — a reference to whatever, the counterpart of the untyped to-many below.
       // It holds a URI rather than an instance, since there is no class to hydrate it into, and it
       // gets no `set<Name>` companion for the same reason: the accessor's whole signature is its
       // target type.
+      const kind = reverse ? 'BelongsToOne' : 'HasOne';
       const decorator = spec.target
-        ? `@HasOne(() => ${spec.target}, ${relationOptions(spec)})`
-        : `@HasOne(${relationOptions(spec)})`;
+        ? `@${kind}(() => ${spec.target}, ${relationOptions(spec)})`
+        : `@${kind}(${relationOptions(spec)})`;
       L.push(`  ${decorator}`);
       L.push(`  ${rname}?: ${spec.target ? spec.target : 'string'};`);
     } else {
+      const kind = reverse ? 'BelongsToMany' : 'HasMany';
       const decorator = spec.target
-        ? `@HasMany(() => ${spec.target}, ${relationOptions(spec)})`
-        : `@HasMany(${relationOptions(spec)})`;
+        ? `@${kind}(() => ${spec.target}, ${relationOptions(spec)})`
+        : `@${kind}(${relationOptions(spec)})`;
       const fieldType = def.typedArrays?.includes(rname) ? `${spec.target}[]` : 'string[]';
       L.push(`  ${decorator}`);
       L.push(`  ${rname}: ${fieldType} = [];`);
@@ -211,7 +227,9 @@ function emitEntity(name, def) {
   L.push('}');
 
   // Typed to-ones only: `set<Name>(value: T)` has no signature to declare without a target class.
-  const setters = relations.filter(([, r]) => r.cardinality === 'one' && r.target);
+  // `reverseOf` excluded: a setter here would write the link the *other* entity owns, and two
+  // relations able to write one link is how they drift apart. The non-owning side is read-only.
+  const setters = relations.filter(([, r]) => r.cardinality === 'one' && r.target && !r.reverseOf);
   /*
     Both halves, not one or the other.
 

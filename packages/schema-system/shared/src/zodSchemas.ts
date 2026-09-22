@@ -76,8 +76,19 @@ const zQuery = z.object({
   scope: z
     .object({
       via: z.string().min(1),
-      anchorId: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]),
+      anchorId: z.union([
+        z.string(),
+        z.number(),
+        z.array(z.union([z.string(), z.number()])),
+        z.record(z.string(), z.unknown()),
+      ]),
       anchor: z.string().optional(),
+      transitive: z.boolean().optional(),
+      direction: z.enum(['out', 'in']).optional(),
+      limitPerAnchor: z.number().int().positive().optional(),
+      // A level's breadth may be a token, so "show more" is a local the template raises rather than
+      // a second query shape. Resolved before the IR is built, like every other operand.
+      levels: z.array(z.union([z.number().int().positive(), z.record(z.string(), z.unknown())])).optional(),
     })
     .optional(),
   subscribe: z.boolean().optional(),

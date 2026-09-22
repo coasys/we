@@ -59,7 +59,31 @@ const CSS_STYLES = css`
     overflow: visible;
     /* Component styles */
     z-index: var(--we-z-tooltip);
-    white-space: nowrap;
+    /*
+      A phrase never breaks; anything longer is allowed to.
+
+      nowrap is right for what a tooltip usually is — "Delete this reply" folding onto two lines
+      would be worse than wide. It is wrong the moment the bubble carries a sentence: a signal type
+      says what a community means by it, and under nowrap that came out as one line as wide as the
+      description, which in a 320px panel is a tooltip wider than the app.
+
+      So the cap does the deciding. width: max-content still shrink-wraps a phrase, and max-width
+      only bites once the content is longer than the cap — at which point normal lets it wrap into
+      the column the cap defines. Nothing a caller writes changes: a short string is drawn exactly
+      as it was.
+
+      280px rather than a layout token, because the layout tokens are page measures: the smallest,
+      xs, is 420px, which is most of a docked panel and far too wide for an aside. A variable so a
+      caller with a genuinely longer aside can say so, which is cheaper than a prop nobody sets.
+
+      overflow-wrap under it for the one thing a cap cannot handle: a single token longer than the
+      column — a URL, a DID — which would otherwise push the bubble past it.
+
+      (No backticks in here: this is a tagged template literal, and one ends the string.)
+    */
+    max-width: var(--we-tooltip-max-width, 280px);
+    white-space: normal;
+    overflow-wrap: anywhere;
     font-size: var(--we-font-size-200, 14px);
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
@@ -70,12 +94,21 @@ const CSS_STYLES = css`
     color: var(--we-role-on-inverse);
     border-radius: var(--we-border-radius, 4px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
+    /*
+      Never takes the pointer, open or closed.
+
+      It used to become pointer-events: auto once open, which is the pattern for a tooltip holding
+      something to interact with — a link, a button. This one holds a string. What it bought was
+      nothing and what it cost was the control underneath: hover a thing, the bubble appears over
+      part of it, and the click that follows lands on the bubble. Found on a comment's fold, where
+      the target is a tall column and the bubble sits across it, and the press simply did not
+      arrive.
+    */
     pointer-events: none;
   }
 
   :host([open]) [part='tooltip'] {
     display: block;
-    pointer-events: auto;
   }
 
   [part='arrow'],
@@ -292,9 +325,29 @@ export default class Tooltip extends LayoutElement {
     }
   }
 
+  /**
+   * Open — unless there is nothing to say.
+   *
+   * A tooltip with no text and nothing slotted paints an empty bubble, which is never what anybody
+   * wanted and reads as a glitch. It is not hypothetical: a control that shows its reading only
+   * while it is being dragged has empty content the rest of the time, and hovering it produced a
+   * blank card hanging off a slider.
+   *
+   * Only the HOVER and FOCUS paths ask. Setting `open` directly is a caller saying "show this now",
+   * and a caller that does so with nothing to show has made a different mistake — one this should
+   * not paper over, since silently ignoring the instruction is harder to find than an empty box.
+   */
   private show = () => {
+    if (!this._hasSomethingToSay()) return;
     this.open = true;
   };
+
+  /** Text, or anything slotted into `content` — the two ways a bubble is given something to show. */
+  private _hasSomethingToSay(): boolean {
+    if (this.content.trim()) return true;
+    const slotted = this.querySelector('[slot="content"]');
+    return Boolean(slotted && (slotted.textContent ?? '').trim());
+  }
 
   private hide = () => {
     this.open = false;

@@ -5,10 +5,11 @@ import {
   cardList,
   cardShell,
   composerModal,
+  discussionSection,
   emptyState,
-  HAS_OFFERED_SIGNAL_TYPES,
-  OFFERED_SIGNAL_TYPES,
+  LIKE_COUNT_TYPE,
   recordLink,
+  signalDisplay,
 } from '@we/template-kit';
 
 export const postsList: SchemaNode = {
@@ -47,7 +48,26 @@ export const postsList: SchemaNode = {
         cardList({
           query: {
             entity: 'CollectionBlock',
-            where: { type: 'root', textContent: { contains: { $: 'local.searchText' } } },
+            /*
+              Top-level posts only.
+
+              A reply is written by the same `createPost` a post is, and `kind` is stored ALONGSIDE
+              `type: 'root'` rather than instead of it — deliberately, so reads keyed on `type` did
+              not need backfilling when `kind` arrived. The consequence nobody had met until threads
+              could be written from anywhere: every comment in the space turned up in the feed as a
+              post of its own.
+
+              Asked as "has nothing it answers" rather than as `kind != 'reply'`. A post made before
+              `kind` existed carries no value for it, and on AD4M a `!=` over an unbound value
+              excludes the row — so the obvious spelling would have emptied the feed of everything
+              written before this autumn. `inReplyTo` is the reverse of `comments`, and `none` is
+              native on both backends.
+            */
+            where: {
+              type: 'root',
+              inReplyTo: { none: {} },
+              textContent: { contains: { $: 'local.searchText' } },
+            },
             // Space-wide unless the route names an anchor, in which case this is that container's own
             // posts. See `anchorScope` — an unresolved anchor is dropped rather than matching nothing.
             scope: anchorScope(),
@@ -73,9 +93,31 @@ export const postsList: SchemaNode = {
                   which type `like` is.
                 */
                 where: {
-                  signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
+                  signalTypeId: { $: `${LIKE_COUNT_TYPE}.id` },
                 },
                 count: true,
+              },
+              /*
+                The whole conversation, not the replies directly under the post.
+
+                `transitive` walks the subtree, so the number beside the icon is what expanding
+                actually reveals once branches are opened. Counting direct children would say "2"
+                over a thread of forty. It rides in the read already being made, so a feed of twenty
+                posts pays nothing for it.
+              */
+              $commentCount: { from: 'comments', count: true, transitive: true },
+              /*
+                Whether THIS agent is in the conversation, for the same reason a reaction knows
+                whether it is yours: the glyph carries "mine" and it needs an answer to carry.
+
+                Transitive like the total, so answering somebody four levels down counts — a
+                conversation you are in is one you are in, wherever in it you spoke.
+              */
+              $myComments: {
+                from: 'comments',
+                where: { author: { $: 'me.did' } },
+                count: true,
+                transitive: true,
               },
             },
           },
@@ -106,6 +148,8 @@ export const postsList: SchemaNode = {
               // and did nothing.
               localState: {
                 editPostOpen: { type: 'boolean', initial: false },
+                /** Whether this post's conversation is showing. Per card, so several can be open. */
+                commentsOpen: { type: 'boolean', initial: false },
               },
               header: [
                 {
@@ -258,32 +302,80 @@ export const postsList: SchemaNode = {
                   },
                 },
                 {
+                  /*
+                    What people have made of this post: the reactions, then the conversation.
+
+                    The row is no longer gated on the community having defined a reaction type —
+                    only the reactions inside it are. Gating the whole row hid the way into the
+                    comments of every space that had not got round to naming a signal, which is
+                    most of them on the first day.
+                  */
+                  type: 'Row',
+                  props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
+                  children: [
+                    /*
+                      Every reaction the community offers, as its own control.
+
+                      `full` — the mode's default — because a feed row is wide and a post is the
+                      thing a space is mostly about: this is where a community's newest reaction
+                      should be reachable without opening anything. A card on a canvas gets
+                      `compact` for the opposite reason.
+
+                      Through the fragment rather than written out here, which is what stops this
+                      drifting from the same controls in the inspector: it was written out, and the
+                      comment count beside it came out a different size and colour twice.
+                    */
+                    signalDisplay({ record: 'post', inline: true }),
+                    {
+                      /*
+                        The same control the reactions beside it are drawn with.
+
+                        A glyph and a count, coloured by whether you are IN the conversation rather
+                        than by whether it is expanded — the heart's rule one concept along, and the
+                        thread appearing underneath already says it is open. Two meanings on one
+                        channel is how a control stops meaning either.
+
+                        Through `CountMark` rather than written out here, and that is the point: it
+                        WAS written out here, and it came out a different size and a different
+                        colour from the hearts it sits beside, twice. A schema cannot match them —
+                        the resting colour is a scale position, which `role-audit` refuses in a
+                        template and is right to — so the drawing belongs somewhere both callers can
+                        name. See `CountMark` for the whole of that argument.
+
+                        No `size`, so `md` — like the `SignalControl`s on this row, which pass none
+                        either. That was the other half of the mismatch.
+                      */
+                      type: 'CountMark',
+                      props: {
+                        icon: 'chat-circle',
+                        count: { $: 'post.$commentCount ?? 0' },
+                        mine: { $: 'post.$myComments > 0' },
+                        label: 'Show the conversation',
+                        onPress: { $toggleLocal: 'commentsOpen' },
+                      },
+                    },
+                  ],
+                },
+                {
+                  /*
+                    The same thread the workshop's inspector draws, in the feed.
+
+                    `$if` rather than `$animate`, and the difference is twenty subscriptions: an
+                    `$animate` keeps its child mounted, so every post in the feed would walk its own
+                    conversation on first paint whether or not anybody opened it. The cost of
+                    unmounting is a half-written reply lost on collapse, which is a deliberate press.
+                  */
                   type: '$if',
                   props: {
-                    condition: { $: HAS_OFFERED_SIGNAL_TYPES },
+                    condition: { $: 'local.commentsOpen' },
+                    enterTransition: [
+                      { type: 'reveal', duration: 250 },
+                      { type: 'fade', duration: 150 },
+                    ],
                     then: {
-                      type: 'Row',
-                      props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
-                      children: [
-                        {
-                          type: '$each',
-                          props: { items: { $: OFFERED_SIGNAL_TYPES }, as: 'sig' },
-                          children: [
-                            {
-                              type: 'SignalControl',
-                              props: {
-                                signalType: { $: 'sig' },
-                                signals: { $: 'filter(post.signals, { signalTypeId: sig.id })' },
-                                myDid: { $: 'me.did' },
-                                onSignal: {
-                                  $action: 'spaceStore.upsertSignal',
-                                  args: [{ $: 'post.id' }, { $: 'sig.id' }, { $: 'arg' }],
-                                },
-                              },
-                            },
-                          ],
-                        },
-                      ],
+                      type: 'Column',
+                      props: { width: '100%', mt: '200', pt: '300', borderTop: '1px solid border' },
+                      children: [discussionSection({ record: 'post' })],
                     },
                   },
                 },

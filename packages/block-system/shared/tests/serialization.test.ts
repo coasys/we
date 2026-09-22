@@ -53,6 +53,7 @@ import type { ContentBlock, ContentDocument, TextContentBlock } from '../src/con
 import { type BlockEntityStatic, registerBlock } from '../src/registry';
 import {
   createBlocks,
+  deleteBlocks,
   extractBlockData,
   extractMentions,
   extractTextContent,
@@ -540,6 +541,44 @@ describe('reconcileBlocks', () => {
     expect(a.deleted).toBe(true);
     expect(b.text).toBe('b!');
     expect(nested.children).toEqual([b.id]);
+  });
+});
+
+// ── deleteBlocks ────────────────────────────────────────────────────────────
+
+describe('deleteBlocks', () => {
+  it('takes the conversation with the thing it was about, to any depth', async () => {
+    /*
+      A reply hangs off `we://comment` rather than `we://children` — the two relations say different
+      things, which is what makes threads fractal. This walk followed only `children`, so deleting a
+      post left every reply to it reachable by nothing and rendered by nothing. Survivable while a
+      thread was one level; not now that the orphan is a subtree.
+    */
+    const post = (await createBlocks(perspective, [paragraph('a')], { kind: 'post' })) as FakeCollection;
+    const reply = (await createBlocks(perspective, [paragraph('b')], { kind: 'reply' })) as FakeCollection;
+    const nested = (await createBlocks(perspective, [paragraph('c')], { kind: 'reply' })) as FakeCollection;
+    const body = byId.get(post.children[0]) as FakeText;
+    post.comments = [reply.id];
+    reply.comments = [nested.id];
+
+    await deleteBlocks(perspective, post.id);
+
+    expect(post.deleted).toBe(true);
+    // The post's own blocks, as before — `children` is untouched by any of this.
+    expect(body.deleted).toBe(true);
+    expect(reply.deleted).toBe(true);
+    expect(nested.deleted).toBe(true);
+  });
+
+  it('skips a reply that resolves to nothing rather than failing the delete', async () => {
+    // `comments` is polymorphic and multi-writer: an id on it may be something this build has no
+    // block class for, or a record a peer removed. Neither is a reason to leave the post standing.
+    const post = (await createBlocks(perspective, [paragraph('a')], { kind: 'post' })) as FakeCollection;
+    post.comments = ['id-does-not-exist'];
+
+    await deleteBlocks(perspective, post.id);
+
+    expect(post.deleted).toBe(true);
   });
 });
 

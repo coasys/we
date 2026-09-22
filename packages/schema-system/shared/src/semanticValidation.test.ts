@@ -214,6 +214,55 @@ describe('BlockComposer save handshake', () => {
   });
 });
 
+describe('a node type that renders one child, given several', () => {
+  /**
+   * `$each` renders `children[0]` and drops the rest in silence. `commentThread` built each row as
+   * two nodes — the reply, then the thread under it — so every level of every thread below the first
+   * was expanded, validated and never mounted, and the only symptom was a reply to a reply appearing
+   * nowhere at all.
+   */
+  it('rejects an $each with more than one child', () => {
+    const node: SchemaNode = {
+      type: '$each',
+      props: { items: { $: 'local.rows' }, as: 'row' },
+      children: [
+        { type: 'we-text', children: [{ $: 'row.title' }] },
+        { type: 'we-text', children: ['dropped, silently'] },
+      ],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/renders only its first child/);
+  });
+
+  it('rejects an $animate wrapping several', () => {
+    const node: SchemaNode = {
+      type: '$animate',
+      props: { scrollReveal: true },
+      children: [
+        { type: 'we-text', children: ['a'] },
+        { type: 'we-text', children: ['b'] },
+      ],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/renders only its first child/);
+  });
+
+  it('accepts the row wrapped in one box', () => {
+    const node: SchemaNode = {
+      type: '$each',
+      props: { items: { $: 'local.rows' }, as: 'row' },
+      children: [
+        {
+          type: 'Column',
+          children: [
+            { type: 'we-text', children: [{ $: 'row.title' }] },
+            { type: 'we-text', children: ['and everything under it'] },
+          ],
+        },
+      ],
+    } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});
+
 describe('expressions sitting directly in a children array', () => {
   /**
    * `children` legitimately accepts an expression — a count-noun label is written that way. But a

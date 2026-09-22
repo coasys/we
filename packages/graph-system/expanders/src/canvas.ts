@@ -122,6 +122,23 @@ export interface CanvasSeedOptions {
    * putting a kind away from the key ("no images for now"), where `hidden` would need every id.
    */
   hiddenTypes?: string[];
+  /**
+   * Relations to **count** on each card, read onto its data as `<name>Count` — `['signals',
+   * 'comments']` for "what have people made of this".
+   *
+   * Counts rather than the rows, because a card is a preview: what it owes a reader is that there is
+   * something to open. And counts rather than a query per card, because that is the difference
+   * between one more projection on a read the seed already makes and two hundred subscriptions on a
+   * canvas somebody dragged three hundred things onto.
+   *
+   * Only for a relation the type actually declares. A count over a relation an entity does not have
+   * is a refused query, and the refusal would take that whole type off the canvas — cards, lines and
+   * all — to save a number. A type that cannot answer simply carries no count.
+   *
+   * Absent for a count of zero, like every other unset field here, so a rule or a card can ask
+   * whether the field is there rather than comparing it.
+   */
+  counts?: string[];
   limit?: number;
 }
 
@@ -207,6 +224,25 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
   return style;
 }
 
+/**
+ * A placement's coordinate, named as a node's data bag names it.
+ *
+ * The sibling of {@link placementStyle} and exported for the same reason: a host drawing a move
+ * **before** the write comes back has to name the fields exactly as the seed does, and two copies of
+ * that naming is the sort of thing that drifts silently. Separate from `placementStyle` because the
+ * seed itself wants the coordinate as numbers for its positions map rather than as node data, so
+ * folding the two together would have it mapping x and y twice on every card it reads.
+ *
+ * Unlike the style fields, **zero is a real value here** — a card at the origin is an ordinary card
+ * — so only a non-finite coordinate is dropped. Both or neither: a patch carrying one axis would
+ * leave `manual` reading the other off stale data and send the card somewhere nobody put it.
+ */
+export function placementPosition(row: Record<string, unknown>): Record<string, GraphValue> {
+  const x = Number(row.x);
+  const y = Number(row.y);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {};
+}
+
 /** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
 function scalarsOf(row: Record<string, unknown>): Record<string, GraphValue> {
   const data: Record<string, GraphValue> = {};
@@ -235,9 +271,16 @@ export function canvasSeed(): SeedSource {
       const limit = options.limit ?? 200;
       const scope = { anchor: 'CollectionBlock', via, anchorId: options.canvas };
 
-      const read = (entity: string, where?: Record<string, unknown>) =>
+      const read = (entity: string, where?: Record<string, unknown>, include?: Record<string, unknown>) =>
         context
-          .query({ entity, dataset, limit, signal, ...(where ? { where } : { scope }) })
+          .query({
+            entity,
+            dataset,
+            limit,
+            signal,
+            ...(include ? { include } : {}),
+            ...(where ? { where } : { scope }),
+          })
           .catch((error: unknown) => {
             context.warn(`canvas: cannot read ${entity}: ${error instanceof Error ? error.message : String(error)}`);
             return [] as Record<string, unknown>[];
@@ -381,7 +424,34 @@ export function canvasSeed(): SeedSource {
       const wanted = passes.filter(
         (pass) => pass.entity !== placementEntity && declared(pass.entity) && !hiddenTypes.has(pass.entity),
       );
-      const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where)));
+
+      /**
+       * The count projections one type can answer — see `counts`.
+       *
+       * Filtered against the type's own declared relations, so a model with no `comments` is asked
+       * for none rather than refusing the read and vanishing off the canvas.
+       */
+      const countsFor = (entity: string): Record<string, unknown> | undefined => {
+        const asked = options.counts ?? [];
+        if (!asked.length) return undefined;
+        const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
+        const projections = Object.fromEntries(
+          asked.filter((name) => relations.has(name)).map((name) => [`$${name}Count`, { from: name, count: true }]),
+        );
+        return Object.keys(projections).length ? projections : undefined;
+      };
+
+      /** What those projections answered, named as a card reads them, and only where there is any. */
+      const countsOf = (row: Record<string, unknown>): Record<string, GraphValue> => {
+        const data: Record<string, GraphValue> = {};
+        for (const name of options.counts ?? []) {
+          const value = Number(row[`$${name}Count`]);
+          if (Number.isFinite(value) && value > 0) data[`${name}Count`] = value;
+        }
+        return data;
+      };
+
+      const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where, countsFor(pass.entity))));
 
       /*
         Rows a row-to-node could make nothing of, counted rather than passed over in silence.
@@ -420,6 +490,9 @@ export function canvasSeed(): SeedSource {
           const typeColor = typeColors.get(entity);
           const data = {
             ...node.data,
+            // Before the canvas's own fields: a count is the record's, and nothing a placement
+            // carries is named like one, so the order is only a statement of which layer owns what.
+            ...countsOf(row),
             ...(typeColor ? { canvasTypeColor: typeColor } : {}),
             // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
             // are the two states — an explicit `false` on every other card would make "not pending"

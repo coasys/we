@@ -17,7 +17,12 @@ const SHAPES: EntityShape[] = [
     name: 'CollectionBlock',
     identityProperty: 'title',
     properties: [{ name: 'title', type: 'string' }],
-    relations: [],
+    // The `WeNode` relations, untyped: what `counts` is asked over. `Sighting` below deliberately
+    // has none, which is the case that must not take a type off the canvas.
+    relations: [
+      { name: 'signals', target: 'Signal', cardinality: 'many' },
+      { name: 'comments', target: '', cardinality: 'many' },
+    ],
   },
   { name: 'TaskBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
   {
@@ -181,6 +186,58 @@ describe('canvasSeed', () => {
 
     expect(asked).toContain('Sighting');
     expect(nodes.find((n) => n.type === 'Sighting')?.data).toMatchObject({ x: 10, y: 20 });
+  });
+
+  it('counts what people made of a card, in the read that was happening anyway', async () => {
+    // One more projection on a query the seed already makes, rather than a subscription per card —
+    // which is the difference between a canvas of three hundred cards loading and not.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 3, $commentsCount: 2 }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(nodes[0].data).toMatchObject({ signalsCount: 3, commentsCount: 2 });
+  });
+
+  it('leaves a zero out, so a card can ask whether the field is there', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 0, $commentsCount: 0 }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(nodes[0].data?.signalsCount).toBeUndefined();
+    expect(nodes[0].data?.commentsCount).toBeUndefined();
+  });
+
+  it('asks a type for no count it cannot answer, rather than losing the type to a refused query', async () => {
+    // A count over a relation an entity does not declare is a refused read, and the refusal would
+    // take every card of that type off the canvas — cards, lines and all — to save a number.
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 's1', nodeType: 'Sighting', x: 10, y: 10 },
+      ],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+      Sighting: [{ id: 's1', name: 'Heron' }],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toMatchObject({
+      $signalsCount: { from: 'signals', count: true },
+    });
+    expect(asked.find((q) => q.entity === 'Sighting')?.include).toBeUndefined();
+    expect(nodes.find((n) => n.type === 'Sighting')).toBeDefined();
   });
 
   it('never draws a placement as a node', async () => {

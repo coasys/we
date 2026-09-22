@@ -9,6 +9,9 @@ import { provideChromeBag, provideTemplateBag } from '@shared/registries/templat
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 
+import { signalOptimism } from '../../../shared/signalOptimism';
+import { signalOrder } from '../../../shared/signalOrder';
+
 /** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
 const idOf = (entry: unknown): string =>
   typeof entry === 'string' ? entry : String((entry as { id?: unknown } | null)?.id ?? '');
@@ -48,7 +51,7 @@ import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
@@ -541,6 +544,84 @@ export default function TemplateProvider() {
       const view = sources.involvement({ ...given, pending: involvementOptimism.overlay() });
       queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
       return view;
+    },
+    /*
+      A record's reactions, with this agent's own newest answer in it — the same two halves again.
+
+      The rows reported are the ones the overlay was applied OVER, which is what the record's
+      subscription actually says, so a hold is released the moment the data has overtaken it rather
+      than when the write's promise settles.
+    */
+    /*
+      The order a record's reactions are drawn in, settled once and then held.
+
+      Here rather than in the fragment, because the fragment cannot hold anything: a reaction
+      surface sits inside an `$each` over a query, a subscription answers with fresh objects, and
+      Solid's keyed `<For>` therefore remounts the row — taking any `$localState` initial with it.
+      Writing a reaction re-runs the query that feeds the row you wrote it on, so a snapshot taken
+      at mount was re-taken on exactly the events it was meant to be stable across.
+
+      `of` is the record. Without one there is nothing to key on and the live order is the answer,
+      which is right for a caller that is not drawing a particular record's reactions.
+    */
+    signalTypesByUse: (options: unknown) => {
+      const given = (options ?? {}) as { of?: unknown; limit?: unknown };
+      if (typeof given.of !== 'string') return sources.signalTypesByUse(given);
+
+      /*
+        The WHOLE order is settled, and the limit applied after.
+
+        A compact row asks for four; storing those four as the order would throw away where
+        everything else stood, so opening the sheet — which asks for all of them — would settle a
+        fresh order for the tail every time it opened.
+      */
+      const all = sources.signalTypesByUse({
+        ...given,
+        limit: undefined,
+        order: signalOrder.held(given.of),
+      }) as unknown[];
+      const record = given.of;
+      signalOrder.settle(
+        record,
+        all.map((type) => (type as { id?: unknown }).id).filter((id): id is string => typeof id === 'string'),
+      );
+      /*
+        The order lives exactly as long as this drawing does.
+
+        Held for the session instead, selecting another card and coming back showed the first card's
+        order from minutes ago, with a reaction since given sitting halfway down a list that claims
+        to be sorted by use. Released when the owner goes away, it still survives the remount a
+        subscription causes — that disposes and rebuilds inside one batch, so the order is asked for
+        again before the deferred release fires — and is forgotten once the reader has moved on.
+
+        Only where there is an owner to hang it on: a source called outside a reactive computation
+        has nothing to be cleaned up with, and `onCleanup` there warns and does nothing.
+      */
+      if (getOwner()) onCleanup(() => signalOrder.release(record));
+      return typeof given.limit === 'number' && given.limit >= 0 ? all.slice(0, given.limit) : all;
+    },
+    reactions: (options: unknown) => {
+      const given = (options ?? {}) as { signals?: unknown; record?: unknown; type?: unknown; me?: unknown };
+      const list = sources.reactions({ ...given, pending: signalOptimism.overlay() });
+      /*
+        Reported for the PAIR this call was about, never for the record.
+
+        The list handed in is one type's — every surface asks per type — so it is evidence about that
+        type and nothing else. Read as evidence about the record it said "no reaction of any kind",
+        which dropped a withdrawal hold the instant any other type on the same record drew: the heart
+        came back on until the real data caught up. See `settleFromSignals`.
+      */
+      if (typeof given.record === 'string' && typeof given.type === 'string' && typeof given.me === 'string') {
+        queueMicrotask(() =>
+          signalOptimism.settleFromSignals(
+            given.record as string,
+            given.type as string,
+            given.me as string,
+            given.signals,
+          ),
+        );
+      }
+      return list;
     },
   };
 

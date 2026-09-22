@@ -1,0 +1,33 @@
+{
+  "name": "@we/optimism",
+  "version": "0.1.0",
+  "description": "A write drawn before it has been seen come back — hold, baseline, settle, and the rules for when to stop believing it",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  },
+  "sideEffects": false
+}

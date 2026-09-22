@@ -1,6 +1,6 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import { agentByline, emptyState, field, formModal } from '@we/template-kit';
+import { agentByline, emptyState, field, formModal, sectionLabel } from '@we/template-kit';
 
 /**
  * The space's events, as a month and as a list.
@@ -669,11 +669,7 @@ export const calendarView: TemplateSchema = {
                   type: 'Column',
                   props: { width: '100%', gap: '300' },
                   children: [
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted', uppercase: true },
-                      children: ['Scheduled'],
-                    },
+                    sectionLabel({ label: 'Scheduled' }),
                     {
                       type: '$each',
                       props: { items: eventsQuery, as: 'event' },

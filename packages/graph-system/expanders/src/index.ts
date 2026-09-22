@@ -30,7 +30,7 @@ export {
   type ReifiedEdgeSpec,
   reifiedEdgeFrom,
 } from './reified';
-export { canvasSeed, type CanvasSeedOptions, PLACEMENT_UNSET, placementStyle } from './canvas';
+export { canvasSeed, type CanvasSeedOptions, PLACEMENT_UNSET, placementPosition, placementStyle } from './canvas';
 /*
   Exported because the canvas is not the only surface that will ask a set of placements where a node
   sits — a freeform canvas asks the same question of the same records, and "which of these applies"

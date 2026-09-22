@@ -16,7 +16,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { emptyState, panelScroll, panelShell, sectionLabel } from '@we/schema-kit';
+import { emptyState, foldingBody, foldingSectionLabel, panelScroll, panelShell } from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -923,156 +923,6 @@ const proposalEditor: SchemaNode = {
  * somewhere else to fix a wrong title means keeping something known to be wrong, or discarding a
  * record that was mostly right.
  */
-/**
- * A section's name, the size of what is under it, and the control that folds it — one row.
- *
- * The lists here can each run to a screenful and the panel scrolls as one thing, so without a way
- * to fold one, reaching the readings under a long list of suggestions means scrolling past all of
- * them every time. The count is what tells you whether folding is worth it.
- *
- * ## The whole row is the button, not the caret
- *
- * It was the caret alone, on the reasoning that `sectionLabel` draws a label and a label is not a
- * control. That is true of the fragment and does not decide this: the label stays a label, and a
- * *control wraps it*. What the narrow reading cost was a hit target the size of a glyph at the far
- * end of a row whose obvious target is the word naming the thing — and three headings where the
- * caret moved and the words did not, which reads as two different kinds of row.
- *
- * `bare` is the appearance-free clickable — a real `<button>`, with the keyboard activation and the
- * role that a `Row` carrying an `onClick` silently loses — so the heading looks exactly as it did.
- * The hover band is the affordance the caret's own darkening used to be, and it is the row's own
- * box: no padding is added, so the name stays aligned with the cards underneath it.
- *
- * `railGroup` in the template kit is the same shape for the same reason, which is worth knowing
- * before narrowing this again.
- *
- * ## What names it
- *
- * Nothing, explicitly: the accessible name comes from the contents, so it is "Logs 3" — the section
- * and its size, which is what the ARIA disclosure pattern asks a disclosure button to be called. The
- * caret button it replaces had to be named by hand (`Show the readings`) only because an icon-only
- * button has nothing to take a name from.
- *
- * What neither can say is whether the section is *open*: that wants `aria-expanded`, and a web
- * component's props are assigned as DOM properties, so no schema can set an attribute `we-button`
- * does not declare. The caret says it visually. Fixing it properly is a prop on the primitive, which
- * would also answer for `railGroup` and every openable row in this panel.
- */
-const foldingSectionLabel = (opts: {
-  label: string;
-  /**
-   * `neutral` for a section that is not a verdict.
-   *
-   * The other two badges mean something: amber is work waiting on a person, green is work that
-   * landed. A log is neither — it counts how many times the call has been read, which is no more a
-   * status than a timestamp is, and spending a status colour on it would say the readings are
-   * themselves either pending or good.
-   */
-  count: string;
-  tone: 'neutral' | 'warning' | 'success';
-  field: string;
-  /**
-   * A control about the whole section — Logs' export — drawn between the name and the count.
-   *
-   * The heading is a `<button>` and a button inside a button is invalid markup that would also
-   * toggle the section on the way past, so with an action the heading splits in two: the name, and
-   * the count with its caret, each its own bare button folding the same section. The action sits in
-   * the gap between them, beside the number it exports.
-   */
-  action?: SchemaNode;
-}): SchemaNode => {
-  const toggle = (children: SchemaNode[], extra: Record<string, unknown> = {}): SchemaNode => ({
-    type: 'we-button',
-    props: {
-      variant: 'bare',
-      // Nothing paints on hover: the pointer is the affordance, and a band the width of the panel
-      // lighting up under the cursor is a lot of movement for a heading somebody is passing over on
-      // the way to the cards. The radius is for the focus ring, which `we-button` draws itself and
-      // which `bare` would otherwise take around a square-cornered full-width row.
-      r: '200',
-      onClick: { $toggleLocal: opts.field },
-      ...extra,
-    },
-    children,
-  });
-
-  if (!opts.action) {
-    return toggle([sectionLabel({ label: opts.label, aside: foldingCount(opts) })], { width: '100%' });
-  }
-  return {
-    type: 'Row',
-    props: { ay: 'center', gap: '200', width: '100%' },
-    children: [
-      toggle([sectionLabel({ label: opts.label })], { flex: '1', minWidth: '0' }),
-      opts.action,
-      // Named for what it does: its contents are a number and a caret, which say nothing read aloud.
-      toggle([foldingCount(opts)], { label: `Show or hide ${opts.label.toLowerCase()}` }),
-    ],
-  };
-};
-
-/** The count and the caret at the end of a folding heading. */
-const foldingCount = (opts: { count: string; tone: 'neutral' | 'warning' | 'success'; field: string }): SchemaNode => ({
-  // `200`, where the label sits `200` from the badge: the caret is a separate thing from the
-  // count, and at `100` the two read as one object with a number in it.
-  type: 'Row',
-  props: { ay: 'center', gap: '200' },
-  children: [
-    {
-      type: 'we-badge',
-      props: {
-        size: 'xs',
-        variant: opts.tone,
-        appearance: 'solid',
-        /*
-          Square at its narrowest, and wider only when the number needs it.
-
-          A badge is sized by its content, so `3` came out as a squat lozenge and `12` as a
-          wider one — every section's chip a different shape, and none of them the round-ish
-          counter a count wants to be. The floor is the badge's own height, written as the
-          same expression `SIZE_DEFAULTS` gives it so a theme's `control-height-offset` moves
-          both together and it cannot go oblong the moment a theme changes density.
-
-          Only a floor: two digits are wider than 24px with the padding an `xs` badge carries,
-          so they grow, which is the half a fixed width would have lost.
-        */
-        minWidth: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
-      },
-      children: [{ $: opts.count }],
-    },
-    /*
-      A plain icon, not a button: the heading around it is a `<button>`, and a button inside a
-      button is invalid markup — it would also take the press on the way past and toggle twice.
-    */
-    {
-      type: 'we-icon',
-      props: {
-        size: CARET_SIZE,
-        color: 'text-faint',
-        name: { $: `local.${opts.field} ? 'caret-up' : 'caret-down'` },
-      },
-    },
-  ],
-});
-
-/**
- * A list that folds away under its heading.
- *
- * `$if` rather than `$animate`, which would keep the content mounted behind a clipped wrapper. The
- * point of folding a list here is that it has got large, so leaving a screenful of cards rendered
- * would be folding away the only thing it cost. Nothing is lost by unmounting: the suggestions come
- * from a store, the results from a query declared above this, and an open editor's draft lives in
- * the store rather than in the card.
- */
-const collapsible = (field: string, body: SchemaNode): SchemaNode => ({
-  type: '$if',
-  props: {
-    condition: { $: `local.${field}` },
-    enterTransition: { type: 'reveal', duration: 200 },
-    exitTransition: { type: 'reveal', duration: 160 },
-    then: body,
-  },
-});
 
 /** A round yes-or-no button in the success or danger role — the pair every suggestion here is answered with. */
 const answerButton = (tone: 'success' | 'danger', label: string, onClick: SchemaProp): SchemaNode => ({
@@ -1131,80 +981,83 @@ const suggestedChangesGroup: SchemaNode = {
           label: 'Pending changes',
           count: `count(${CHANGE_PROPOSALS})`,
           tone: 'warning',
-          field: 'changesListOpen',
+          open: { field: 'changesListOpen' },
         }),
-        collapsible('changesListOpen', {
-          type: 'Grid',
-          props: { minChildWidth: '240px', gap: '200', width: '100%' },
+        foldingBody({
+          open: { field: 'changesListOpen' },
           children: [
             {
-              type: '$each',
-              props: { items: { $: CHANGE_PROPOSALS }, as: 'proposal' },
+              type: 'Grid',
+              props: { minChildWidth: '240px', gap: '200', width: '100%' },
               children: [
                 {
-                  type: 'Column',
-                  /*
+                  type: '$each',
+                  props: { items: { $: CHANGE_PROPOSALS }, as: 'proposal' },
+                  children: [
+                    {
+                      type: 'Column',
+                      /*
                     The record itself, by id, for the "old" half of every line — a proposal carries
                     only what the pass suggested. Not asked until the backend has said which model
                     this is; without one the lines say "—" for what is there now.
                   */
-                  $queries: {
-                    current: {
-                      entity: { $: 'proposal.entity' },
-                      where: { id: { $: 'proposal.id' } },
-                      limit: 1,
-                      when: { $: 'proposal.entity' },
-                    },
-                  },
-                  props: {
-                    bg: 'surface',
-                    color: 'text',
-                    // Amber, as a change is marked everywhere else — the accent is what selected means.
-                    borderLeft: '3px solid warning',
-                    r: '300',
-                    px: '300',
-                    py: '300',
-                    gap: '200',
-                  },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '100', ay: 'center', width: '100%' },
-                      children: [cardKind(PROPOSAL_SHAPE)],
-                    },
-                    {
-                      type: 'we-text',
-                      props: {
-                        fontWeight: 'semibold',
-                        text: { $: `${CURRENT}[${DISPLAY}.title] ?? proposal.summary` },
+                      $queries: {
+                        current: {
+                          entity: { $: 'proposal.entity' },
+                          where: { id: { $: 'proposal.id' } },
+                          limit: 1,
+                          when: { $: 'proposal.entity' },
+                        },
                       },
-                    },
-                    {
-                      type: '$each',
-                      props: { items: { $: CHANGES }, as: 'change' },
+                      props: {
+                        bg: 'surface',
+                        color: 'text',
+                        // Amber, as a change is marked everywhere else — the accent is what selected means.
+                        borderLeft: '3px solid warning',
+                        r: '300',
+                        px: '300',
+                        py: '300',
+                        gap: '200',
+                      },
                       children: [
                         {
                           type: 'Row',
-                          props: { gap: '200', ay: 'center', width: '100%' },
+                          props: { gap: '100', ay: 'center', width: '100%' },
+                          children: [cardKind(PROPOSAL_SHAPE)],
+                        },
+                        {
+                          type: 'we-text',
+                          props: {
+                            fontWeight: 'semibold',
+                            text: { $: `${CURRENT}[${DISPLAY}.title] ?? proposal.summary` },
+                          },
+                        },
+                        {
+                          type: '$each',
+                          props: { items: { $: CHANGES }, as: 'change' },
                           children: [
                             {
-                              type: 'we-text',
-                              props: {
-                                fontSize: '200',
-                                flex: '1 1 auto',
-                                minWidth: '0',
-                                text: {
-                                  $:
-                                    '`${change.label}: ${' +
-                                    readableValue('change.name', `(${CURRENT}[change.name] ?? '—')`) +
-                                    '} → ${' +
-                                    readableValue('change.name', 'change.value') +
-                                    '}`',
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center', width: '100%' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    fontSize: '200',
+                                    flex: '1 1 auto',
+                                    minWidth: '0',
+                                    text: {
+                                      $:
+                                        '`${change.label}: ${' +
+                                        readableValue('change.name', `(${CURRENT}[change.name] ?? '—')`) +
+                                        '} → ${' +
+                                        readableValue('change.name', 'change.value') +
+                                        '}`',
+                                    },
+                                  },
                                 },
-                              },
-                            },
-                            {
-                              /*
+                                {
+                                  /*
                                 The pair never gives up room, however long the line beside it runs.
 
                                 Without this the two buttons are ordinary flex items and shrink like
@@ -1219,52 +1072,60 @@ const suggestedChangesGroup: SchemaNode = {
                                 the whole bug: one answer surface held its shape and the other did
                                 not, for no reason anybody chose.
                               */
-                              type: 'Row',
-                              props: { gap: '100', ay: 'center', flexShrink: '0' },
-                              children: [
-                                answerButton('success', 'Accept this change', {
-                                  $action: 'modules.transcribe.applyChange',
-                                  args: [{ $: 'proposal.id' }, { $: 'change.name' }],
-                                }),
-                                answerButton('danger', 'Reject this change — keeps the current value', {
-                                  $action: 'modules.transcribe.dismissChange',
-                                  args: [{ $: 'proposal.id' }, { $: 'change.name' }],
-                                }),
+                                  type: 'Row',
+                                  props: { gap: '100', ay: 'center', flexShrink: '0' },
+                                  children: [
+                                    answerButton('success', 'Accept this change', {
+                                      $action: 'modules.transcribe.applyChange',
+                                      args: [{ $: 'proposal.id' }, { $: 'change.name' }],
+                                    }),
+                                    answerButton('danger', 'Reject this change — keeps the current value', {
+                                      $action: 'modules.transcribe.dismissChange',
+                                      args: [{ $: 'proposal.id' }, { $: 'change.name' }],
+                                    }),
+                                  ],
+                                },
                               ],
                             },
                           ],
                         },
-                      ],
-                    },
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: `count(${CHANGES}) > 1` },
-                        then: {
-                          type: 'Row',
-                          props: { gap: '100', ay: 'center', ax: 'end', width: '100%' },
-                          children: [
-                            {
-                              type: 'we-button',
-                              props: {
-                                variant: 'ghost',
-                                size: 'xs',
-                                onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'proposal.id' }] },
-                              },
-                              children: ['Accept all'],
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: `count(${CHANGES}) > 1` },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '100', ay: 'center', ax: 'end', width: '100%' },
+                              children: [
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'ghost',
+                                    size: 'xs',
+                                    onClick: {
+                                      $action: 'modules.transcribe.acceptProposal',
+                                      args: [{ $: 'proposal.id' }],
+                                    },
+                                  },
+                                  children: ['Accept all'],
+                                },
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'ghost',
+                                    size: 'xs',
+                                    onClick: {
+                                      $action: 'modules.transcribe.rejectProposal',
+                                      args: [{ $: 'proposal.id' }],
+                                    },
+                                  },
+                                  children: ['Reject all'],
+                                },
+                              ],
                             },
-                            {
-                              type: 'we-button',
-                              props: {
-                                variant: 'ghost',
-                                size: 'xs',
-                                onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: 'proposal.id' }] },
-                              },
-                              children: ['Reject all'],
-                            },
-                          ],
+                          },
                         },
-                      },
+                      ],
                     },
                   ],
                 },
@@ -1330,18 +1191,21 @@ const proposals: SchemaNode = {
                       label: 'Pending acceptance',
                       count: `count(${NEW_PROPOSALS})`,
                       tone: 'warning',
-                      field: 'proposalsOpen',
+                      open: { field: 'proposalsOpen' },
                     }),
-                    collapsible('proposalsOpen', {
-                      type: 'Grid',
-                      props: { minChildWidth: '240px', gap: '200', width: '100%' },
+                    foldingBody({
+                      open: { field: 'proposalsOpen' },
                       children: [
                         {
-                          type: '$each',
-                          props: { items: { $: NEW_PROPOSALS }, as: 'proposal' },
+                          type: 'Grid',
+                          props: { minChildWidth: '240px', gap: '200', width: '100%' },
                           children: [
                             {
-                              /*
+                              type: '$each',
+                              props: { items: { $: NEW_PROPOSALS }, as: 'proposal' },
+                              children: [
+                                {
+                                  /*
                             The alert's edge, without the alert's icon.
 
                             `we-alert` always draws one — it has no way to be told not to, and that
@@ -1361,31 +1225,31 @@ const proposals: SchemaNode = {
                             strength rather than in its tint. Same figures, so a card here and an
                             alert elsewhere still look like the same family.
                           */
-                              type: 'Column',
-                              props: {
-                                bg: 'surface',
-                                color: 'text',
-                                borderLeft: '3px solid warning',
-                                r: '300',
-                                px: '300',
-                                py: '300',
-                              },
-                              children: [
-                                {
                                   type: 'Column',
-                                  // `flex` so it fills the card: a grid row is as tall as its tallest card, and
-                                  // the others are stretched to match — see the answer row's `mt`.
-                                  props: { gap: '200', width: '100%', flex: '1' },
+                                  props: {
+                                    bg: 'surface',
+                                    color: 'text',
+                                    borderLeft: '3px solid warning',
+                                    r: '300',
+                                    px: '300',
+                                    py: '300',
+                                  },
                                   children: [
-                                    /*
+                                    {
+                                      type: 'Column',
+                                      // `flex` so it fills the card: a grid row is as tall as its tallest card, and
+                                      // the others are stretched to match — see the answer row's `mt`.
+                                      props: { gap: '200', width: '100%', flex: '1' },
+                                      children: [
+                                        /*
                               What kind of thing is being offered, in the model's own words and icon.
 
                               Absent where the backend could not classify the base — an executor
                               predating `subjectClassesOf` answers that way for everything — and the
                               card falls back to the flat summary below rather than to a blank box.
                             */
-                                    {
-                                      /*
+                                        {
+                                          /*
                                     What kind of thing this is, and the way into changing it.
 
                                     Edit used to be a third button in the row of answers at the
@@ -1397,15 +1261,15 @@ const proposals: SchemaNode = {
                                     The label keeps the space either way, so the control stays in the
                                     corner on a card whose entity the backend could not name.
                                   */
-                                      type: 'Row',
-                                      props: { ax: 'between', ay: 'center', gap: '200', width: '100%' },
-                                      children: [
-                                        {
                                           type: 'Row',
-                                          props: { flex: '1', minWidth: '0', ay: 'center', gap: '100' },
-                                          children: [cardKind(PROPOSAL_SHAPE)],
-                                        },
-                                        /*
+                                          props: { ax: 'between', ay: 'center', gap: '200', width: '100%' },
+                                          children: [
+                                            {
+                                              type: 'Row',
+                                              props: { flex: '1', minWidth: '0', ay: 'center', gap: '100' },
+                                              children: [cardKind(PROPOSAL_SHAPE)],
+                                            },
+                                            /*
                                       Offered only where an edit could actually be written back: the
                                       host has to lend a record-update surface and the backend has to
                                       have said which model this is. Without either, Keep would take
@@ -1415,67 +1279,73 @@ const proposals: SchemaNode = {
                                       the words behind a tooltip — a glyph alone in a corner is only
                                       obvious to somebody who already knows what it does.
                                     */
-                                        {
-                                          type: '$if',
-                                          props: {
-                                            condition: {
-                                              $: 'modules.transcribe.canEditProposals && proposal.entity',
-                                            },
-                                            then: {
+                                            {
                                               type: '$if',
                                               props: {
-                                                condition: { $: 'modules.transcribe.editingProposal == proposal.id' },
-                                                then: {
-                                                  type: 'we-tooltip',
-                                                  props: { content: 'Stop editing' },
-                                                  children: [
-                                                    {
-                                                      type: 'we-button',
-                                                      props: {
-                                                        variant: 'ghost',
-                                                        size: 'xs',
-                                                        square: true,
-                                                        label: 'Stop editing',
-                                                        onClick: { $action: 'modules.transcribe.cancelProposalEdit' },
-                                                      },
-                                                      children: [{ type: 'we-icon', props: { name: 'x' } }],
-                                                    },
-                                                  ],
+                                                condition: {
+                                                  $: 'modules.transcribe.canEditProposals && proposal.entity',
                                                 },
-                                                else: {
-                                                  type: 'we-tooltip',
-                                                  props: { content: 'Edit before accepting' },
-                                                  children: [
-                                                    {
-                                                      type: 'we-button',
-                                                      props: {
-                                                        variant: 'ghost',
-                                                        size: 'xs',
-                                                        square: true,
-                                                        label: 'Edit before accepting',
-                                                        onClick: {
-                                                          $action: 'modules.transcribe.editProposal',
-                                                          args: [{ $: 'proposal.id' }],
-                                                        },
-                                                      },
-                                                      children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                                                then: {
+                                                  type: '$if',
+                                                  props: {
+                                                    condition: {
+                                                      $: 'modules.transcribe.editingProposal == proposal.id',
                                                     },
-                                                  ],
+                                                    then: {
+                                                      type: 'we-tooltip',
+                                                      props: { content: 'Stop editing' },
+                                                      children: [
+                                                        {
+                                                          type: 'we-button',
+                                                          props: {
+                                                            variant: 'ghost',
+                                                            size: 'xs',
+                                                            square: true,
+                                                            label: 'Stop editing',
+                                                            onClick: {
+                                                              $action: 'modules.transcribe.cancelProposalEdit',
+                                                            },
+                                                          },
+                                                          children: [{ type: 'we-icon', props: { name: 'x' } }],
+                                                        },
+                                                      ],
+                                                    },
+                                                    else: {
+                                                      type: 'we-tooltip',
+                                                      props: { content: 'Edit before accepting' },
+                                                      children: [
+                                                        {
+                                                          type: 'we-button',
+                                                          props: {
+                                                            variant: 'ghost',
+                                                            size: 'xs',
+                                                            square: true,
+                                                            label: 'Edit before accepting',
+                                                            onClick: {
+                                                              $action: 'modules.transcribe.editProposal',
+                                                              args: [{ $: 'proposal.id' }],
+                                                            },
+                                                          },
+                                                          children: [
+                                                            { type: 'we-icon', props: { name: 'pencil-simple' } },
+                                                          ],
+                                                        },
+                                                      ],
+                                                    },
+                                                  },
                                                 },
                                               },
                                             },
-                                          },
+                                          ],
                                         },
-                                      ],
-                                    },
-                                    {
-                                      // Editing, or reading. The controls replace the card's body rather than
-                                      // sitting under it, so the thing being changed is the thing on screen.
-                                      type: '$if',
-                                      props: {
-                                        condition: { $: 'modules.transcribe.editingProposal == proposal.id' },
-                                        then: { type: 'Column', props: { gap: '200' }, children: [proposalEditor] },
-                                        /*
+                                        {
+                                          // Editing, or reading. The controls replace the card's body rather than
+                                          // sitting under it, so the thing being changed is the thing on screen.
+                                          type: '$if',
+                                          props: {
+                                            condition: { $: 'modules.transcribe.editingProposal == proposal.id' },
+                                            then: { type: 'Column', props: { gap: '200' }, children: [proposalEditor] },
+                                            /*
                                       The model's title property, drawn as one — the whole reason this
                                       stopped being a run-on line of `field: value` pairs.
 
@@ -1483,11 +1353,11 @@ const proposals: SchemaNode = {
                                       which is the one case a card cannot do better than the old one,
                                       and the one case only a suggestion can be in.
                                     */
-                                        else: cardTitle(PROPOSAL_SHAPE, { $: 'proposal.summary' }),
-                                      },
-                                    },
-                                    {
-                                      /*
+                                            else: cardTitle(PROPOSAL_SHAPE, { $: 'proposal.summary' }),
+                                          },
+                                        },
+                                        {
+                                          /*
                                     The card's last line: what it says about itself, and the answer.
 
                                     The detail rows used to sit above a full-width row of buttons, so
@@ -1507,29 +1377,29 @@ const proposals: SchemaNode = {
                                     answer: the details keep to the top (`alignSelf`), under the title
                                     they describe, rather than dropping to the foot with it.
                                   */
-                                      type: 'Row',
-                                      props: { gap: '200', ax: 'between', ay: 'end', width: '100%', flex: '1' },
-                                      children: [
-                                        {
-                                          type: 'Column',
-                                          props: { flex: '1', minWidth: '0', gap: '100', alignSelf: 'start' },
+                                          type: 'Row',
+                                          props: { gap: '200', ax: 'between', ay: 'end', width: '100%', flex: '1' },
                                           children: [
                                             {
-                                              // Not while the editor is open: those fields are the same
-                                              // values, and showing both would be the card arguing with
-                                              // itself about what the suggestion says.
-                                              type: '$if',
-                                              props: {
-                                                condition: {
-                                                  $: `${DISPLAY}.label && modules.transcribe.editingProposal != proposal.id`,
+                                              type: 'Column',
+                                              props: { flex: '1', minWidth: '0', gap: '100', alignSelf: 'start' },
+                                              children: [
+                                                {
+                                                  // Not while the editor is open: those fields are the same
+                                                  // values, and showing both would be the card arguing with
+                                                  // itself about what the suggestion says.
+                                                  type: '$if',
+                                                  props: {
+                                                    condition: {
+                                                      $: `${DISPLAY}.label && modules.transcribe.editingProposal != proposal.id`,
+                                                    },
+                                                    then: detailRows(PROPOSAL_SHAPE),
+                                                  },
                                                 },
-                                                then: detailRows(PROPOSAL_SHAPE),
-                                              },
+                                              ],
                                             },
-                                          ],
-                                        },
-                                        {
-                                          /*
+                                            {
+                                              /*
                                         A yes and a no, drawn the way the board draws the same pair on
                                         the card itself — a raised circle, the glyph in the success or
                                         danger role, filling with that role's surface under the
@@ -1541,22 +1411,22 @@ const proposals: SchemaNode = {
                                         green/red pair is the classic thing to fail on, so the mark is
                                         what carries the meaning for anyone who cannot separate them.
                                       */
-                                          type: 'Row',
-                                          props: { gap: '100', ay: 'center', flexShrink: '0' },
-                                          children: [
-                                            {
-                                              type: 'we-tooltip',
-                                              props: { content: 'Accept' },
+                                              type: 'Row',
+                                              props: { gap: '100', ay: 'center', flexShrink: '0' },
                                               children: [
                                                 {
-                                                  type: 'we-button',
-                                                  props: {
-                                                    variant: 'outline',
-                                                    size: 'xs',
-                                                    square: true,
-                                                    r: 'full',
-                                                    label: 'Accept',
-                                                    /*
+                                                  type: 'we-tooltip',
+                                                  props: { content: 'Accept' },
+                                                  children: [
+                                                    {
+                                                      type: 'we-button',
+                                                      props: {
+                                                        variant: 'outline',
+                                                        size: 'xs',
+                                                        square: true,
+                                                        r: 'full',
+                                                        label: 'Accept',
+                                                        /*
                                                   The status *foreground* at rest, the fill on hover
                                                   — the canvas's own rule for this pair, and the
                                                   reason is in its stylesheet: at this size the icon
@@ -1570,48 +1440,52 @@ const proposals: SchemaNode = {
                                                   button acknowledging the pointer rather than as the
                                                   answer it is about to give.
                                                 */
-                                                    color: 'success-text',
-                                                    hoverProps: {
-                                                      bg: 'success',
-                                                      color: 'on-success',
-                                                      borderColor: 'success',
+                                                        color: 'success-text',
+                                                        hoverProps: {
+                                                          bg: 'success',
+                                                          color: 'on-success',
+                                                          borderColor: 'success',
+                                                        },
+                                                        onClick: {
+                                                          $action: 'modules.transcribe.acceptProposal',
+                                                          args: [{ $: 'proposal.id' }],
+                                                        },
+                                                      },
+                                                      children: [
+                                                        { type: 'we-icon', props: { name: 'check', weight: 'bold' } },
+                                                      ],
                                                     },
-                                                    onClick: {
-                                                      $action: 'modules.transcribe.acceptProposal',
-                                                      args: [{ $: 'proposal.id' }],
-                                                    },
-                                                  },
-                                                  children: [
-                                                    { type: 'we-icon', props: { name: 'check', weight: 'bold' } },
                                                   ],
                                                 },
-                                              ],
-                                            },
-                                            {
-                                              type: 'we-tooltip',
-                                              props: { content: 'Reject — removes it' },
-                                              children: [
                                                 {
-                                                  type: 'we-button',
-                                                  props: {
-                                                    variant: 'outline',
-                                                    size: 'xs',
-                                                    square: true,
-                                                    r: 'full',
-                                                    label: 'Reject',
-                                                    // The other half of the pair — see above.
-                                                    color: 'danger-text',
-                                                    hoverProps: {
-                                                      bg: 'danger',
-                                                      color: 'on-danger',
-                                                      borderColor: 'danger',
+                                                  type: 'we-tooltip',
+                                                  props: { content: 'Reject — removes it' },
+                                                  children: [
+                                                    {
+                                                      type: 'we-button',
+                                                      props: {
+                                                        variant: 'outline',
+                                                        size: 'xs',
+                                                        square: true,
+                                                        r: 'full',
+                                                        label: 'Reject',
+                                                        // The other half of the pair — see above.
+                                                        color: 'danger-text',
+                                                        hoverProps: {
+                                                          bg: 'danger',
+                                                          color: 'on-danger',
+                                                          borderColor: 'danger',
+                                                        },
+                                                        onClick: {
+                                                          $action: 'modules.transcribe.rejectProposal',
+                                                          args: [{ $: 'proposal.id' }],
+                                                        },
+                                                      },
+                                                      children: [
+                                                        { type: 'we-icon', props: { name: 'x', weight: 'bold' } },
+                                                      ],
                                                     },
-                                                    onClick: {
-                                                      $action: 'modules.transcribe.rejectProposal',
-                                                      args: [{ $: 'proposal.id' }],
-                                                    },
-                                                  },
-                                                  children: [{ type: 'we-icon', props: { name: 'x', weight: 'bold' } }],
+                                                  ],
                                                 },
                                               ],
                                             },
@@ -1795,6 +1669,15 @@ export const extractionTargets: SchemaNode = {
                   fading along with the card they were anchored to.
                 */
                 variant: { $: "target.selected ? 'secondary' : 'outline'" },
+                /*
+                  A pill, because a chip is a chip.
+
+                  They carried the radius every other control in the panel does, which made a row of
+                  them read as a row of small buttons — and what they are is a set of things that
+                  are either in or out. Fully rounded is the shape that says "one of a set" rather
+                  than "press me and something happens".
+                */
+                r: 'pill',
                 // Only where neither list is this agent's to change. Refused visibly rather than in
                 // the store, where it was refused in silence.
                 // Outside a call there is no conversation to narrow, so these state the space's
@@ -1837,6 +1720,24 @@ export const extractionTargets: SchemaNode = {
                   },
                 },
                 { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'target.label' }] },
+                /*
+                  And a tick when it is on, after the name.
+
+                  The weight of the chip carries the state too — filled is on, outlined is off — but
+                  weight is a COMPARISON: it means something only once the row holds both kinds, and
+                  a space with one model, or with all of them ticked, gives it nothing to be read
+                  against. A tick says it about each chip on its own.
+
+                  After the name, so the names start at the same place down a wrapped row and the
+                  ticks sit at the ends of the ones that have them.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'target.selected' },
+                    then: { type: 'we-icon', props: { name: 'check' } },
+                  },
+                },
               ],
             },
           ],
@@ -2130,7 +2031,7 @@ const extractionHistory: SchemaNode = {
           label: 'Logs',
           count: 'count(local.passes)',
           tone: 'neutral',
-          field: 'logsOpen',
+          open: { field: 'logsOpen' },
           /*
             Every pass on this call, as one file — the prompts and responses in full, the transcript
             they read, what they wrote and what is still waiting — for handing to somebody, or a
@@ -2156,19 +2057,22 @@ const extractionHistory: SchemaNode = {
             ],
           },
         }),
-        collapsible('logsOpen', {
-          type: 'Column',
-          props: { gap: '200', width: '100%' },
+        foldingBody({
+          open: { field: 'logsOpen' },
           children: [
             {
-              type: '$each',
-              props: { items: { $: 'local.passes' }, as: 'pass' },
+              type: 'Column',
+              props: { gap: '200', width: '100%' },
               children: [
                 {
-                  type: 'Column',
-                  props: { gap: '100', width: '100%' },
+                  type: '$each',
+                  props: { items: { $: 'local.passes' }, as: 'pass' },
                   children: [
-                    /*
+                    {
+                      type: 'Column',
+                      props: { gap: '100', width: '100%' },
+                      children: [
+                        /*
                               Clickable only where there is something under it.
 
                               A bare button is the appearance-free clickable, so an openable row and
@@ -2177,23 +2081,25 @@ const extractionHistory: SchemaNode = {
                               press to a record written before the exchange was stored, and answer it
                               with an empty box.
                             */
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $: HISTORY_OPENABLE },
-                        then: {
-                          type: 'we-button',
+                        {
+                          type: '$if',
                           props: {
-                            variant: 'bare',
-                            width: '100%',
-                            onClick: { $toggleLocalIn: 'openHistoryPasses', value: { $: 'pass.id' } },
+                            condition: { $: HISTORY_OPENABLE },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'bare',
+                                width: '100%',
+                                onClick: { $toggleLocalIn: 'openHistoryPasses', value: { $: 'pass.id' } },
+                              },
+                              children: [historyRow],
+                            },
+                            else: historyRow,
                           },
-                          children: [historyRow],
                         },
-                        else: historyRow,
-                      },
+                        historyPassDetail,
+                      ],
                     },
-                    historyPassDetail,
                   ],
                 },
               ],
@@ -2556,7 +2462,15 @@ const extractNowControl: SchemaNode = {
       type: 'we-button',
       props: {
         size: 'sm',
-        variant: 'secondary',
+        /*
+          The same weight as "Auto extract: on", which is the other control that starts a pass.
+
+          It was `secondary`, a step quieter than the switch above it — which read as the lesser of
+          the two when it is the one that does something this instant. They are not a matched pair,
+          and the split between them is deliberate, but a reader scanning for "make it happen" was
+          being pointed at the standing decision.
+        */
+        variant: 'primary',
         gap: '100',
         // Its own alignment, so it needs no wrapper row to stop it stretching across the well —
         // and a wrapper that stayed behind when the button did not would cost a gap for nothing.
@@ -2759,14 +2673,51 @@ const extract: SchemaNode = {
           what `sectionLabel` marks is a *region with a name*, and having two labelled regions in one
           panel wearing two treatments is exactly the drift the fragment exists to stop. No colon —
           the caps and the tracking already say this is a name rather than a lead-in.
+
+          It folds now, like the four sections under it, and for the same reason one step along:
+          this is the panel's settings rather than its findings, and a reader watching a call come
+          in wants it out of the way more often than not.
         */
-        sectionLabel({ label: 'Things to extract' }),
-        {
-          type: 'Column',
-          props: { bg: 'surface-sunken', r: '300', p: '200' },
-          children: [{ type: '$part', props: { id: 'transcribe.extractionTargets' } }],
-        },
-        /*
+        foldingSectionLabel({
+          label: 'Things to extract',
+          /*
+            How many are ticked, not how many exist.
+
+            The list is every model the space could extract, and what the count is asked for is what
+            the next pass will actually look for — a space with nine models and one ticked is doing
+            one thing, and "9" would say the opposite. It is also the number the Extract button's
+            own refusal talks about.
+          */
+          count: `count(${forSubject('targets').$}.filter(t, t.selected))`,
+          // Not a verdict: a number of ticked models is no more a status than a timestamp is.
+          tone: 'neutral',
+          open: { field: 'targetsOpen' },
+        }),
+        foldingBody({
+          open: { field: 'targetsOpen' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                /*
+                  No well around them.
+
+                  They sat in a sunken box, which was there to group them — and a row of pills is
+                  already a group, so the box drew a second boundary around something that had one.
+                  What it cost was room: its padding came out of the width the chips wrap in, on a
+                  panel narrow enough that one model with a long name pushed the row onto two lines
+                  it did not need.
+
+                  It is also the honest end of a question with no answer. Making the box a step
+                  deeper than `surface-sunken` has no role to name it — nothing in the ramp sits
+                  below that one, `chrome` is fractionally LIGHTER than a well in a light theme, and
+                  `surface-active` is a pinned scale position that does not follow the ramp when the
+                  polarity flips. Removing the box answers what the box was for, rather than
+                  reaching for a colour the theme system cannot follow.
+                */
+                { type: '$part', props: { id: 'transcribe.extractionTargets' } },
+                /*
           Under the chips, because it acts on them.
 
           "Extract now" reads the whole conversation so far looking for exactly the things listed
@@ -2780,7 +2731,11 @@ const extract: SchemaNode = {
           outside a live call, and an empty `Row` is still a flex item — so the well went on paying a
           whole gap for a control that was not there. The button aligns itself instead.
         */
-        extractNowControl,
+                extractNowControl,
+              ],
+            },
+          ],
+        }),
       ],
     },
   ],
@@ -4111,6 +4066,10 @@ export const extractionPanel: SchemaNode = {
                     with it, and the first reading of a call would open the log somebody had folded.
                   */
                   logsOpen: { type: 'boolean', initial: false, persist: 'transcribe.logsOpen' },
+                  // Open to begin with: it holds the controls the rest of this panel acts on, and
+                  // a panel that opened with its own settings folded away would be hiding the
+                  // answer to "why did it find nothing".
+                  targetsOpen: { type: 'boolean', initial: true, persist: 'transcribe.targetsOpen' },
                 },
                 /*
               The readings, declared here rather than on the section that draws them.
@@ -4304,12 +4263,17 @@ export const extractionPanel: SchemaNode = {
                                     label: 'Accepted',
                                     count: EXTRACTED_COUNT,
                                     tone: 'success',
-                                    field: 'extractedOpen',
+                                    open: { field: 'extractedOpen' },
                                   }),
-                                  collapsible('extractedOpen', {
-                                    type: 'Grid',
-                                    props: { minChildWidth: '240px', gap: '200', width: '100%' },
-                                    children: [extractedRows],
+                                  foldingBody({
+                                    open: { field: 'extractedOpen' },
+                                    children: [
+                                      {
+                                        type: 'Grid',
+                                        props: { minChildWidth: '240px', gap: '200', width: '100%' },
+                                        children: [extractedRows],
+                                      },
+                                    ],
                                   }),
                                 ],
                               },
@@ -4345,12 +4309,17 @@ export const extractionPanel: SchemaNode = {
                                     label: 'Accepted changes',
                                     count: AMENDMENT_COUNT,
                                     tone: 'success',
-                                    field: 'amendmentsOpen',
+                                    open: { field: 'amendmentsOpen' },
                                   }),
-                                  collapsible('amendmentsOpen', {
-                                    type: 'Grid',
-                                    props: { minChildWidth: '240px', gap: '200', width: '100%' },
-                                    children: [amendmentRows],
+                                  foldingBody({
+                                    open: { field: 'amendmentsOpen' },
+                                    children: [
+                                      {
+                                        type: 'Grid',
+                                        props: { minChildWidth: '240px', gap: '200', width: '100%' },
+                                        children: [amendmentRows],
+                                      },
+                                    ],
                                   }),
                                 ],
                               },

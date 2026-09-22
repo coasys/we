@@ -211,7 +211,84 @@ function scopeRows(rows: Row[], entity: string, scope: Scope, data: InMemoryData
     }
   }
   if (!rel) return []; // unresolvable drill-down → empty (fail closed, never silently return all rows)
-  return rows.filter((r) => r[rel!.foreignKey] === scope.anchorId);
+  const fk = rel.foreignKey;
+
+  // An empty anchor list is an answer, not an absence: "the children of none of these" is nothing.
+  // Treating it as unscoped would return the whole entity, which is the failure worth being
+  // deliberate about — it is the one that looks like data rather than like a bug.
+  const anchors = (Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId]).map(String);
+  const anchorSet = new Set(anchors);
+
+  // `direction: 'in'` asks the opposite question: not "what does this anchor point at" but "what
+  // points at it". Here that is the anchors read as rows and their key followed outward.
+  const parentOf = (r: Row) => String(r[fk]);
+  const idOf = (r: Row) => String(r['id']);
+  const matches =
+    scope.direction === 'in' ? (r: Row) => anchorSet.has(idOf(r)) : (r: Row) => anchorSet.has(parentOf(r));
+
+  let kept: Row[];
+  if (scope.levels && scope.direction !== 'in') {
+    // The walk, level by level: each depth keeps `levels[depth]` rows per anchor, and the anchors
+    // for the next depth are whatever survived this one. Breadth-first, and deduplicated by id so a
+    // node reachable two ways is walked once and a cycle terminates.
+    const seen = new Set<string>();
+    let frontier = anchorSet;
+    kept = [];
+    for (const perAnchor of scope.levels) {
+      if (frontier.size === 0) break;
+      const takenPerAnchor = new Map<string, number>();
+      const next = new Set<string>();
+      for (const r of rows) {
+        const parent = parentOf(r);
+        if (!frontier.has(parent)) continue;
+        const id = idOf(r);
+        if (seen.has(id)) continue;
+        const taken = takenPerAnchor.get(parent) ?? 0;
+        if (taken >= perAnchor) continue;
+        takenPerAnchor.set(parent, taken + 1);
+        seen.add(id);
+        kept.push(r);
+        next.add(id);
+      }
+      frontier = next;
+    }
+    return kept;
+  }
+  if (scope.transitive && scope.direction !== 'in') {
+    // Walk down a level at a time until nothing new appears. A real graph store answers this with a
+    // path expression; in memory the honest equivalent is the loop, and it terminates on the
+    // visited set rather than on depth so a cycle cannot hang it.
+    const seen = new Set<string>();
+    let frontier = anchorSet;
+    kept = [];
+    while (frontier.size > 0) {
+      const next = new Set<string>();
+      for (const r of rows) {
+        if (!frontier.has(parentOf(r))) continue;
+        const id = idOf(r);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        kept.push(r);
+        next.add(id);
+      }
+      frontier = next;
+    }
+  } else {
+    kept = rows.filter(matches);
+  }
+
+  if (scope.limitPerAnchor === undefined) return kept;
+
+  // Per-anchor, in the order the rows already carry — the caller's `sort` has not run yet here, so
+  // this mirrors the backend contract rather than promising a "top" N of its own.
+  const takenPerAnchor = new Map<string, number>();
+  return kept.filter((r) => {
+    const key = scope.direction === 'in' ? idOf(r) : parentOf(r);
+    const taken = takenPerAnchor.get(key) ?? 0;
+    if (taken >= scope.limitPerAnchor!) return false;
+    takenPerAnchor.set(key, taken + 1);
+    return true;
+  });
 }
 
 // ─── include ────────────────────────────────────────────────────────────────────

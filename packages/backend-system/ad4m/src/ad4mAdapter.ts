@@ -202,16 +202,29 @@ export function createAd4mDataBindings(
  * The pin itself is currently a test tag rather than a release, which is worth knowing when reading
  * "verified": what was verified was that build.
  *
- * This one was hand-published from `dev` at **54a3fd956** — the merge of coasys/ad4m#927, which
- * completes the eight-PR model-layer series — under npm's `dev` tag rather than `latest`. The SHA
- * matters more here than usual: a hand-published version corresponds to no git tag, so it is the
- * only thing tying this string to a build. And the executor binary is never published at all (WE
- * runs the one at `ad4m/target/release/`, per `seed-runtime.json`), so the Rust half — which is
- * where five of those eight PRs live — is pinned by that SHA and by nothing else. A core built
+ * This one was hand-published from `feat/bounded-traversal` at **3ce8430af**, under npm's `dev`
+ * tag rather than `latest`. The SHA matters more here than usual: a hand-published version
+ * corresponds to no git tag, so it is the only thing tying this string to a build. And the
+ * executor binary is never published at all (WE runs the one at `ad4m/target/release/`, per
+ * `seed-runtime.json`), so the Rust half is pinned by that SHA and by nothing else. A core built
  * from this commit against an executor built from another is exactly the skew this constant exists
  * to make visible, and npm cannot catch it.
+ *
+ * It moved off `0.13.0-test-model-layer` because that build emitted an inverse relation **twice**
+ * into the generated SHACL — `@BelongsToOne` registers in both the relation registry and the
+ * property metadata, and `buildSHACL` walked both. `WeNode.inReplyTo` therefore arrived as two
+ * property shapes on every one of the 33 WeNode subclasses, one a literal and one the relation.
+ * The manifest round-trip caught it; left alone it would have been written into each space's SDNA,
+ * where `shapeIsStale` compares path counts in one direction only and so could never have taken it
+ * back out again.
+ *
+ * Note what rides along, the fix having been published from a feature branch rather than from
+ * `dev`: the TypeScript half of bounded traversal is now in core, so `levels`/`limitPerAnchor`
+ * reach the executor instead of being dropped before the call — and the Rust half that answers
+ * them is on that same branch and **not on `dev`**, which is what `electron-package.yaml` defaults
+ * `ad4m_ref` to. Build the executor from the same branch, or pass `ad4m_ref` when packaging.
  */
-export const VERIFIED_AGAINST_AD4M = '0.13.0-test-model-layer';
+export const VERIFIED_AGAINST_AD4M = '0.13.0-test-inverse-relations';
 
 export const ad4mCapabilities: AdapterCapabilities = {
   /*
@@ -241,6 +254,9 @@ export const ad4mCapabilities: AdapterCapabilities = {
   booleanCombinators: true, // OR / AND / NOT in `where` (#868)
   relationFilters: true, // `some` / `none` compile to a SPARQL EXISTS group (#923)
   scope: true, // drill-down via `parent`
+  // The executor's `Scope::Traverse`: several anchors in one query, `+` paths, inbound term
+  // order, and a per-anchor slice applied between selecting ids and hydrating them.
+  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true, levelWalk: true },
   include: { supported: true }, // nested include is a core ORM feature
   aggregate: ['count'], // count projections only; sum/min/max/avg → compute-up
   sort: { multiKey: false, byRelationPath: true, byAggregate: true }, // single sort key only (#867)
@@ -260,7 +276,7 @@ function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
  * resolver (`resolveParentPredicate`, broken for synced dynamic models). The predicate is available on
  * every relation (WE + synced) via `EntityManifestProperty.predicate`.
  */
-function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id: unknown; predicate: string } {
+function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Record<string, unknown> {
   const entry = scope.anchor ? models.find((m) => m.name === scope.anchor) : undefined;
   const prop = entry?.properties.find((p) => p.name === scope.via);
   if (!prop?.predicate) {
@@ -269,7 +285,28 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id
         `no such relation in the current perspective's model manifest`,
     );
   }
-  return { id: scope.anchorId, predicate: prop.predicate };
+
+  // The plain drill-down stays exactly as it was: one anchor, one step outward, and the `{ id,
+  // predicate }` shape every existing query already sends.
+  const bounded =
+    Array.isArray(scope.anchorId) ||
+    scope.transitive ||
+    scope.direction === 'in' ||
+    scope.limitPerAnchor !== undefined ||
+    scope.levels !== undefined;
+  if (!bounded) return { id: scope.anchorId, predicate: prop.predicate };
+
+  // Anything more is the executor's traverse form, which names its anchors as `ids`. An empty list
+  // stays an empty list rather than being dropped: "the replies to none of these" answers with
+  // nothing, where omitting the scope would answer with the whole space.
+  return {
+    ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
+    predicate: prop.predicate,
+    ...(scope.transitive ? { transitive: true } : {}),
+    ...(scope.direction === 'in' ? { direction: 'in' } : {}),
+    ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),
+    ...(scope.levels !== undefined ? { levels: scope.levels } : {}),
+  };
 }
 
 /**

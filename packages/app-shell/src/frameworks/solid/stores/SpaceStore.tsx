@@ -106,6 +106,7 @@ import {
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker } from '@we/schema-shared';
+import { DEFAULT_SIGNAL_TYPE } from '@we/template-kit';
 import {
   Accessor,
   createContext,
@@ -118,6 +119,9 @@ import {
   useContext,
 } from 'solid-js';
 
+import { oneAtATime } from '../../../shared/oneAtATime';
+import { signalOptimism } from '../../../shared/signalOptimism';
+import { signalOrder } from '../../../shared/signalOrder';
 import { useAppStore } from './AppStore';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
@@ -807,6 +811,7 @@ export interface SpaceStore {
   /** Turn it on or off for one call, for everyone in it. A participant's decision, not an admin's. */
   setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
+  setThreadMode: (mode: string, spaceUuid?: string) => Promise<void>;
   /**
    * Which models this community's calls start out extracting.
    *
@@ -907,7 +912,12 @@ export interface SpaceStore {
   ) => Promise<void>;
   /** Withdraw a kind from use, or bring it back — never touching anybody who holds it. */
   setInvolvementTypeRetired: (slug: string, retired: boolean) => Promise<void>;
-  upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
+  /**
+   * Give a reaction, or change one. `null` withdraws it — a zero is an ordinary value and is stored.
+   */
+  upsertSignal: (nodeId: string, signalTypeId: string, value: number | null) => Promise<void>;
+  /** Take back this agent's reaction of one type on one record. */
+  withdrawSignal: (nodeId: string, signalTypeId: string) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
@@ -1618,6 +1628,30 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Write to own dataset
       const spaceRecord = await addSpaceToDataset(spaceHandle, spaceData, locationData);
       trace('space', 'created', { id: spaceRecord.id });
+
+      /*
+        One reaction to start with, so a new space is not mute.
+
+        A community names its own vocabulary and nothing here decides what it should be — but
+        arriving with NONE is not neutrality, it is a blank: every reaction surface in the app draws
+        nothing, and the only way to learn that a space names its own is to find Settings →
+        Vocabulary unprompted. A like is the one starting point nobody has to be taught, and it is
+        adapted or retired in two presses.
+
+        It pays off in code that already exists. The cards feed resolves the slug for its
+        `$likeCount` projection and for sorting by it; in a fresh space that quietly counted nothing.
+        Both sides read `DEFAULT_SIGNAL_TYPE`, since two files naming the same string is how they
+        come apart.
+
+        At creation, which is the only place a default belongs. Not on read: a space that has since
+        retired everything must not have a heart conjured back by a renderer, and `setSignalTypeRetired`
+        exists precisely so a type can be withdrawn without stranding the signals given with it.
+      */
+      await SignalType.create(spaceHandle, { ...DEFAULT_SIGNAL_TYPE }).catch((error: unknown) => {
+        // A space with no reaction is worse than a space, and a space nobody could create is worse
+        // than both. Reported rather than thrown: everything above this has already been written.
+        console.error('createSpace: could not seed the default signal type', error);
+      });
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
@@ -2382,6 +2416,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * How a mode's signals are read as one number, where the caller names nothing.
+   *
+   * The manifest's default is `count`, which is right for exactly one of the four modes and silently
+   * wrong for the rest: a rating aggregated by count is a number of voters where the stars say a
+   * score, and a vote by count is three for and three against reported as six. Nothing has ever
+   * asked a person for this field, so every type made so far carries that default — which is why
+   * `SignalControl` ignores an aggregate its mode cannot express, and why a type made from here now
+   * carries one that matches what its control actually draws.
+   */
+  const AGGREGATE_FOR_MODE: Record<string, SignalType['aggregate']> = {
+    toggle: 'count',
+    vote: 'sum',
+    rating: 'mean',
+    slider: 'mean',
+  };
+
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
@@ -2392,7 +2443,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     };
     const slugFromName = config.name ? deriveSlug(config.name) : '';
     const effectiveSlug = config.slug ? config.slug : slugFromName;
-    const withSlug = { ...config, slug: effectiveSlug };
+    const withSlug = {
+      ...config,
+      slug: effectiveSlug,
+      ...(config.aggregate || !config.mode ? {} : { aggregate: AGGREGATE_FOR_MODE[config.mode] }),
+    };
     const normalised =
       withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
     await SignalType.create(p, normalised);
@@ -2456,19 +2511,117 @@ export function SpaceStoreProvider(props: ParentProps) {
     await RelationshipType.create(p, { ...config, slug });
   }
 
-  async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
+  /**
+   * Give a reaction, or change one — and `null` withdraws it.
+   *
+   * ## Why a withdrawal is its own value rather than a zero
+   *
+   * It was a zero, and that made **0 unstorable**. Every mode whose range includes it lost the
+   * answer: a 0–100 mood slider dragged to the bottom was written as "did not answer", so the
+   * strongest thing somebody could say was the one thing the average then ignored. Silent, and
+   * invisible from the call site — `upsertSignal(node, type, 0)` reads like storing a nought.
+   *
+   * A toggle and a vote are unaffected, because there 0 genuinely IS absence. That is what let the
+   * overload survive: it is correct for two of the four modes, and the two it is wrong for are the
+   * two whose range a community chooses.
+   */
+  /*
+    One reaction write at a time, per record-and-type pair.
+
+    `upsertSignal` reads before it writes, so two calls for the same pair both read first: both find
+    the same stored record, both delete it, and both create a replacement. That is how one person
+    came to be listed twice under one signal type with the same value — and it is not a bug in
+    whatever called twice, because a read-then-write is racy against any second caller at all.
+
+    Per pair rather than globally: reacting to one post has no reason to wait on a reaction to
+    another. See `oneAtATime`.
+  */
+  const queueSignalWrite = oneAtATime();
+
+  async function upsertSignal(nodeId: string, signalTypeId: string, value: number | null): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     const myDid = session.me()?.did;
     if (!p || !myDid) return;
 
-    const existing = await Signal.findOne(p, {
-      parent: { id: nodeId, predicate: 'we://signal' },
-      where: { signalTypeId, author: myDid },
-    });
+    /*
+      Drawn on the press, before anything is read.
 
-    if (existing) await existing.delete();
-    if (value === 0) return;
-    await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+      A reaction is the worst case there is for the round trip: it is a press-and-see control, and
+      the answer comes back through a subscription about a second later — with a further 250ms of
+      the executor's own debounce under that. Held here, the glyph fills and the count moves on the
+      click; `reactions` is where the hold meets the list every surface draws from.
+    */
+    signalOptimism.hold(nodeId, signalTypeId, value);
+
+    await queueSignalWrite(`${nodeId}|${signalTypeId}`, async () => {
+      /*
+        EVERY reaction of mine on this type, not the first one.
+
+        `findOne` was the obvious spelling and it is the one that cannot recover: where two records
+        already exist, it reaches one of them, leaves the other, and no amount of changing the
+        reaction afterwards will ever remove it — a person listed twice under one type for good.
+        At most one reaction per person per type is what "upsert" means here, so the write enforces
+        it rather than assuming it.
+      */
+      const mine = (await Signal.findAll(p, {
+        parent: { id: nodeId, predicate: 'we://signal' },
+        where: { signalTypeId, author: myDid },
+      })) as Signal[];
+
+      /*
+      Withdrawing a reaction removes the record; changing one replaces it.
+
+      Replaces, not edits — and that is not the obvious choice. Editing is one write where this is
+      two, and it keeps the record's id and `createdAt` for what is plainly the same person's same
+      reaction differently weighted. It was written that way, and it made changing a rating do
+      nothing anybody could see.
+
+      The reason is in the executor. A model subscription's trigger is built by
+      `build_model_trigger_predicates`, which collects the predicates of the SUBSCRIBED class's own
+      shape plus the parent predicate — it does not walk `include`. Every surface reads reactions as
+      `include: { signals: true }` on the record, so the live query is over CollectionBlock, whose
+      predicates cover `we://signal`: adding or removing one fires the trigger, and the row re-reads.
+      A property of the included Signal does not. `we://value` is not in that set, so an in-place
+      edit changes the store, notifies nobody, and every reader — the author included — goes on
+      showing the old number until something else re-runs the query.
+
+      So a change is a remove and an add, which touches `we://signal` twice and is therefore visible.
+      The cost is the flicker the edit-in-place was introduced to remove: a rating moved from 3 to 4
+      passes through "nobody has rated this" for a round trip, so the mean dips and comes back. A
+      figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
+      is an executor that triggers on the shapes a query includes — filed in the ad4m follow-ups.
+
+      A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
+      withdrawn reaction absent everywhere instead of being a row every count has to remember to
+      exclude. A zero is now an ordinary value and is stored like any other.
+    */
+      try {
+        for (const signal of mine) await signal.delete();
+        if (value !== null) {
+          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+        }
+        // The write is back. Not a release — what retires a hold is the data moving — but it ends
+        // the hold's exemption from what the next draw says. See `@we/optimism`.
+        signalOptimism.done(nodeId, signalTypeId);
+      } catch (error) {
+        // What is on screen is a lie the moment the write is refused.
+        signalOptimism.release(nodeId, signalTypeId);
+        console.error('SpaceStore: could not record that reaction', error);
+        toastService.error('Could not record that reaction.');
+      }
+    });
+  }
+
+  /**
+   * Take back this agent's reaction of one type on one record.
+   *
+   * Its own action rather than `upsertSignal(node, type, 0)`, which is what it used to be. A
+   * template calling that was storing a nought as far as anything could tell, and on a mode whose
+   * range includes zero it silently was — so the two acts are spelled apart, and a schema now says
+   * which one it means.
+   */
+  async function withdrawSignal(nodeId: string, signalTypeId: string): Promise<void> {
+    await upsertSignal(nodeId, signalTypeId, null);
   }
 
   // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
@@ -3176,6 +3329,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     void datasetStore.currentDataset()?.id;
     // A hold is a promise about records on the screen being left; see `involvementOptimism.reset`.
     involvementOptimism.reset();
+    signalOptimism.reset();
+    // The order a record's reactions settled into is a promise about the same screen. See
+    // `signalOrder`.
+    signalOrder.reset();
     void loadInvolvementTypes();
   });
 
@@ -4392,6 +4549,39 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * How deep conversations here may go — `'fractal'` or `'flat'`.
+   *
+   * A decision about what may be *added*, never about what is stored: replies are a tree whatever
+   * this says, so switching to flat leaves every existing thread drawn as it is and switching back
+   * restores the button that grows it. That is the whole reason this is safe to change twice on a
+   * Tuesday — there is nothing to migrate and nothing to lose, which a setting that reshaped stored
+   * data could not promise.
+   *
+   * Takes the value rather than toggling, so a picker can pass `event.detail` straight through.
+   */
+  async function setThreadMode(mode: string, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    const threadMode = mode === 'flat' ? 'flat' : 'fractal';
+    try {
+      await Space.update(ds.handle, space.id, { threadMode });
+    } catch (error) {
+      console.error('SpaceStore: could not persist threadMode', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { threadMode } as never);
+    if (!isCurrent(ds)) return;
+    // A new instance, the `setExtractionTarget` idiom: `currentSpace` is a plain signal and Solid
+    // dedupes on `===`, so handing back the object just written notifies nothing and every thread
+    // on screen would keep the previous answer until something else refetched the space.
+    setCurrentSpace((prev) =>
+      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { threadMode }) as Space) : prev,
+    );
+  }
+
+  /**
    * Add or remove one model from what this community's calls start out extracting.
    *
    * Writes the resolved list, exactly as `setModuleEnabled` does and for the same two reasons: the
@@ -4913,6 +5103,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setMyModuleSetting,
     setAgentModuleSetting,
     setAutoInterpret,
+    setThreadMode,
     extractionTargets,
     setExtractionTarget,
     setModuleInstalled,
@@ -4938,6 +5129,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateInvolvementType,
     setInvolvementTypeRetired,
     upsertSignal,
+    withdrawSignal,
     navigateToSpace,
     openRecordRef,
     canAdministerSpace,

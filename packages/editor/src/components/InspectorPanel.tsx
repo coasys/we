@@ -1,6 +1,6 @@
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { PANEL_TITLE_PROPS } from '@we/schema-kit';
+import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, ScopeGroup, TemplateSchema } from '@we/schema-shared';
 import {
   contextData,
@@ -328,7 +328,7 @@ function TreeNode(props: TreeNodeProps) {
           whiteSpace="nowrap"
           styles={{ 'text-overflow': 'ellipsis' }}
           color={isSelected() ? 'primary-700' : isSpecial() ? 'primary-500' : 'neutral-700'}
-          fontWeight={isSelected() ? '600' : '400'}
+          prop:fontWeight={isSelected() ? '600' : '400'}
         >
           {props.node.type ?? '(root)'}
         </we-text>
@@ -525,9 +525,7 @@ export function InspectorPanel() {
           borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
         >
           <we-icon name="list" size="xs" color="text-faint" />
-          <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="widest" color="text-faint">
-            Layers
-          </we-text>
+          <we-text {...SECTION_LABEL_PROPS}>Layers</we-text>
         </Row>
         <div style={{ flex: '1', 'overflow-y': 'auto', 'overflow-x': 'hidden' }}>
           <NodeTree />
@@ -931,17 +929,29 @@ function NodeProperties(props: {
 // CollapsibleSection
 // -----------------------------------------------------------------------
 
+/**
+ * A folding section, the shape every folding section in the app has.
+ *
+ * The schema side of this is `foldingSectionLabel` in `@we/schema-kit`, which a Solid component
+ * cannot call — it emits a tree, not JSX. What CAN be shared is every decision in it, and this is
+ * the same set: the label through `SECTION_LABEL_PROPS` rather than a fourth hand-spelling of the
+ * tracking, the caret after the words rather than before them, `caret-up`/`caret-down` rather than
+ * the right/down this used while `ThemePanel` two files away used up/down, and a real `<button>` so
+ * the row keeps its keyboard activation and says `aria-expanded`.
+ */
 function CollapsibleSection(props: { label: string; children: JSX.Element }) {
   const [open, setOpen] = createSignal(false);
 
   return (
     <Column borderTop="1px solid neutral-50">
-      <Row ay="center" gap="100" px="400" py="100" cursor="pointer" onClick={() => setOpen((v) => !v)}>
-        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="text-faint" />
-        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="text-faint">
-          {props.label}
-        </we-text>
-      </Row>
+      <we-button variant="bare" width="100%" r="200" expanded={open()} onClick={() => setOpen((v) => !v)}>
+        <Row ay="center" gap="200" px="400" py="100" width="100%">
+          <we-text {...SECTION_LABEL_PROPS} flex="1 1 auto" minWidth="0">
+            {props.label}
+          </we-text>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
+        </Row>
+      </we-button>
       <Show when={open()}>
         <Column pb="200">{props.children}</Column>
       </Show>
@@ -953,17 +963,16 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
 // SectionLabel
 // -----------------------------------------------------------------------
 
+/**
+ * A named region inside the panel — `sectionLabel`'s treatment, in the language this panel is in.
+ *
+ * It was a hand-spelled copy that agreed on the colour and the caps and differed on the tracking
+ * (`0.06em`, where the kit says `wide` and the row twenty lines up says `widest`). The padding is
+ * this panel's own and stays here; the type is not, and does not.
+ */
 function SectionLabel(props: { children: string }) {
   return (
-    <we-text
-      py="100"
-      px="14px"
-      fontSize="100"
-      fontWeight="600"
-      textTransform="uppercase"
-      letterSpacing="0.06em"
-      color="text-faint"
-    >
+    <we-text py="100" px="14px" {...SECTION_LABEL_PROPS}>
       {props.children}
     </we-text>
   );
@@ -1010,7 +1019,7 @@ function InlineSpaceInput(props: {
         }}
       >
         <we-text
-          fontWeight={props.value ? '500' : '400'}
+          prop:fontWeight={props.value ? '500' : '400'}
           color={textColor()}
           fontSize="10px"
           minWidth="22px"

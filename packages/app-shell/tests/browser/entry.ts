@@ -1,0 +1,242 @@
+/**
+ * The page side of the browser harness.
+ *
+ * Everything the app uses to draw a schema, in a real browser: the Solid renderer, the component
+ * registry, the Lit primitives (upgraded, with their own shadow CSS), the design system's generated
+ * interop stylesheet, and a seeded in-memory backend answering queries through the real IR.
+ *
+ * What is NOT here is the executor and the app's chrome. Data comes from a scenario's tables, and
+ * the width comes from the caller rather than from a dock — which is the point rather than a
+ * shortcoming: a layout bug is a function of width, and a harness that can sweep it finds the
+ * breakpoint that manual resizing only approximates.
+ *
+ * Exposes `window.__harness` for the runner to drive.
+ */
+import '@we/primitives';
+
+import { hostSourceBag } from '@shared/sources';
+import { injectDSInteropStyles } from '@solid/dsInterop';
+import { componentRegistry } from '@solid/registries/componentRegistry';
+import { createInMemoryBackend } from '@we/backend-inmemory';
+import { RenderSchema } from '@we/schema-solid';
+import { render } from 'solid-js/web';
+
+import { type Scenario, scenarios } from './scenarios';
+
+/** Store members every schema reads, whatever it is. A scenario overrides what it cares about. */
+function defaultStores(): Record<string, unknown> {
+  return {
+    $me: { did: 'did:me' },
+    $sources: hostSourceBag(),
+    spaceStore: { mutedDids: [], currentSpace: { id: 'space-1' }, members: [] },
+    profileStore: { profiles: [] },
+    routeStore: { params: {}, currentPath: '/', segments: [], templateSegments: [] },
+    recordStore: { displays: {} },
+  };
+}
+
+let disposeMount: (() => void) | undefined;
+
+function mount(name: string, width: number): void {
+  disposeMount?.();
+  const make = scenarios[name];
+  if (!make) throw new Error(`unknown scenario "${name}" — have: ${Object.keys(scenarios).join(', ')}`);
+  const scenario: Scenario = make();
+
+  const backend = createInMemoryBackend({
+    id: 'space-1',
+    tables: scenario.tables as never,
+    relations: scenario.relations,
+  });
+
+  const host = document.getElementById('mount') as HTMLElement;
+  host.innerHTML = '';
+  // The panel the schema believes it is in. Everything about a crowded row is downstream of this.
+  host.style.width = `${width}px`;
+
+  const stores: Record<string, unknown> = { ...defaultStores(), ...backend.stores, ...(scenario.stores ?? {}) };
+  /*
+    `$agent` resolves a DID through this port, not through `profileStore` — so a byline renders
+    nothing at all without it, which is what the first run of this harness reported. The app's own
+    port is a reactive cache over a network fetch; here every profile the scenario declares is
+    already present, so `get` answers and `fetch` has nothing to do.
+  */
+  const profiles = (stores.profileStore as { profiles?: { did: string }[] } | undefined)?.profiles ?? [];
+  stores.$identities = {
+    get: (did: string) => profiles.find((p) => p.did === did),
+    fetch: () => {},
+  };
+  disposeMount = render(
+    () => RenderSchema({ node: scenario.node, stores, registry: componentRegistry } as never) as never,
+    host,
+  );
+}
+
+/** The box a schema node drew, and the handful of computed values a layout assertion reads. */
+function box(el: Element) {
+  const r = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  return {
+    x: Math.round(r.x),
+    y: Math.round(r.y),
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+    display: cs.display,
+    whiteSpace: cs.whiteSpace,
+    overflowWrap: cs.overflowWrap,
+    opacity: cs.opacity,
+    // Type size decides where a line breaks and how tall a row is, and both of the DS's size props
+    // reach an element through a custom property — so "did the size arrive" is a measurement.
+    fontSize: cs.fontSize,
+    fontWeight: cs.fontWeight,
+    lineHeight: cs.lineHeight,
+    // Resolved, so a case can compare two states of the same element without knowing the theme's
+    // ramp direction — which is the only way to assert "more present" rather than "lighter".
+    color: cs.color,
+    // A mark drawn as a filled box — a rule, a bar, a swatch — carries its colour here rather than
+    // in `color`, and a case that reads only the foreground sees nothing change.
+    background: cs.backgroundColor,
+    /*
+      What the content wants, against what the box gives it.
+      
+      The difference is the only way to see text that does not fit. A box constrained by a width or
+      a `max-width` measures the same whether its content wrapped into it or ran straight out of it,
+      so a case comparing boxes cannot tell a laid-out line from an overflowing one — which is how
+      an assertion about wrapping passed against the very `nowrap` it was written to catch.
+    */
+    scrollW: el.scrollWidth,
+    scrollH: el.scrollHeight,
+    // Both spellings: a native control carries the attribute, a layout element carries the ARIA
+    // one, and `disabledProps` keys off the second.
+    disabled: el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true',
+    text: (el.textContent ?? '').trim().slice(0, 80),
+  };
+}
+
+/** The first element matching, or null. */
+function measure(selector: string) {
+  const el = document.querySelector(selector);
+  return el ? box(el) : null;
+}
+
+/**
+ * The box a primitive actually paints — `[part='base']` inside its shadow root.
+ *
+ * Most design-system props do not land on the host. `color`, `opacity`, `bg`, the borders and the
+ * radii are all declared on `[part='base']`, so `getComputedStyle` on a `we-button` reports the
+ * defaults for every one of them and a case reading the host concludes that nothing is applied.
+ * That is not a detail of one component: it is how every `DesignSystemElement` is built, so a
+ * harness that cannot see through a shadow root cannot check a visual prop at all.
+ *
+ * `part` names which box — most primitives draw into `base`, an overlay into its own. `nth` picks
+ * among several of the same element, since a case comparing two of a thing is a common question.
+ */
+function measurePart(selector: string, part = 'base', nth = 0) {
+  const host = document.querySelectorAll(selector)[nth];
+  const el = host?.shadowRoot?.querySelector(`[part='${part}']`);
+  return el ? box(el) : null;
+}
+
+/** Every element matching, so a case can assert about a row of siblings. */
+function measureAll(selector: string) {
+  return [...document.querySelectorAll(selector)].map(box);
+}
+
+/**
+ * The element carrying exactly this text.
+ *
+ * An assertion about a person's name should not be spelled as a selector for the props the fix
+ * happened to add — `we-text[truncate]` finds nothing on a tree where the name is not truncated, so
+ * the regression it exists to catch reports as "nothing rendered". What the reader sees is a word,
+ * so that is what the case names.
+ */
+function measureText(text: string, selector = '*') {
+  const hits = [...document.querySelectorAll(selector)].filter((el) => (el.textContent ?? '').trim() === text);
+  // The innermost one: a wrapper's text is its child's, and the child is the box that was laid out.
+  const el = hits.findLast((candidate) => !hits.some((other) => other !== candidate && candidate.contains(other)));
+  return el ? box(el) : null;
+}
+
+/**
+ * The box of a control named by its accessible label.
+ *
+ * An icon-only button has no text to find it by, and `we-button` does not reflect `label` to an
+ * attribute — it puts `aria-label` on the inner `<button>`, inside the shadow root, where
+ * `querySelectorAll` cannot reach. So this looks through each host's shadow root and answers with
+ * the HOST's box, which is the one the row laid out.
+ *
+ * Named after what a screen reader would call it, which is the right way to address a control that
+ * has deliberately been left wordless.
+ */
+function measureControl(label: string, selector = 'we-button') {
+  for (const host of document.querySelectorAll(selector)) {
+    if (host.shadowRoot?.querySelector(`[aria-label="${label}"]`)) return box(host);
+  }
+  return null;
+}
+
+/**
+ * An element and every box above it, outermost last.
+ *
+ * "The name wrapped" is never the whole story — something above it decided how much room it had,
+ * and reading the chain is how that is found without scrolling through a page of markup.
+ */
+function chain(text: string) {
+  const hit = document.evaluate(`//*[normalize-space(text())=${JSON.stringify(text)}]`, document, null, 9, null)
+    .singleNodeValue as Element | null;
+  /** What a `display: contents` wrapper resolves to: the boxes that actually lay out. */
+  const laidOut = (el: Element): Element[] =>
+    [...el.children].flatMap((kid) => (getComputedStyle(kid).display === 'contents' ? laidOut(kid) : [kid]));
+
+  const out: (ReturnType<typeof box> & { tag: string; kids: string[] })[] = [];
+  for (let el = hit; el && el.id !== 'mount'; el = el.parentElement) {
+    if (getComputedStyle(el).display === 'contents') continue;
+    out.push({
+      tag: el.tagName.toLowerCase(),
+      ...box(el),
+      // A box's siblings are usually the answer: an item is narrow because something beside it is
+      // wide, and the schema's `display: contents` wrappers hide which items those actually are.
+      kids: laidOut(el).map((k) => `${k.tagName.toLowerCase()} ${Math.round(k.getBoundingClientRect().width)}w`),
+    });
+  }
+  return out;
+}
+
+/**
+ * What holds the cursor, as a tag and a class — piercing shadow roots on the way down.
+ *
+ * `document.activeElement` stops at the host of whatever component has focus, so a composer inside
+ * one reads as the component rather than as its editor. A case asking "did anything take the
+ * cursor" needs the innermost answer.
+ */
+function focused(): string {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  if (!el || el === document.body) return '';
+  return `${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ').join('.') : ''}`;
+}
+
+/** What the page is painted on, for a case asking whether a colour stands out from it. */
+function pageColor(): string {
+  return getComputedStyle(document.body).backgroundColor;
+}
+
+/** The mounted tree as markup — what a failing assertion is looked at through. */
+function html(): string {
+  return document.getElementById('mount')?.innerHTML ?? '';
+}
+
+injectDSInteropStyles();
+(window as unknown as Record<string, unknown>).__harness = {
+  mount,
+  measure,
+  measureAll,
+  measurePart,
+  measureControl,
+  measureText,
+  chain,
+  pageColor,
+  focused,
+  html,
+  scenarios: Object.keys(scenarios),
+};

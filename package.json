@@ -8,6 +8,7 @@
     "setup-workspace": "node scripts/setup-workspace.cjs",
     "validate:seed": "node scripts/validate-seed.cjs",
     "check:source-consumers": "node scripts/check-source-consumers.mjs",
+    "check:we-props": "node scripts/check-we-props.mjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",
     "create-module": "node scripts/create-module.mjs",
     "prepare": "pnpm --filter @we/cli run bootstrap && husky && node scripts/install-merge-driver.mjs",
@@ -52,7 +53,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "0.13.0-test-model-layer",
+      "@coasys/ad4m": "0.13.0-test-inverse-relations",
       "@coasys/ad4m-connect": "0.13.0-test-interpretation-2",
       "prettier": "3.9.6",
       "@xmldom/xmldom": ">=0.9.12",

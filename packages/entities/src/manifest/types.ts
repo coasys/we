@@ -307,6 +307,7 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
+  threadMode: string;
   moduleSettings: string;
   location?: LocationBlockRecord;
   board?: CollectionBlockRecord;

@@ -7,10 +7,22 @@
  */
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
-/** A choice one has to pick, and the tally to draw it from — read once per card. */
-const ROWS = { $: 'tally({ votes: local.votes, options: block.options })' };
-/** This agent's own vote, if any. */
-const MY_VOTE = 'local.votes.find(v, v.author == me.did).option';
+/** This agent's vote on this poll, written and not yet read back — see `modules.polls.pendingVote`. */
+const PENDING = 'modules.polls.pendingVote[block.id]';
+/**
+ * A choice one has to pick, and the tally to draw it from — read once per card.
+ *
+ * The held vote goes in, so the bars move on the press rather than a round trip later. `tally`
+ * counts it in place of this agent's stored vote, so changing a vote does not count twice.
+ */
+const ROWS = { $: `tally({ votes: local.votes, options: block.options, pending: ${PENDING} })` };
+/**
+ * This agent's own vote, if any — the held one first.
+ *
+ * Both halves, or the press is half-drawn: the bars would move while the choice stayed unselected,
+ * which reads as somebody else's vote arriving rather than as your own registering.
+ */
+const MY_VOTE = `(${PENDING}.option ?? local.votes.find(v, v.author == me.did).option)`;
 /** Whether counts are shown: the community says so, the agent has voted, or the poll is closed. */
 const REVEAL = `modules.polls.revealBeforeVoting || ${MY_VOTE} || block.closed`;
 

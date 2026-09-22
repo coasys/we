@@ -156,6 +156,7 @@ function translateInclude(
           as: key,
           over: spec.from as string,
           fn: 'count',
+          ...(spec.transitive ? { transitive: true } : {}),
           ...(spec.where ? { filter: translateWhere(spec.where as Record<string, unknown>) } : {}),
         });
       } else {
@@ -340,6 +341,7 @@ export function irToFlatQuery(ir: QueryIR): FlatQuery {
       throw new Error(`irToFlatQuery: aggregate fn "${agg.fn}" has no flat projection (only count does)`);
     }
     const entry: Record<string, unknown> = { from: agg.over, count: true };
+    if (agg.transitive) entry.transitive = true;
     if (agg.filter) entry.where = whereFromFilter(agg.filter);
     include[agg.as] = entry;
   }
