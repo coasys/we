@@ -23,6 +23,21 @@
   command = "pnpm build"
   publish = "apps/we-web/dist"
 
+# Deploy previews, and only deploy previews, may build @coasys/ad4m from source instead of
+# installing the version `pnpm.overrides` pins.
+#
+# The distinction is the whole point of putting it here rather than in [build], which covers
+# every context: the pin is a claim about which executor a build requires — VERIFIED_AGAINST_AD4M
+# in @we/backend-ad4m names both the version and the ad4m commit — and the published site has to
+# keep making it, because the people opening it are running whatever executor they installed.
+# A preview is the opposite case: it exists to be tried against an executor somebody has in front
+# of them, which during cross-repo work is a build of ad4m rather than a release.
+#
+# What the script actually does per preview is decided per PR — see its header. Left alone it
+# tracks ad4m `dev`.
+[context.deploy-preview]
+  command = "bash scripts/netlify-build.sh"
+
 [build.environment]
   # Pinned rather than relying on Netlify's `.nvmrc` detection, which depends on where it
   # decides the base directory is. The value tracks .nvmrc — if you bump one, bump both.

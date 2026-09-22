@@ -23,8 +23,14 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
  * @param now    Reference point (default: current time)
  * @param locale BCP 47 locale string (default: 'en')
  */
-export function formatRelativeTime(date: Date, now = new Date(), locale = 'en'): string {
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'long' });
+export function formatRelativeTime(
+  date: Date,
+  now = new Date(),
+  locale = 'en',
+  // `long` by default, because that is what every caller read before this was an option at all.
+  style: Intl.RelativeTimeFormatStyle = 'long',
+): string {
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style });
   const elapsed = date.getTime() - now.getTime();
   for (const [unit, ms] of UNITS) {
     if (Math.abs(elapsed) >= ms) return rtf.format(Math.round(elapsed / ms), unit);

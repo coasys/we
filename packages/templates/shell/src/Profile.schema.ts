@@ -3,7 +3,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 export const profileTemplate: TemplateSchema = {
   meta: { name: 'Profile', description: 'Agent profile page', icon: 'user' },
   type: 'Column',
-  props: { minWidth: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
+  props: { minWidth: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
   children: [
     // Cover image
     {

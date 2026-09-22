@@ -33,9 +33,13 @@ Work down the list and stop at the first that fits.
 3. **Can a deployment omit it, with nothing else calling it?** → a **module**. Its own store, its
    own entities, its own chrome, its own launcher, enabled per space.
 
-**Complexity never decides.** Modules ship stores — `createStore(deps)` is part of the contract, and
-`@we/module-transcribe`'s is the largest store in the repo. "It has a lot of state" is not an
-argument for the host.
+**Complexity never decides.** Modules may ship stores — `createStore` is the optional code half of
+the contract, and `@we/module-transcribe`'s is the largest store in the repo. "It has a lot of
+state" is not an argument for the host. Nor is "it needs a device" or "it needs the model": those
+are **kernels** (`packages/module-system/shared/src/kernels.ts`), which a module asks for by name
+in its manifest and the host hands to its store — `records`, `presence`, `ephemeral`, `media`,
+`peerConnection`, `transcription`, `languageModel`, `interpretation`, `secrets`. A capability
+that is only a kernel plus a declaration is a module.
 
 **Neither does how core it feels.** Calls are as central to WE as anything and are a module, because
 a deployment can ship without them and nothing else calls them.
@@ -61,8 +65,10 @@ half is where the join is supposed to go. Positively:
 > never in each other.**
 
 This is already how the two most obviously cooperating modules work. `@we/module-transcribe` finds
-the live call through **presence** — `activitiesOfType(peers, 'call')`, reading the record id off
-the activity — and never names `modules.call.*`. Modules extend each other's chrome through
+the live call through **presence** — the `call` activity, whose shape the call module declares in
+its `activities` so the reader learns it from a declaration rather than from the other module's
+tests — and never reads `modules.call.*`; its one reference is the bare `{ $: 'modules.call' }`
+that asks whether calls are installed at all. Modules extend each other's chrome through
 **anchors**: one declares `anchors: ['call-controls']`, others contribute, `$slot` renders them.
 Neither is a dependency, and turning either module off degrades to "nothing matched" rather than to
 something broken.
@@ -144,7 +150,7 @@ surfaces in one — the transcribe panel is a feed, a record control, an extract
 proposals review and a target list — and an interface that wants them arranged differently can today
 only hand-write copies. So:
 
-- A module publishes **named parts** (`ModuleDefinition.schemas`, keyed `<moduleId>.<name>`), and
+- A module publishes **named parts** (`contributes.parts`, keyed `<moduleId>.<name>`), and
   composes its own panel out of them. Templates that place the whole panel are unaffected.
 - A host capability's parts are host-authored fragments in `@we/template-kit`. Templates cannot
   import modules — that edge is sideways — so a part is named as a string and resolved by the host.
@@ -158,18 +164,23 @@ heard of, so keep the set small and named for what a part _is_ rather than how i
 
 Every reader-visible property of a surface resolves the same way, in the same order:
 
-| Property       | Suggestion                     | Declaration                 | Disposition                      |
-| -------------- | ------------------------------ | --------------------------- | -------------------------------- |
-| Position, size | the module's opening bid       | `meta.panels`               | what the reader dragged          |
-| Openness       | the module's request           | `meta.panels`               | what the reader opened or closed |
-| Content        | the capability's default parts | the interface's composition | —                                |
+| Property       | Suggestion                                                    | Declaration                 | Disposition                      |
+| -------------- | ------------------------------------------------------------- | --------------------------- | -------------------------------- |
+| Position, size | the module's opening bid (`bid`)                              | `meta.panels`               | what the reader dragged          |
+| Openness       | the host's flag, or the module's `open` key when it claims it | `meta.panels`               | what the reader opened or closed |
+| Content        | the capability's default parts                                | the interface's composition | —                                |
 
 The disposition is stored per interface, so switching template is non-destructive and an author
 improving a layout is not overruled forever by one stray drag.
 
-Read `open` as a **request** — "this surface is wanted, somebody pressed record" — rather than as
-placement. It then belongs to no panel in particular: the interface has declared what plays that
-role, and the host resolves one against the other.
+**The host owns whether a panel is open** unless the module says otherwise. The rail toggles it, a
+template opens it, the titlebar closes it, and the module never sees the flag — which is why nothing
+in the notes module's store is about its panel. A module claims openness by naming `open`, `show` and `close` keys on
+the panel, and only when the flag genuinely is its own state: the call's stage is up while there is
+a call to watch, and `join` raises it. Read such an `open` as a **request** — "this surface is
+wanted, somebody pressed record" — rather than as placement. It then belongs to no panel in
+particular: the interface has declared what plays that role, and the host resolves one against the
+other.
 
 ### Panel, view, or layout
 

@@ -20,21 +20,29 @@
 */
 import '@we/graph-solid/styles';
 
-import type { EntityClass, QueryOptions } from '@we/backend-shared';
+import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shared';
 import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { placementStyle } from '@we/graph-expanders';
 import type { GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
-import { createMemo, Show } from 'solid-js';
+import type { RenderProps } from '@we/schema-solid';
+import { RenderSchema } from '@we/schema-solid';
+import { fillForSemantic } from '@we/template-kit';
+import { createComputed, createMemo, type JSX, Show } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
+import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
+import { useShapeStore } from '../stores/ShapeStore';
 import { useShellStore } from '../stores/ShellStore';
+import { useSpaceStore } from '../stores/SpaceStore';
+import { nodeControls } from './graphControls';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -83,6 +91,11 @@ interface ScopeRequest {
  * from one whose rule never asked for content.
  */
 function BlockCard(props: { node: GraphNode }) {
+  return <DocumentCard node={props.node} fallback={<span class="we-graph__card-text">{props.node.label}</span>} />;
+}
+
+/** A composed document drawn in full, or `fallback` for a record that has none. */
+function DocumentCard(props: { node: GraphNode; fallback: JSX.Element }) {
   const datasetStore = useDatasetStore();
 
   const editorState = createMemo(() => {
@@ -91,9 +104,80 @@ function BlockCard(props: { node: GraphNode }) {
   });
 
   return (
-    <Show when={editorState()} fallback={<span class="we-graph__card-text">{props.node.label}</span>}>
+    <Show when={editorState()} fallback={props.fallback}>
       {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
     </Show>
+  );
+}
+
+/*
+  The card fragment names no store and no registered component — native elements and two
+  primitives, which resolve by tag — so it is rendered with neither. Nothing it could name would be
+  reachable, which is the right answer for host chrome drawn inside a template's canvas.
+*/
+const NO_STORES: RendererStores = {};
+const NO_COMPONENTS: RenderProps['registry'] = {};
+
+/**
+ * The `content: 'record'` a canvas names: a note drawn as its document, and any other record drawn
+ * as what it is — its kind, its name and every value it holds. See `shared/shapes/canvasCard`.
+ *
+ * `block` stays as it was, for a canvas that wants a record to be one line.
+ *
+ * ## Why a store, reconciled
+ *
+ * `RenderSchema` takes its context once, as plain values, so a card handed a fresh object when a
+ * task's state changed would go on drawing the old one. A store the fragment reads through tracks
+ * every path it reads, and `reconcile` keyed by field name changes only the line that moved — so a
+ * state dragged on a board repaints one span on the card rather than remounting it.
+ */
+function RecordCard(props: { node: GraphNode }) {
+  const recordStore = useRecordStore();
+  const spaceStore = useSpaceStore();
+
+  // A state's colour is the community's where it chose one, else the fill its semantic implies — the
+  // board's column headings and the workshop's key read the same table.
+  const states = createMemo(() =>
+    spaceStore.taskStates().map((state) => ({
+      slug: state.slug,
+      name: state.name,
+      fill: state.color || fillForSemantic(state.semantic),
+    })),
+  );
+
+  const [card, setCard] = createStore<CanvasCard>({
+    icon: 'cube',
+    kind: '',
+    title: '',
+    lines: [],
+    prose: [],
+    pending: false,
+  });
+  createComputed(() =>
+    setCard(
+      reconcile(
+        canvasCard({
+          type: props.node.type,
+          label: props.node.label ?? '',
+          data: props.node.data,
+          display: recordStore.displays()[props.node.type],
+          states: states(),
+        }),
+        { key: 'name' },
+      ),
+    ),
+  );
+
+  return (
+    <DocumentCard
+      node={props.node}
+      fallback={RenderSchema({
+        node: CANVAS_RECORD_CARD,
+        stores: NO_STORES,
+        registry: NO_COMPONENTS,
+        context: { card },
+      })}
+    />
   );
 }
 
@@ -136,10 +220,25 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    *
    * Core first, so a foreign schema that happens to share a name cannot shadow WE's own.
    */
+  const shapeStore = useShapeStore();
   const manifest = createMemo(() => {
     const core = manifestEntries(CORE_MANIFEST);
     const known = new Set(core.map((entry) => entry.name));
-    return [...core, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
+    /*
+      The space's own models, from the shape records rather than only from the dataset's schemas.
+
+      `currentDatasetEntities` is read when a space is entered, so a model somebody defines while
+      the space is open is not in it until a reload — and a canvas asks only for types it can find
+      here. A record of a model made a minute ago was created, placed on the canvas and parented
+      into it, and never drawn: its type was skipped as undeclared. The shape list is live.
+    */
+    const shapes = shapeStore
+      .spaceShapes()
+      .filter((shape) => shape.manifest && !shape.problems.length && !known.has(shape.name))
+      .flatMap((shape) => manifestEntries(shape.manifest!, { parents: CORE_MANIFEST }))
+      .filter((entry) => !known.has(entry.name));
+    for (const entry of shapes) known.add(entry.name);
+    return [...core, ...shapes, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
   });
 
   function modelFor(entity: string, dataset?: string): EntityClass | undefined {
@@ -221,7 +320,9 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   }
 
   const host: GraphViewProps['host'] = {
-    nodeContent: { block: BlockCard },
+    nodeContent: { block: BlockCard, record: RecordCard },
+    // The header controls a template may name — colour, shape, scale. See `graphControls`.
+    nodeControls,
 
     /**
      * The parts of the graph's box the shell's floating panels are sitting over.

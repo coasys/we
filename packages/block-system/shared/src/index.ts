@@ -1,4 +1,11 @@
-export type { BlockComposerProps, BlockDataset, BlockRendererProps, EditorStateInput, MentionCandidate } from './types';
+export type {
+  BlockComposerProps,
+  BlockDataset,
+  BlockDragSource,
+  BlockRendererProps,
+  EditorStateInput,
+  MentionCandidate,
+} from './types';
 export type {
   BlockStyle,
   CollectionContentBlock,
@@ -40,12 +47,13 @@ export {
   shiftMarks,
   utf16ToCp,
 } from './marks';
-export type { BlockRegistration } from './registry';
+export type { BlockEntityStatic, BlockRegistration } from './registry';
 export {
   getBlockRecord,
   getBlockRegistration,
   getRegisteredBlockEntities,
   registerBlock,
+  unregisterBlock,
   updateBlockRegistration,
 } from './registry';
 export { registerCoreBlocks } from './core-blocks';
@@ -54,6 +62,8 @@ export { isCollectionMode, isReconcilable } from './modes';
 export type { BlockAnchor, ContentInput, CreateBlocksOptions } from './serialization';
 export {
   childrenToBlocks,
+  copyableContent,
+  createBlock,
   createBlocks,
   deleteBlocks,
   encodeEditorState,

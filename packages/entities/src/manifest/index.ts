@@ -10,6 +10,8 @@ import { EmbedBlock } from './EmbedBlock';
 import { EventBlock } from './EventBlock';
 import { FileBlock } from './FileBlock';
 import { ImageBlock } from './ImageBlock';
+import { Involvement } from './Involvement';
+import { InvolvementType } from './InvolvementType';
 import { LinkBlock } from './LinkBlock';
 import { LocationBlock } from './LocationBlock';
 import { TagBlock } from './TagBlock';
@@ -27,6 +29,7 @@ import { CallExtraction } from './CallExtraction';
 import { ChatMessage } from './ChatMessage';
 import { ChatSession } from './ChatSession';
 import { EdgeRoute } from './EdgeRoute';
+import { ExtractionAmendment } from './ExtractionAmendment';
 import { ExtractionPass } from './ExtractionPass';
 import { MutedAgent } from './MutedAgent';
 import { Placement } from './Placement';
@@ -67,6 +70,8 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   EventBlock,
   FileBlock,
   ImageBlock,
+  Involvement,
+  InvolvementType,
   LinkBlock,
   LocationBlock,
   MutedAgent,
@@ -87,6 +92,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   TextBlock,
   Topic,
   Theme,
+  ExtractionAmendment,
   ExtractionPass,
   TypeStyle,
   VideoBlock,

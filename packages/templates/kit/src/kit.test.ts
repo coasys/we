@@ -12,6 +12,7 @@ import {
   cardShell,
   composerModal,
   confirmModal,
+  discardGuard,
   emptyNote,
   emptyState,
   field,
@@ -19,14 +20,17 @@ import {
   gatePrompt,
   marketplaceList,
   pageShell,
+  peopleFilter,
   peopleRow,
   peopleTooltip,
   railGroup,
   railItem,
   railShell,
   recordCard,
+  recordFormModal,
   sectionCard,
   statChip,
+  taskBoard,
 } from './index.ts';
 
 /**
@@ -142,7 +146,6 @@ const portable: Record<string, SchemaNode> = {
   railShell: railShell({
     header: { type: 'we-image', props: { src: '/logo.svg' } },
     footer: railItem({ icon: 'sign-out', label: 'Logout' }),
-    persistKey: 'test.rail',
     children: [
       railItem({ icon: 'user', label: 'Profile', active: true, tooltip: 'Profile' }),
       railGroup({
@@ -182,6 +185,19 @@ const weDomain: Record<string, SchemaNode> = {
   agentByline: agentByline({ did: { $: 'post.author' }, timestamp: { $: 'post.createdAt' } }),
   'agentByline (stacked)': agentByline({ did: { $: 'u.author' }, as: 'speaker', stacked: true }),
   peopleRow: peopleRow({ items: { $: 'spaceStore.members' }, noun: 'Member' }),
+  peopleFilter: peopleFilter({
+    people: 'who',
+    show: 'whoMode',
+    faces: { $: 'spaceStore.memberDids' },
+    matched: { $: 'count(local.who)' },
+    total: { $: 'count(spaceStore.members)' },
+    noun: 'event',
+  }),
+  'taskBoard (people)': taskBoard({
+    boardId: { $: 'spaceStore.currentSpace.id' },
+    empty: { type: 'Column' },
+    people: true,
+  }),
   'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
   marketplaceList: marketplaceList({
@@ -224,6 +240,8 @@ const withAmbientScope = (node: SchemaNode): SchemaNode => ({
     displayMode: { type: 'string', initial: 'expanded' },
     formOpen: { type: 'boolean', initial: false },
     composeOpen: { type: 'boolean', initial: false },
+    who: { type: 'array', initial: [] },
+    whoMode: { type: 'string', initial: 'dim' },
   },
   children: [node],
 });
@@ -236,6 +254,7 @@ describe('every expansion is a valid schema fragment', () => {
     'formModal (guarded)',
     'composerModal',
     'composerModal (unguarded)',
+    'peopleFilter',
   ]);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
@@ -574,5 +593,60 @@ describe('recordCard draws what the source had', () => {
 
     expect(ghost.props.pointerEvents).toBe('none');
     expect(tile.props.pointerEvents).toBeUndefined();
+  });
+});
+
+describe('Back through a discard guard', () => {
+  const back = [{ $setLocal: 'chooserOpen', value: true }];
+
+  it('asks when there is work, remembering it was Back, and goes back at once when there is none', () => {
+    const guard = discardGuard({ dirty: { $: 'local.dirty' }, close: { $setLocal: 'open', value: false }, back });
+    expect(guard.back).toEqual({
+      $if: {
+        condition: { $: 'local.dirty' },
+        then: [
+          { $setLocal: 'discardGoesBack', value: true },
+          { $setLocal: 'confirmDiscardOpen', value: true },
+        ],
+        else: [{ $setLocal: 'open', value: false }, ...back],
+      },
+    });
+    expect(guard.localState).toHaveProperty('discardGoesBack');
+  });
+
+  it('on Discard, finishes going back rather than only closing', () => {
+    const guard = discardGuard({ dirty: { $: 'local.dirty' }, close: { $setLocal: 'open', value: false }, back });
+    const text = JSON.stringify(guard.node);
+    expect(text).toContain(
+      JSON.stringify({
+        $if: {
+          condition: { $: 'local.discardGoesBack' },
+          then: [{ $setLocal: 'open', value: false }, ...back],
+          else: { $setLocal: 'open', value: false },
+        },
+      }),
+    );
+  });
+
+  it('is left out, flag and all, for a guard with nowhere to go back to', () => {
+    const guard = discardGuard({ dirty: { $: 'local.dirty' }, close: { $setLocal: 'open', value: false } });
+    expect(guard.back).toBeUndefined();
+    expect(JSON.stringify(guard)).not.toContain('discardGoesBack');
+  });
+
+  it('nests no handler arrays in a composer or a record form that go back', () => {
+    const nested = (value: unknown): boolean =>
+      Array.isArray(value)
+        ? value.some((item) => Array.isArray(item) || nested(item))
+        : !!value && typeof value === 'object' && Object.values(value as object).some(nested);
+    const composer = composerModal({
+      openLocal: 'noteOpen',
+      title: 'New note',
+      saveAction: { $action: 'x.save', args: [{ $: 'arg' }] },
+      onClose: [{ $action: 'x.clear' }],
+      back,
+    });
+    expect(nested(composer)).toBe(false);
+    expect(nested(recordFormModal({ back }))).toBe(false);
   });
 });

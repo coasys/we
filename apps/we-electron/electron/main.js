@@ -1,16 +1,17 @@
-import { execSync, spawn } from 'child_process';
+import { execSync, spawn, spawnSync } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, readdirSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
-import { dirname, join } from 'path';
+import { basename, dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
+import { openExecutorLog } from './executorLog.js';
 import {
   allowMediaPermission,
   contentSecurityPolicy,
@@ -41,6 +42,24 @@ let ad4mToken = null;
 let executorProcess = null;
 /** Set while an account switch is tearing the executor down on purpose. */
 let switchingAccount = false;
+/** The current run's log in the account's data directory (see `executorLog.js`), or null. */
+let executorLog = null;
+
+/*
+  This process's own console goes into the executor log too.
+
+  What the host does around a start — the stale socket and LOCK files it removed, the path and binary
+  it chose, the exit code and signal — is exactly what a crash report needs beside the executor's
+  output, and none of it is the executor's to print. Copied rather than redirected, so the terminal
+  in development is unchanged.
+*/
+for (const level of ['log', 'info', 'warn', 'error']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    original(...args);
+    executorLog?.host(level, ...args);
+  };
+}
 
 /**
  * The seed's data path — the deployment default, and the account the registry seeds itself with.
@@ -118,19 +137,32 @@ function resolveAd4mDataPath() {
  *
  * `mainnet_seed.seed` is the marker because it is what `init` writes for the executor to consume
  * at runtime; a directory holding it has been through initialisation.
+ *
+ * Its output is captured and written to the terminal and the log both, rather than inherited: a
+ * first run is the one most worth having a record of, and inherited output reaches only a terminal.
  */
-function ensureDataPathInitialised(executorPath, dataPath) {
+function ensureDataPathInitialised(executorPath, dataPath, log) {
   if (existsSync(join(dataPath, 'mainnet_seed.seed'))) return;
 
   console.log('[main] Data path not initialised, running executor init:', dataPath);
-  try {
-    execSync(`"${executorPath}" init --data-path "${dataPath}"`, { stdio: 'inherit' });
-    console.log('[main] Executor init complete');
-  } catch (e) {
+  const result = spawnSync(executorPath, ['init', '--data-path', dataPath], { maxBuffer: 16 * 1024 * 1024 });
+  for (const [output, destination] of [
+    [result.stdout, process.stdout],
+    [result.stderr, process.stderr],
+  ]) {
+    if (!output?.length) continue;
+    destination.write(output);
+    log?.write(output);
+  }
+
+  if (result.error || result.status !== 0) {
     // Surfaced rather than thrown: the executor may still start, and a hard failure here would
     // turn a recoverable state into an app that will not open at all.
-    console.error('[main] Executor init failed — the executor may not start correctly:', e.message);
+    const reason = result.error?.message ?? `exit code ${result.status ?? result.signal}`;
+    console.error('[main] Executor init failed — the executor may not start correctly:', reason);
+    return;
   }
+  console.log('[main] Executor init complete');
 }
 
 /**
@@ -223,6 +255,15 @@ async function startExecutor() {
     // Get AD4M data directory
     const ad4mDataPath = resolveAd4mDataPath();
 
+    // Start this run's log before anything below touches the data directory, so the cleanup it
+    // does is on record. The previous run's file is closed first: rotation renames it, and on
+    // Windows an open file cannot be renamed. Output still arriving from a killed executor goes to
+    // the log it was started with, which is closed, so it cannot land in this run's file.
+    executorLog?.close();
+    executorLog = openExecutorLog(ad4mDataPath);
+    const log = executorLog;
+    if (log) console.log('[main] Executor log:', log.path);
+
     // Kill any surviving ad4m-executor from a previous detached run (survives Ctrl+C).
     // Must happen BEFORE the lair socket / LOCK cleanups so the old process releases
     // its file handles before we delete them — otherwise it just re-acquires them.
@@ -278,7 +319,7 @@ async function startExecutor() {
 
     console.log('Executor path:', executorPath);
 
-    ensureDataPathInitialised(executorPath, ad4mDataPath);
+    ensureDataPathInitialised(executorPath, ad4mDataPath, log);
 
     // Settings the executor reads once, at startup. Off unless asked for: MCP opens a port that
     // serves this agent's data to anything local that speaks the protocol.
@@ -319,13 +360,16 @@ async function startExecutor() {
     executorProcess.stdout?.unref();
     executorProcess.stderr?.unref();
 
-    // Forward executor output to console (prevents EPIPE errors)
+    // Forward executor output to the console (which also prevents EPIPE errors) and to this run's
+    // log. `log`, not `executorLog`: after a restart the latter is the next run's file.
     executorProcess.stdout?.on('data', (data) => {
       process.stdout.write(data);
+      log?.write(data);
     });
 
     executorProcess.stderr?.on('data', (data) => {
       process.stderr.write(data);
+      log?.write(data);
     });
 
     executorProcess.on('error', (err) => {
@@ -384,8 +428,14 @@ function startAppServer() {
       }),
     );
 
+    /*
+      `root` rather than an absolute path. Without one, `send` checks every segment of the path for
+      a dotfile and answers 404 — and a running AppImage is mounted under `/tmp/.mount_WE-…`, so
+      every deep link (a reload anywhere but `/`) came back "Not Found". With `root`, only the part
+      below it is checked, which is how `express.static` above already behaves.
+    */
     launcherApp.use((req, res) => {
-      res.sendFile(join(launcherDir, 'index.html'));
+      res.sendFile('index.html', { root: launcherDir });
     });
 
     launcherApp.listen(9080, () => {
@@ -601,6 +651,41 @@ ipcMain.handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
 });
 
+/**
+ * The server link language bundle built in the seed's ad4m checkout, in a development run only.
+ *
+ * Absolute, because the executor reads it from disk when publishing. Null in a packaged build,
+ * with no `repoPath`, or when the language has not been built — `pnpm build` in
+ * `bootstrap-languages/server-link-language` of the ad4m repo produces it.
+ *
+ * Returns a copy with one comment line appended, not the build itself. A language's address is
+ * the hash of its bundle, and the language store keeps the first meta published under an address:
+ * a later publish of identical bytes is ignored and hands back the earlier meta. A build that was
+ * ever published by hand with different template parameters is therefore stuck with them. The
+ * marker gives WE development its own address, the same one for everyone on the same build.
+ */
+ipcMain.handle('get-dev-link-language-bundle', () => {
+  if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) return null;
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (!runtime.ad4mRepoPath) return null;
+    const bundle = join(
+      expandHome(runtime.ad4mRepoPath),
+      'bootstrap-languages',
+      'server-link-language',
+      'build',
+      'bundle.js',
+    );
+    if (!existsSync(bundle)) return null;
+    const copy = join(app.getPath('temp'), 'we-dev-server-link-language', 'bundle.js');
+    mkdirSync(dirname(copy), { recursive: true });
+    writeFileSync(copy, `${readFileSync(bundle, 'utf8')}\n// Published for WE development.\n`);
+    return copy;
+  } catch {
+    return null;
+  }
+});
+
 // ── Account management ───────────────────────────────────────────────────────
 // Every mutation is registry-only; nothing takes effect until the app relaunches, because the
 // executor is configured with one data path at startup and holds it for its lifetime.
@@ -650,6 +735,38 @@ ipcMain.handle('executor-restart', () => restartExecutorAndReload());
  * the one place that can turn "somewhere to put it" into something it can use. A renderer file
  * picker cannot: the File it yields carries no path.
  */
+/*
+  Save a file the renderer has produced — every download in the app, when running here.
+
+  The renderer's own ways out are both worse on a desktop: a download link drops the file in
+  Downloads with no say and no answer, and Chromium's save picker needs a file-system permission
+  this app refuses to every page (see the permission handlers). So the dialog is the main process's
+  own, and so is the write — to the path that dialog returned and nothing else, which is what keeps
+  an IPC channel that writes files from being one that writes *any* file.
+
+  Resolves true once written, false when the dialog was closed.
+*/
+ipcMain.handle('save-file', async (_event, { name, bytes } = {}) => {
+  if (typeof name !== 'string' || !(bytes instanceof Uint8Array))
+    throw new Error('save-file: a name and bytes are required');
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  // A name only — a renderer-supplied path would choose the folder for the reader.
+  const fileName = basename(name) || 'download';
+  const extension = extname(fileName).slice(1);
+  const result = await dialog.showSaveDialog(parent, {
+    defaultPath: join(app.getPath('downloads'), fileName),
+    filters: extension
+      ? [
+          { name: extension.toUpperCase(), extensions: [extension] },
+          { name: 'All files', extensions: ['*'] },
+        ]
+      : [],
+  });
+  if (result.canceled || !result.filePath) return false;
+  writeFileSync(result.filePath, bytes);
+  return true;
+});
+
 ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   const options = { defaultPath: defaultName, filters: [{ name: 'JSON', extensions: ['json'] }] };

@@ -15,6 +15,7 @@ export const storeEntries: StoreEntry[] = [
       bootState: { type: 'string' },
       bootError: { type: 'string' },
       passwordError: { type: 'boolean' },
+      loginError: { type: 'string' },
       loginLoading: { type: 'boolean' },
       createAgentError: { type: 'string' },
       createAgentLoading: { type: 'boolean' },
@@ -65,11 +66,13 @@ export const storeEntries: StoreEntry[] = [
       canAdminister: { type: 'boolean' },
       canManageTrust: { type: 'boolean' },
       canManageNetwork: { type: 'boolean' },
+      canRestartNetwork: { type: 'boolean' },
       canManageApps: { type: 'boolean' },
       canManageLanguages: { type: 'boolean' },
       canManageAi: { type: 'boolean' },
       canConfigureAi: { type: 'boolean' },
       canConfigureExecutor: { type: 'boolean' },
+      unsupportedCapabilities: { type: 'array', properties: ['name', 'firstSeen'] },
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
       executorRestartPending: { type: 'boolean' },
@@ -100,6 +103,8 @@ export const storeEntries: StoreEntry[] = [
           'kind',
           'sourceKind',
           'presetName',
+          'apiService',
+          'apiProtocol',
           'apiBaseUrl',
           'apiKey',
           'apiModel',
@@ -116,6 +121,9 @@ export const storeEntries: StoreEntry[] = [
       aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
       aiFormComplete: { type: 'boolean' },
       aiFormDirty: { type: 'boolean' },
+      aiServiceOptions: { type: 'array', properties: ['label', 'value'] },
+      canDiscoverAiModels: { type: 'boolean' },
+      aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
       languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
@@ -124,6 +132,8 @@ export const storeEntries: StoreEntry[] = [
       },
       networkMetrics: { type: 'string' },
       peerInfos: { type: 'array' },
+      peerInfosReadable: { type: 'string' },
+      pending: { type: 'array' },
       loading: { type: 'boolean' },
       error: { type: 'string' },
       pendingConsent: { type: 'object', properties: ['kind', 'title', 'message', 'app', 'peerId'] },
@@ -142,6 +152,8 @@ export const storeEntries: StoreEntry[] = [
       'newAiModel',
       'editAiModel',
       'setAiFormField',
+      'setAiService',
+      'discoverAiModels',
       'closeAiForm',
       'saveAiModel',
       'removeAiModel',
@@ -157,8 +169,10 @@ export const storeEntries: StoreEntry[] = [
       'revokeApp',
       'removeApp',
       'loadNetworkMetrics',
+      'copyNetworkMetrics',
       'restartNetwork',
       'loadPeerInfos',
+      'copyPeerInfos',
       'addPeerInfos',
       'approveConsent',
       'denyConsent',
@@ -181,6 +195,7 @@ export const storeEntries: StoreEntry[] = [
       datasetsLoaded: { type: 'boolean' },
       systemDatasetUuids: { type: 'array' },
       rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      personalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       marketplaceDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalSpaceId: { type: 'string' },
@@ -343,11 +358,11 @@ export const storeEntries: StoreEntry[] = [
       canAdministerCurrentSpace: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
-        properties: ['id', 'name', 'description', 'icon', 'installed'],
+        properties: ['id', 'name', 'description', 'icon', 'installed', 'surface', 'switchable', 'capabilities'],
       },
       moduleLaunchers: {
         type: 'array',
-        properties: ['id', 'icon', 'label', 'active'],
+        properties: ['id', 'icon', 'label', 'active', 'busy', 'concealed'],
       },
       taskStates: { type: 'array', properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'] },
       offeredTaskStates: {
@@ -355,6 +370,15 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'],
       },
       taskStatesLoaded: { type: 'boolean' },
+      involvementTypes: {
+        type: 'array',
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+      },
+      offeredInvolvementTypes: {
+        type: 'array',
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+      },
+      involvementTypesLoaded: { type: 'boolean' },
       unreadNodeIds: { type: 'array' },
       myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
     },
@@ -383,8 +407,14 @@ export const storeEntries: StoreEntry[] = [
       'createSignalType',
       'setSignalTypeRetired',
       'createTaskState',
+      'updateTaskState',
       'setTaskStateRetired',
       'reorderTaskStates',
+      'setInvolvement',
+      'respondTo',
+      'createInvolvementType',
+      'updateInvolvementType',
+      'setInvolvementTypeRetired',
       'upsertSignal',
       'navigateToSpace',
       'openRecordRef',
@@ -393,6 +423,7 @@ export const storeEntries: StoreEntry[] = [
       'copyGuestLink',
       'getSubgroupMessages',
       'exportCallTranscript',
+      'exportExtractionLog',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -435,6 +466,7 @@ export const storeEntries: StoreEntry[] = [
       extractionNeedsIdentity: { type: 'boolean' },
       relationshipTargets: { type: 'array', properties: ['label', 'value'] },
       identityOptions: { type: 'array', properties: ['label', 'value'] },
+      nameOptions: { type: 'array', properties: ['label', 'value'] },
       hintEditor: {
         type: 'object',
         properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'],
@@ -451,6 +483,7 @@ export const storeEntries: StoreEntry[] = [
       'cancelShapeWizard',
       'setShapeField',
       'setIdentityMember',
+      'setNameMember',
       'addProperty',
       'addRelationship',
       'removeMember',
@@ -481,7 +514,8 @@ export const storeEntries: StoreEntry[] = [
       messages: { type: 'array' },
       isStreaming: { type: 'boolean' },
       streamingContent: { type: 'string' },
-      apiKeyConfigured: { type: 'boolean' },
+      assistantAvailable: { type: 'boolean' },
+      assistantStatus: { type: 'object', properties: ['state', 'name', 'model', 'detail'] },
       templateName: { type: 'string' },
       templateIcon: { type: 'string' },
       isReadOnly: { type: 'boolean' },
@@ -506,6 +540,7 @@ export const storeEntries: StoreEntry[] = [
       'confirmPicker',
       'cancelPicker',
       'newChat',
+      'refreshAssistant',
       'switchSession',
       'deleteSession',
       'undo',
@@ -558,7 +593,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
         bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
         bootError: "string — why the boot failed, when bootState is 'error'. Empty otherwise",
-        passwordError: 'boolean — true after a failed unlock attempt',
+        passwordError:
+          'boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError',
+        loginError:
+          'string — why the last sign-in failed when the password was not the problem (the backend took too long to finish), ready to display. Empty otherwise, and never set together with passwordError. Show it where passwordError’s message goes: { $: "sessionStore.passwordError ? \'Incorrect password\' : sessionStore.loginError" }',
         loginLoading: 'boolean',
         createAgentError: 'string — the backend message from a failed agent creation, or empty',
         createAgentLoading: 'boolean',
@@ -624,6 +662,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         canAdminister: 'boolean — this backend exposes runtime administration at all',
         canManageTrust: 'boolean — gate the trusted-agents section on this',
         canManageNetwork: 'boolean — gate the peer-network section on this',
+        canRestartNetwork:
+          'boolean — the backend can restart its networking layer, and the restart does something. Gate a restart control on this, not on canManageNetwork',
         canManageApps: 'boolean — gate the authorized-apps section on this',
         canManageLanguages: 'boolean — gate the languages section on this',
         canManageAi: 'boolean — gate the AI section on this',
@@ -631,6 +671,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
         canConfigureExecutor:
           'boolean — this host starts the backend, so how it starts it can be changed. False on web',
+        unsupportedCapabilities:
+          "{ name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (an AD4M executor's RPC method), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health",
         mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
         mcpPort: 'number — the port MCP is served on',
         executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
@@ -648,14 +690,27 @@ export function generateStoresText(entries: StoreEntry[]): string {
         aiFormComplete: 'boolean — the open form has every field its chosen source needs',
         aiFormDirty:
           "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
+        aiServiceOptions:
+          "{ label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'",
+        canDiscoverAiModels:
+          'boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed',
+        aiDiscoveredModelOptions:
+          "{ label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes",
         languages:
           'InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs',
         trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
         authorizedApps:
           'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
-        networkMetrics: 'string — backend diagnostic blob, displayed verbatim. Empty until requested',
-        peerInfos: 'string[] — this node peer-discovery records, for out-of-band exchange',
-        loading: 'boolean — true while any runtime call is in flight',
+        networkMetrics:
+          'string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
+        peerInfos:
+          "string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable",
+        peerInfosReadable:
+          'string — the same records decoded for reading, as indented JSON (on AD4M: agent, space, dates, url, arc, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs',
+        pending:
+          "string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: \"'loadPeerInfos' in runtimeStore.pending\" }",
+        loading:
+          'boolean — true while any runtime call is in flight. Prefer pending, so a spinner does not light for an unrelated call',
         error: 'string — the last runtime error, for display',
         pendingConsent:
           "ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)",
@@ -676,6 +731,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         editAiModel: '(id: string): opens the model form on an existing model',
         setAiFormField:
           '(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input',
+        setAiService:
+          "(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing",
+        discoverAiModels:
+          "(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model",
         closeAiForm: '(): closes the model form, discarding it',
         saveAiModel: '(): saves the open form — adds or updates depending on whether it has an id',
         removeAiModel: '(id: string): deletes a model',
@@ -691,9 +750,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
         revokeApp: "(id: string): invalidates an app's tokens, keeping the grant listed",
         removeApp: '(id: string): forgets the grant entirely',
         loadNetworkMetrics: '(): fetches the diagnostic blob',
+        copyNetworkMetrics:
+          '(): copies the loaded metrics to the clipboard, with a toast either way. Takes no text: a copy action names what it copies',
         restartNetwork: '(): restarts the peer-networking layer',
-        loadPeerInfos: '(): fetches this node peer-discovery records',
-        addPeerInfos: '(text: string): adds pasted peer records (JSON array or one per line)',
+        loadPeerInfos:
+          "(): fetches the peer-discovery records this node holds — its own and every peer it knows. Can take tens of seconds on a busy node; show a state on 'loadPeerInfos' in pending",
+        copyPeerInfos:
+          '(): copies the loaded peer records as a JSON array addPeerInfos accepts, with a toast either way',
+        addPeerInfos:
+          '(text: string): adds pasted peer records (JSON array or one per line). Resolves true when added — clear the paste box on result in onSuccess, since onSuccess also fires after a failure',
         approveConsent: '(): grants the pending request',
         denyConsent: '(): declines the pending request',
         dismissConsentSecret: '(): clears the confirmation code display',
@@ -712,8 +777,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
         datasetsLoaded:
           'boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists',
-        systemDatasetUuids: 'string[] — uuids of the we-root/we-test system datasets',
-        rootDataset: "dataset handle | null — the agent's personal root dataset (we-root models live here)",
+        systemDatasetUuids: 'string[] — uuids of the system datasets (we-root, we-personal, we-test)',
+        rootDataset:
+          "dataset handle | null — the app's configuration (we-root): AgentSettings, templates, themes, per-space preferences. Chrome tier only",
+        personalDataset:
+          "dataset handle | null — the agent's own things (we-personal): notes, the Pocket. Carries the ordinary space schema, so posts, blocks and files work there. Chrome tier only — a space's template cannot reach it. Null until its schema is installed",
         globalDataset: 'dataset handle | null — the seed-configured global discovery space, once joined',
         marketplaceDataset: 'dataset handle | null — the seed-configured marketplace, once joined',
         globalSpaceId:
@@ -959,8 +1027,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space',
         extractionTargets:
           "string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings",
-        shareExtractionDetail:
-          'boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
         spacePath:
@@ -998,9 +1064,18 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '{ id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
         taskStatesLoaded:
           'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
+        involvementTypes:
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
+        offeredInvolvementTypes:
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
+        involvementTypesLoaded: 'boolean — the space has been asked for its kinds of involvement',
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
+        linkLanguageTemplateOptions:
+          '{ label, value, icon, description }[] — how a shared space can sync (its link language), for a we-select, default first; value is the template address. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the template’s package name, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only templates publishing can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
+        defaultLinkLanguageTemplate:
+          'string — address of the template publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
         canAdministerCurrentSpace:
           'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
         spaceThemePinned:
@@ -1012,9 +1087,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
         moduleInstallSettings:
-          "{ id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
+          "{ id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space",
         moduleLaunchers:
-          '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
+          '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
       },
       actions: {
         moveChild:
@@ -1037,8 +1112,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it',
         setAgentModuleSetting:
           '(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it',
-        setShareExtractionDetail:
-          '(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen',
         setExtractionTarget:
           "(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call",
         setViewEnabled:
@@ -1052,7 +1125,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeSpaceFromGlobal:
           "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
         createSpace:
-          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup",
+          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default",
         joinSpace:
           '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
         initializeAsWeSpace:
@@ -1063,7 +1136,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         updatePost:
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
         deleteCollection:
-          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them',
+          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a board are the same shape, so this is the one delete for all of them',
         createBoard:
           '(title: string, parentId?: string, options?: { gathers?: string }): makes a board \u2014 a CollectionBlock whose ordered children are its columns, one per state the community uses. Returns its id. Pass parentId to put the board inside another collection (a call\u2019s record), which is where an anchored Boards view lists it. A board made this way shows only what is put on it; openBoardFor makes the ones that gather',
         openBoardFor:
@@ -1077,9 +1150,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         reorderBoardColumns:
           '(boardId: string, orderedIds: string[]): the order this board reads its columns in. Pair with we-sortable\u2019s onReorder and pass { $: "arg.detail" }',
         arrangeColumn:
-          '(columnId: string, orderedIds: string[]): records the order somebody dragged one column\u2019s cards into \u2014 the column\u2019s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable\u2019s onReorder',
+          '(columnId: string, orderedIds: string[], columnOrder?: string[]): records the order somebody dragged one column\u2019s cards into \u2014 the column\u2019s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable\u2019s onReorder. Where the column shows only some of its cards \u2014 a people filter hiding the rest, one person\u2019s row \u2014 pass the column\u2019s whole order as columnOrder (arrangedBoard\u2019s contents[col].order): the moved cards go back into their own slots and the hidden ones keep theirs, where without it every hidden card would drop to the bottom of the column for everybody',
         moveCardToColumn:
-          '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker',
+          '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], toSlug?: string, columnOrder?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker. Pass toSlug — the state the target column stands for, which the board already has on screen — and the card is drawn in its new column the instant it is dropped rather than a round trip later: the store cannot know that state without reading the column, and until it does the card cannot be drawn there at all. A hint for the drawing only; the write reads the column itself, so a stale one costs a frame and never a wrong write. columnOrder is the target column\u2019s whole order, for a drop into a column showing only part of itself \u2014 see arrangeColumn',
         addTaskToColumn:
           '(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board\u2019s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column\u2019s state',
         updateSpaceImage:
@@ -1090,8 +1163,20 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
         createTaskState:
           '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
+        updateTaskState:
+          '(slug: string, updates: { name?, icon?, color?, semantic? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. By slug, so editing a default adopts it',
         setTaskStateRetired:
           '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community\u2019s own',
+        setInvolvement:
+          '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
+        respondTo:
+          '(nodeId: string, kind: string): gives this agent\u2019s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands',
+        createInvolvementType:
+          '(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it',
+        updateInvolvementType:
+          '(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it',
+        setInvolvementTypeRetired:
+          '(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it',
         reorderTaskStates:
           '(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board\u2019s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable\u2019s onReorder, passing { $: "arg.detail" }',
         unreadNodeIds:
@@ -1121,6 +1206,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into",
         exportCallTranscript:
           "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
+        exportExtractionLog:
+          "(callId: string): writes everything extraction did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the extraction. Read-only and client-side, like exportCallTranscript",
         setModuleInstalled:
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
         setModuleVisible:
@@ -1142,11 +1229,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
     recordStore: {
       state: {
         creatableEntities:
-          "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined",
+          "{ label, value, icon, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'",
         displays:
-          "Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
+          "Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
         recordDraft:
-          "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for",
+          "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value, accept, target, targetLabel, many, canCreate, canPick, entries }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for. control 'file' is a we-file-upload (accept names the types); control 'relation' points at another record: entries are the chips ({ key, label }), canCreate offers openRelationForm, canPick offers a picker over existing target records, and inline ('location' | 'image' | '') names the in-place control a target is made with instead — see setRelationLocation and addRelationImage; an image entry carries preview, a data URI",
+        relationDraft:
+          'the record being made inline for a relation field — an image for a sighting — as a draft of the same shape, or null. Its non-nullness mounts the nested form over the outer one. It is not written until the outer form saves',
+        relationErrors: "string[] — why the nested form's last Add was refused",
         recordDraftDirty:
           "boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`",
         recordErrors: 'string[] — validation errors from the last save attempt, plus any backend failure',
@@ -1161,7 +1251,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
       actions: {
         setRelationshipKind: '(id): sets which named kind the pending connection is; an empty value clears it',
         placeOnCanvas:
-          '(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Pair with the graph’s onNodeDragEnd',
+          '(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Prefer dragOnCanvas for the graph’s onNodeDragEnd, which also carries what a folded card is holding',
+        dragOnCanvas:
+          "(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $action calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were",
         removeFromCanvas:
           '(canvas: string, nodeId: string): takes a record off a canvas, leaving the record itself alone. A card the canvas owns survives as an unplaced one in the tray',
         resizeOnCanvas:
@@ -1178,6 +1270,14 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps',
         setTypeColor:
           "(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it",
+        dropOnCanvas:
+          "(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space",
+        bringIn:
+          "(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo",
+        updateRecordField:
+          "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
+        setSpaceTypeColor:
+          "(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it",
         createOnCanvas:
           '(canvas: string, x?: number, y?: number): opens the create form and places whatever it makes onto that canvas, at the point given. Pair with the graph’s onCanvasDoubleClick',
         createCardOnCanvas:
@@ -1186,9 +1286,26 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection',
         connectNodes:
           "(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives",
+        connectNodesNow:
+          "(link): writes the Relationship straight away, with no label and no kind, and answers with its id. The same onEdgeCreate payload; the choice between this and connectNodes is the template's. Ask first where the claim is the point (a knowledge map); write first where the arrangement is (a canvas beside a live call), and let the words be added in an inspector afterwards. Pair it with an onSuccess that selects the new line — a connection nobody is shown is a connection nobody knows is a record",
         setRecordEntity: '(entity): switches which model is being created, discarding what was typed',
         setRecordField:
-          '(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data',
+          '(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data. A file control passes its File as event.detail',
+        openRelationForm: '(field): opens the nested form on a relation field’s target model',
+        setRecordPlace:
+          "(detail): pins the open draft's place — pass a we-location-picker's arg.detail. Writes latitude, longitude and address where the draft has them, and a name where none was typed. recordFormModal draws the picker for any model with both a latitude and a longitude field, in place of the two number boxes",
+        setRelationField: '(name, value): sets one field of the nested form, as setRecordField does for the outer one',
+        saveRelationForm:
+          '(): adds what the nested form holds to its relation field as a chip, and closes it. Nothing is written until the outer form saves',
+        cancelRelationForm: '(): closes the nested form, discarding it',
+        pickRelation: '(field, id): points a relation field at an existing record — pass a picker’s event.detail',
+        removeRelationEntry: '(field, key): takes one chip off a relation field',
+        setRelationLocation:
+          '(field, detail): points a location relation at the place a we-location-picker reports — pass its arg.detail. The place is made on save and names itself after the city unless a name was typed',
+        setRelationEntryField:
+          '(field, key, name, value): edits one field of a relation entry still to be made — the name or address under a picked place',
+        addRelationImage:
+          "(field, file): adds a chosen, cropped image to an image relation — pass an EditableImage's onImageChange event. Its entry carries a preview",
         cancelRecordForm: '(): closes the form, discarding it',
         saveRecord:
           '(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId',
@@ -1222,6 +1339,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
         identityOptions:
           '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one',
+        nameOptions:
+          '{ label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name',
         hintEditor:
           'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
@@ -1242,6 +1361,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setShapeField: "(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field",
         setIdentityMember:
           "(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
+        setNameMember:
+          "(rowId): chooses which member NAMES an instance — the heading on a card, the caption on a canvas, the label on a drag chip; 'none' returns it to being worked out. Not the same question as setIdentityMember: a dedup key may be a composite nobody would recognise (an event's is its title and day joined), where this is the one short string every surface shows when it has room for one line",
         setExtractable:
           '(on: boolean): allows or refuses an AI extraction pass writing instances of the open draft. Its own action rather than a setShapeField case, because the value is a boolean and that field takes strings',
         addProperty: '(): appends an empty property (scalar field) row to the draft',
@@ -1290,8 +1411,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         isOpen: 'boolean — the AI chat panel is open',
         isStreaming: 'boolean — an assistant reply is arriving; streamingContent holds what has arrived so far',
         streamingContent: 'string — the partial assistant reply while isStreaming, empty otherwise',
-        apiKeyConfigured:
-          'boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it',
+        assistantAvailable:
+          'boolean — the node has a language model the editor can hold a conversation with, so sendMessage can work. Configured in Settings → AI. Gate the composer on it and say what is missing rather than hiding it',
+        assistantStatus:
+          "{ state: 'ready' | 'loading' | 'error' | 'unchecked' | 'none', name, model, detail } | null — which model answers the chat and whether it can right now, checked without spending tokens when the panel opens and after a failed send. `unchecked` means the backend could not ask, not that it failed; `detail` says why for error and loading",
         templateName: 'string — the name of the template being edited, for the editor’s own header',
         templateIcon: 'string — its icon',
         isReadOnly:
@@ -1329,6 +1452,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         open: '(): opens the AI chat panel',
         close: '(): closes it',
         newChat: '(): starts a new AI session for this template and switches to it',
+        refreshAssistant:
+          '(): checks the chat’s model again — after changing models in settings, or to see whether a failure has cleared',
         switchSession: '(sessionId: string): shows another saved session',
         deleteSession: '(sessionId: string): deletes a saved session and its messages',
         setContentMode:
@@ -1371,7 +1496,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createSpaceOpen:
           'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
         dockGeometry:
-          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
+          "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
           '{ top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels',
         coveredInset:
@@ -1399,6 +1524,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none',
         activeLayout:
           "string — the saved layout the arrangement on screen is, or '' once anything has been moved since. Mark the matching row as selected",
+        panelsHidden:
+          'boolean — somebody has put every panel away at once, from the rail or with Cmd/Ctrl+\\. The panels are also away while a shell overlay (settings, profile, about) is open, which is not this and does not set it. Either way they are hidden, never unmounted, and the content gets the room they took',
+        hasPanels: 'boolean — some panel is open on screen to put away. What the hide-all toggle is gated on',
         layoutDirty:
           'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
       },
@@ -1434,7 +1562,19 @@ export function generateStoresText(entries: StoreEntry[]): string {
         toggleDockDisplace:
           '(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked',
         toggleCollapseDock:
-          '(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a lane. Read dockPlacement[id].canCollapse',
+          '(id: string): folds a panel, and every tab stacked with it, down to its titlebar — or opens it again. A fold always takes height: down a side lane the lane-mates take the room, and across a top or bottom lane the lane is as thick as its tallest open member, so folding the last one hands the room back to the content. The content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a side lane; collapse that lane to its edge instead. Read dockGeometry[id].canCollapse',
+        togglePanelsHidden:
+          '(): puts every panel away at once, or brings them all back exactly as they were — hidden, never unmounted, with the content given their room while they are away. Does nothing while a shell overlay is up, when the panels are away already. Asking for one panel (revealDock, a rail launcher) brings them all back',
+        toggleStowLane:
+          "(id: string): collapses the whole displacing lane this panel is in to a strip at its edge naming its panels, or opens it again. Every panel keeps its size, which tab is showing and whether it is folded; the content is hidden, never unmounted. Offered on the lane's first titlebar — read dockGeometry[id].canStow — and a press anywhere on the strip opens it",
+        openModulePanel:
+          '(dockId: string): opens one of a module’s panels, by its dock id (`<moduleId>:<name>`). The host holds whether most panels are open, so this is where the flag lives; a module that owns its own flag is asked through the actions it named instead',
+        closeModulePanel:
+          '(dockId: string): closes one of a module’s panels. What the titlebar’s close button calls for a host-owned panel',
+        toggleModulePanel:
+          '(dockId: string): opens a module’s panel if it is closed, closes it if it is open — what the rail’s button does for a panel that is in sight. Prefer spaceStore.launchModule from a template, which also brings a concealed panel into view',
+        revealDock:
+          '(id: string): brings an open panel into sight wherever it is hidden — to the front of its stack, unfolded, or by opening the lane it is collapsed into — and flashes its tab when it came forward in a stack. Leaves a closed panel alone. What the module rail does for a panel that is open and concealed, instead of the module\u2019s own toggle',
         breakOut:
           "(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id",
         returnHome:
@@ -1512,7 +1652,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {},
       actions: {
         create:
-          '(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names (\'datasetStore.rootDataset\' for we-root entities). See "Record mutations via $action" above',
+          "(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
         update:
           '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest',
         delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible',
@@ -1521,7 +1661,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     interpretationStore: {
       state: {
         activity:
-          'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` can carry `prompt`/`response` — the exchange never left the runner’s machine — so gate a details affordance on `hasDetail` and explain the refusal rather than hiding it',
+          'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`',
         runningCount:
           'number — how many passes are still in flight. What a collapsed "N extractions running" summary counts',
         hasActivity:
@@ -1529,8 +1669,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
         runningPasses: 'InterpretationActivityView[] — the passes still in flight, for a readout that lists them',
         settledPasses: 'InterpretationActivityView[] — the passes that have finished, newest first',
         settledCount: 'number — how many have finished. What a collapsed "N extractions processed" line counts',
-        detailWithheld:
-          "boolean — a peer's settled pass is on screen whose exchange this agent cannot open, because the space does not share it. Gate a footnote explaining the absence on this rather than on a row's own hasDetail, which is false for a pass that simply has not reached the model yet",
         capable:
           'boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work',
       },

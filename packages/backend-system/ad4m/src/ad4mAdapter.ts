@@ -81,8 +81,17 @@ function asPerspective(dataset: DatasetHandle): PerspectiveProxy {
   return dataset as PerspectiveProxy;
 }
 
+/**
+ * One adapter per model class, so a lookup answers with the same object every time. A new wrapper per
+ * `$getEntity` call made every query look like a different model to anything comparing them — the
+ * renderer's subscription pool shared nothing because of it.
+ */
+const rendererEntities = new WeakMap<Ad4mEntityClass, RendererEntityClass>();
+
 export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
-  return {
+  const known = rendererEntities.get(Model);
+  if (known) return known;
+  const adapted: RendererEntityClass = {
     query: (dataset, opts) =>
       Model.query(asPerspective(dataset), opts as Parameters<typeof Model.query>[1]) as ReturnType<
         RendererEntityClass['query']
@@ -99,6 +108,8 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
         RendererEntityClass['findAll']
       >,
   };
+  rendererEntities.set(Model, adapted);
+  return adapted;
 }
 
 /**
@@ -134,9 +145,9 @@ export interface Ad4mAdapterDeps {
  * that aren't backend-specific.
  *
  * This is the artifact another backend copies: everything a host must supply for the renderer to read
- * data, in one place. `$onError` and `$useQueryIR` are deliberately excluded — surfacing an error to
- * the UI and toggling the IR are host concerns any backend would wire the same way, so they stay with
- * the app rather than pretending to be AD4M-specific.
+ * data, in one place. `$onError` is deliberately excluded — surfacing an error to the UI is a host
+ * concern any backend would wire the same way, so it stays with the app rather than pretending to be
+ * AD4M-specific.
  *
  * Note what is *not* here: no query lowering, no capability quirks, no model-shape mapping. Those are
  * `createAd4mQueryAdapter` and `toRendererEntity` above — this only composes them.
@@ -218,6 +229,15 @@ export const ad4mCapabilities: AdapterCapabilities = {
     this invalidates, which is worth more attention than the code change.
   */
   operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains'],
+  /*
+    Numbers only. The executor's `WhereOps` holds each bound as an `f64`, so `{ dueDate: { lt:
+    '2026-10-01' } }` fails to deserialise as an operator, is reread as a nested clause, and rejects
+    every row — the `exists` failure above, again. A number bound is compared against the stored
+    value after the executor parses it, which reads RFC 3339 timestamps but not the zone-less
+    `YYYY-MM-DD` WE writes, so a date range cannot be pushed down by converting the bound either.
+    Refused until the executor compares strings; see ad4m-follow-ups.
+  */
+  rangeBounds: ['number'],
   booleanCombinators: true, // OR / AND / NOT in `where` (#868)
   relationFilters: true, // `some` / `none` compile to a SPARQL EXISTS group (#923)
   scope: true, // drill-down via `parent`

@@ -44,15 +44,21 @@ export const aboutView: TemplateSchema = {
           spelling opened an empty page, and only for shared spaces.
         */
         aside: {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'sm',
-            square: true,
-            title: 'Space settings',
-            onClick: { $action: 'shellStore.openSpaceSettings' },
-          },
-          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+          type: 'we-tooltip',
+          props: { content: 'Space settings' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                label: 'Space settings',
+                variant: 'ghost',
+                size: 'sm',
+                square: true,
+                onClick: { $action: 'shellStore.openSpaceSettings' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+            },
+          ],
         },
         children: [
           // Name field
@@ -104,7 +110,6 @@ export const aboutView: TemplateSchema = {
               },
             ],
           },
-
           attributeRow({
             icon: 'lock-simple',
             label: 'Access',
@@ -113,7 +118,6 @@ export const aboutView: TemplateSchema = {
               $: "spaceStore.currentSpace.url ? 'Joinable by anyone with the link' : 'Only visible to you'",
             },
           }),
-
           attributeRow({
             icon: 'globe',
             label: 'Discovery',
@@ -135,7 +139,6 @@ export const aboutView: TemplateSchema = {
               }),
             },
           },
-
           attributeRow({
             icon: 'clock',
             label: 'Created',

@@ -93,6 +93,22 @@
     flex: 1;
   }
 
+  &__action {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--we-space-100) var(--we-space-200);
+    border-radius: var(--we-radius-200);
+    font: inherit;
+    font-weight: var(--we-font-weight-semibold, 600);
+    color: inherit;
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--we-color-neutral-100);
+    }
+  }
+
   &__dismiss {
     background: none;
     border: none;

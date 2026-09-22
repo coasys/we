@@ -112,7 +112,7 @@ export const languagesSection: SchemaNode = {
                 variant: 'secondary',
                 // The backend fetches the bundle over the network, so this is the one runtime action
                 // that can take long enough to need a spinner rather than just finishing.
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'installLanguage' in runtimeStore.pending" },
                 disabled: { $: '!local.newLanguageAddress' },
                 onClick: {
                   $action: 'runtimeStore.installLanguage',

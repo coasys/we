@@ -4,6 +4,7 @@
  * Both have to reconcile it, which is why the rule lives beside the presets rather than in the
  * editor panel it started in — only one of the two paths went through that panel.
  */
+import { role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import { reconcileSurfaces, surfacesForPolarity } from './themeStyles';
@@ -14,9 +15,9 @@ describe('the surface stack a polarity needs', () => {
     up lighter than `surface` (neutral-0) and a card sinks below the page it is on. Nothing about
     the flip tells you that — the theme still looks like a theme, just subtly upside down.
   */
-  it('pins the four surfaces when going dark', () => {
+  it('pins the surfaces when going dark', () => {
     const out = surfacesForPolarity('dark', undefined)!;
-    expect(Object.keys(out).sort()).toEqual(['page', 'surface', 'surfaceRaised', 'surfaceSunken']);
+    expect(Object.keys(out).sort()).toEqual(['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken']);
   });
 
   it('puts the stack in the right order', () => {
@@ -25,6 +26,29 @@ describe('the surface stack a polarity needs', () => {
     expect(at(out.surfaceSunken!)).toBeLessThan(at(out.page!));
     expect(at(out.page!)).toBeLessThan(at(out.surface!));
     expect(at(out.surface!)).toBeLessThan(at(out.surfaceRaised!));
+  });
+
+  /*
+    The chrome is the app's ground and the page stands off it — in the pins *and* in the defaults.
+
+    Both halves are asserted because getting one is what the two previous attempts each managed. A
+    pin without a matching default is wrong in every theme the pin does not reach, and a built-in
+    dark preset never goes through a polarity change, so it reaches fewer than it looks. A default
+    without a matching pin is wrong in every theme that has been flipped.
+
+    The direction is also the thing that inverted once already: the furniture was briefly *lighter*
+    than the content in dark, which reads as the page being a hole rather than the rail being a
+    frame.
+  */
+  it('stands the page off the chrome, in the pins and in the defaults alike', () => {
+    const out = surfacesForPolarity('dark', undefined)!;
+    const at = (v: string) => parseFloat(/^oklch\(([\d.]+)%/.exec(v)![1]);
+    expect(at(out.chrome!)).toBeLessThan(at(out.page!));
+
+    // `chrome` holds the scale position; `page` is the one measured from it, never the reverse —
+    // which is what makes "how dark is the app" and "how far does a space stand off it" two knobs.
+    expect(role.page).toMatch(/^oklch\(from var\(--we-role-chrome\) calc\(l \+ /);
+    expect(role.chrome).not.toContain('--we-role-page');
   });
 
   it('clears them going light, rather than writing a second stack', () => {

@@ -132,3 +132,30 @@ describe('containmentPredicate', () => {
     expect(containmentPredicate(() => undefined, [])).toBeUndefined();
   });
 });
+
+describe('how a turn came to be', () => {
+  /*
+    A consumer that renders or exports these is asserting somebody's words. Once a person can type
+    into a transcript, or mend what the recogniser heard, "who said it" stops being the whole story
+    — so the block's own answer travels with the turn. See `TextBlock.source`.
+  */
+  it('carries what the block says about itself', async () => {
+    const turns = await gatherTranscriptTurns(
+      deps([{ text: 'hi', author: 'did:a', createdAt: 1_700_000_000_000, source: 'typed' }]),
+      'call-1',
+    );
+
+    expect(turns[0].source).toBe('typed');
+  });
+
+  it('says nothing for a block written before the field existed', async () => {
+    // Absent rather than guessed at: a turn from an older block is not evidence that it was spoken,
+    // and defaulting it to `spoken` would invent the very claim the field exists to make honest.
+    const turns = await gatherTranscriptTurns(
+      deps([{ text: 'hi', author: 'did:a', createdAt: 1_700_000_000_000 }]),
+      'call-1',
+    );
+
+    expect(turns[0].source).toBeUndefined();
+  });
+});

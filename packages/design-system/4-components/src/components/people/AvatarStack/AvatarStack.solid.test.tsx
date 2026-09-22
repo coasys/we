@@ -37,7 +37,6 @@ function mount(props: Parameters<typeof AvatarStack>[0]) {
       const match = text.match(/\+(\d+)/);
       return match ? Number(match[1]) : 0;
     },
-    ringOf: (i: number) => (host!.querySelectorAll('we-avatar')[i] as HTMLElement & { ring?: string }).ring,
   };
 }
 
@@ -104,19 +103,40 @@ describe('the cap counts people, and says how many it is hiding', () => {
 });
 
 describe('a ring is a claim, so it is only made when somebody asks', () => {
+  const face = (i: number) =>
+    host!.querySelectorAll('we-avatar')[i] as HTMLElement & { ringColor?: string; edgeColor?: string };
+
   it('paints none by default', () => {
     // It once defaulted to `neutral-0`, which is the surface colour only on a `neutral-0` surface —
     // and the neutral scale inverts under the dark themes, so it landed as a black band.
-    expect(mount({ avatars: [did(1)] }).ringOf(0)).toBeFalsy();
+    mount({ avatars: [did(1)] });
+    expect(face(0).ringColor).toBeFalsy();
+    expect(face(0).edgeColor).toBeFalsy();
   });
 
-  it("lets an avatar's own tone beat the stack's fallback", () => {
-    // `tone` reaches this from presence, whose PresenceTone is a strict subset of AvatarTone — so
-    // the tone arriving is always one the token layer knows. `avatarToneColor` indexes a record and
-    // would throw on anything else, which is fine while that subset relationship holds and is the
-    // thing to re-check if either union gains a member.
-    const stack = mount({ avatars: [{ hash: 'a', tone: 'success' }, { hash: 'b' }], ring: 'FALLBACK' });
-    expect(stack.ringOf(0)).toContain('var(--we-role-success)');
-    expect(stack.ringOf(1)).toBe('FALLBACK');
+  it('hands each face its own tone, drawn inside it by the primitive', () => {
+    mount({ avatars: [{ hash: 'a', tone: 'warning' }, { hash: 'b' }] });
+    expect(face(0).ringColor).toBe('warning');
+    expect(face(1).ringColor).toBeFalsy();
+  });
+
+  it('separates overlapping faces in the colour the caller says is behind them', () => {
+    mount({ avatars: [{ hash: 'a' }, { hash: 'b' }], edge: 'var(--we-role-surface)' });
+    expect(face(0).edgeColor).toBe('var(--we-role-surface)');
+    expect(face(1).edgeColor).toBe('var(--we-role-surface)');
+  });
+});
+
+describe('the first face is on top', () => {
+  it('stacks each face under the one before it, and the count under them all', () => {
+    // The lists come ordered by importance, so the first face is the one that has to be whole.
+    const people = ['a', 'b', 'c', 'd'].map((hash) => ({ hash }));
+    mount({ avatars: people, max: 3 });
+
+    const row = host!.firstElementChild as HTMLElement;
+    const layers = Array.from(row.children).map((child) => Number((child as HTMLElement).style.zIndex));
+
+    expect(layers).toEqual([4, 3, 2, 1]);
+    expect(row.style.isolation).toBe('isolate');
   });
 });

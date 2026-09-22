@@ -453,7 +453,7 @@ const unlockForm: SchemaNode = {
     {
       type: 'we-form-field',
       props: {
-        error: { $: "sessionStore.passwordError ? 'Incorrect password' : ''" },
+        error: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" },
       },
       children: [
         // Field and submit on one row — the shape an OS sign-in uses when there is exactly one

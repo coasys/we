@@ -10,7 +10,9 @@ const allowedTextTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'small', 'b', 
 export type TextTag = (typeof allowedTextTags)[number];
 // 'bare' is the appearance-free member of the scale (elsewhere called "unstyled") — button
 // semantics with no chrome of its own, for wrapping arbitrary content in a real <button>.
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare';
+// 'success' is the confirming half of a yes/no pair — the counterpart of 'danger', not a louder
+// 'primary'. See VARIANT_DEFAULTS in button.ts for when it earns its place and when it does not.
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare';
 export type MenuItemVariant = 'default' | 'danger';
 /*
   How loud a badge is, orthogonal to what it means.

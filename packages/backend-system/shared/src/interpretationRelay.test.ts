@@ -76,6 +76,25 @@ describe('mergeActivity', () => {
     expect(rows.get('pass-1')).toMatchObject({ phase: 'done', ids: ['task-1'] });
   });
 
+  it('keeps what a pass was reading and what started it, across every later update', () => {
+    /*
+      The two facts a durable history needs, and the only two that the adapter alone can supply: a
+      pass's collection comes from the map the client keeps, and its trigger from which of the two
+      maps answered. Only the events the adapter stamps carry them — the neighbourhood stream sends
+      none — so a merge that let a later row blank them would leave the settling event, which is the
+      one the history is written from, with nothing to hang the record off.
+    */
+    mergeActivity(rows, activity({ phase: 'queued', collection: 'we://collection/today', trigger: 'auto' }));
+    // Keys present and undefined, which is what a row that has been round-tripped through the relay
+    // looks like — the shape that cost the prompt half its content until `mergeExchange` existed.
+    mergeActivity(rows, activity({ phase: 'done', ids: ['task-1'], collection: undefined, trigger: undefined }));
+    expect(rows.get('pass-1')).toMatchObject({
+      phase: 'done',
+      collection: 'we://collection/today',
+      trigger: 'auto',
+    });
+  });
+
   it('accumulates the prompt and the response, which arrive one phase apart', () => {
     mergeActivity(rows, activity({ phase: 'thinking', llm: { prompt: 'P' } }));
     mergeActivity(rows, activity({ phase: 'writing', llm: { response: 'R' } }));
@@ -182,55 +201,19 @@ describe('createInterpretationRelay', () => {
     expect(bo.rows().map((r) => r.runner)).toEqual(expect.arrayContaining(['did:anna', undefined]));
   });
 
-  it('withholds the model exchange by default', () => {
-    const { anna, bo } = pair();
-    anna.publish(activity({ llm: { prompt: 'the whole transcript' } }));
-    expect(bo.rows()[0]?.llm).toBeUndefined();
-  });
-
-  it('shares the model exchange when the host asks it to', () => {
-    const { anna, bo } = pair({ shareDetail: true });
-    anna.publish(activity({ llm: { prompt: 'P', response: 'R' } }));
-    expect(bo.rows()[0]?.llm).toEqual({ prompt: 'P', response: 'R' });
-  });
-
-  it('reaches a finished pass when sharing is turned on afterwards', () => {
+  it('never puts the model exchange on the wire', () => {
     /*
-      The switch is offered while somebody reads their own prompt, and the pass they are reading has
-      already finished — so a relay that only applied the flag to future publishes would fail on
-      exactly the pass it was turned on for.
+      The prompt is built from the whole transcript, so it is as long as the call, and it would go to
+      every peer once per phase. A finished pass writes it into the graph as an ExtractionPass, which
+      is where everybody else reads it — so the live row carries none of it.
     */
-    let sharing = false;
-    const bus = new InMemoryBus();
-    const make = (agentId: string) => {
-      const scope = createInMemoryEphemeralPort(bus, agentId)(dataset);
-      if (!scope) throw new Error('the in-memory port always has a scope');
-      return createInterpretationRelay(scope.channel(INTERPRETATION_ACTIVITY_CHANNEL), {
-        now: () => clock,
-        shareDetail: () => sharing,
-      });
-    };
-    const anna = make('did:anna');
-    const bo = make('did:bo');
-
+    const { anna, bo } = pair();
     anna.publish(activity({ phase: 'done', ids: ['task-1'], llm: { prompt: 'P', response: 'R' } }));
+
+    expect(bo.rows()[0]).toMatchObject({ phase: 'done', ids: ['task-1'] });
     expect(bo.rows()[0]?.llm).toBeUndefined();
-
-    sharing = true;
-    anna.resend();
-    expect(bo.rows()[0]?.llm).toEqual({ prompt: 'P', response: 'R' });
-  });
-
-  it('resends only its own rows, never a relayed one', () => {
-    // A peer's payload never reached this machine, so re-broadcasting their row would send a copy
-    // of nothing while putting this agent's name on their work.
-    const { anna, bo } = pair({ shareDetail: true });
-    anna.publish(activity({ passId: 'anna-pass', llm: { prompt: 'P' } }));
-    expect(bo.rows()).toHaveLength(1);
-
-    bo.resend();
-    // Anna never receives her own row back, so hers stays a single local row.
-    expect(anna.rows().filter((r) => !r.mine)).toHaveLength(0);
+    // The runner's own row keeps it: the pass ran here, and its exchange never had to travel.
+    expect(anna.rows()[0].llm).toEqual({ prompt: 'P', response: 'R' });
   });
 
   it('broadcasts only its own passes, never one it merely observed', () => {
@@ -283,30 +266,5 @@ describe('createInterpretationRelay', () => {
     bo.dispose();
     anna.publish(activity());
     expect(bo.rows()).toHaveLength(0);
-  });
-
-  it('caps the exchange it puts on the wire, and the exchange it accepts', () => {
-    /*
-      The relay's own docs called the detail "tens of KB per pass", which was the typical case and
-      not a bound: the prompt is built from the transcript, so an hour-long call's prompt is as long
-      as the hour-long call. Uncapped, one meeting pushed megabytes at every peer in the space, once
-      per phase — and the receiving side then held all of it for the row's ten-minute lifetime.
-
-      Both directions, because a cap on the sender alone is a request: a peer that ignores it costs
-      every receiver the same memory.
-    */
-    const { anna, bo } = pair({ shareDetail: true });
-    const huge = 'x'.repeat(200_000);
-
-    anna.publish(activity({ llm: { prompt: huge, response: huge } }));
-
-    const received = bo.rows()[0];
-    expect(received.llm?.prompt?.length).toBeLessThan(huge.length);
-    expect(received.llm?.prompt).toMatch(/truncated/);
-    expect(received.llm?.response).toMatch(/truncated/);
-
-    // What the runner itself shows is untouched: the cap is about what crosses the wire, and the
-    // agent that ran the pass already has the whole thing.
-    expect(anna.rows()[0].llm?.prompt).toBe(huge);
   });
 });

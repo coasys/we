@@ -2,6 +2,8 @@ import type {
   AssembledContext,
   ComponentEntry,
   EntityEntry,
+  ForeignElementEntry,
+  ModuleCatalogEntry,
   PluginCatalog,
   PrimitiveEntry,
   TokenCategory,
@@ -22,6 +24,7 @@ export function assembleReference(ctx: AssembledContext): string {
 
   // Component registry
   sections.push(formatComponentRegistry(context.primitives, context.components));
+  if (context.foreignElements?.length) sections.push(formatForeignElements(context.foreignElements));
 
   // Sub-registries a component resolves by name. Immediately after the component registry, because
   // the props above are unusable without them: `layout.type` is documented as a string, and the names
@@ -43,6 +46,12 @@ export function assembleReference(ctx: AssembledContext): string {
 
   // Stores
   sections.push(context.fragments.stores.trim());
+
+  // Feature modules — the deployment's, with everything a schema may name of each. After the stores,
+  // since `modules.<id>.*` reads like one more store, and before the patterns that place their parts.
+  if (context.modules?.length) {
+    sections.push(formatModules(context.modules));
+  }
 
   // Store patterns
   sections.push(context.fragments.storePatterns.trim());
@@ -80,6 +89,40 @@ export function assembleReference(ctx: AssembledContext): string {
  */
 function demoteHeadings(text: string): string {
   return text.replace(/^(#{1,4}) /gm, (_match, hashes: string) => `${'#'.repeat(Math.min(hashes.length + 2, 6))} `);
+}
+
+/**
+ * The custom elements this deployment's seed allows, from their libraries' own manifests.
+ *
+ * Its own section rather than folded into the primitives, because two things an author would assume
+ * from that list are not true of these: they take no design-system props, and their events are named
+ * by their library — so a handler is `on:sl-change`, which camel case cannot spell.
+ */
+function formatForeignElements(elements: ForeignElementEntry[]): string {
+  const lines: string[] = [
+    '## Foreign Elements (this deployment)',
+    '',
+    'Custom elements from libraries this deployment bundles, allowed by its seed. Name them like any',
+    'primitive. Two differences: they take NO design-system props (wrap one in a Column or Row for',
+    "spacing and colour), and their events keep their library's names — listen with the exact name",
+    'after `on:`, e.g. { "on:sl-change": { "$action": "…", "args": [{ "$": "event.target.value" }] } }.',
+  ];
+  const byPackage = new Map<string, ForeignElementEntry[]>();
+  for (const element of elements) byPackage.set(element.package, [...(byPackage.get(element.package) ?? []), element]);
+  for (const [pkg, list] of byPackage) {
+    lines.push('', `${pkg}:`);
+    for (const element of list) {
+      const desc = element.description ? ` — ${demoteHeadings(element.description)}` : '';
+      lines.push(`- ${element.tagName}${desc}`);
+      if (element.props.length) {
+        lines.push(
+          `  Props: ${element.props.map((p) => `${p.name}: ${p.type}${p.default ? ` = ${p.default}` : ''}`).join(', ')}`,
+        );
+      }
+      if (element.events.length) lines.push(`  Events: ${element.events.map((e) => `on:${e}`).join(', ')}`);
+    }
+  }
+  return lines.join('\n');
 }
 
 function formatComponentRegistry(primitives: PrimitiveEntry[], components: ComponentEntry[]): string {
@@ -248,5 +291,109 @@ function formatEntities(models: EntityEntry[]): string {
     }
   }
 
+  return lines.join('\n');
+}
+
+/**
+ * The feature modules, one block each: what it needs, what a template may read and call, what it
+ * lets a template place, and what it adds to the vocabulary.
+ *
+ * Generated from the definitions rather than written, for the reason every catalogue here is: a
+ * module's public surface is decided by the module (`deps.state` / `deps.action`, `contributes.*`),
+ * and a hand-kept list would be a second source that drifts. Members carry the sentence they were
+ * marked with, so a store member reaches an author with its meaning, as host store members do.
+ */
+function formatModules(modules: ModuleCatalogEntry[]): string {
+  const lines: string[] = [
+    '## Feature Modules',
+    '',
+    'The modules this deployment ships. A module publishes a store at `modules.<id>` (public members only),',
+    'parts a template places with `{ "type": "$part", "props": { "id": "<id>.<part>" } }`, panels a',
+    'template places or supplies through `meta.panels` (`{ "module": "<id>", "dock": "<panel>" }`), and',
+    'functions expressions call like the host functions above. A template that reaches a module by name',
+    'declares it: `meta.requires.modules: ["<id>"]`. Reading `{ "$": "modules.<id>" }` bare is how a template',
+    'depends on a module that may not be installed.',
+  ];
+
+  for (const mod of modules) {
+    lines.push('');
+    lines.push(`### ${mod.name} (\`${mod.id}\`)${mod.scope === 'agent' ? ' — the agent’s, not a space’s' : ''}`);
+    if (mod.description) lines.push(mod.description);
+    const needs: string[] = [];
+    if (mod.requires.kernels?.length) needs.push(`kernels ${mod.requires.kernels.join(', ')}`);
+    if (mod.requires.permissions?.length) needs.push(`permissions ${mod.requires.permissions.join(', ')}`);
+    if (mod.requires.backends?.length) needs.push(`backends ${mod.requires.backends.join(', ')}`);
+    if (needs.length) lines.push(`Needs: ${needs.join('; ')}.`);
+
+    if (mod.members.length) {
+      const state = mod.members.filter((m) => m.kind === 'state');
+      const actions = mod.members.filter((m) => m.kind === 'action');
+      if (state.length) {
+        lines.push(`- State (read in an expression as \`modules.${mod.id}.<name>\`):`);
+        for (const m of state) lines.push(`  - ${m.name} — ${m.doc}`);
+      }
+      if (actions.length) {
+        lines.push(`- Actions (\`{ "$action": "modules.${mod.id}.<name>" }\`):`);
+        for (const m of actions) lines.push(`  - ${m.name} — ${m.doc}`);
+      }
+    } else {
+      lines.push('- No store: everything this module does is declared.');
+    }
+    if (mod.parts.length) {
+      lines.push(
+        `- Parts: ${mod.parts.map((p) => `\`${mod.id}.${p.name}\`${p.subject ? ` (subject: ${p.subject})` : ''}`).join(', ')}`,
+      );
+    }
+    if (mod.panels.length) {
+      lines.push(
+        `- Panels (\`meta.panels[].dock\`): ${mod.panels.map((p) => `\`${p.name}\` "${p.title}"${p.hostOwned ? '' : ' (module-owned openness)'}`).join(', ')}`,
+      );
+    }
+    if (mod.settings.length) {
+      lines.push(
+        `- Settings: ${mod.settings.map((s) => `\`${s.key}\` (${s.type}; ${s.levels.join(', ')}) — ${s.label}`).join('; ')}`,
+      );
+    }
+    if (Object.keys(mod.activities).length) {
+      lines.push(
+        `- Presence activities: ${Object.entries(mod.activities)
+          .map(
+            ([type, shape]) =>
+              `\`${type}\` { ${Object.entries(shape)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(', ')} }`,
+          )
+          .join('; ')}`,
+      );
+    }
+    if (mod.components.length) lines.push(`- Components: ${mod.components.join(', ')}`);
+    if (mod.functions.length) {
+      lines.push('- Functions:');
+      for (const fn of mod.functions)
+        lines.push(`  - ${fn.name}(${fn.params.join(', ')}) — ${fn.doc}  e.g. ${fn.example}`);
+    }
+    if (mod.views.length) {
+      lines.push(
+        `- Views (sections a space enables): ${mod.views.map((v) => `\`${v.id}\` "${v.name}"${v.segment ? ` at /${v.segment}` : ''}`).join(', ')}`,
+      );
+    }
+    if (mod.blocks.length) {
+      lines.push(
+        `- Blocks: ${mod.blocks.map((b) => `${b.entity} (\`_type: "${b.nodeType}"\`, drawn by \`${mod.id}.${b.card}\`)`).join(', ')}`,
+      );
+    }
+    if (mod.entities.length) {
+      lines.push('- Entities (queryable with $query):');
+      for (const entity of mod.entities) {
+        const fields = entity.fields.map((f) => `${f.name}: ${f.type}${f.required ? ' (required)' : ''}`).join(', ');
+        const relations = entity.relations
+          .map((r) => `${r.name}: ${r.kind}${r.target ? ` → ${r.target}` : ''}`)
+          .join(', ');
+        lines.push(
+          `  - ${entity.name}${entity.extends ? ` extends ${entity.extends}` : ''}: ${fields}${relations ? `; relations ${relations}` : ''}`,
+        );
+      }
+    }
+  }
   return lines.join('\n');
 }

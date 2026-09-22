@@ -19,6 +19,7 @@
  */
 export type ThemeRole =
   | 'page'
+  | 'chrome'
   | 'surface'
   | 'surfaceRaised'
   | 'surfaceSunken'

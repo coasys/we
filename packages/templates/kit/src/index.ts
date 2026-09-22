@@ -48,8 +48,20 @@ export type { MediaGridOptions } from './lists/mediaGrid.ts';
 // WE-domain — these name WE's stores or its agent machinery.
 export { ANCHOR_ID, ANCHOR_PARAM, anchorBanner, anchorParent, anchorScope } from './we/anchor.ts';
 export type { AnchorBannerOptions } from './we/anchor.ts';
+export {
+  answerButton,
+  CHANGED,
+  changesOf,
+  SUGGESTIONS_HIDDEN,
+  SUGGESTIONS_PARAM,
+  suggestedChanges,
+  suggestionsToggle,
+  UNCONFIRMED,
+  withoutHiddenSuggestions,
+} from './we/suggestions.ts';
+export type { SuggestedChangesOptions, SuggestionsToggleOptions } from './we/suggestions.ts';
 export { moveTaskMenu, PENDING, taskBoard, taskBoardLoading, taskCard } from './we/taskBoard.ts';
-export type { TaskBoardOptions, TaskCardOptions } from './we/taskBoard.ts';
+export type { CardSelection, TaskBoardOptions, TaskCardOptions } from './we/taskBoard.ts';
 export { adminSection } from './we/adminSection.ts';
 export type { AdminSectionOptions } from './we/adminSection.ts';
 export { agentByline } from './we/agentByline.ts';
@@ -59,8 +71,24 @@ export type { InstalledListOptions } from './we/installedList.ts';
 export { RECORD_ROUTE_PATH, recordLink } from './we/recordLink.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
+export { peopleFilter } from './we/peopleFilter.ts';
+export type { PeopleFilterOptions } from './we/peopleFilter.ts';
 export { peopleRow } from './we/peopleRow.ts';
+export { typePicker, typePickerLists } from './we/typePicker.ts';
+export type { TypePickerOptions } from './we/typePicker.ts';
 export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
+export {
+  fillForSemantic,
+  iconForSemantic,
+  STATE_FILLS,
+  STATE_ICONS,
+  stateFill,
+  stateFillFor,
+  stateIcon,
+  stateIconFor,
+} from './we/taskStates.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
+export { linkedRecords } from './we/linkedRecords.ts';
+export type { LinkedRecordsOptions } from './we/linkedRecords.ts';
 export { recordFormModal } from './we/recordForm.ts';
 export type { RecordFormModalOptions } from './we/recordForm.ts';

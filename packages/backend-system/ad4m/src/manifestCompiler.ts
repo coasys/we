@@ -16,6 +16,7 @@
 import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
 import { type EntityManifest, type EntitySchema, resolvesPolymorphically } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { EntityManifestEntry } from './manifestTypes';
 
@@ -162,6 +163,21 @@ export function buildEntityFromEntry(
 }
 
 /**
+ * An entity this manifest declares, or — for a parent it names but does not declare — the core one.
+ *
+ * A space shape or a module entity is compiled from a manifest holding only itself, so `extends:
+ * 'WeNode'` named something the manifest could not see, and the lookup threw on `undefined`.
+ * `validateManifest` already accepted it, which made the refusal a crash at adoption rather than a
+ * message at save. Reading the parent from the core manifest is what lets a community's model be a
+ * complete social object — commented on, reacted to, RSVP'd — the way every built-in content type is.
+ */
+function schemaOf(manifest: EntityManifest, name: string): EntitySchema {
+  const entity = manifest.entities[name] ?? CORE_MANIFEST.entities[name];
+  if (!entity) throw new Error(`manifest: "${name}" is not declared here or in the core vocabulary`);
+  return entity;
+}
+
+/**
  * Project a neutral manifest onto AD4M-side entries: resolve each property/relation to a concrete
  * predicate (override → core vocabulary → mint under the module subtree).
  */
@@ -172,7 +188,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
 
   /** Everything an entity declares, including whatever it inherits. */
   const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+    const entity = schemaOf(manifest, name);
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {

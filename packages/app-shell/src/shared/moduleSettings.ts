@@ -4,10 +4,9 @@
  * ## The gap this fills
  *
  * A module can be turned on and off four ways and could not carry a single *value*. So a capability
- * that needed one put it on the space: `autoInterpret`, `extractionTargets` and
- * `shareExtractionDetail` are all settings of the extraction pass, and all three are columns on the
- * core `Space` entity — each with an accessor, a setter and a hand-written row in the settings
- * panel. Recording would have been the fourth. A core entity growing a field on behalf of a
+ * that needed one put it on the space: `autoInterpret` and `extractionTargets` are both settings of
+ * the extraction pass, and both are columns on the core `Space` entity — each with an accessor, a
+ * setter and a hand-written row in the settings panel. Recording would have been the third. A core entity growing a field on behalf of a
  * capability is a workaround that had recurred often enough to be the design.
  *
  * ## Availability intersects; settings do not

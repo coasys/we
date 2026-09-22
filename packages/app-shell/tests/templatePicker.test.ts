@@ -34,9 +34,9 @@ function actionFor(node: unknown, tooltip: string): Record<string, unknown> | un
   if (record.type === '$if') {
     const then = props?.then as Record<string, unknown> | undefined;
     const thenProps = then?.props as Record<string, unknown> | undefined;
-    if (thenProps?.title === tooltip) return record;
+    if (thenProps?.content === tooltip) return record;
   }
-  if (record.type === 'we-tooltip' && props?.title === tooltip) return record;
+  if (record.type === 'we-tooltip' && props?.content === tooltip) return record;
 
   for (const value of Object.values(record)) {
     if (value && typeof value === 'object') {

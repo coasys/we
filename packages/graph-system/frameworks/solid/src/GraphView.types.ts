@@ -114,6 +114,35 @@ export interface GraphViewProps {
   empty?: string;
   /** The icon above it. Defaults to `graph`. */
   emptyIcon?: string;
+  /**
+   * Draw that icon in a gradient — a `we-icon` gradient name, `primary` being the one every template
+   * has — rather than flat and faint.
+   *
+   * The distinction the design system draws everywhere else: gradient where there is something to do
+   * about the emptiness, flat where there is not, so an invitation and a dead end read apart before
+   * either sentence is read. A graph with no opinion from its host is a dead end by default, which is
+   * why this is opt-in — but the caller that bothered to write its own `empty` is usually the caller
+   * that has something to invite, and it is the only one that can tell.
+   */
+  emptyGradient?: string;
+  /**
+   * Something to press, under that sentence — the control that resolves the emptiness, where the
+   * caller has one.
+   *
+   * A slot rather than a prop pair (`emptyActionLabel` + `emptyAction`), because what the control
+   * *is* differs: a button, a pair of them, a link, a file drop. The renderer spreads a schema
+   * node's `slots` onto a component's props, so a template writes
+   * `slots: { emptyAction: … }` and the node arrives here already rendered.
+   *
+   * Inside the placeholder rather than beside the graph, which is the whole reason this exists.
+   * A caller that floats its own button over the canvas has to position it against a box whose size
+   * it cannot see — one that changes as panels open — so it drifts out from under the sentence it
+   * belongs to. Here it is laid out by the same column, at every size, for nothing.
+   *
+   * Gate it yourself if the emptiness has more than one cause: the sentence above already varies,
+   * and an action that suits one of them rarely suits the other.
+   */
+  emptyAction?: JSX.Element;
   /** Show the controls. Defaults to true. Superseded by `controls`, which names them individually. */
   showControls?: boolean;
   /**
@@ -260,7 +289,23 @@ export interface GraphViewProps {
    * stands for no record — a property, a literal, a synthetic cluster — which is also how a
    * template can tell that there is nothing to save.
    */
-  onNodeDragEnd?: (payload: { id: string; x: number; y: number; recordId?: string; recordType?: string }) => void;
+  onNodeDragEnd?: (payload: {
+    id: string;
+    x: number;
+    y: number;
+    recordId?: string;
+    recordType?: string;
+    /**
+     * What a folded card brought with it — every record hidden under it, at the place it now sits.
+     *
+     * Absent unless the card that was dragged is a fold holding something (see `folded`), so a
+     * consumer that ignores it behaves exactly as it did. A consumer that *writes* positions should
+     * write these too: otherwise carrying a fold across the canvas and unfolding it scatters the
+     * contents back to where they were, which makes a fold a way of hiding things rather than a way
+     * of tidying them.
+     */
+    carried?: { recordId: string; recordType: string; x: number; y: number }[];
+  }) => void;
   /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
@@ -286,6 +331,31 @@ export interface GraphViewProps {
     recordId?: string;
     recordType?: string;
   }) => void;
+  /**
+   * Something from elsewhere was dropped onto the graph — a record dragged out of the Pocket, or
+   * from any `we-draggable` — with the world point it landed on.
+   *
+   * Binding this is what makes the graph a drop target at all: it registers with the app's drag
+   * session and converts the pointer to world units through its own camera, which is the one thing
+   * a `we-drop-zone` wrapped around the graph could not do. Fired once per item carried. Writes
+   * nothing — what a drop means is the template's decision, and on a canvas it is usually
+   * `recordStore.dropOnCanvas`, which places the record where it landed.
+   *
+   * `dataset` is the record's home as the drag spelt it, absent for one picked up in the dataset on
+   * screen. A receiver that can only draw its own dataset's records should test it.
+   */
+  onDrop?: (payload: {
+    entity: string;
+    id: string;
+    dataset?: string;
+    label: string;
+    x: number;
+    y: number;
+    /** The post a dropped block sits in — see `DragItem.within`. */
+    within?: { entity: string; id: string };
+    /** What the source drew it with, for a receiver that cannot read the source. */
+    preview?: { thumbnail?: string; author?: string; source?: string };
+  }) => void;
 
   /**
    * Small controls that appear above a node while it is selected — a tick, a cross, a bin.
@@ -310,7 +380,141 @@ export interface GraphViewProps {
    */
   nodeActions?: NodeAction[];
   /** One of {@link nodeActions} was pressed on a node. */
-  onNodeAction?: (payload: { action: string; id: string; recordId?: string; recordType?: string }) => void;
+  onNodeAction?: (payload: {
+    action: string;
+    id: string;
+    recordId?: string;
+    recordType?: string;
+    /** What a `control` produced. Absent for a button. */
+    value?: unknown;
+    /** The control is still moving — show the value, do not write it yet. */
+    preview?: boolean;
+    /**
+     * Where the node is, in world units — so an action can pin a card where it is drawn. A parked
+     * card has no stored position, and accepting one should not send it somewhere else on reload.
+     */
+    x: number;
+    y: number;
+  }) => void;
+  /**
+   * A record the interface wants shown: selected, and brought into view if it is off screen.
+   *
+   * The other direction from `onNodeClick` / `onEdgeClick`. Those tell the interface what somebody
+   * picked on the graph; this lets something *beside* the graph pick — an inspector listing a card's
+   * connections, a link somebody sent with a record in it — and have the graph answer as though the
+   * click had happened here. Without it the two disagree the moment anything but the graph chooses:
+   * the panel opens a card and the canvas goes on showing nothing selected, somewhere else entirely.
+   *
+   * A **record id**, not a graph address, for the reason every event here resolves addresses into
+   * records: a template has no operator that could build `we-graph://entity/<dataset>/<type>/<id>`,
+   * and it already holds the id. It matches a node standing for that record, or — failing one — a
+   * line whose `reifiedAs` is that record, so a connection can be focused as readily as a card.
+   *
+   * Four properties make it safe to bind straight to the same value a click writes:
+   *
+   * - **Idempotent.** Already selected is left alone, and the camera only moves for something outside
+   *   the visible part of the canvas. Binding it to the selection a click just made therefore does
+   *   nothing at all — no jump every time somebody clicks a card they can already see.
+   * - **Once per value.** Applied when it changes, not on every redraw: a live graph re-reads as the
+   *   data changes, and re-applying then would yank the camera back to a card somebody has since
+   *   panned away from.
+   * - **Patient.** A record not in the graph yet — a line written a moment ago, a canvas still
+   *   loading — is looked for again as the graph fills in, and applied when it arrives.
+   * - **Silent.** Selecting this way emits no `selectionChange`. The interface asked; being told back
+   *   is an echo, and a harmful one: choosing a line clears the node selection, which reports an
+   *   empty list, which an interface reasonably reads as "nothing selected — close the panel".
+   *
+   * Empty does nothing, rather than clearing the selection. Clearing is a background click's job, and
+   * a focus that emptied the graph whenever its source was momentarily blank would fight it.
+   *
+   * A record the graph does not hold *does* clear it, once. Whatever is selected is then not what the
+   * interface is showing — an inspector opening a connection's far end, which lives on another
+   * canvas — and a ring left on the card somebody came from would say something false. If the record
+   * arrives later it is selected then.
+   *
+   * "Visible" means the part of the canvas nobody is covering — `host.obscured` is subtracted — so a
+   * card sitting under a floating panel counts as off screen and is brought out from under it.
+   */
+  focus?: string;
+  /**
+   * Records whose cards are **folded**: everything hanging off each of them is hidden, and the card
+   * says how much.
+   *
+   * The reading counterpart of `expansion`, and a different question from it. Expansion is about
+   * resolution — how much of the graph is fetched at all — where a fold hides part of what is
+   * already here, so folding costs no query, moves nothing that stays, and unfolding puts every card
+   * back exactly where it was. On a canvas, where position is the work, that distinction is the
+   * whole feature: a fold has to be able to tidy the board without rearranging it.
+   *
+   * **Record ids, like `focus`**, and for the same reason: a template has no operator that could
+   * build `we-graph://entity/<dataset>/<type>/<id>`, and it already holds the id. An id the graph
+   * does not hold is ignored rather than refused, so a fold outliving a deleted card leaves the rest
+   * of the fold alone.
+   *
+   * Which cards go away is worked out from the connections, pointing outward — see `foldGraph` in
+   * `@we/graph-core`. Two consequences worth knowing, because both are deliberate:
+   *
+   * - **A card a second, unfolded card still points at stays.** Folding must not take something
+   *   somebody else is holding, or the canvas shows a line running to nothing.
+   * - **A connection that crossed the boundary comes back as one aggregate line** from the folded
+   *   card, labelled with how many it stands for. A fold that quietly dropped it would be a canvas
+   *   showing an isolated card where there were six related ones. Those lines carry no record, so
+   *   `onEdgeClick` finds nothing behind them — they are a summary, not a claim.
+   *
+   * Hold this in something shareable. It is view state — what a reader is looking at rather than
+   * anything about the space — so WE's canvas keeps it in the address, which makes a folded canvas
+   * a thing you can send somebody and something a reload comes back to.
+   */
+  folded?: string[];
+  /**
+   * The fold control on a card was pressed — `folded` says which way.
+   *
+   * Binding it is what puts the control on a card at all, the same bargain `onNodeResize` and
+   * `onEdgeCreate` make: a graph nobody is listening to offers no affordance that would do nothing.
+   * The graph writes nothing itself — where the fold set is kept is the interface's business — so a
+   * handler that does not put the id into `folded` is a button that visibly does nothing.
+   *
+   * Offered only where it would take something away, which the graph works out and the interface
+   * cannot: a card whose only child a second parent is holding folds to nothing, and a control that
+   * promised otherwise would be worse than none. `count` is how many cards the press is about to
+   * hide, or — unfolding — how many it is about to bring back.
+   */
+  onNodeFold?: (payload: {
+    id: string;
+    recordId?: string;
+    recordType?: string;
+    /** The state being asked for, not the state it was in. */
+    folded: boolean;
+    count: number;
+  }) => void;
+  /**
+   * The delete key, pressed while the graph holds focus and something is selected.
+   *
+   * Emits and writes nothing, like every other gesture here: what removing a thing *means* is the
+   * interface's, and it differs — a canvas deletes the record, an outline unparents it, a map with
+   * no write path should bind nothing at all and leave the key inert. Binding it is also what makes
+   * the graph focusable in the first place, so a graph nobody wired this on does not start swallowing
+   * keystrokes from whatever is around it.
+   *
+   * Fires only when something is selected — a press with an empty selection means nothing and has
+   * nothing to report. `recordId`/`recordType` are filled **only when the selection is exactly one
+   * record**: one selected node, or the selected edge, which are alternatives rather than layers (see
+   * the engine's `selectEdge`). `count` says how many, so an interface can tell one from several
+   * rather than guessing from an absence. Several is left unhandled deliberately — the host's delete
+   * confirmation is modal and per record, so firing it N times would stack N dialogs, and a batch
+   * confirmation is a thing to design rather than to fall into.
+   *
+   * Backspace counts as delete. On a Mac it is *the* delete key, and a canvas that answered only to
+   * the one the manual calls Delete would be inoperable on half the keyboards it runs on.
+   */
+  onDeleteSelection?: (payload: {
+    recordId?: string;
+    recordType?: string;
+    /** Which of the two selections this was, for an interface that treats them differently. */
+    kind?: 'node' | 'edge';
+    /** How many things are selected. `1` is the case the ids above are filled for. */
+    count: number;
+  }) => void;
   /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
@@ -320,10 +524,22 @@ export interface GraphViewProps {
 
 /** One control offered above a selected node — see {@link GraphViewProps.nodeActions}. */
 export interface NodeAction {
-  /** Reported back as `action` when it is pressed. */
+  /** Reported back as `action` when it is pressed, or when a control changes. */
   id: string;
-  /** Phosphor icon name. */
-  icon: string;
+  /** Phosphor icon name. Required for a button; ignored for a `control`. */
+  icon?: string;
+  /**
+   * A host-supplied control in the header instead of a button — see
+   * {@link GraphHostBindings.nodeControls}. Named rather than passed, like `content`, so a template
+   * stays JSON: `{ id: 'color', control: 'color', value: { from: 'data.canvasColor' } }`.
+   *
+   * What changes is reported through `onNodeAction` with the action's id and a `value`, and with
+   * `preview: true` while a control is still moving — a slider reports as it goes, and the graph
+   * itself writes nothing either way.
+   */
+  control?: string;
+  /** The field on the node the control shows and edits — `{ from: 'data.canvasColor' }`. */
+  value?: { from: string };
   /** The tooltip, and the accessible name — an icon with neither is a button nobody can identify. */
   title?: string;
   /** Offered only on nodes this matches. Omit for every node. */
@@ -350,6 +566,25 @@ export interface NodeAction {
  */
 export type NodeContent = (props: { node: GraphNode }) => JSX.Element;
 
+/**
+ * A control the host lends a node's action header — see {@link NodeAction.control}.
+ *
+ * Handed the node, the value the action's `value` names on it (undefined where the node carries
+ * none), and the fill the node is currently drawn in as CSS, so a colour control can show what the
+ * card looks like rather than a blank where nothing has been chosen. It answers through the two
+ * callbacks and draws nothing outside its box: the header positions it.
+ */
+export type NodeControl = (props: {
+  node: GraphNode;
+  value: unknown;
+  fill: string;
+  title?: string;
+  /** The control is moving — show this, write nothing. */
+  onPreview: (value: unknown) => void;
+  /** The control settled on this. */
+  onChange: (value: unknown) => void;
+}) => JSX.Element;
+
 /** What the host lends the graph so its expanders can read data without knowing the backend. */
 export interface GraphHostBindings {
   /**
@@ -360,6 +595,12 @@ export interface GraphHostBindings {
    * such component simply has a card that falls back to its label.
    */
   nodeContent?: Record<string, NodeContent>;
+  /**
+   * Controls a node action may name with `control`, keyed by name — a colour picker, a shape menu,
+   * a scale slider. Lent by the host for the reason `nodeContent` is: the primitives are the
+   * host's, and a graph package that named one would stop being portable.
+   */
+  nodeControls?: Record<string, NodeControl>;
   /**
    * Fields to lay over a node's own data, keyed by the record id the node stands for.
    *
@@ -427,6 +668,9 @@ export interface GraphHostBindings {
     name: string;
     properties: { name: string; type: 'string' | 'number' | 'boolean' | 'uri'; required?: boolean }[];
     relations: { name: string; target: string; cardinality: 'one' | 'many' }[];
+    /** The property that names an instance — the host's own answer. See `EntityShape`. */
+    nameProperty?: string;
+    /** The dedup key, which is **not** the name. See `EntityShape.identityProperty`. */
     identityProperty?: string;
     description?: string;
   }[];

@@ -104,4 +104,16 @@ describe('toastService', () => {
     vi.advanceTimersByTime(60_000);
     expect(toastService.toasts()).toHaveLength(1);
   });
+
+  it('keeps an action on the toast, and does not collapse two toasts that each carry one', () => {
+    const undone: string[] = [];
+    toastService.success('Added to the space', 5000, { label: 'Undo', run: () => undone.push('a') });
+    toastService.success('Added to the space', 5000, { label: 'Undo', run: () => undone.push('b') });
+
+    const [first, second] = toastService.toasts();
+    expect(toastService.toasts()).toHaveLength(2);
+    first.action!.run();
+    second.action!.run();
+    expect(undone).toEqual(['a', 'b']);
+  });
 });

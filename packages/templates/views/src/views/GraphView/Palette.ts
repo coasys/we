@@ -47,43 +47,49 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: SchemaPr
         props: { items: SWATCHES, as: 'swatch' },
         children: [
           {
-            // `bare` rather than `ghost`: the swatch supplies its own affordance, and ghost's hover
-            // background would paint a rectangle around each colour. Still a real button, so the
-            // palette is reachable from the keyboard.
-            type: 'we-button',
-            props: {
-              variant: 'bare',
-              title: { $: "swatch.token ? swatch.token : 'Default'" },
-              onClick: options.pick({ $: 'swatch.token' }),
-            },
+            type: 'we-tooltip',
+            props: { content: { $: "swatch.token ? swatch.token : 'Default'" } },
             children: [
               {
-                type: 'Column',
+                // `bare` rather than `ghost`: the swatch supplies its own affordance, and ghost's hover
+                // background would paint a rectangle around each colour. Still a real button, so the
+                // palette is reachable from the keyboard.
+                type: 'we-button',
                 props: {
-                  width: '22px',
-                  height: '22px',
-                  r: '200',
-                  ax: 'center',
-                  ay: 'center',
-                  bg: { $: "swatch.token ? swatch.token : 'surface-sunken'" },
-                  /*
+                  label: { $: "swatch.token ? swatch.token : 'Default'" },
+                  variant: 'bare',
+                  onClick: options.pick({ $: 'swatch.token' }),
+                },
+                children: [
+                  {
+                    type: 'Column',
+                    props: {
+                      width: '22px',
+                      height: '22px',
+                      r: '200',
+                      ax: 'center',
+                      ay: 'center',
+                      bg: { $: "swatch.token ? swatch.token : 'surface-sunken'" },
+                      /*
                     The swatch's FILL is a palette — it is whatever colour the row stands for, read
                     from data. Its border is not: "this is the one you picked" is a meaning, and the
                     same meaning every selected thing in the app carries, so it takes the roles
                     rather than a step. The file's palette exemption covers the fill and never
                     covered this.
                   */
-                  border: expr`${options.current} == swatch.token ? '2px solid accent' : '1px solid border'`,
-                },
-                children: [
-                  // The default swatch has no colour to show, so it says so with a mark — otherwise
-                  // it reads as white, which is a colour somebody might have meant to choose.
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: '!swatch.token' },
-                      then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'text-faint' } },
+                      border: expr`${options.current} == swatch.token ? '2px solid accent' : '1px solid border'`,
                     },
+                    children: [
+                      // The default swatch has no colour to show, so it says so with a mark — otherwise
+                      // it reads as white, which is a colour somebody might have meant to choose.
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $: '!swatch.token' },
+                          then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'text-faint' } },
+                        },
+                      },
+                    ],
                   },
                 ],
               },

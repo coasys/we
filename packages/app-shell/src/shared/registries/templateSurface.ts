@@ -37,6 +37,7 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
+import { memberKind } from '@we/module-shared';
 import { isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
 /**
@@ -173,6 +174,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     bootState: state('session'),
     bootError: state('session'),
     passwordError: state('session'),
+    loginError: state('session'),
     loginLoading: state('session'),
     createAgentError: state('session'),
     createAgentLoading: state('session'),
@@ -235,22 +237,29 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     canAdminister: state('runtime-admin'),
     canManageTrust: state('runtime-admin'),
     canManageNetwork: state('runtime-admin'),
+    canRestartNetwork: state('runtime-admin'),
     canManageApps: state('runtime-admin'),
     canManageLanguages: state('runtime-admin'),
     canManageAi: state('runtime-admin'),
     canConfigureAi: state('runtime-admin'),
     canConfigureExecutor: state('runtime-admin'),
+    unsupportedCapabilities: state('runtime-admin'),
     aiModels: state('runtime-admin'),
     aiTasks: state('runtime-admin'),
     aiForm: state('runtime-admin'),
     aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
     aiFormDirty: state('runtime-admin'),
+    aiServiceOptions: state('runtime-admin'),
+    canDiscoverAiModels: state('runtime-admin'),
+    aiDiscoveredModelOptions: state('runtime-admin'),
     languages: state('runtime-admin'),
     trustedAgents: state('runtime-admin'),
     authorizedApps: state('runtime-admin'),
     networkMetrics: state('runtime-admin'),
     peerInfos: state('runtime-admin'),
+    peerInfosReadable: state('runtime-admin'),
+    pending: state('runtime-admin'),
     loading: state('runtime-admin'),
     error: state('runtime-admin'),
     canBackUp: state('runtime-admin'),
@@ -266,6 +275,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     newAiModel: action('runtime-admin'),
     editAiModel: action('runtime-admin'),
     setAiFormField: action('runtime-admin'),
+    setAiService: action('runtime-admin'),
+    discoverAiModels: action('runtime-admin'),
     closeAiForm: action('runtime-admin'),
     saveAiModel: action('runtime-admin'),
     removeAiModel: destructive('runtime-admin'),
@@ -281,8 +292,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     revokeApp: destructive('runtime-admin'),
     removeApp: destructive('runtime-admin'),
     loadNetworkMetrics: action('runtime-admin'),
+    copyNetworkMetrics: action('runtime-admin'),
     restartNetwork: destructive('runtime-admin'),
     loadPeerInfos: action('runtime-admin'),
+    copyPeerInfos: action('runtime-admin'),
     addPeerInfos: action('runtime-admin'),
     setMcpEnabled: action('runtime-admin'),
     setLogLevel: action('runtime-admin'),
@@ -337,6 +350,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       hold a handle to your private perspective.
     */
     rootDataset: state('agent'),
+    /*
+      The agent's personal space — notes, the Pocket. The same tier as the root and for a stronger
+      reason: the root holds settings, this holds what a person wrote. A space's template with this
+      handle could read every note through `$query`'s `dataset` option, so only chrome and module
+      panels, which render at the chrome tier, have it.
+    */
+    personalDataset: state('agent'),
     testDataset: WIRING,
     /*
       The global discovery space and the marketplace — shared neighbourhoods holding nothing of this
@@ -361,6 +381,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     provideAutoInterpretGate: WIRING,
     provideExtractionCandidates: WIRING,
     provideCallExtraction: WIRING,
+    /*
+      Written by InterpretationStore when a watched (automatic) pass settles, so an automatic pass
+      leaves the same durable record a one-shot one does. Store-to-store wiring: the caller is the
+      only thing that knows a pass has settled, and a template writing extraction history would be
+      forging somebody else's run.
+    */
+    recordWatchPass: WIRING,
     onDatasetRemoved: WIRING,
     initSystemDatasets: WIRING,
     loadDatasets: WIRING,
@@ -406,11 +433,22 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     taskStates: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
+    /*
+      Who is on what. Reading the kinds is `content` for the reason reading states is. Giving your own
+      answer and assigning somebody are content too — any member may do either, as any member may drag
+      a card — and the store is what refuses one member answering for another, not this table.
+    */
+    involvementTypes: state('content'),
+    offeredInvolvementTypes: state('content'),
+    involvementTypesLoaded: state('content'),
+    setInvolvement: action('content'),
+    respondTo: action('content'),
     mutedDids: state('content'),
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
     getSubgroupMessages: action('content'),
     exportCallTranscript: action('content'),
+    exportExtractionLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
     // administration: any member may make one and drag cards on it.
     createBoard: action('content'),
@@ -449,8 +487,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       new one is the act that commits the community to a word, so it sits with the other two.
     */
     createTaskState: action('signals'),
+    // Changing one is the same act as naming one — and it is how a state gets a colour at all, which
+    // is why the workshop's key can reach it from a canvas rather than only from Settings.
+    updateTaskState: action('signals'),
     setTaskStateRetired: action('signals'),
     reorderTaskStates: action('signals'),
+    // The fourth vocabulary of the family, and the same act as naming a state.
+    createInvolvementType: action('signals'),
+    updateInvolvementType: action('signals'),
+    setInvolvementTypeRetired: action('signals'),
 
     // ── navigation ──
     spaceList: state('navigation'),
@@ -501,6 +546,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     spaceDefaultThemeId: state('space-settings'),
     creatingSpace: state('space-admin'),
     foreignSpacePrefill: state('space-settings'),
+    linkLanguageTemplateOptions: state('space-admin'),
+    defaultLinkLanguageTemplate: state('space-admin'),
     enabledModules: state('space-admin'),
     /*
       Reading it is `space-settings`, writing it is still admin-gated below.
@@ -536,8 +583,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     agentModuleSettings: state('space-settings'),
     extractionTargets: state('space-settings'),
     setExtractionTarget: action('space-settings'),
-    shareExtractionDetail: state('space-settings'),
-    setShareExtractionDetail: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     /*
@@ -628,12 +673,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     extractionNeedsIdentity: state('space-settings'),
     relationshipTargets: state('space-settings'),
     identityOptions: state('space-settings'),
+    nameOptions: state('space-settings'),
     hintEditor: state('space-settings'),
     hintBusy: state('space-settings'),
     openShapeWizard: action('space-settings'),
     cancelShapeWizard: action('space-settings'),
     setShapeField: action('space-settings'),
     setIdentityMember: action('space-settings'),
+    setNameMember: action('space-settings'),
     setExtractable: action('space-settings'),
     addProperty: action('space-settings'),
     addRelationship: action('space-settings'),
@@ -673,6 +720,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
     displays: state('content'),
+    // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
+    // a property declaration. Wiring between two stores, never something a template names.
+    provideVocabularies: WIRING,
     recordDraft: state('content'),
     recordDraftDirty: state('content'),
     recordErrors: state('content'),
@@ -681,9 +731,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     pendingLink: state('content'),
     openRecordForm: action('content'),
     connectNodes: action('content'),
+    connectNodesNow: action('content'),
     createOnCanvas: action('content'),
     createCardOnCanvas: action('content'),
     placeOnCanvas: action('content'),
+    dragOnCanvas: action('content'),
     removeFromCanvas: action('content'),
     resizeOnCanvas: action('content'),
     anchorOnCanvas: action('content'),
@@ -699,8 +751,26 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     previewCardStyle: action('content'),
     setCardStyle: action('content'),
     setTypeColor: action('content'),
+    setSpaceTypeColor: action('content'),
+    dropOnCanvas: action('content'),
+    // Writes posts into the space on screen and nowhere else; what it reads from elsewhere is only
+    // what this agent already holds. A space's template offering a drop target is the product.
+    bringIn: action('content'),
+    updateRecordField: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
+    setRecordPlace: action('content'),
+    relationDraft: state('content'),
+    relationErrors: state('content'),
+    openRelationForm: action('content'),
+    setRelationField: action('content'),
+    saveRelationForm: action('content'),
+    cancelRelationForm: action('content'),
+    pickRelation: action('content'),
+    removeRelationEntry: action('content'),
+    setRelationLocation: action('content'),
+    setRelationEntryField: action('content'),
+    addRelationImage: action('content'),
     relationshipKind: state('content'),
     setRelationshipKind: action('content'),
     cancelRecordForm: action('content'),
@@ -852,6 +922,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loadSpaceTemplates: WIRING,
     refreshSpaceTemplates: action('appearance'),
     clearSpaceTemplates: WIRING,
+    // The host's own sequencing — whether a route guard may act yet — not something a template reads.
+    spaceTemplatePending: WIRING,
     getTemplateRecord: WIRING,
   },
 
@@ -995,6 +1067,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     fitDock: action('host-layout'),
     toggleDockDisplace: action('host-layout'),
     toggleCollapseDock: action('host-layout'),
+    // A lane put away to a strip at its edge, and bringing a panel into sight from wherever it is
+    // hidden — the first is what the titlebar and the strip press, the second what the module rail
+    // does on a panel that is open but out of view.
+    toggleStowLane: action('host-layout'),
+    revealDock: action('host-layout'),
+    // The host's half of a module panel's openness. Chrome — the rail, a titlebar — is what asks.
+    openModulePanel: action('host-layout'),
+    closeModulePanel: action('host-layout'),
+    toggleModulePanel: action('host-layout'),
+    // Every panel put away at once, which the rail's toggle reads and presses.
+    panelsHidden: state('host-layout'),
+    hasPanels: state('host-layout'),
+    togglePanelsHidden: action('host-layout'),
     breakOut: action('host-layout'),
     returnHome: action('host-layout'),
     stackDock: action('host-layout'),
@@ -1041,9 +1126,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     that group already means, and it rides the same ephemeral transport presence does. None of it
     survives a refresh and none of it is queryable, so classifying it with the durable content a
     template reads would be claiming a permanence it does not have.
-
-    What crosses the wire is governed by `spaceStore.shareExtractionDetail`, which is a
-    space-settings concern and classified there — this store only reports.
   */
   interpretationStore: {
     // Not `presence` like the rest: this is a fact about the node, not about who is doing what on
@@ -1056,7 +1138,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     runningPasses: state('presence'),
     settledPasses: state('presence'),
     settledCount: state('presence'),
-    detailWithheld: state('presence'),
     dismissSettled: action('view-state'),
   },
 
@@ -1075,7 +1156,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     isOpen: state('editor'),
     isStreaming: state('editor'),
     streamingContent: state('editor'),
-    apiKeyConfigured: state('editor'),
+    assistantAvailable: state('editor'),
+    assistantStatus: state('editor'),
+    refreshAssistant: action('editor'),
     templateName: state('editor'),
     templateIcon: state('editor'),
     isReadOnly: state('editor'),
@@ -1138,9 +1221,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     sendMessage: action('editor'),
     clearHistory: destructive('editor'),
 
-    // The Claude API key. Written through a settings form in chrome, read by this store to make a
-    // request — never a value any template needs to see.
-    setApiKey: WIRING,
     onSchemaEdit: WIRING,
     pushSnapshot: WIRING,
     // The editor's own save path. A template rendering itself has no edit to commit.
@@ -1165,7 +1245,6 @@ const ALWAYS_PRESENT = new Set([
   'consoleStore',
   '$onError',
   '$routeParams',
-  '$useQueryIR',
   '$me',
   '$currentDataset',
   '$getEntity',
@@ -1189,35 +1268,36 @@ const ALWAYS_PRESENT = new Set([
 ]);
 
 /**
- * Module stores, with every function tagged so an expression can still read module state.
+ * Module stores, tagged by what each member was marked as.
  *
- * **This is deliberately permissive, and the one place the boundary is not yet drawn.** A module's
- * store is a flat record whose members are a mix of raw signals, derived closures and actions, and
- * nothing distinguishes them — so tagging selectively is not possible without the module saying
- * which is which. Tagging all of them keeps `{ $: 'modules.transcribe.level' }` working and
- * leaves `modules.call.leave` callable during paint, exactly as before.
+ * A module says which of its members are public and which kind each is — `deps.state` and
+ * `deps.action` in its `createStore`; see `store.ts` in `@we/module-shared`. Below the chrome tier
+ * only marked members are present at all: **private by default**, which is the default a second
+ * author needs, and the inverse of the opt-out list it replaces. A marked state member is tagged
+ * reactive so `{ $: 'modules.transcribe.level' }` reads it; a marked action is left untagged so
+ * `{ $: 'modules.call.leave' }` reads a function rather than *calling* it during paint, and `$action`
+ * still calls it.
  *
- * The reason that is acceptable *today* is that modules are bundled: they are chosen by the
- * deployment's seed and ship with the app, at the same trust level as the app itself. It stops being
- * acceptable the moment modules are installable, which the module docs already anticipate — and the
- * fix has a clear shape: `ModuleStoreDeps` grows a `state()` marker, modules wrap their accessors in
- * it, and this function tags only what was marked. Left as a follow-up rather than done here because
- * it is a contract change across five modules, and doing it badly would be worse than doing it late.
+ * The chrome tier — the module's own panels, and the host's — sees every member. An unmarked
+ * function there is tagged reactive, which is the behaviour every module's own chrome was written
+ * against; a marked one is tagged by its kind, so a module that marks its actions stops having them
+ * called by a stray read in its own panel too.
  */
 function taggedModuleStores(
   modules: Record<string, Record<string, unknown>>,
-  chromeOnly?: Record<string, readonly string[]>,
+  publicOnly: boolean,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [id, store] of Object.entries(modules ?? {})) {
     if (!store || typeof store !== 'object') continue;
-    // Members this module keeps for host chrome — absent below, not blocked. See `ModuleStoreSurface`.
-    const withheld = new Set(chromeOnly?.[id] ?? []);
-    out[id] = Object.fromEntries(
-      Object.entries(store)
-        .filter(([name]) => !withheld.has(name))
-        .map(([name, member]) => [name, typeof member === 'function' ? markReactive(member) : member]),
-    );
+    const tagged: Record<string, unknown> = {};
+    for (const [name, member] of Object.entries(store)) {
+      const kind = memberKind(member);
+      if (publicOnly && !kind) continue;
+      if (kind === 'action') tagged[name] = member;
+      else tagged[name] = typeof member === 'function' ? markReactive(member) : member;
+    }
+    out[id] = tagged;
   }
   return out;
 }
@@ -1240,15 +1320,6 @@ export interface BuildBagOptions {
    * resolves — so `onSuccess` does not fire on a cancel.
    */
   onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
-  /**
-   * Store members each module withholds from a space template, keyed by module id.
-   *
-   * Passed by the host from the module registry, rather than read here, for the reason this whole
-   * file exists to serve: what a module publishes is the module's declaration, and the boundary
-   * should not have to know the names. Only meaningful below the chrome tier — chrome *is* the
-   * audience these members are kept for. See `ModuleStoreSurface`.
-   */
-  moduleChromeOnly?: Record<string, readonly string[]>;
 }
 
 /**
@@ -1277,11 +1348,9 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     if (key === 'modules') {
       Object.defineProperty(bag, key, {
         enumerable: true,
+        // Chrome sees every member; anything below it sees what the module marked public.
         get: () =>
-          taggedModuleStores(
-            stores[key] as Record<string, Record<string, unknown>>,
-            granted.has('host-layout') ? undefined : options.moduleChromeOnly,
-          ),
+          taggedModuleStores(stores[key] as Record<string, Record<string, unknown>>, !granted.has('host-layout')),
       });
       continue;
     }

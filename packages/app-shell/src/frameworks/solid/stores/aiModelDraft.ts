@@ -12,7 +12,14 @@
  * equivalent is an eleven-branch `useEffect` at the top of the modal and a matching cascade of
  * `if (newModel.includes(...))` at the bottom, and they do not quite agree.
  */
-import type { AiModel, AiModelDraft, AiModelKind, AiModelSource, AiModelStatus } from '@we/backend-shared';
+import type {
+  AiApiProtocol,
+  AiModel,
+  AiModelDraft,
+  AiModelKind,
+  AiModelSource,
+  AiModelStatus,
+} from '@we/backend-shared';
 
 export type AiSourceKind = AiModelSource['kind'];
 
@@ -23,6 +30,12 @@ export interface AiModelForm {
   kind: AiModelKind;
   sourceKind: AiSourceKind;
   presetName: string;
+  /**
+   * Which service the endpoint is — a preset's id, or `custom`. Held rather than derived from the
+   * URL, so choosing "Custom endpoint" shows its fields even while they still hold a preset's values.
+   */
+  apiService: string;
+  apiProtocol: AiApiProtocol;
   apiBaseUrl: string;
   apiKey: string;
   apiModel: string;
@@ -42,6 +55,8 @@ export const EMPTY_FORM: AiModelForm = {
   sourceKind: 'preset',
   presetName: '',
   // The default the launcher offers, and the one endpoint most users will paste a key for.
+  apiService: 'openai',
+  apiProtocol: 'openai',
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   apiModel: '',
@@ -62,7 +77,9 @@ export function draftFrom(model: AiModel): AiModelForm {
   form.sourceKind = source.kind;
 
   if (source.kind === 'api') {
+    form.apiProtocol = source.protocol;
     form.apiBaseUrl = source.baseUrl;
+    form.apiService = matchingApiPreset(form) || CUSTOM_SERVICE;
     form.apiKey = source.apiKey;
     form.apiModel = source.model;
     return form;
@@ -100,7 +117,13 @@ function toSource(form: AiModelForm): AiModelSource {
 
   switch (form.sourceKind) {
     case 'api':
-      return { kind: 'api', baseUrl: form.apiBaseUrl, apiKey: form.apiKey, model: form.apiModel };
+      return {
+        kind: 'api',
+        protocol: form.apiProtocol,
+        baseUrl: form.apiBaseUrl,
+        apiKey: form.apiKey,
+        model: form.apiModel,
+      };
     case 'huggingface':
       return {
         kind: 'huggingface',
@@ -135,6 +158,39 @@ export function formComplete(form: AiModelForm): boolean {
     default:
       return !!form.presetName.trim();
   }
+}
+
+/**
+ * Endpoints worth not typing, for the remote-API form.
+ *
+ * Choosing one sets the protocol and base URL, and the form asks for neither. Protocol and URL are
+ * genuinely two facts — OpenRouter serves Claude over the OpenAI protocol, and a LiteLLM or company
+ * gateway speaks Anthropic's from its own address — but only an endpoint no preset describes needs
+ * both said, which is what `custom` is for. Kept to services whose URL is stable and public.
+ */
+export const AI_API_PRESETS: { id: string; label: string; protocol: AiApiProtocol; baseUrl: string }[] = [
+  { id: 'anthropic', label: 'Anthropic', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com' },
+  { id: 'openai', label: 'OpenAI', protocol: 'openai', baseUrl: 'https://api.openai.com/v1' },
+  { id: 'openrouter', label: 'OpenRouter', protocol: 'openai', baseUrl: 'https://openrouter.ai/api/v1' },
+  {
+    id: 'gemini',
+    label: 'Google Gemini',
+    protocol: 'openai',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  },
+  { id: 'groq', label: 'Groq', protocol: 'openai', baseUrl: 'https://api.groq.com/openai/v1' },
+  // Through its OpenAI-compatible surface, which caps the context window it will use; a native
+  // Ollama protocol on the node lifts that.
+  { id: 'ollama', label: 'Ollama on the node’s machine', protocol: 'openai', baseUrl: 'http://localhost:11434/v1' },
+];
+
+/** The service choice for an endpoint no preset describes, where protocol and URL are asked for. */
+export const CUSTOM_SERVICE = 'custom';
+
+/** The preset an endpoint matches, or empty for one somebody typed. */
+export function matchingApiPreset(form: Pick<AiModelForm, 'apiProtocol' | 'apiBaseUrl'>): string {
+  const url = form.apiBaseUrl.trim().replace(/\/+$/, '');
+  return AI_API_PRESETS.find((p) => p.protocol === form.apiProtocol && p.baseUrl === url)?.id ?? '';
 }
 
 const KIND_LABELS: Record<AiModelKind, string> = {
@@ -176,10 +232,15 @@ export function describeModel(model: AiModel, status?: AiModelStatus): AiModelVi
   return {
     ...model,
     kindLabel: KIND_LABELS[model.kind],
-    sourceLabel: SOURCE_LABELS[source.kind],
+    sourceLabel:
+      source.kind === 'api' && source.protocol === 'anthropic' ? 'Anthropic API' : SOURCE_LABELS[source.kind],
     detail,
     statusText: source.kind === 'api' ? '' : statusLine(status),
-    ready: source.kind === 'api' || !!status?.loaded,
+    // A transcription model is ready once downloaded. AD4M only ever marks a language model
+    // `loaded` — a Whisper model finishes as downloaded and never loaded — so reading `loaded` alone
+    // left every transcription model unready forever, and the settings page polled its status for as
+    // long as it stayed open.
+    ready: source.kind === 'api' || !!status?.loaded || (model.kind === 'transcription' && !!status?.downloaded),
   };
 }
 

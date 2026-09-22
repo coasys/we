@@ -16,8 +16,18 @@
  */
 import type { Cardinality, EntityManifest, EntitySchema, PropertySchema } from '@we/backend-shared';
 
-/** UI-level scalar types — what the property row's type dropdown offers. */
-export type ShapeDraftPropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select';
+/**
+ * UI-level scalar types — what the property row's type dropdown offers.
+ *
+ * `link` and `paragraph` are text, stored as text: they differ from `text` only in the control that
+ * edits them and the way a card draws them (`control: 'url'` and `'textarea'` on the property). So
+ * switching between the three is not a change of meaning, and the edit guard allows it.
+ *
+ * What is deliberately absent is anything that is itself content — an image, a file, a location.
+ * Those are relationships to a block, which carries its own alt text or coordinates and can be
+ * reacted to and commented on in its own right.
+ */
+export type ShapeDraftPropertyType = 'text' | 'link' | 'paragraph' | 'number' | 'boolean' | 'date' | 'select';
 
 export interface ShapeDraftMember {
   /**
@@ -84,6 +94,23 @@ export interface ShapeDraft {
    * cannot. Keyed by `rowId` so renaming or reordering the chosen field keeps the choice.
    */
   identityMember: string;
+  /**
+   * `rowId` of the member that *names* an instance, or '' to let it be worked out.
+   *
+   * **Not the same question as {@link identityMember}**, and the wizard should not let them read as
+   * one: an identity is a dedup key a machine maintains and may be a composite nobody would
+   * recognise, where this is the one short string every surface needs to call a record something —
+   * a card heading, a graph caption, a drag chip, a breadcrumb.
+   *
+   * Optional because it is usually obvious: `namePropertyOf` reads a property called `name` or
+   * `title` first, and falls back to the model's shape. This is the override for a model whose
+   * subject is called something else — a `Sighting` named by `species`, a reading named by
+   * `passage` — where the guess would pick whichever string happens to be required or first.
+   *
+   * Kept by `rowId` for the reason identity is: renaming or reordering the chosen field keeps the
+   * choice.
+   */
+  nameMember: string;
   /**
    * An AI extraction pass may mint instances of this model from what people said.
    *
@@ -168,6 +195,7 @@ export const emptyShapeDraft = (): ShapeDraft => ({
   icon: '',
   classHint: '',
   identityMember: '',
+  nameMember: '',
   extractable: false,
   members: [],
 });
@@ -221,6 +249,8 @@ function badNameMessage(subject: string, raw: string, style: 'Pascal' | 'camel',
 
 const SCALAR_OF: Record<ShapeDraftPropertyType, PropertySchema['type']> = {
   text: 'string',
+  link: 'string',
+  paragraph: 'string',
   number: 'number',
   boolean: 'boolean',
   date: 'datetime',
@@ -372,6 +402,8 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     if (draft.identityMember === row.rowId) spec.identity = true;
     if (row.hint.trim()) spec.interpretationHint = row.hint.trim();
     if (row.type === 'select') spec.options = rowOptions;
+    if (row.type === 'link') spec.control = 'url';
+    if (row.type === 'paragraph') spec.control = 'textarea';
     if (hasDefault(row)) {
       const value = coerceDefault(row.type, row.defaultValue);
       if (value === null) {
@@ -394,13 +426,48 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     }
   }
 
+  /*
+    Which property names an instance, where its author said rather than left it to be guessed.
+
+    The same two failure modes identity has, refused the same way: a name pointing at a
+    relationship, or at a row since deleted, would vanish at lowering and leave a model that looks
+    named in the form and is not in the space.
+  */
+  let nameProperty = '';
+  if (draft.nameMember) {
+    const chosen = rows.find((r) => r.rowId === draft.nameMember);
+    if (!chosen) {
+      fail('The field chosen to name a record no longer exists — pick another, or let it be worked out.');
+    } else if (chosen.kind !== 'property') {
+      fail(`"${chosen.name}" is a relationship, so it cannot be the field that names a record.`, chosen.rowId);
+    } else {
+      nameProperty = chosen.name.trim();
+    }
+  }
+
   if (errors.length) return { ok: false, errors, rows: [...errorRows] };
 
   const entity: EntitySchema = {
+    /*
+      Every model a community defines is a node, as every built-in content type is.
+
+      Without it a `Sighting` had no `comments`, `signals`, `participants` or `mentions`: it could
+      not be reacted to, replied to or RSVP'd, so the argument that every level of WE is a complete
+      social object stopped at the one level a community authors itself. Not a wizard choice — a
+      model that opted out would be the only kind of record a template cannot put a like button on,
+      and nobody defining one is deciding that. Written on every save, so a model defined before this
+      becomes a node the next time it is edited; the relations are the parent's, under the parent's
+      own predicates, so nothing already stored changes meaning.
+    */
+    extends: 'WeNode',
     properties,
     relations,
     flag: { predicate: 'we://flag', value: `${prefix}${snakeCase(name)}` },
     ...(draft.classHint.trim() ? { interpretationHint: draft.classHint.trim() } : {}),
+    // `display.title` is the declared half of `namePropertyOf`, and the only key of `display` the
+    // wizard authors: what a card *lists* is a surface's business, and a shape says nothing about
+    // it. Written only when chosen, so the guess stays in charge by default.
+    ...(nameProperty ? { display: { title: nameProperty } } : {}),
     // Written only when true, so a manifest reads as the declarations somebody made rather than as
     // every field the IR has — the same rule `required` and `identity` follow above.
     ...(draft.extractable ? { extractable: true } : {}),
@@ -417,19 +484,25 @@ export function manifestToDraft(
   const entity = manifest.entities[entityName];
   const members: ShapeDraftMember[] = [];
   let identityMember = '';
+  let nameMember = '';
+  const declaredName = entity?.display?.title;
 
   for (const [name, spec] of Object.entries(entity?.properties ?? {})) {
     const row = draftMember({
       name,
       type: spec.options
         ? 'select'
-        : spec.type === 'number'
-          ? 'number'
-          : spec.type === 'boolean'
-            ? 'boolean'
-            : spec.type === 'datetime'
-              ? 'date'
-              : 'text',
+        : spec.control === 'url'
+          ? 'link'
+          : spec.control === 'textarea'
+            ? 'paragraph'
+            : spec.type === 'number'
+              ? 'number'
+              : spec.type === 'boolean'
+                ? 'boolean'
+                : spec.type === 'datetime'
+                  ? 'date'
+                  : 'text',
       required: spec.required ?? false,
       hint: spec.interpretationHint ?? '',
       options: (spec.options ?? []).map(String).join(', '),
@@ -437,6 +510,10 @@ export function manifestToDraft(
       predicate: spec.predicate,
     });
     if (spec.identity) identityMember = row.rowId;
+    // Read back so an edit does not silently drop it: the draft is lowered wholesale on save, so a
+    // declared name the wizard could not represent would survive being read and be lost on the
+    // next save — which is the trap `display` was in before this existed.
+    if (declaredName && declaredName === name) nameMember = row.rowId;
     members.push(row);
   }
 
@@ -458,6 +535,7 @@ export function manifestToDraft(
     icon: meta.icon ?? '',
     classHint: entity?.interpretationHint ?? '',
     identityMember,
+    nameMember,
     extractable: entity?.extractable ?? false,
     members: members.length ? members : [emptyDraftProperty()],
   };

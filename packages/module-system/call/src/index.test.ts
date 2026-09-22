@@ -10,10 +10,11 @@
  * silent. Structural rather than behavioural, because the failure is structural — every piece
  * rendered exactly as written, in the wrong dependency.
  */
+import { moduleCapabilities } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { callModule } from './index';
+import { callModule, createModule } from './index';
 
 /** Every node in a tree, so a test can ask about a subtree without knowing where it sits. */
 function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
@@ -30,7 +31,8 @@ function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
   return out;
 }
 
-const slotNodes = (): SchemaNode[] => (callModule.slots ?? []).map((slot) => slot.node);
+const slotNodes = (): SchemaNode[] => (callModule.contributes?.slots ?? []).map((slot) => slot.node);
+const part = (name: string) => callModule.contributes?.parts?.[name];
 
 describe('audio', () => {
   it('plays from the chrome, which is mounted for the whole call', () => {
@@ -61,7 +63,7 @@ describe('audio', () => {
 
   it('keeps every tile silent, so nobody is decoded twice', () => {
     // An unmuted tile beside the sink is the same voice from two decoders, slightly apart.
-    const videos = walk(callModule.schemas?.tile).filter((node) => node.type === 'we-video');
+    const videos = walk(part('tile')).filter((node) => node.type === 'we-video');
 
     expect(videos).not.toHaveLength(0);
     for (const video of videos) expect((video.props as Record<string, unknown>).muted).toBe(true);
@@ -124,10 +126,16 @@ describe('the bar keeps to the screen', () => {
       expect(props(child).pointerEvents).toBe('auto');
     }
   });
+
+  it('paints above every panel, a full-screen call included', () => {
+    // Panels count up from `sticky` by how recently they were touched, and maximising touches. On
+    // `sticky` the bar lost to the full-screen call it controls and the hang-up button went under it.
+    const strips = walk(slotNodes()).filter((node) => props(node).position === 'fixed');
+    for (const strip of strips) expect(props(strip).zIndex).toBe('chrome');
+  });
 });
 
 describe('the compact bar', () => {
-  const COMPACT = { $: "surface.tier == 'base'" };
   const ROOMY = { $: "surface.tier != 'base'" };
   const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
 
@@ -143,23 +151,60 @@ describe('the compact bar', () => {
         node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $action: action }),
     ) as SchemaNode;
 
+  /** The menu's lines are a prop rather than child nodes, so they are read rather than walked. */
+  const entries = (): { onToggle?: { $action: string }; onAction?: { $action: string }; hidden?: unknown }[] =>
+    props(inCall()).items as { onToggle?: { $action: string }; onAction?: { $action: string }; hidden?: unknown }[];
+
   it('folds screen share, show/hide and solo into one menu below the base tier', () => {
     const menu = inCall();
     expect(menu).toBeDefined();
-    const gates = tierGates(menu);
-    expect(gates.map((gate) => props(gate).condition)).toEqual([COMPACT]);
+
+    const toggles = entries().filter((entry) => entry.onToggle);
+    expect(toggles.map((entry) => entry.onToggle!.$action).sort()).toEqual([
+      'modules.call.toggleScreenShare',
+      'modules.call.toggleSolo',
+      'modules.call.toggleStage',
+    ]);
 
     /*
-      The menu's lines are a prop rather than child nodes, so they are read rather than walked —
-      and one of them is wrapped in a `$if`, since solo is only offered while something is focused.
-      Unwrapping the branch is what keeps this an assertion about *which three toggles fold*, which
-      is the thing worth pinning, rather than about how one of them is gated.
+      The fold is on the entries, not on the menu.
+
+      It used to be a `whenCompact` around the whole menu, which made the menu itself a thing that
+      only existed below `base` — see the next test for why that stopped being right. `hidden` says
+      the same thing one level down, so each of the three is still withdrawn from the menu at exactly
+      the width the row is showing it, and the invariant holds: the same three specs build both.
+
+      Tested as "the condition mentions the tier" rather than as its exact text, because solo's also
+      carries its own gate — it is offered only while something is focused — and that is a different
+      question from folding.
     */
-    const actions = (props(menu).items as unknown[])
-      .map((entry) => (entry as { $if?: { then: unknown } }).$if?.then ?? entry)
-      .map((item) => (item as { onToggle: { $action: string } }).onToggle.$action)
-      .sort();
-    expect(actions).toEqual(['modules.call.toggleScreenShare', 'modules.call.toggleSolo', 'modules.call.toggleStage']);
+    for (const entry of toggles) {
+      expect(JSON.stringify(entry.hidden), JSON.stringify(entry.onToggle)).toContain(ROOMY.$);
+    }
+  });
+
+  it('keeps the menu at every width, because it holds more than the fold now', () => {
+    /*
+      Starting a second call mid-call had nowhere to live. The join bar offers a `+` for it, and only
+      somebody *not* in a call ever sees that — so on a wide screen the control did not exist and a
+      breakout meant hanging up first.
+
+      A menu that existed only below `base` was the wrong home for it, so the menu stands at every
+      width and the fold moved onto the entries. Asserted on the tier gates *above* the menu, since
+      the failure being guarded against is somebody restoring the `whenCompact` wrapper and taking
+      the start away from every desktop with it.
+    */
+    expect(tierGates(inCall())).toEqual([]);
+
+    const start = entries().find((entry) => entry.onAction);
+    /*
+      `args` explicitly, and the empty string is the point: a handler with none forwards the click,
+      and `startCall` takes an optional anchor id — so it would be handed a PointerEvent and the
+      write refused. `''` is how the store spells "about the space rather than about a node in it".
+    */
+    expect(start?.onAction).toEqual({ $action: 'modules.call.startCall', args: [''] });
+    // Never folded: it is the one entry the row does not show somewhere else.
+    expect(start?.hidden).toBeUndefined();
   });
 
   it('takes the same three out of the row at that tier, so nothing is shown twice', () => {
@@ -189,5 +234,156 @@ describe('the compact bar', () => {
     ) as SchemaNode;
     expect(slot).toBeDefined();
     expect(tierGates(slot)).toEqual([]);
+  });
+});
+
+/**
+ * The way back into a call somebody is reading.
+ *
+ * Published as a part rather than drawn by a panel, and the reason is a category error that showed
+ * up as an asymmetry: it lived in the transcript panel's header, while two panels sit side by side
+ * about the same call and only one of them offered the way into it. Picking a call back up is about
+ * the call, so it belongs against the call's name, and it survives both panels being closed.
+ *
+ * These are the three rules that came with it from the panel. They are asserted here now because
+ * this is where the node is, and the panel's own suite asserts the button has not grown back there.
+ */
+describe('picking a call back up', () => {
+  const button = () => part('continueCallButton');
+  const json = () => JSON.stringify(button());
+
+  it('is published for an interface to place', () => {
+    // A template cannot be reached into: the pill that draws a call's name is the Workshop shell's
+    // own chrome and has no anchor. A named part is how a module offers chrome somebody else places.
+    expect(button()).toBeDefined();
+  });
+
+  it('refuses a pick-up that would tear down a call in progress, rather than hiding', () => {
+    /*
+      The call store's own rule, not a preference: continuing while another call runs re-points every
+      peer's transcript at the old record, since peers adopt an announced record over their own.
+      `goToCall` refuses for the same reason, so these cannot differ.
+
+      Disabled with a reason rather than absent. The gate used to include `!active`, which made this
+      the only thing on the pill that came and went — and it went at the moment the pill had most to
+      say, since a live call is usually shown with no `?call=` at all.
+    */
+    expect(json()).toContain('"disabled":{"$":"modules.call.active && !(');
+    expect(json()).toContain("'Leave your current call to pick this one up'");
+    expect(json()).not.toContain('modules.call.canCall && !modules.call.active');
+  });
+
+  it('stays put while a call runs, and follows the call on screen', () => {
+    /*
+      The address alone was the bug: `?call=` is how somebody opens a meeting that has *finished*, so
+      a surface showing a live call usually has none, and reading it alone blanked the control for
+      the whole of every call. The fallback is the one every other surface about a call uses.
+    */
+    expect(json()).toContain('routeStore.params.call ? routeStore.params.call : modules.call.callRecordId');
+  });
+
+  it('marks the call you are in red, the way the calls list marks its live row', () => {
+    /*
+      The fill role rather than the foreground one, for the reason the list gives: a live-call marker
+      is a signal rather than a sentence, and the derived foreground goes pale in a dark theme.
+
+      Against the record rather than `active`, which is true of any call — with one call running and
+      another being read, `active` says yes about the wrong one.
+    */
+    expect(json()).toContain('modules.call.callRecordId && modules.call.callRecordId ==');
+    expect(json()).toContain("? 'danger' : ''");
+    expect(json()).toContain("'Go to the call'");
+  });
+
+  it('says join rather than pick up where somebody is already in the call', () => {
+    // The press is identical either way — `continueCall` derives the call from its record, so
+    // arriving at one somebody is in *is* joining them. The word is the only thing that differs.
+    expect(json()).toContain('modules.call.liveCalls.exists(c, c.recordId ==');
+    expect(json()).toContain("'Join this call'");
+  });
+
+  it('names itself for a screen reader, having no visible word to do it', () => {
+    // Icon-only, so the accessible name has to be said rather than inherited from a label. The same
+    // expression as the tooltip, so the two cannot drift into describing different acts.
+    const pressed = walk(button()).find((node) => node.type === 'we-button');
+    const label = (pressed?.props as { label?: { $?: string } } | undefined)?.label?.$;
+    const tooltip = walk(button()).find((node) => node.type === 'we-tooltip');
+    expect(label).toBeDefined();
+    expect(label).toBe((tooltip?.props as { content?: { $?: string } } | undefined)?.content?.$);
+  });
+
+  it('branches when it is pressed rather than when it paints', () => {
+    /*
+      A handler array resolves lazily, so the press reads the store as it is then — which is the
+      whole point of a button that survives a call starting and ending underneath it. Choosing at
+      render time would bake in whichever state the pill first drew in.
+    */
+    const onClick = (walk(button()).find((n) => n.type === 'we-button')?.props as { onClick?: unknown })?.onClick;
+    expect(Array.isArray(onClick)).toBe(true);
+    expect(JSON.stringify(onClick)).toContain('modules.call.goToCall');
+    expect(JSON.stringify(onClick)).toContain('modules.call.continueCall');
+  });
+});
+
+/**
+ * The declaration — what the manifest asks for and what the contributions name.
+ *
+ * These pin the places things moved to when the contract split one flat interface into a manifest,
+ * a set of contributions and a store. Each is a string the host reads, so a rename here fails
+ * silently at runtime as a launcher that does nothing or a panel that never opens; asserting them
+ * turns that into a test failure.
+ */
+describe('the declaration', () => {
+  const contributes = callModule.contributes!;
+
+  it('asks for exactly the kernels the store reaches', () => {
+    // A kernel not named here is absent from `deps.kernels`, so this list is the store's reach.
+    expect([...(callModule.manifest.requires?.kernels ?? [])].sort()).toEqual(
+      ['ephemeral', 'media', 'peerConnection', 'presence', 'records'].sort(),
+    );
+  });
+
+  it('declares the devices it opens, and derives the rest of what a person agrees to', () => {
+    // The three permissions are authored — they are the reason to think twice about a call module
+    // from a stranger. The dock and the slot used to be authored beside them and could go stale.
+    expect(callModule.manifest.requires?.permissions).toEqual(['microphone', 'camera', 'screen-share']);
+    const capabilities = moduleCapabilities(callModule);
+    expect(capabilities).toEqual(
+      expect.arrayContaining(['microphone', 'camera', 'screen-share', 'dock', 'slot:dock-bottom']),
+    );
+  });
+
+  it('owns whether its stage is up, and so declares how to close it', () => {
+    // A panel naming `open` must name `close`, or the titlebar cannot dismiss it. No `icon`: the
+    // rail entry is the launcher, whose press does more than open a panel.
+    const stage = contributes.panels?.find((panel) => panel.name === 'stage');
+    expect(stage).toMatchObject({ bid: 'stageBid', open: 'stageOpen', show: 'openStage', close: 'closeStage' });
+    expect(stage?.icon).toBeUndefined();
+  });
+
+  it('keeps its chrome up while a call runs, by a bare store key', () => {
+    // `holds` and `reserve` are keys into the store, not template paths — the one field that was
+    // spelt `modules.call.active` now reads like every other.
+    expect(contributes.holds).toBe('active');
+    expect(contributes.reserve).toBe('chromeReserve');
+    for (const key of [contributes.holds, contributes.reserve]) expect(key).not.toContain('.');
+  });
+
+  it('has one launcher, and it goes to the call', () => {
+    expect(contributes.launchers).toHaveLength(1);
+    expect(contributes.launchers?.[0]).toMatchObject({
+      action: 'goToCall',
+      activeWhen: 'active',
+      availableWhen: 'canCall',
+    });
+  });
+
+  it('declares the activity the transcriber reads off its roster', () => {
+    // `record` and `continued` were the two fields another module read by convention.
+    expect(contributes.activities?.call).toMatchObject({ record: 'string', continued: 'boolean', anchor: 'object' });
+  });
+
+  it('is what the package factory hands a host', () => {
+    expect(createModule({ components: {} })).toBe(callModule);
   });
 });

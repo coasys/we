@@ -56,7 +56,8 @@ const zActionToken = z
 // `where`/`order`/`include`/`limit` are the concise DSL; the compiler maps them to the IR. No AD4M
 // vocab (`model`/`perspective`) — templates author neutral.
 const zQuery = z.object({
-  entity: z.string().min(1),
+  // A name, a list of names (one query over all of them), or an expression answering with either.
+  entity: z.union([z.string().min(1), z.array(z.string().min(1)), z.record(z.string(), z.unknown())]),
   where: z.record(z.string(), z.unknown()).optional(),
   order: z.record(z.string(), z.unknown()).optional(),
   /*
@@ -245,6 +246,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
     keepAlive: z.boolean().optional(),
+    /** The modules this interface reaches by name. See `TemplateMeta.requires`. */
+    requires: z.object({ modules: z.array(z.string()).optional() }).optional(),
     /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
     chromeReserve: z
       .object({
@@ -282,6 +285,10 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           // Not promotable. See `fixed` on `TemplatePanel`.
           fixed: z.boolean().optional(),
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
+          // The opening box in pixels, clamped by the host. See `box` on `TemplatePanel`. Listed
+          // because this object is not strict: a key it does not name passes with nothing checked,
+          // so `box: { width: '252px' }` would validate and then resolve to NaN.
+          box: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),
           // The smallest usable box, in pixels — a fact about the content. See `min` on `TemplatePanel`.

@@ -6,6 +6,9 @@ import { confirmModal } from './confirmModal.ts';
 /** The `$localState` boolean the guard raises. Fragment-owned; callers never name it. */
 const FLAG = 'confirmDiscardOpen';
 
+/** Whether the exit being asked about was Back rather than a close. Fragment-owned, like `FLAG`. */
+const BACK_FLAG = 'discardGoesBack';
+
 export interface DiscardGuardOptions {
   /**
    * True when there is work worth keeping.
@@ -18,6 +21,12 @@ export interface DiscardGuardOptions {
   dirty: SchemaProp;
   /** What actually closes the modal, once discarding is agreed. The unguarded `close`. */
   close: SchemaProp;
+  /**
+   * Where Back goes, as actions run after `close` — reopening the screen this modal was opened from.
+   * Given, the guard returns a `back` handler that asks the same question and, on Discard, finishes
+   * going back rather than only closing.
+   */
+  back?: SchemaProp[];
   title?: Content;
   body?: Content;
   /** The destructive label. "Discard" by default — name the thing where it helps ("Discard post"). */
@@ -65,12 +74,28 @@ export interface DiscardGuardOptions {
 export function discardGuard(opts: DiscardGuardOptions): {
   /** Put on the modal's `close`, in place of the unguarded one. */
   close: SchemaProp;
+  /**
+   * Put on a Back button, where `back` was given. Asks first when there is work to lose; either way
+   * the exit ends where Back was going. Absent without `back`.
+   */
+  back?: SchemaProp;
   /** Merge into the modal's `$localState` — the flag has to reset when the modal unmounts. */
   localState: Record<string, LocalStateField>;
   /** Put among the modal's children. Renders nothing until the question is asked. */
   node: SchemaNode;
 } {
-  const dismiss = { $setLocal: FLAG, value: false };
+  /*
+    Keeping the work clears both flags, so a Back that was talked out of it does not linger and turn
+    a later close into a Back.
+  */
+  const closeSteps = Array.isArray(opts.close) ? opts.close : [opts.close];
+  const goBack = opts.back ? [...closeSteps, ...opts.back] : undefined;
+  const dismiss: SchemaProp = goBack
+    ? [
+        { $setLocal: FLAG, value: false },
+        { $setLocal: BACK_FLAG, value: false },
+      ]
+    : { $setLocal: FLAG, value: false };
 
   return {
     close: {
@@ -81,7 +106,28 @@ export function discardGuard(opts: DiscardGuardOptions): {
       },
     } as SchemaProp,
 
-    localState: { [FLAG]: { type: 'boolean', initial: false } },
+    /*
+      The same question as a close, remembering that the answer was Back. Without that, Discard ran
+      the only exit the guard knew — the close — and a person who pressed Back landed nowhere: the
+      form closed, and the screen they were going back to stayed shut.
+    */
+    ...(goBack && {
+      back: {
+        $if: {
+          condition: opts.dirty,
+          then: [
+            { $setLocal: BACK_FLAG, value: true },
+            { $setLocal: FLAG, value: true },
+          ],
+          else: goBack,
+        },
+      } as SchemaProp,
+    }),
+
+    localState: {
+      [FLAG]: { type: 'boolean', initial: false },
+      ...(goBack && { [BACK_FLAG]: { type: 'boolean', initial: false } }),
+    },
 
     node: confirmModal({
       open: { $: `local.${FLAG}` },
@@ -100,7 +146,9 @@ export function discardGuard(opts: DiscardGuardOptions): {
         back afterwards: the modal it closes is the one holding this `$localState`, so the flag is
         destroyed along with the draft it was guarding.
       */
-      confirm: opts.close as Record<string, unknown>,
+      confirm: (goBack
+        ? { $if: { condition: { $: `local.${BACK_FLAG}` }, then: goBack, else: opts.close } }
+        : opts.close) as Record<string, unknown>,
     }),
   };
 }

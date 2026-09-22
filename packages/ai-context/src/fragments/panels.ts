@@ -58,7 +58,8 @@ Two kinds of entry, one list:
 | \`snap\`     | One of \`top-left\` \`top\` \`top-right\` \`left\` \`right\` \`bottom-left\` \`bottom\` \`bottom-right\`. |
 | \`order\`    | Position *along* the edge among the panels sharing its lane — lower is nearer the start.       |
 | \`band\`     | Which lane, counting inward from the edge. \`displace\` only. Absent means a lane of its own.    |
-| \`size\`     | \`sm\` \`md\` \`lg\` \`full\`. Named, never pixels: only the host can see the viewport.             |
+| \`size\`     | \`sm\` \`md\` \`lg\` \`full\`. The default way to size a panel — see "Sizes" below.                  |
+| \`box\`      | \`{ width?, height? }\` in pixels — the box it opens at, when no named size is the right shape. |
 | \`grow\`     | Share of the *spare* room in a lane, relative to lane-mates. Absent means 1; 0 pins a size.    |
 | \`displace\` | Push the content aside instead of covering it. Edge snaps only — ignored on a corner.          |
 | \`tab\`      | Position in a seat shared with others — entries with the same lane and \`order\` are tabs.      |
@@ -68,13 +69,35 @@ Two kinds of entry, one list:
 | \`route\`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | \`open\`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
-**\`open: false\` when a module's launcher does more than open a panel.** Placing a \`module\` panel
-invokes the action its launcher declares, and that is not always "open a panel" — the call module's
-is \`goToCall\`, which *joins a call* when there is not one. Declaring the call window without
-\`open: false\` would start a call the moment somebody entered the space.
+**\`open: false\` when a panel should wait for its moment.** Placing a \`module\` panel opens it as
+well — through the host's own flag, or through the \`show\` action a module named when it owns
+its panel's openness. That is not always wanted on entering a space: the call module's stage is
+open while there is a call to watch, and declaring it without \`open: false\` would put an empty
+stage over the content until somebody started one. The declaration still says where it lands.
 
-**Never write pixels.** A template cannot see the viewport, and a guessed pixel is wrong on a
-display it never ran on. That is what \`size\` and \`grow\` are for.
+### Sizes
+
+**Positions are always named.** A template cannot see the viewport, and a coordinate it guessed is
+wrong on a display it never ran on — that is what \`snap\`, \`order\` and \`grow\` are for.
+
+**Reach for \`size\` first.** A named size is a card whose width comes from the host's table and
+whose height is 16:9 of that, which is the right shape for most panels on every screen.
+
+**\`box\` is for a panel with a shape of its own** — a legend that is tall and narrow, a strip of
+faces that is wide and low. It is an opening bid in pixels, not a size the panel is held to:
+
+- **The host clamps it** to the room there is, exactly as it does a named size, so a box too big
+  for a laptop is capped rather than hung off the edge. A drag still beats it.
+- **It is the whole panel**, titlebar and frame included — the same box \`min\` is measured against.
+  Content that needs a given area adds the host's chrome (a 33px titlebar, a 1px border each side).
+- **Either side may be left out.** A width alone keeps the 16:9 height derived from it; a height
+  alone keeps the width \`size\` gives.
+- **In a lane, \`grow\` still has the last word** along the edge: a box's height on a side edge is
+  the base the lane divides, not a height the panel keeps.
+
+\`\`\`json
+{ "id": "key", "node": { "…": "…" }, "title": "Key", "snap": "top-right", "box": { "width": 252, "height": 545 } }
+\`\`\`
 
 ### An edge is two axes
 

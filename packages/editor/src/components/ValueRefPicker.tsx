@@ -338,7 +338,7 @@ export function OperandInput(props: {
   const modeButtons = () => (
     <Row gap="0" flex="none">
       <Show when={props.allowText !== false}>
-        <we-tooltip title="Use a fixed value">
+        <we-tooltip content="Use a fixed value">
           <we-button
             variant={mode() === 'literal' ? 'secondary' : 'ghost'}
             size="xs"
@@ -354,7 +354,7 @@ export function OperandInput(props: {
           </we-button>
         </we-tooltip>
       </Show>
-      <we-tooltip title="Pick a value from data">
+      <we-tooltip content="Pick a value from data">
         <we-button
           variant={mode() === 'literal' ? 'ghost' : 'secondary'}
           size="xs"

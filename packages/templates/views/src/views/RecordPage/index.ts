@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
+import { linkedRecords, pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
 
 /**
  * A page for one record.
@@ -75,31 +75,38 @@ const idExpr = { $: 'routeStore.params.id' };
 const detailValue: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
-    then: { type: 'we-timestamp', props: { value: { $: 'row[field.name]' }, relative: true } },
+    condition: { $: "field.kind == 'relation' && field.target" },
+    then: linkedRecords({ record: 'row', field: 'field' }),
     else: {
       type: '$if',
       props: {
-        condition: { $: "field.kind == 'boolean'" },
-        then: { type: 'we-badge', children: [{ $: "row[field.name] ? 'Yes' : 'No'" }] },
+        condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+        then: { type: 'we-timestamp', props: { value: { $: 'row[field.name]' }, relative: true } },
         else: {
           type: '$if',
           props: {
-            condition: { $: "field.kind == 'image'" },
-            then: {
-              type: 'we-image',
-              props: { src: { $: 'row[field.name]' }, fit: 'cover', r: 'media', maxWidth: '100%' },
-            },
+            condition: { $: "field.kind == 'boolean'" },
+            then: { type: 'we-badge', children: [{ $: "row[field.name] ? 'Yes' : 'No'" }] },
             else: {
               type: '$if',
               props: {
-                condition: { $: "field.kind == 'url'" },
+                condition: { $: "field.kind == 'image'" },
                 then: {
-                  type: 'we-link',
-                  props: { href: { $: 'row[field.name]' }, target: '_blank' },
-                  children: [{ $: 'row[field.name]' }],
+                  type: 'we-image',
+                  props: { src: { $: 'row[field.name]' }, fit: 'cover', r: 'media', maxWidth: '100%' },
                 },
-                else: { type: 'we-text', children: [{ $: 'row[field.name]' }] },
+                else: {
+                  type: '$if',
+                  props: {
+                    condition: { $: "field.kind == 'url'" },
+                    then: {
+                      type: 'we-link',
+                      props: { href: { $: 'row[field.name]' }, target: '_blank' },
+                      children: [{ $: 'row[field.name]' }],
+                    },
+                    else: { type: 'we-text', children: [{ $: 'row[field.name]' }] },
+                  },
+                },
               },
             },
           },
@@ -158,6 +165,46 @@ const genericBody: SchemaNode = {
         then: {
           type: 'we-image',
           props: { src: { $: 'row[local.display.media]' }, fit: 'cover', r: 'media', width: '100%' },
+        },
+      },
+    },
+    /*
+      The picture a record points at rather than holds — a community model's photo is an ImageBlock,
+      related. Looked up by the id the relation holds; the first, where there are several.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.display.mediaRelation && row[local.display.mediaRelation]' },
+        then: {
+          type: 'Column',
+          props: { width: '100%' },
+          $queries: {
+            pictures: {
+              entity: 'ImageBlock',
+              where: { id: { $: 'row[local.display.mediaRelation]' } },
+              when: { $: 'row[local.display.mediaRelation]' },
+              limit: 1,
+            },
+          },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'count(local.pictures)' },
+                then: {
+                  type: 'we-image',
+                  props: {
+                    src: { $: 'first(local.pictures).src' },
+                    alt: { $: "first(local.pictures).altText ?? ''" },
+                    fit: 'cover',
+                    r: 'media',
+                    width: '100%',
+                  },
+                },
+              },
+            },
+          ],
         },
       },
     },
@@ -343,11 +390,15 @@ const callBody: SchemaNode = {
  *
  * ## Why the generic body cannot draw one
  *
- * It reads `recordStore.displays`, which is derived from what a model declares under `authoring`:
- * the properties a person fills in, in order, on a generated form. `CollectionBlock` declares none,
- * and correctly — nobody types a post into a field list, they compose it in the block editor. So
- * `displays['CollectionBlock']` is undefined and the generic body rendered a blank heading over an
- * empty box, which is exactly what a post looked like here.
+ * It reads `recordStore.displays`, which for most models is derived from what they declare under
+ * `authoring`: the properties a person fills in, in order, on a generated form. `CollectionBlock`
+ * declares none, and correctly — nobody types a post into a field list, they compose it in the
+ * block editor. It had no display at all for that reason, so the generic body rendered a blank
+ * heading over an empty box, which is exactly what a post looked like here.
+ *
+ * It has one now — a `display` declaration naming its title and description, so a note selected on
+ * a canvas can be read in an inspector — and that changes nothing here: the two fields it lists are
+ * metadata, and a post's substance is its `editorState`, which no field list can hold.
  *
  * A post's content is its `editorState`, and `BlockRenderer` is what draws it — the same component
  * the card in the Cards route uses, so a post reads the same opened out as it does in the list.

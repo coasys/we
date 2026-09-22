@@ -5,7 +5,36 @@ export const CollectionBlock: CoreEntityDef = {
   methodRelations: ['children', 'arranges'],
   entity: {
     blockable: true,
+    description: 'A document of blocks — a note, a post, a card on a canvas',
     flag: { predicate: 'we://flag', value: 'we://collection_block' },
+    /*
+      How a collection reads when something shows one — a card on a canvas, an inspector, the
+      record page. Manifest-side prose: `display` is a hint for whatever draws a record and has no
+      counterpart on the generated class, so it is not lifted into one.
+
+      It carries no `authoring`, and correctly: nobody types a document into a field list, so the
+      composer makes these and no generated form should offer to. But `authoring` was also the only
+      thing `displayFor` had to work from, so "cannot be typed in" silently meant "cannot be shown",
+      and a note selected on a canvas opened an inspector with nothing in it at all — no name, no
+      description, not even its own type. The two questions are separate, which is what this half of
+      the declaration is for.
+
+      Roles, and deliberately no `fields`. The two are separate halves: the roles say which property
+      is the name and which the one-line summary — worth knowing for a *container*, since a call, a
+      channel and a board column all carry a title somebody chose — while `fields` is the list a
+      surface enumerates, and there is no list here worth enumerating. Everything else on this class
+      is machinery (the structural `type`, the `kind` label, `mode`, `version`, and `textContent`,
+      which is a projection of the children for search), and a note has nothing to say in a field at
+      all: its substance is its children, read through the composer, and its name is their first
+      line. Declaring the two properties as a list made an inspector offer to *name a sticky note*,
+      which is a question nobody has.
+
+      So: a container shows its title and description where it has them, and a composed document
+      shows neither and is not asked for either.
+    */
+    display: { title: 'title', summary: 'description' },
+    // Made in the composer — see `composed` on the manifest type.
+    composed: true,
     properties: {
       editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
       /**
@@ -110,6 +139,23 @@ export const CollectionBlock: CoreEntityDef = {
       description: { type: 'string', predicate: 'we://description', default: '' },
       version: { type: 'number', predicate: 'we://version', default: 0 },
       textContent: { type: 'string', predicate: 'we://text_content', default: '' },
+      /**
+       * Where this was posted before it was posted here — a reference to the original, and its space
+       * by name.
+       *
+       * Written only when an author brings their own post from one shared space into another, and
+       * only as a **portable** reference (`we:n:<cid>/…`): a reference into a personal dataset names
+       * nothing to anybody else, and would say that a private note exists. So a note shared into a
+       * space carries neither, and reads as what it is — a post, written here.
+       *
+       * Somebody else's post is never copied, so it never gets these: bringing one in makes a post
+       * that *quotes* it, through an `EmbedBlock` carrying its author. See `bringIn` in the shell.
+       *
+       * `sourceName` is a snapshot, for the reason the Pocket keeps one: a card must be able to say
+       * "also posted in Gardeners" without resolving a dataset its reader may not have joined.
+       */
+      sourceRef: { type: 'string', predicate: 'we://source_ref', default: '' },
+      sourceName: { type: 'string', predicate: 'we://source_name', default: '' },
     },
     relations: {
       /**
@@ -201,6 +247,60 @@ export const CollectionBlock: CoreEntityDef = {
         target: 'ExtractionPass',
         cardinality: 'many',
         predicate: 'we://extraction_pass_record',
+      },
+      /**
+       * What a model wrote from reading this collection — the provenance of an extracted record.
+       *
+       * ## Why this is not a subset of `children` doing double duty
+       *
+       * Everything a pass writes *is* also a child, and must stay one: `children` is ownership, and
+       * the call's board gathers through it, so a task that stopped being a child would vanish from
+       * the board it exists to appear on. This says something else about the same record — that
+       * nobody typed it, a model proposed it from the conversation — and that is a different fact,
+       * not a narrower spelling of the first. The same split `arranges` makes one level over.
+       *
+       * It is also the *true* question a review surface asks. "Which children are tasks" and "which
+       * children came from a pass" answer differently the moment somebody composes a task into a
+       * call by hand: the first counts it as extracted, the second does not.
+       *
+       * ## Why a link rather than a field on the record
+       *
+       * A property saying which call produced it would be unreadable in one query. An `include` on
+       * the call traverses *relations*, so provenance has to be a relation for "everything this call
+       * produced" to come back polymorphically in one round trip. Through `children` that question
+       * cannot be asked at all: an untyped include is all-or-nothing and carries no class
+       * constraint, so it would return every utterance in the transcript alongside the handful of
+       * records — which is why the panel had one subscription per model before this existed.
+       *
+       * Untyped, and deliberately: a pass writes whatever the space has said it may write, which
+       * includes shapes a community defined this morning. Unordered, because the sequence that
+       * matters is when each record was made and `createdAt` already says that — where `children`
+       * is ordered because somebody arranged it.
+       */
+      extracted: { target: '', cardinality: 'many', predicate: 'we://extracted' },
+      /**
+       * Changes a pass suggested to records that already existed, and somebody kept — see
+       * {@link ExtractionAmendment}.
+       *
+       * The counterpart to {@link extracted} for the other kind of suggestion a pass makes, and it
+       * is a separate relation rather than more entries in that one because the two are about
+       * different things. `extracted` names *records* the call produced; this names *amendments*,
+       * which are their own records and whose subject is usually something the call did not create
+       * — a task somebody had already written down, which the conversation then moved on.
+       *
+       * That difference is also why an amendment could not be reported by marking the extracted
+       * record instead. A change accepted on a record no pass here wrote has nothing in `extracted`
+       * to mark, and that is the ordinary case rather than the edge: a change proposal targets an
+       * already-agreed record by definition.
+       *
+       * Typed, unlike `extracted`, because an amendment is always the same entity — there is no
+       * open vocabulary here, only whatever the amended record happens to be, which the amendment
+       * itself points at.
+       */
+      amendments: {
+        target: 'ExtractionAmendment',
+        cardinality: 'many',
+        predicate: 'we://extraction_amendment',
       },
     },
   },

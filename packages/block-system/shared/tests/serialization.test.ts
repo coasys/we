@@ -61,7 +61,7 @@ import {
   recordToTextBlock,
   textBlockToRecord,
 } from '../src/serialization';
-import { decodeEditorState } from '../src/utils';
+import { decodeEditorState, encodeBase64Utf8 } from '../src/utils';
 
 // ── Fake model layer ────────────────────────────────────────────────────────
 
@@ -206,6 +206,18 @@ describe('text block ⇄ record', () => {
       level: 1,
     });
     expect(recordToTextBlock({ style: 'nonsense', text: 'x' })).toMatchObject({ style: 'normal' });
+  });
+});
+
+describe('decodeEditorState', () => {
+  it('reads a stored composition handed back as the file itself, not only as its data URI', () => {
+    const blocks = [{ _type: 'block', text: 'kept' }];
+    const data_base64 = encodeBase64Utf8(JSON.stringify(blocks));
+
+    expect(decodeEditorState({ data_base64, file_type: 'application/json', name: 'editorState' })).toEqual(
+      decodeEditorState(`data:application/json;base64,${data_base64}`),
+    );
+    expect(decodeEditorState({ data_base64, file_type: 'application/json' })?.[0]).toMatchObject({ text: 'kept' });
   });
 });
 

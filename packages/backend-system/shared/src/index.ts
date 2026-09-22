@@ -113,7 +113,13 @@ export { planQuery } from './queryCapabilities';
 export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
 export { compileQuery, irToFlatQuery } from './queryCompiler';
 export type { FlatQuery, CompileResult } from './queryCompiler';
+export { routeQuery } from './queryRouting';
+export { combineEntityRows, entityNamesOf } from './queryUnion';
+export type { EntityRows } from './queryUnion';
+export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
+export { rangeCompare, isRangeOp, RANGE_OPS } from './rangeCompare';
+export type { RangeOp } from './rangeCompare';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
 export type {
   QueryIR,
@@ -135,9 +141,13 @@ export type {
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
+  LinkLanguageTemplate,
 } from './lifecycle';
+export { isSessionTimeout, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
+export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordName';
+export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
@@ -150,7 +160,9 @@ export type {
   SchemaPort,
 } from './backendPorts';
 export type {
+  AiApiProtocol,
   AiModel,
+  AiModelDiscoveryQuery,
   AiModelDraft,
   AiModelKind,
   AiModelSource,
@@ -159,8 +171,10 @@ export type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
+  PeerRecords,
   RuntimeAdminPort,
   TokenizerSource,
+  UnsupportedCapability,
 } from './runtimeAdmin';
 export type {
   IncludeExtras,
@@ -179,8 +193,22 @@ export type {
   WriteProperties,
 } from './recordContract';
 export { RECORD_TYPE_KEY, recordTypeOf } from './recordContract';
-export type { LanguageModelPort } from './languageModel';
-export type { TranscriptionRecord, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
+export type {
+  ConversationReply,
+  ConversationRequest,
+  ConversationTool,
+  ConversationToolCall,
+  ConversationTurn,
+  LanguageModelPort,
+  LanguageModelStatus,
+} from './languageModel';
+export type {
+  TranscriptionModelOffer,
+  TranscriptionRecord,
+  TranscriptionPort,
+  TranscriptionStream,
+  TranscriptionTuning,
+} from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,

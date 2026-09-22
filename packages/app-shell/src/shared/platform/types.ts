@@ -1,3 +1,7 @@
+import type { HostFileSaver } from '@we/design-utils';
+
+export type { HostFileSaver };
+
 export interface AppConfig {
   id: string;
   name: string;
@@ -203,4 +207,13 @@ export interface PlatformAdapter {
    * start one — the settings page feature-detects and shows nothing.
    */
   executor?: ExecutorHost;
+
+  /**
+   * Save a file through the host's own dialog. Absent on web, where `saveFile` in
+   * `@we/design-utils` uses the browser's save picker or a download instead.
+   *
+   * Every download in the app goes through that one helper, which the shell hands this to at boot
+   * (`PlatformProvider`), so a host that can do better supplies it once and every export benefits.
+   */
+  saveFile?: HostFileSaver;
 }

@@ -90,3 +90,32 @@ describe('generated classes carry the manifest prose', () => {
     }
   });
 });
+
+/**
+ * The provenance a pass leaves on what it wrote.
+ *
+ * A second link beside containment, and the reason for both halves is worth pinning. Containment is
+ * what makes the call's board gather an extracted task, so a record that stopped being a child would
+ * vanish from the surface it exists to appear on. Provenance is the other fact about the same
+ * record — a model proposed it from the conversation — and it is the only way to ask "what did this
+ * call produce" in one read: an untyped `include` carries no class constraint, so through `children`
+ * the question means fetching the whole transcript and sorting it out afterwards.
+ */
+describe('what a pass wrote, as a relation', () => {
+  it('is declared untyped, so a shape defined this morning is included without being named', () => {
+    const source = readFileSync(resolve(SRC, 'CollectionBlock.ts'), 'utf8');
+    expect(source).toContain("@HasMany({ through: 'we://extracted', polymorphic: true })");
+    expect(source).toContain('extracted: string[] = [];');
+  });
+
+  it('is not ordered, where containment is', () => {
+    /*
+      `children` is ordered because somebody arranged it — a person dragged the image above the
+      paragraph. Nothing arranges what a pass found, and `createdAt` already says when each record
+      was made, which is the sequence a reader actually wants.
+    */
+    const source = readFileSync(resolve(SRC, 'CollectionBlock.ts'), 'utf8');
+    const extracted = source.slice(source.indexOf("through: 'we://extracted'"));
+    expect(extracted.slice(0, 200)).not.toContain('ordering');
+  });
+});

@@ -159,7 +159,7 @@ function isRole(value: string): boolean {
 }
 
 const COLOR_ROLES: { group: string; roles: string[] }[] = [
-  { group: 'Surfaces', roles: ['page', 'surface', 'surface-raised', 'surface-sunken', 'surface-inverse'] },
+  { group: 'Surfaces', roles: ['chrome', 'page', 'surface', 'surface-raised', 'surface-sunken', 'surface-inverse'] },
   { group: 'Text', roles: ['text', 'text-muted', 'text-faint', 'on-inverse'] },
   { group: 'Accent', roles: ['accent', 'accent-text', 'on-accent', 'accent-muted'] },
   { group: 'Lines', roles: ['border', 'border-strong'] },
@@ -627,7 +627,7 @@ function ThemeRoleReadout(props: { node: SchemaNode }) {
                 against what is behind it, never walked toward legibility, and never appears in the
                 audit either. "Does not follow the theme" is both wrong and quieter than the truth.
               */
-              title={
+              content={
                 isRole(entry.value)
                   ? `${entry.what}: “${entry.value}”${
                       entry.fromDocument
@@ -1189,7 +1189,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
                     <Row gap="100" wrap>
                       <For each={g.roles}>
                         {(v) => (
-                          <we-tooltip title={`${v} · ${g.group}`} placement="top">
+                          <we-tooltip content={`${v} · ${g.group}`} placement="top">
                             <button
                               onClick={() => {
                                 props.onChange(v);
@@ -1225,7 +1225,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
               <Row gap="100">
                 <For each={['white', 'black']}>
                   {(v) => (
-                    <we-tooltip title={v} placement="top">
+                    <we-tooltip content={v} placement="top">
                       <button
                         onClick={() => {
                           props.onChange(v);
@@ -1259,7 +1259,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
                         {(shade) => {
                           const v = `${hue}-${shade}`;
                           return (
-                            <we-tooltip title={v} placement="top">
+                            <we-tooltip content={v} placement="top">
                               <button
                                 onClick={() => {
                                   props.onChange(v);
@@ -1353,7 +1353,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
   const previewShadow = () => (props.value ? composeRing(2, 0, color() || RING_DEFAULT_COLOR) : 'none');
 
   const swatch = (v: string, size = '20px') => (
-    <we-tooltip title={v} placement="top">
+    <we-tooltip content={v} placement="top">
       <button
         onClick={() => setColor(v)}
         onMouseEnter={() => setHovered(v)}
@@ -1482,7 +1482,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                 </we-text>
 
                 {/* Theme accent — follows --we-ring-color rather than a fixed token */}
-                <we-tooltip title="Follows the active theme's ring color" placement="top">
+                <we-tooltip content="Follows the active theme's ring color" placement="top">
                   <button
                     onClick={() => setColor(RING_THEME_ACCENT)}
                     style={{
@@ -1519,7 +1519,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                       <Row gap="100" wrap>
                         <For each={g.roles}>
                           {(v) => (
-                            <we-tooltip title={`${v} · ${g.group}`} placement="top">
+                            <we-tooltip content={`${v} · ${g.group}`} placement="top">
                               <button
                                 onClick={() => {
                                   props.onChange(v);

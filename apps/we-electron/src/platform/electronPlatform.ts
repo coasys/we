@@ -29,4 +29,5 @@ export const electronPlatform = createDesktopPlatform({
     restart: () => window.electron.restartExecutor(),
     chooseFile: (options) => window.electron.chooseFile(options),
   },
+  saveFile: (file) => window.electron.saveFile(file),
 });

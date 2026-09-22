@@ -5,6 +5,7 @@
  * neutral form; the AI layer formats them into prompts.
  */
 import { type EntityManifest, type EntitySchema, resolvesPolymorphically } from './manifest';
+import { namePropertyOf } from './recordName';
 
 export type EntityManifestProperty = {
   name: string;
@@ -35,6 +36,18 @@ export type EntityManifestEntry = {
   properties: EntityManifestProperty[];
   /** Class-level LLM guidance — see `EntitySchema.interpretationHint`. */
   interpretationHint?: string;
+  /**
+   * The property that names an instance — see {@link namePropertyOf}.
+   *
+   * Resolved here rather than by each reader, because "what is this record called" had eight
+   * answers in this codebase and two of them were wrong. Carried on the entry so the graph engine,
+   * the card derivation and anything else handed a manifest all read the same one.
+   *
+   * Absent where the entry was built from storage rather than from a declaration (a foreign SHACL
+   * class): there is nothing declared to resolve, so a reader falls back to `nameFromProperties`
+   * over the properties it already has.
+   */
+  nameProperty?: string;
 };
 
 /**
@@ -56,10 +69,21 @@ export type EntityManifestEntry = {
  * produce an entry that resolves to a predicate nothing was ever written under — a drill-down that
  * silently returns nothing, which is worse than one that fails loudly.
  */
-export function manifestEntries(manifest: EntityManifest): EntityManifestEntry[] {
-  /** Flatten `extends` so an entry carries what it inherits — `scope` resolves on the child's name. */
-  const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+export function manifestEntries(
+  manifest: EntityManifest,
+  opts: { parents?: EntityManifest } = {},
+): EntityManifestEntry[] {
+  /**
+   * Flatten `extends` so an entry carries what it inherits — `scope` resolves on the child's name.
+   *
+   * A parent this manifest does not declare is read from `opts.parents` — a space shape's manifest
+   * holds only the shape, and names `WeNode` from the core vocabulary, which this package cannot
+   * import. Not found in either, the entity carries only its own members rather than throwing: an
+   * entry list is for reading, and one missing parent should not take every other entry with it.
+   */
+  const resolved = (name: string): EntitySchema | undefined => {
+    const entity = manifest.entities[name] ?? opts.parents?.entities[name];
+    if (!entity) return undefined;
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {
@@ -69,14 +93,17 @@ export function manifestEntries(manifest: EntityManifest): EntityManifestEntry[]
     };
   };
 
-  return Object.entries(manifest.entities).map(([name]) => {
-    const entity = resolved(name);
+  return Object.entries(manifest.entities).map(([name, declared]) => {
+    const entity = resolved(name) ?? declared;
+    // After flattening, so an entity that inherits its naming property from a parent carries it.
+    const nameProperty = namePropertyOf(entity);
     return {
       name,
       // The graph marker, where the entity declares one. Empty is legitimate — a backend that keeps
       // entities in their own container has no use for it.
       targetClass: entity.flag?.value ?? '',
       ...(entity.interpretationHint ? { interpretationHint: entity.interpretationHint } : {}),
+      ...(nameProperty ? { nameProperty } : {}),
       properties: [
         ...Object.entries(entity.properties)
           .filter(([, spec]) => spec.predicate)

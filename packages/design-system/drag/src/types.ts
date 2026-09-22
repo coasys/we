@@ -49,6 +49,11 @@ export interface DragPreview {
   author?: string;
   /** When it was made, as an ISO string. */
   date?: string;
+  /**
+   * Where it was, by name — the space a post was read in. For a receiver that cannot resolve the
+   * source's dataset and still wants to say where the thing came from.
+   */
+  source?: string;
 }
 
 /** One thing in flight. */
@@ -61,6 +66,21 @@ export interface DragItem {
   preview?: DragPreview;
   /** The source's own handle on it, for a move. Opaque to the session. */
   origin?: unknown;
+  /**
+   * The record this one sits inside, where it has no page of its own — the post a paragraph or a
+   * picture belongs to.
+   *
+   * A block is a record and can be referenced, but a paragraph on its own is not somewhere to go,
+   * and a receiver that keeps one needs the post to open and to read it back from. It is in the same
+   * dataset as `ref`, so it names no dataset of its own.
+   */
+  within?: DragWithin;
+}
+
+/** The record a dragged one sits inside — see `DragItem.within`. Same dataset as the item's own ref. */
+export interface DragWithin {
+  entity: string;
+  id: string;
 }
 
 /**

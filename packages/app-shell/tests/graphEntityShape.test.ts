@@ -54,3 +54,85 @@ describe('toEntityShape', () => {
     expect(shape.relations.some((r) => r.name === 'title')).toBe(false);
   });
 });
+
+/**
+ * What a node is captioned with, and why it is carried rather than guessed here.
+ *
+ * The graph has a good rule of its own, but it was a *second* rule: the card derivation answers the
+ * same question for a record page and a card, so one record could be captioned by one and headed by
+ * the other. It was — a composed note has no `title`, so the canvas labelled it by its flattened
+ * `textContent` while its record page said "Untitled", one click apart.
+ */
+describe('the name a node is captioned with', () => {
+  it('comes from the declaration, for every core entity that has one', () => {
+    expect(shapeOf('TaskBlock').nameProperty).toBe('title');
+    expect(shapeOf('CollectionBlock').nameProperty).toBe('title');
+    expect(shapeOf('LocationBlock').nameProperty).toBe('name');
+    // The one whose own required field is its body rather than its name.
+    expect(shapeOf('CodeBlock').nameProperty).toBe('title');
+  });
+
+  it('is never the dedup key, which is a different fact', () => {
+    // An event dedups on `occurrence` — its title and day glued together — so captioning a card
+    // with it reads `Standup|2026-09-14`.
+    const event = shapeOf('EventBlock');
+    expect(event.properties.some((p) => p.name === 'occurrence')).toBe(true);
+    expect(event.nameProperty).toBe('title');
+  });
+
+  it('is guessed for a foreign entry, which declares nothing', () => {
+    // Built from SHACL rather than from a manifest: no `nameProperty` to carry, so the shared
+    // guess runs over what the entry does have. The permanent case — a class synced in from
+    // another app can never declare this.
+    const foreign = toEntityShape({
+      name: 'Channel',
+      targetClass: 'flux://channel',
+      properties: [
+        {
+          name: 'createdAt',
+          predicate: 'flux://created',
+          type: 'string',
+          isCollection: false,
+          required: true,
+          writable: true,
+        },
+        {
+          name: 'name',
+          predicate: 'flux://name',
+          type: 'string',
+          isCollection: false,
+          required: false,
+          writable: true,
+        },
+      ],
+    });
+    expect(foreign.nameProperty).toBe('name');
+  });
+
+  it('does not caption a foreign entry by a stored file', () => {
+    const foreign = toEntityShape({
+      name: 'Attachment',
+      targetClass: '',
+      properties: [
+        {
+          name: 'name',
+          predicate: 'x://name',
+          type: 'string',
+          isCollection: false,
+          required: true,
+          writable: true,
+          resolveLanguage: 'file-storage',
+        },
+        {
+          name: 'caption',
+          predicate: 'x://caption',
+          type: 'string',
+          isCollection: false,
+          required: false,
+          writable: true,
+        },
+      ],
+    });
+    expect(foreign.nameProperty).toBe('caption');
+  });
+});

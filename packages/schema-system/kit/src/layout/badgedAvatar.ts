@@ -1,5 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { avatarSize, type AvatarTone, avatarToneColor, avatarToneLabel, avatarToneRing } from '@we/tokens';
+import { avatarSize, type AvatarTone, avatarToneColor, avatarToneLabel } from '@we/tokens';
 
 /**
  * A face, optionally ringed, optionally marked in the corner — "something is true of this person
@@ -86,7 +86,10 @@ export function badgedAvatar(opts: BadgedAvatarOptions): SchemaNode {
       ...(opts.avatar.hash !== undefined && { hash: opts.avatar.hash }),
       ...(opts.avatar.icon !== undefined && { icon: opts.avatar.icon }),
       size,
-      ...(opts.ring && { ring: avatarToneRing(opts.ring) }),
+      // Inside the face, so a live face is the size of an idle one — see `ringColor` on `we-avatar`.
+      // A step wider than the size's default: this ring is a presence mark read at a glance across
+      // the rail, and it used to be a halo outside the face, where it looked bigger than it now can.
+      ...(opts.ring && { ringColor: opts.ring, ringWidth: '2.5px' }),
     },
   };
 

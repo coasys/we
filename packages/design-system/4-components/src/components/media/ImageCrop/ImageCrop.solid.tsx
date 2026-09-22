@@ -439,13 +439,13 @@ export function ImageCrop(allProps: ImageCropProps) {
 
       {/* Rotation and flip controls */}
       <Row ay="center" gap="300">
-        <we-tooltip title="Flip horizontal">
+        <we-tooltip content="Flip horizontal">
           <we-button size="md" square variant="ghost" onClick={toggleFlipH}>
             <we-icon name="flip-horizontal" />
           </we-button>
         </we-tooltip>
 
-        <we-tooltip title="Rotate left 90°">
+        <we-tooltip content="Rotate left 90°">
           <we-button size="md" square variant="ghost" onClick={snapRotateLeft}>
             <we-icon name="arrow-counter-clockwise" />
           </we-button>
@@ -458,13 +458,13 @@ export function ImageCrop(allProps: ImageCropProps) {
           </we-text>
         </Column>
 
-        <we-tooltip title="Rotate right 90°">
+        <we-tooltip content="Rotate right 90°">
           <we-button size="md" square variant="ghost" onClick={snapRotateRight}>
             <we-icon name="arrow-clockwise" />
           </we-button>
         </we-tooltip>
 
-        <we-tooltip title="Flip vertical">
+        <we-tooltip content="Flip vertical">
           <we-button size="md" square variant="ghost" onClick={toggleFlipV}>
             <we-icon name="flip-vertical" />
           </we-button>

@@ -128,7 +128,8 @@ To target a non-current perspective: { "$action": "record.update", "args": ["Ent
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from
@@ -190,6 +191,7 @@ values may be expressions (in an expression) or tokens (in a $query):
   { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
   { field: { exists: true } }              — non-null / non-undefined presence check
   { field: { exists: false } }             — null or undefined check
+  { field: { gte: 10, lt: 50 } }           — a range; lt, lte, gt, gte, any of them together
   { relation: { some: {…} } }              — has at least one linked record matching the clause
   { relation: { none: {…} } }              — has no linked record matching it; { none: {} } is "has none at all"
   { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
@@ -245,6 +247,17 @@ startsWith/endsWith are case-sensitive where contains is not: they match structu
 a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend either, so
 a $query using one is refused — use contains there; inside filter() they are evaluated client-side.
 
+lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
+what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
+in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due in the second half of
+September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
+against a field holding the string '12' answers false, rather than guessing which you meant.
+
+On AD4M a NUMBER bound is native and a STRING bound is refused — the executor compares numbers only.
+So a date range in a $query does not run there yet; fetch the candidates and filter() client-side,
+where it works, or bound the query by something numeric. A numeric range (a price, a count, a
+rating) runs natively on both backends.
+
 OR/AND/NOT no longer cost a query its sort pushdown. They used to: the executor decided pushability
 with a second function that disagreed with what it actually emitted, and an explicit combinator fell
 outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
@@ -254,6 +267,7 @@ Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
 { "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
 { "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
+{ "$": "filter(local.tasks, { dueDate: { gte: local.weekStart, lt: local.weekEnd } })" }
 { "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
 { "$": "count(local.rows) > 0 && local.searchText != ''" }
 { "$": "item.author == me.did ? 'mine' : 'theirs'" }
@@ -298,6 +312,33 @@ runtime, so a typo fails as a silently empty list rather than as an error — an
 resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
 be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
 length it does not know, so put a count inside each group rather than above them.
+
+entity may also be a LIST of names — literal, or an expression answering with one — which asks the
+same question of every entity in it and answers with ONE list. Reach for it when the rows belong
+together rather than in a group per model: a mixed feed, "what did this call produce", "which kinds
+are on this canvas", or anything whose total or emptiness you need to read above the rows.
+{
+  "$queries": {
+    "produced": {
+      "entity": { "$": "shapeStore.extractionCandidates" },
+      "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "local.callId" } },
+      "order": { "createdAt": "desc" },
+      "limit": 50
+    }
+  }
+}
+- Every row carries the entity it came from as __subjectClass — { "$": "row.__subjectClass" } — the
+  same key a polymorphic include already sets, so recordStore.displays[row.__subjectClass] draws it.
+- order and limit apply to the WHOLE list, not to each entity. offset is refused.
+- A record two entities both answer with (an abstract model and a concrete one) is listed once, as
+  the first entity in the list.
+- Nothing is shown, and local.<name>Loaded stays false, until every entity has answered once.
+- An EMPTY list is an answer: loaded, no rows. So { "$": "local.producedLoaded && !count(local.produced)" }
+  is a sound empty-state condition even when the list of kinds is computed.
+- One entity that cannot be read is reported and counts as having no rows; the others still show.
+- A literal list is checked name by name, like a literal name.
+To read the distinct kinds out of it, or merge them with kinds from another list, use distinct():
+{ "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.

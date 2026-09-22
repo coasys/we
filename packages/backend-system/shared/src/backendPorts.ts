@@ -30,14 +30,15 @@ import type { TranscriptionPort } from './transcription';
  */
 export interface SchemaPort {
   /**
-   * Install the host's root-dataset schemas (personal config entities), plus any agent-scoped
-   * module entities. Idempotent.
+   * Install the host's root-dataset schemas — the app's configuration entities, and nothing else.
+   * Idempotent.
    *
-   * The module list is separate from `installSpace`'s and must stay that way: an agent-scoped
-   * entity installed into a shared space would sync one person's private records to the whole
-   * community. See `ModuleDefinition.entities.scope`.
+   * No module list. Agent-scoped module entities used to install here, which made the root hold the
+   * agent's things as well as the app's settings; they now install into the personal space through
+   * `installSpace` / `installModules`. What keeps them out of a shared space is which dataset the host
+   * hands those calls, not which method it calls. See `ModuleDefinition.entities.scope`.
    */
-  installRoot(dataset: DatasetHandle, moduleSchemas?: readonly unknown[]): Promise<void>;
+  installRoot(dataset: DatasetHandle): Promise<void>;
   /** Install the host's space schemas plus the given module schemas. Idempotent. */
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /** Install only the given module schemas (runs on every space switch — diffs before writing). */

@@ -1,3 +1,4 @@
+import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import {
   LEGACY_EXTRACTION_TARGETS,
@@ -6,8 +7,25 @@ import {
   resolveCallExtractionTargets,
   resolveSpaceExtractionTargets,
 } from '@shared/callExtraction';
+import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
+import {
+  type AmendmentEntry,
+  exportFileName,
+  formatExtractionLog,
+  type PassEntry,
+  transcriptLine,
+} from '@shared/interpretation/callExport';
 import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { involvementOptimism } from '@shared/involvementOptimism';
+import {
+  createInvolvementActions,
+  INVOLVEMENT_SEMANTICS,
+  type InvolvementTypeView,
+  parseAppliesTo,
+  resolveInvolvementTypes,
+} from '@shared/involvements';
+import { type LinkLanguageOption, linkLanguageOptions } from '@shared/linkLanguageOptions';
 import {
   clearSetting,
   type LevelValues,
@@ -20,8 +38,15 @@ import {
 } from '@shared/moduleSettings';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
+import {
+  isCommunityDecided,
+  moduleRegistry,
+  moduleStores,
+  type ModuleSurface,
+  moduleSurface,
+} from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
+import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import {
   isSpaceSelf,
@@ -30,6 +55,7 @@ import {
   spaceSelfWhere,
   syncSpaceToParent,
 } from '@shared/spaceSync';
+import { isSystemDataset } from '@shared/systemDatasets';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -53,6 +79,7 @@ import {
   reconcileBlocks,
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
+import { saveFile, type SaveOutcome } from '@we/design-utils';
 import {
   AGENT_DEFAULT,
   CallExtraction,
@@ -64,6 +91,8 @@ import {
   type FileData,
   FOLLOW_SPACE,
   getEntitiesForPerspective,
+  type InvolvementSemantic,
+  InvolvementType,
   LocationBlock,
   MutedAgent,
   PREDICATES,
@@ -92,6 +121,7 @@ import {
 import { useAppStore } from './AppStore';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
+import { useRecordStore } from './RecordStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 import { useShapeStore } from './ShapeStore';
@@ -178,32 +208,58 @@ export interface SpaceListEntry {
   guestLink: string;
 }
 
-/**
- * Which modules a space has on, from its stored value.
- *
- * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back to the
- * registered set is what stops this being a silent regression that strips every existing space of
- * its chrome. A malformed value is a corrupt setting, not a decision to disable everything.
- *
- * A plain function over the stored string rather than a memo over the current space, because the
- * settings page answers this for spaces the agent is not standing in.
- */
 /*
   The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the two
   `*ForCall` resolvers below — lives in `@shared/callExtraction` so it can be tested without
   mounting this provider. See that module for why the per-call level is the part worth guarding.
 */
 
-function resolveEnabledModules(raw: string | undefined): string[] {
+/**
+ * Which modules a layer has on, from its stored value.
+ *
+ * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back is
+ * what stops this being a silent regression that strips every existing space of its chrome. A
+ * malformed value is a corrupt setting, not a decision to disable everything.
+ *
+ * The fallback differs by layer, which is why it is a parameter: a community that has not decided
+ * gets the deployment's default, and an agent who has not decided gets everything registered.
+ *
+ * A plain function over the stored string rather than a memo over the current space, because the
+ * settings page answers this for spaces the agent is not standing in.
+ */
+function resolveEnabledModules(raw: string | undefined, fallback: () => string[] = defaultEnabledModules): string[] {
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
     } catch {
-      console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
+      console.warn('enabledModules is not valid JSON; falling back to the default');
     }
   }
-  return moduleRegistry.all().map((entry) => entry.definition.id);
+  return fallback();
+}
+
+/** Every module this build registered. */
+function registeredModules(): string[] {
+  return moduleRegistry.all().map((entry) => entry.definition.manifest.id);
+}
+
+/**
+ * What a space has on until its community decides: the deployment's default, among what registered.
+ *
+ * The seed's, not "every registered module" — which is what it was, and which put the first module a
+ * deployment added into every existing space until somebody opened settings. A host with no seed (a
+ * test) falls back to the registered set, which is the old answer and the right one when nobody has
+ * said otherwise.
+ */
+function defaultEnabledModules(): string[] {
+  const registered = registeredModules();
+  try {
+    const shipped = new Set(seedDefaultEnabledModules(getSeed()));
+    return registered.filter((id) => shipped.has(id));
+  } catch {
+    return registered;
+  }
 }
 
 /**
@@ -219,19 +275,20 @@ function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, mut
   return (
     moduleRegistry
       .all()
-      // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
-      // renders inside a space — an app switcher is shell-level, and a capability is mounted by
-      // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
-      .filter(({ definition }) => moduleSurface(definition) === 'chrome')
-      .map(({ definition }) => {
-        const enabled = on.has(definition.id);
-        const isInstalled = installed.has(definition.id);
-        const isMuted = muted.has(definition.id);
+      // Chrome and content only. A contribution is gated where it renders, and those are the two that
+      // render inside a space — an app switcher is shell-level, a capability is mounted by whatever
+      // template asks for it, and an agent-scoped module is active wherever its agent is. None of
+      // those is a community's decision. See `isCommunityDecided`.
+      .filter(({ definition }) => isCommunityDecided(definition))
+      .map(({ definition: { manifest } }) => {
+        const enabled = on.has(manifest.id);
+        const isInstalled = installed.has(manifest.id);
+        const isMuted = muted.has(manifest.id);
         return {
-          id: definition.id,
-          name: definition.name,
-          description: definition.description ?? '',
-          icon: definition.icon ?? 'puzzle-piece',
+          id: manifest.id,
+          name: manifest.name,
+          description: manifest.description ?? '',
+          icon: manifest.icon ?? 'puzzle-piece',
           enabled,
           installed: isInstalled,
           visible: !isMuted,
@@ -412,6 +469,9 @@ const joinErrorMessage = (error: unknown): string =>
     ? 'This is taking longer than expected. The space may still be joining in the background — try again in a minute.'
     : "Couldn't join this space. Check the link and try again.";
 
+/** One button in the module rail. See `SpaceStore.moduleLaunchers`. */
+type LauncherRow = { id: string; icon: string; label: string; active: boolean; busy: boolean; concealed: boolean };
+
 export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
@@ -476,6 +536,16 @@ export interface SpaceStore {
   offeredTaskStates: Accessor<TaskStateView[]>;
   /** The space has been asked for its states. An empty list is otherwise "not fetched yet". */
   taskStatesLoaded: Accessor<boolean>;
+  /**
+   * The kinds of part a person can have in a record — assigned, reviewing, going, maybe — the
+   * space's own where it has named any, otherwise the defaults. Includes withdrawn kinds, so an
+   * involvement somebody still holds resolves; offer `offeredInvolvementTypes` instead.
+   */
+  involvementTypes: Accessor<InvolvementTypeView[]>;
+  /** The same list without the withdrawn ones — what an assign menu or an RSVP control offers. */
+  offeredInvolvementTypes: Accessor<InvolvementTypeView[]>;
+  /** The space has been asked for its kinds. */
+  involvementTypesLoaded: Accessor<boolean>;
   /** Options for the per-space template override picker, including a "follow the space" entry. */
   templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
   /** Options for the per-space theme override picker, including a "follow the space" entry. */
@@ -511,8 +581,15 @@ export interface SpaceStore {
       switchable: boolean;
     }[]
   >;
-  /** Launchers for the modules enabled here — what the module rail renders. */
-  moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
+  /**
+   * Launchers for the modules enabled here — what the module rail renders.
+   *
+   * `concealed` is the launcher's panel being open and out of sight: a background tab of a stack,
+   * folded to its bar, or in a lane collapsed to its edge. The rail lights a button only when it is
+   * not, because a lit button says "pressing me puts this away" — and pressing one whose panel is
+   * concealed brings the panel into sight instead. See `launchModule`.
+   */
+  moduleLaunchers: Accessor<LauncherRow[]>;
   /**
    * This space's sections, resolved: which view renders at which segment, in the space's own order.
    *
@@ -537,6 +614,10 @@ export interface SpaceStore {
   enabledViewIds: Accessor<string[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
+  /** How a shared space can sync, as picker entries: label, icon and a description per template. */
+  linkLanguageTemplateOptions: Accessor<LinkLanguageOption[]>;
+  /** Address of the link language template publishing uses when none is chosen. */
+  defaultLinkLanguageTemplate: Accessor<string>;
 
   // Actions
   createSpace: (
@@ -547,6 +628,7 @@ export interface SpaceStore {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
+    linkLanguageTemplate?: string,
   ) => Promise<void>;
   /**
    * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
@@ -598,9 +680,16 @@ export interface SpaceStore {
   /** The order this board reads its columns in. */
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
   /** Record the order somebody dragged one column's cards into. */
-  arrangeColumn: (columnId: string, orderedIds: string[]) => Promise<void>;
+  arrangeColumn: (columnId: string, orderedIds: string[], columnOrder?: string[]) => Promise<void>;
   /** Move a card between columns — and write its state, when the column it joins names one. */
-  moveCardToColumn: (fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]) => Promise<void>;
+  moveCardToColumn: (
+    fromColumnId: string,
+    toColumnId: string,
+    cardId: string,
+    orderedIds?: string[],
+    toSlug?: string,
+    columnOrder?: string[],
+  ) => Promise<void>;
   /** Make a task straight into a column, parented to the board's anchor when there is one. */
   addTaskToColumn: (columnId: string, title: string, anchorId?: string) => Promise<void>;
   /**
@@ -719,15 +808,6 @@ export interface SpaceStore {
   setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
-   * Whether extraction passes in this space broadcast their prompt and response to every member.
-   *
-   * A community decision rather than a personal one: "I share and you do not" is an asymmetry with
-   * no use, and the reason to turn it on — this space is working on extraction and wants to see
-   * what it is doing — is about the space. Defaults off; see the model for why.
-   */
-  shareExtractionDetail: Accessor<boolean>;
-  setShareExtractionDetail: (enabled: boolean, spaceUuid?: string) => Promise<void>;
-  /**
    * Which models this community's calls start out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
@@ -784,6 +864,15 @@ export interface SpaceStore {
     icon?: string;
   }) => Promise<void>;
   /**
+   * Change what a state is called, how it is drawn, or what it counts as — for everyone in the
+   * space. By slug, which is the one thing it cannot change: tasks store it. An empty string clears
+   * a field, so a colour or an icon can be taken back off. A default is adopted by editing it.
+   */
+  updateTaskState: (
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+  ) => Promise<void>;
+  /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug: a
    * default has no record until this, or a reorder, adopts it.
    */
@@ -794,6 +883,30 @@ export interface SpaceStore {
    * By slug, since a default has no id until it is placed in an order, which adopts it.
    */
   reorderTaskStates: (orderedSlugs: string[]) => Promise<void>;
+  /**
+   * Put somebody on a record, or take them off, as a kind one member says about another — assigning
+   * a task. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick
+   * it shows. A reflexive kind is only ever the agent's own answer, and is refused for anybody else.
+   */
+  setInvolvement: (nodeId: string, agent: string, kind: string, on: boolean) => Promise<void>;
+  /** This agent's own answer to a record — going, maybe, not going — replacing any other; `''` withdraws it. */
+  respondTo: (nodeId: string, kind: string) => Promise<void>;
+  /** Name a kind of part people can have. One with a default's slug adopts that default. */
+  createInvolvementType: (config: {
+    name: string;
+    semantic?: InvolvementSemantic;
+    reflexive?: boolean;
+    appliesTo?: string;
+    icon?: string;
+    color?: string;
+  }) => Promise<void>;
+  /** Change a kind's name, look or meaning. By slug, which it cannot change; an empty string clears. */
+  updateInvolvementType: (
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: InvolvementSemantic; appliesTo?: string },
+  ) => Promise<void>;
+  /** Withdraw a kind from use, or bring it back — never touching anybody who holds it. */
+  setInvolvementTypeRetired: (slug: string, retired: boolean) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
@@ -815,6 +928,13 @@ export interface SpaceStore {
    * imperative action instead of something a template can express.
    */
   exportCallTranscript: (callId: string) => Promise<void>;
+  /**
+   * Write everything extraction did with a call to a Markdown file and download it: the settings it
+   * ran under, the transcript once, every pass (every member's) with its prompt and response verbatim,
+   * the records it wrote as they are stored now, and the suggestions still waiting on a decision.
+   * Made to be handed to a person or a model investigating why a call extracted what it did.
+   */
+  exportExtractionLog: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -836,10 +956,20 @@ const SpaceContext = createContext<SpaceStore>();
  */
 const SPACE_AVATAR_PX = 512;
 
+/**
+ * What a state may say it counts as — the closed set `TaskState.semantic` declares.
+ *
+ * Checked rather than trusted on the way in: the value reaches `updateTaskState` from a picker in a
+ * template, and a word nothing recognises would read as "still to do" everywhere downstream while
+ * being stored as itself. Refusing it keeps the misfiling where it can be seen.
+ */
+const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
+
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const shapeStore = useShapeStore();
+  const recordStore = useRecordStore();
   const profileStore = useProfileStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
@@ -920,9 +1050,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Read from the root dataset, so it is personal — turning one off here changes nothing another
    * member sees. Unset means "not decided" and falls back to everything registered, so an agent who
    * never opens the setting keeps what they had.
+   *
+   * Everything registered, and **not** the seed's default the community layer falls back to. It was
+   * the seed's, which made `enabled: false` mean "off for every agent too" — so a module shipped for
+   * communities to opt into could not be switched on by one until each of its members had separately
+   * installed it. `enabled: false` is a statement about spaces; this layer is about people.
    */
   const installedModules = createMemo<string[]>(() =>
-    resolveEnabledModules(datasetStore.agentSettings()?.installedModules),
+    resolveEnabledModules(datasetStore.agentSettings()?.installedModules, registeredModules),
   );
 
   /** This agent's personal choices per space, from the root dataset. See `SpacePreference`. */
@@ -1044,6 +1179,21 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const availableViews = createMemo<Map<string, TemplateSchema>>(() => {
     const out = new Map<string, TemplateSchema>(Object.entries(viewRegistry));
+    /*
+      Views a module contributes, beside the built-ins and ahead of anything installed.
+
+      An experience pack — a board view with its task block, an events view with its RSVP — ships as a
+      module, and its view is what the space enables exactly as it enables a built-in. The built-in
+      wins a collision on id for the reason it wins one below: a module must not be able to replace
+      "About" by naming a view `about`.
+    */
+    for (const [id, view] of Object.entries(moduleRegistry.views())) {
+      if (out.has(id)) {
+        console.warn(`module view "${id}" shares its id with a built-in section and will not be used`);
+        continue;
+      }
+      out.set(id, view);
+    }
     for (const template of templateStore.allTemplates()) {
       if (template.meta?.role !== 'view' || !template.id) continue;
       /*
@@ -1079,14 +1229,38 @@ export function SpaceStoreProvider(props: ParentProps) {
    * turned this off" and "you hid this for yourself" are different situations with different
    * remedies, and one boolean cannot tell them apart.
    */
-  const viewSettingsFor = (spaceUuid: string | undefined, raw: string | undefined): ViewSetting[] =>
-    viewSettings({
+  const viewSettingsFor = (
+    spaceUuid: string | undefined,
+    raw: string | undefined,
+    modulesOn: readonly string[],
+  ): ViewSetting[] => {
+    const off = viewsOffFor(modulesOn);
+    return viewSettings({
       enabledRaw: raw,
       hidden: hiddenViewsFor(spaceUuid),
-      available: availableViews(),
+      available: new Map([...availableViews()].filter(([id]) => !off.has(id))),
       fallbackOrder: defaultViewOrder(),
       isBuiltIn: (id) => id in viewRegistry,
     });
+  };
+
+  /**
+   * The sections a space cannot have, because the module that contributes them is off there.
+   *
+   * The community layer only — `enabledModules`, not `activeModules` — for the reason the sections
+   * themselves are not intersected with an install: a section is part of what the space *is*, and one
+   * member not having a module installed must not give them a different set of sections from
+   * everybody else. A community turning a module off is a decision about the space, and takes its
+   * sections with it.
+   */
+  const viewsOffFor = (modulesOn: readonly string[]): Set<string> => {
+    const on = new Set(modulesOn);
+    return new Set(
+      Object.entries(moduleRegistry.viewOwners())
+        .filter(([, owner]) => !on.has(owner))
+        .map(([viewId]) => viewId),
+    );
+  };
 
   /**
    * Turn a stored override into the id that actually applies.
@@ -1167,7 +1341,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
         // Per row rather than a "current space" memo, for the reason this whole page exists: it
         // configures whichever space you clicked, which is usually not the one you are standing in.
-        views: space ? viewSettingsFor(ds.id, space.enabledViews) : [],
+        views: space ? viewSettingsFor(ds.id, space.enabledViews, resolveEnabledModules(space.enabledModules)) : [],
         usesSections: usesSectionsFor(ds.id),
         discovery: space?.discovery ?? 'hidden',
         location: (space?.location as SpaceListEntry['location']) ?? null,
@@ -1237,6 +1411,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Extraction's hook — see the declaration on `ModuleHostServices`, and `ensureBoardFor` for
       // why it only fires once the collection holds a task.
       ensureBoardFor: (collectionId: string, dataset?: string) => boards.ensureBoardFor(collectionId, dataset),
+      /*
+        The call the address names — published here because this is a store that reads routes and a
+        module is not.
+
+        The param rather than anything derived: it is what a reload restores and what a pasted link
+        carries, which is the whole reason a module cannot hold this itself. Empty reads as null, so
+        "no call named" and "named nothing" are the same answer rather than an empty string a caller
+        might act on.
+      */
+      callOnScreen: () => routeStore.params().call || null,
       datasets: {
         get: (uri: string) => {
           const id = sharedIdOf(uri);
@@ -1316,10 +1500,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** Load the Space model from every candidate dataset. Runs after DatasetStore.loadDatasets. */
   async function loadSpaces(): Promise<void> {
     try {
-      // we-root and we-test are system datasets that never have Space SDNA installed —
-      // calling Space.findOne on them produces an RPC 500 "No SHACL shape" error.
-      const SYSTEM_PERSPECTIVES = ['we-root', 'we-test'];
-      const candidates = datasetStore.datasets().filter((d) => !SYSTEM_PERSPECTIVES.includes(d.name));
+      // System datasets hold no Space record — the root and the sandbox have no Space SDNA at all,
+      // so `Space.findOne` on them is an RPC 500 "No SHACL shape" error — and none is a space.
+      const candidates = datasetStore.datasets().filter((d) => !isSystemDataset(d.name));
       // Any other joined dataset without Space SDNA installed (e.g. a Flux
       // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
       // Promise.all, one rejection would otherwise abort the whole batch and hide every
@@ -1337,8 +1520,26 @@ export function SpaceStoreProvider(props: ParentProps) {
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
+      void loadLinkLanguageTemplates();
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
+    }
+  }
+
+  const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
+  const [defaultLinkLanguageTemplate, setDefaultLinkLanguageTemplate] = createSignal('');
+
+  async function loadLinkLanguageTemplates(): Promise<void> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle?.linkLanguageTemplates) return;
+    try {
+      const templates = await lifecycle.linkLanguageTemplates();
+      // The backend lists its default first — what publishing uses unprompted — and the picker
+      // keeps that order, so the default is also the first option.
+      setDefaultLinkLanguageTemplate(templates[0]?.address ?? '');
+      setLinkLanguageTemplateOptions(linkLanguageOptions(templates));
+    } catch (e) {
+      console.error('SpaceStore: loadLinkLanguageTemplates error', e);
     }
   }
 
@@ -1363,6 +1564,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
+    linkLanguageTemplate?: string,
   ): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
@@ -1382,7 +1584,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // (the dataset handle's own sharedUrl is not updated in-place).
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        const published = await lifecycle.publish(spaceRef.id);
+        const published = await lifecycle.publish(spaceRef.id, linkLanguageTemplate);
         publishedSharedId = published.sharedId;
         // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
         // updated in-place by publish, so the ref captured at create time would otherwise
@@ -1433,7 +1635,13 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
-      await datasetStore.trackDataset(spaceRef);
+      //
+      // Re-read rather than tracking `spaceRef`: patching its uri above does not reach its handle,
+      // whose `sharedUrl` stays empty from before the publish, and the transport for presence and
+      // calls is opened from the handle. A fresh read carries both.
+      const tracked =
+        access === 'shared' ? ((await lifecycle.get(spaceRef.id).catch(() => null)) ?? spaceRef) : spaceRef;
+      await datasetStore.trackDataset(tracked);
       setMySpaces((prev) => [...prev, spaceRecord]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
@@ -1823,6 +2031,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const boards = createBoardActions({
     dataset: datasetFor,
+    // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
+    // board reports when the data has overtaken it. See that module for why nothing releases on
+    // success.
+    ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
     /*
@@ -1878,9 +2090,59 @@ export function SpaceStoreProvider(props: ParentProps) {
     await deleteBlocks(p, collectionId);
   }
 
+  /**
+   * Where somebody last was in each space this session — the screen and its query — by dataset id.
+   *
+   * A space's address carries what is being looked at: the workshop names its call in `?call=`, a view
+   * its sort and filters. Walking to another space and back used to land on the returning space's
+   * root, and for a self-routing template that root redirects to a screen with no query at all — the
+   * call gone, and every panel about it blank. The router remembers a query per path, but under the
+   * screen's path, which is not the one a sidebar click asks for.
+   *
+   * In memory, not persisted: a reload starts from the address, which is what somebody sharing or
+   * bookmarking a space meant by it.
+   */
+  const lastPlaceInSpace = new Map<string, string>();
+  createEffect(() => {
+    const segs = routeStore.segments();
+    const path = routeStore.currentPath();
+    const params = routeStore.params();
+    const ds = datasetStore.currentDataset();
+    if (!ds || segs[0] !== 'space' || !datasetAddressedBy(ds, segs[1] ?? '')) return;
+    const query = new URLSearchParams(params).toString();
+    lastPlaceInSpace.set(ds.id, query ? `${path}?${query}` : path);
+  });
+
   async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
     // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
-    const ds = datasetStore.datasets().find((d) => d.id === spaceId || d.sharedId === spaceId);
+    const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, spaceId));
+
+    /*
+      Back to the space you are standing in, from an overlay in front of it: close the overlay, and go
+      nowhere.
+
+      Settings, profile and about are drawn over the space without touching its address, so the space
+      is still exactly where it was underneath. Navigating as well sent it to its own root — for a
+      self-routing template that is a different screen, and what somebody had selected lives in the
+      address it left. The workshop's call is `?call=`, so returning from a profile page dropped the
+      call, and every panel about it went blank until it was chosen again.
+
+      Only from an overlay, and only for the space already on screen. Clicking the current space with
+      nothing in front of it still goes to its root, which is how the sidebar takes you home, and a
+      caller naming a view knows where it wants to be.
+    */
+    const segs = routeStore.segments();
+    if (
+      shellStore.activeShellView() &&
+      !view &&
+      ds &&
+      datasetStore.currentDataset()?.id === ds.id &&
+      segs[0] === 'space' &&
+      datasetAddressedBy(ds, segs[1] ?? '')
+    ) {
+      shellStore.closeShellView();
+      return;
+    }
 
     /*
       Switching only when the space is actually changing — the same guard the route effect below
@@ -1895,6 +2157,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       way; this stops the pointless round trips as well, and keeps the two navigation paths saying
       the same thing.
     */
+    // Asked before the switch below, which makes every space the current one.
+    const arrivingFromHere = Boolean(
+      ds && datasetStore.currentDataset()?.id === ds.id && segs[0] === 'space' && datasetAddressedBy(ds, segs[1] ?? ''),
+    );
     if (ds && datasetStore.currentDataset()?.id !== ds.id) {
       // Pre-load space templates before switching so the template and data arrive together
       await templateStore.preloadSpaceTemplates(ds);
@@ -1902,16 +2168,54 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     // If no dataset found, route change alone will show the join gate
 
-    const segs = routeStore.segments();
-    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
+    /*
+      The section being read, if that is what the segment on screen is.
+
+      Carrying it across is what keeps somebody on About as they walk from space to space, and it
+      has to ask whether the segment names a section at all. Two things live at that depth and are
+      not sections: a host route (`record`), and a self-routing template's own screen (Workshop's
+      `canvas`, Discord's `channel`). Both were carried, and both name a section no space has.
+
+      Against `routableViews` rather than this space's enabled list — the destination decides what
+      it has, and gating on the *source's* switches would refuse to carry a section the reader is
+      looking at merely because they had hidden it somewhere else.
+    */
+    const here = segs[0] === 'space' ? (segs[2] ?? '') : '';
+    const carried = routableViews().some((v) => v.segment === here) ? here : '';
     /*
       The canonical segment, not the one the caller happened to hold. `spaceId` here may be either
       form — a sidebar row passes the local id, a share link the shared one — and both resolve, so
       without this one space ended up with two addresses depending on how you reached it.
     */
-    const targetPath = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId) + '/' + currentView;
+    const base = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId);
+    /*
+      A section only where the destination HAS sections, and otherwise the space itself — whose own
+      index decides, exactly as `switchTemplate` leaves it.
+
+      This said `'about'`, which assumed the space shape of every template. A space whose default is
+      a self-routing one — Workshop, Discord — has no `about` route, so entering it from the sidebar
+      landed on its catch-all and said "No such page" until you pressed a nav button. It is also the
+      last of the four places that spelled a space path by hand; the rest went when `SPACE_ROUTE_PATH`
+      became one literal.
+
+      A named `view` is always taken: a caller that asked for one knows what it is asking for, and
+      `openRecordRef`'s is a host route rather than a section.
+    */
+    const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
     shellStore.closeShellView();
-    routeStore.navigate(targetPath);
+    /*
+      Back where you were in it, when you have been in it this session and are arriving from somewhere
+      else — see `lastPlaceInSpace`. Not for the space already on screen, where a click is the way to
+      its root; not for a caller naming a view, which knows where it wants to be; and a space not yet
+      visited still carries the section across, as above.
+    */
+    const returning = ds && !view && !arrivingFromHere ? lastPlaceInSpace.get(ds.id) : undefined;
+    if (returning) {
+      routeStore.navigate(returning);
+      broadcastPerspectiveNavigation(spaceId);
+      return;
+    }
+    routeStore.navigate(section ? `${base}/${section}` : base);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
     broadcastPerspectiveNavigation(spaceId);
   }
@@ -1935,12 +2239,16 @@ export function SpaceStoreProvider(props: ParentProps) {
    *   its local id.
    * - **A person** — nothing. An agent has no page yet; a profile route would be a real feature and
    *   is not this one, and navigating somewhere arbitrary would be worse than staying put.
+   * - **A system dataset** — nothing. A note kept in the Pocket names the personal space, which is
+   *   not a space anyone navigates into: it has no `Space` record, no template and no sidebar row, so
+   *   "going there" would land on a shell with nothing in it. The note is already where it is read,
+   *   in the notes panel.
    */
   async function openRecordRef(ref: string): Promise<void> {
     const segs = routeStore.segments();
     const here = segs[0] === 'space' ? (segs[1] ?? '') : '';
     const destination = resolveRecordRef(ref, here);
-    if (!destination) return;
+    if (!destination || datasetStore.systemDatasetUuids().includes(destination.datasetId)) return;
     return navigateToSpace(destination.datasetId, destination.view);
   }
 
@@ -2177,82 +2485,164 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * A call's transcript, through the same gather extraction runs on rather than a second reading of
+   * the same shape. What a turn is — which entities can be one, which rows are too broken to keep,
+   * and the ordering that makes a transcript a transcript rather than a bag of sentences — is one
+   * decision, and an export that answered it differently would disagree with what the model was shown.
+   */
+  async function callTranscript(p: DatasetProxy, callId: string) {
+    const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+    const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
+    const turns = predicate
+      ? await gatherTranscriptTurns(
+          {
+            modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
+            handle: p,
+            containmentPredicate: predicate,
+          },
+          callId,
+        )
+      : [];
+    return { turns, predicate };
+  }
+
+  /**
+   * A label for each of these agents, fetched first.
+   *
+   * Asked for before labelling any of them: the cache is populated as a side effect of rendering
+   * people, so relying on it alone exports whoever happens to be on screen by name and everybody else
+   * as a raw DID. `fetchProfile` no-ops on a profile it holds and dedupes concurrent calls.
+   *
+   * The DID is the fallback rather than the cache's own `name`, which falls back to "Anonymous".
+   * That is right on screen, where a face tells one unnamed peer from another, and wrong in a file,
+   * where the label is all there is: three unnamed speakers would be three identical lines. The cache
+   * is keyed on the bare DID, so a prefixed one is stripped to match.
+   */
+  async function labelsFor(dids: string[]): Promise<(did: string) => string> {
+    await Promise.all([...new Set(dids)].map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
+    return (did: string): string => {
+      const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
+      return profile ? displayName(profile, did) : did;
+    };
+  }
+
+  /**
+   * What a save came to, said once for both exports.
+   *
+   * Only a file actually written earns a success message — `saveFile` knows, where the download
+   * link these used to click did not, and announced success before the reader had chosen anywhere.
+   * A cancelled dialog says nothing, and a plain download is confirmed by the browser's own UI.
+   */
+  function reportSave(outcome: SaveOutcome, saved: string, empty: string): void {
+    if (outcome === 'saved') toastService.success(saved);
+    else if (outcome === 'empty') toastService.warning(empty);
+  }
+
+  /*
+    Both exports name the file before anything else and gather the content inside `saveFile`. The
+    order is the point: a browser opens a save dialog only while the click that asked for it is still
+    being handled, and gathering a transcript or a log can outlast that. The title is one small read.
+  */
   async function exportCallTranscript(callId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset) return;
+    if (!dataset || !callId) return;
     const p = dataset.handle;
     try {
-      // The same gather extraction runs on, rather than a second reading of the same shape. What a
-      // turn is — which entities can be one, which rows are too broken to keep, and the ordering
-      // that makes a transcript a transcript rather than a bag of sentences — is one decision, and
-      // an export that answered it differently would disagree with what the model was shown.
-      const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
-      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
-      const turns = predicate
-        ? await gatherTranscriptTurns(
-            {
-              modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
-              handle: p,
-              containmentPredicate: predicate,
-            },
-            callId,
-          )
-        : [];
-
-      // Ask for the speakers this transcript actually names before labelling any of them. The cache
-      // is populated as a side effect of rendering people — members, peers, bylines — so relying on
-      // it alone exports whoever happens to be on screen by name and everybody else as a raw DID.
-      // `fetchProfile` no-ops on a profile it already holds and dedupes concurrent calls, so asking
-      // for all of them costs a round trip only for the ones genuinely missing.
-      const speakers = [...new Set(turns.map((turn) => turn.speaker))];
-      await Promise.all(speakers.map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
-
-      // A speaker's label the way the byline renders it: their display name, else their DID. The
-      // cache is keyed on the bare DID — `fetchProfile` strips the scheme on the way in — so a
-      // prefixed author has to be stripped here too or it would never match what was just fetched.
-      //
-      // Re-derived with the DID as the fallback rather than reading the cache's own `name`, which
-      // falls back to "Anonymous". That is right on screen, where a face sits beside the label and
-      // tells one unnamed peer from another — and wrong in a text file, where it is all there is:
-      // three unnamed speakers would come out as three identical "Anonymous" lines, and a
-      // transcript that cannot tell its speakers apart is not a transcript.
-      const nameFor = (did: string): string => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
-        return profile ? displayName(profile, did) : did;
-      };
-
-      const lines = turns.map((turn) => `${nameFor(turn.speaker)}, ${turn.timestamp}: ${turn.text}`);
-
-      if (!lines.length) {
-        toastService.warning('This call has no transcript to export.');
-        return;
-      }
-
-      // Name the file after the call, falling back to a generic name, then stamp it with the export
-      // time so successive exports of the same call don't overwrite each other.
       const call = await CollectionBlock.findOne(p, { where: { id: callId } });
-      const rawName = (call?.title ?? '').trim();
-      const slug =
-        rawName
-          .replace(/[^\p{L}\p{N}\-_ ]/gu, '')
-          .trim()
-          .replace(/\s+/g, '-') || 'call-transcript';
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `${slug}-${stamp}.txt`;
-
-      const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(url);
-      toastService.success('Transcript exported.');
+      const outcome = await saveFile({
+        name: exportFileName(call?.title, 'call-transcript', 'txt'),
+        type: 'text/plain;charset=utf-8',
+        content: async () => {
+          const { turns } = await callTranscript(p, callId);
+          if (!turns.length) return null;
+          const nameFor = await labelsFor(turns.map((turn) => turn.speaker));
+          return `${turns.map((turn) => transcriptLine(turn, nameFor)).join('\n')}\n`;
+        },
+      });
+      reportSave(outcome, 'Transcript exported.', 'This call has no transcript to export.');
     } catch (error) {
       console.error('SpaceStore: exportCallTranscript failed', error);
       toastService.error('Could not export the transcript.');
+    }
+  }
+
+  /**
+   * Everything extraction did with one call, as one Markdown file — see `formatExtractionLog`.
+   *
+   * Every member's passes, not only this agent's: the prompts and responses are stored on the shared
+   * record, so this exports what the panel already shows. Read in full rather than through the
+   * panel's query, which is capped for drawing and an hour of automatic extraction outruns.
+   */
+  async function exportExtractionLog(callId: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !callId) return;
+    const p = dataset.handle;
+    try {
+      const exportedAt = new Date();
+      const titled = await CollectionBlock.findOne(p, { where: { id: callId } });
+      const outcome = await saveFile({
+        name: exportFileName(titled?.title, 'call', 'md', exportedAt).replace(/\.md$/, '-extraction-log.md'),
+        type: 'text/markdown;charset=utf-8',
+        content: async () => {
+          const call = await CollectionBlock.findOne(p, {
+            where: { id: callId },
+            /*
+              `polymorphic` said here rather than trusted to the declaration. `extracted` names no
+              target class — a pass writes whatever models the call looks for — and the class this
+              store reads through did not carry the flag, so the executor refused to hydrate it.
+            */
+            include: { extractionPasses: true, extracted: { polymorphic: true }, amendments: true },
+          } as never);
+          const row = call as unknown as {
+            title?: string;
+            extractionPasses?: unknown;
+            extracted?: unknown;
+            amendments?: unknown;
+          } | null;
+          const passes = (Array.isArray(row?.extractionPasses) ? row.extractionPasses : []) as PassEntry[];
+          const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
+          const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
+          if (!passes.length) return null;
+
+          const { turns, predicate } = await callTranscript(p, callId);
+          // Scoped to this call, as the review list is; best effort, since a log without the waiting
+          // suggestions is still the log.
+          const port = session.backendPorts()?.interpretation;
+          const proposals =
+            port && predicate ? await port.proposals(p, { parent: { id: callId, predicate } }).catch(() => []) : [];
+          const authors = records.map((record) => (record as { author?: unknown }).author);
+          const nameFor = await labelsFor(
+            [
+              ...turns.map((turn) => turn.speaker),
+              ...passes.map((pass) => pass.author),
+              // Who *kept* a change, which is a different person from whoever wrote the record.
+              ...amendments.map((amendment) => amendment.author),
+              ...authors,
+            ].filter((did): did is string => typeof did === 'string' && did !== ''),
+          );
+
+          return formatExtractionLog({
+            callId,
+            callTitle: row?.title,
+            spaceName: currentSpace()?.name,
+            exportedAt,
+            callTargets: extractionTargetsForCall(callId),
+            spaceTargets: extractionTargets(),
+            autoInterpret: autoInterpretForCall(callId),
+            transcript: turns,
+            passes,
+            records,
+            proposals,
+            amendments,
+            nameFor,
+          });
+        },
+      });
+      reportSave(outcome, 'Extraction log exported.', 'No extraction has run on this call yet.');
+    } catch (error) {
+      console.error('SpaceStore: exportExtractionLog failed', error);
+      toastService.error('Could not export the extraction log.');
     }
   }
 
@@ -2469,6 +2859,29 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** The states a person should be offered — the same list, without the withdrawn ones. */
   const offeredTaskStates = createMemo<TaskStateView[]>(() => taskStates().filter((s) => !s.retired));
 
+  /*
+    Hand the record layer the vocabularies this community owns.
+
+    A property whose declaration names a `vocabulary` has an `options` list that is only a floor —
+    `TaskBlock.status` declares the three defaults because an extraction model has to be shown words
+    it can use, and nothing enforces them, so a space that has named "Blocked" holds tasks in a state
+    that list does not contain. Every picker built from the declaration then refused to offer the
+    state the record was already in, which is how an extracted task could arrive as "blocked" and be
+    uneditable without silently becoming "todo".
+
+    Slugs, because a slug is what `TaskBlock.status` stores and what the declaration's own options
+    are. Withdrawn states are left out for the reason `offeredTaskStates` exists: a picker should not
+    offer a state the community has stopped using, even though work already sitting in one keeps it.
+
+    Injected rather than read, for the reason `provideAutoInterpretGate` is: this lives on records in
+    the space, and RecordStore mounts above this one.
+  */
+  onCleanup(
+    recordStore.provideVocabularies((vocabulary) =>
+      vocabulary === 'taskState' ? offeredTaskStates().map((state) => state.slug) : undefined,
+    ),
+  );
+
   /**
    * Tell extraction which states this space actually uses.
    *
@@ -2593,6 +3006,55 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Change a state the community already has — its name, its colour, its glyph, or what it counts as.
+   *
+   * The counterpart `createTaskState` had no pair for: a state could be named and withdrawn and
+   * nothing else, so a colour was settable exactly once, at creation, and the three defaults — which
+   * ship with none — could never have one at all. Everything a key or a board draws a state with was
+   * therefore whichever fallback the rendering surface happened to hold.
+   *
+   * **The slug is not in the update.** It is what every task stores, so changing it would leave the
+   * work holding a word nothing defines — the same reason a state is retired rather than deleted.
+   * Renaming is what `name` is for, and a rename carries: a task in `todo` follows "To do" to
+   * "Backlog" without being touched.
+   *
+   * **`semantic` is.** It is the one field that means anything outside this space, so changing it
+   * re-answers "what work is outstanding here" for every peer, every board and every agent. It is
+   * also the field most likely to have been chosen wrongly at creation, and a mis-filed state was
+   * otherwise unfixable — withdraw it and make another, losing every task sitting in it. Offered
+   * with the same framing the create form uses, which is what makes the consequence visible.
+   *
+   * **An empty string clears**, rather than being skipped — see `clearOnEmpty` in the AD4M adapter.
+   * That is what makes a reset back to the template's default possible without deleting the state.
+   *
+   * By slug, like its two neighbours: editing a default is the act that adopts it.
+   */
+  async function updateTaskState(
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+  ): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug || !updates) return;
+    try {
+      const record = await adoptTaskState(p, slug);
+      if (!record) return;
+      // Only what was passed: an absent key leaves the field alone, where `''` is a deliberate clear.
+      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+      if (updates.icon !== undefined) record.icon = updates.icon;
+      if (updates.color !== undefined) record.color = updates.color;
+      if (updates.semantic !== undefined && TASK_STATE_SEMANTICS.includes(updates.semantic)) {
+        record.semantic = updates.semantic;
+      }
+      await record.save();
+      await loadTaskStates();
+      await syncTaskStateHint();
+    } catch (error) {
+      console.error('SpaceStore: could not update task state', error);
+      toastService.error('Could not save that change');
+    }
+  }
+
+  /**
    * Set the order this community reads its states in — what a column drag on the board writes.
    *
    * An ordered relation rather than a number on each state, which is the difference between a
@@ -2658,16 +3120,191 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /*
+    ── Involvements ─────────────────────────────────────────────────────────────────────────────
+
+    Who is on what. The vocabulary is loaded here, virtual defaults and all, for the reason task
+    states are: a template can filter a list it was handed and cannot substitute one it was not. The
+    involvements themselves are not — they change with every click anybody makes, so a template holds
+    them in a live query and reads them through the `involvement` host function. What a write *means*
+    lives in `involvements.ts`.
+  */
+  const [ownInvolvementTypes, setOwnInvolvementTypes] = createSignal<InvolvementTypeView[]>([]);
+  const [involvementTypesLoaded, setInvolvementTypesLoaded] = createSignal(false);
+
+  async function loadInvolvementTypes(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    const ports = session.backendPorts()?.schemas;
+    if (!dataset || !ports || !datasetStore.isWeSpace()) {
+      setOwnInvolvementTypes([]);
+      setInvolvementTypesLoaded(true);
+      return;
+    }
+    setInvolvementTypesLoaded(false);
+    try {
+      // Every space predates the entity; `ensure` is the diff-first install `loadTaskStates` uses.
+      await ports.ensure(dataset, InvolvementType as never);
+      const records = (await InvolvementType.findAll(dataset)) as InvolvementType[];
+      if (datasetStore.currentDataset()?.id !== uuid) return;
+      const stamp = (r: InvolvementType) =>
+        String((r as unknown as { timestamp?: unknown; createdAt?: unknown }).timestamp ?? r.createdAt ?? '');
+      setOwnInvolvementTypes(
+        [...records]
+          .sort((a, b) => stamp(a).localeCompare(stamp(b)))
+          .map((r) => ({
+            id: r.id,
+            name: r.name || r.slug,
+            slug: r.slug || deriveSlug(r.name || ''),
+            semantic: (INVOLVEMENT_SEMANTICS.includes(r.semantic) ? r.semantic : 'responsible') as InvolvementSemantic,
+            reflexive: Boolean(r.reflexive),
+            appliesTo: parseAppliesTo(r.appliesTo),
+            icon: r.icon || '',
+            color: r.color || '',
+            retired: Boolean(r.retired),
+            defined: true,
+          })),
+      );
+    } catch (error) {
+      console.warn('SpaceStore: could not read involvement types', error);
+      if (datasetStore.currentDataset()?.id === uuid) setOwnInvolvementTypes([]);
+    } finally {
+      if (datasetStore.currentDataset()?.id === uuid) setInvolvementTypesLoaded(true);
+    }
+  }
+
+  createEffect(() => {
+    void datasetStore.currentDataset()?.id;
+    // A hold is a promise about records on the screen being left; see `involvementOptimism.reset`.
+    involvementOptimism.reset();
+    void loadInvolvementTypes();
+  });
+
+  const involvementTypes = createMemo<InvolvementTypeView[]>(() => resolveInvolvementTypes(ownInvolvementTypes()));
+  const offeredInvolvementTypes = createMemo<InvolvementTypeView[]>(() =>
+    involvementTypes().filter((kind) => !kind.retired),
+  );
+
+  const involvements = createInvolvementActions({
+    dataset: () => datasetStore.currentDataset()?.handle,
+    me: () => session.me()?.did,
+    types: () => involvementTypes(),
+    notify: (message) => toastService.error(message),
+    ...involvementOptimism.ports,
+  });
+
+  /**
+   * The record behind a kind, writing a default down first if that is all it is — `adoptTaskState`'s
+   * rule: editing or withdrawing a default is the act that makes it the community's own.
+   */
+  async function adoptInvolvementType(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
+    const existing = (await InvolvementType.findAll(p, { where: { slug } }).catch(() => [])) as InvolvementType[];
+    if (existing.length) return existing[0];
+    const fallback = involvementTypes().find((kind) => kind.slug === slug && !kind.defined);
+    if (!fallback) return null;
+    return (await InvolvementType.create(p, {
+      name: fallback.name,
+      slug: fallback.slug,
+      semantic: fallback.semantic,
+      reflexive: fallback.reflexive,
+      appliesTo: fallback.appliesTo.join(','),
+      icon: fallback.icon,
+      color: fallback.color,
+    })) as InvolvementType;
+  }
+
+  /**
+   * Name a kind of part — "Shepherd", "Second pair of eyes".
+   *
+   * Refused for a slug the community already wrote, since two records with one slug are one kind to
+   * everybody holding it. `reflexive` is fixed at creation and not offered for editing: turning an
+   * assignment into an answer would leave every existing one claiming somebody said something they
+   * never said.
+   */
+  async function createInvolvementType(config: {
+    name: string;
+    semantic?: InvolvementSemantic;
+    reflexive?: boolean;
+    appliesTo?: string;
+    icon?: string;
+    color?: string;
+  }): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !config?.name?.trim()) return;
+    try {
+      const slug = deriveSlug(config.name);
+      if (ownInvolvementTypes().some((kind) => kind.slug === slug)) {
+        toastService.error(`A kind called "${config.name}" already exists`);
+        return;
+      }
+      await InvolvementType.create(p, {
+        name: config.name.trim(),
+        slug,
+        semantic: INVOLVEMENT_SEMANTICS.includes(config.semantic as InvolvementSemantic)
+          ? config.semantic
+          : 'responsible',
+        reflexive: Boolean(config.reflexive),
+        appliesTo: parseAppliesTo(config.appliesTo ?? '').join(','),
+        icon: config.icon ?? '',
+        color: config.color ?? '',
+      });
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not create involvement type', error);
+      toastService.error('Could not add that kind');
+    }
+  }
+
+  /** Change a kind — see `updateTaskState` for why the slug is absent and an empty string clears. */
+  async function updateInvolvementType(
+    slug: string,
+    updates: { name?: string; icon?: string; color?: string; semantic?: InvolvementSemantic; appliesTo?: string },
+  ): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug || !updates) return;
+    try {
+      const record = await adoptInvolvementType(p, slug);
+      if (!record) return;
+      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
+      if (updates.icon !== undefined) record.icon = updates.icon;
+      if (updates.color !== undefined) record.color = updates.color;
+      if (updates.appliesTo !== undefined) record.appliesTo = parseAppliesTo(updates.appliesTo).join(',');
+      if (updates.semantic !== undefined && INVOLVEMENT_SEMANTICS.includes(updates.semantic)) {
+        record.semantic = updates.semantic;
+      }
+      await record.save();
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not update involvement type', error);
+      toastService.error('Could not save that change');
+    }
+  }
+
+  /** Withdraw a kind, or bring it back — `setTaskStateRetired`'s decision, one vocabulary along. */
+  async function setInvolvementTypeRetired(slug: string, retired: boolean): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !slug) return;
+    try {
+      const record = await adoptInvolvementType(p, slug);
+      if (!record) return;
+      record.retired = retired;
+      await record.save();
+      await loadInvolvementTypes();
+    } catch (error) {
+      console.error('SpaceStore: could not update involvement type', error);
+      toastService.error('Could not update that kind');
+    }
+  }
+
+  /*
     ── Module settings ──────────────────────────────────────────────────────────────────────────
 
     The four levels a capability's settings resolve through, read from the four places they live.
     `moduleSettings.ts` owns the resolution and the reasoning; this owns only the reading.
 
     A capability could be switched on and off four ways here and could not carry a single *value*,
-    which is why `autoInterpret`, `extractionTargets` and `shareExtractionDetail` are columns on the
-    core `Space` entity. Those three stay where they are — they are extraction's configuration, and
-    where that lands is a question about wires rather than about settings — but nothing new joins
-    them.
+    which is why `autoInterpret` and `extractionTargets` are columns on the core `Space` entity.
+    Those two stay where they are — they are extraction's configuration, and where that lands is a
+    question about wires rather than about settings — but nothing new joins them.
   */
   const settingLevels = createMemo<LevelValues>(() => {
     const uuid = datasetStore.currentDataset()?.id;
@@ -2698,10 +3335,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     ),
   );
 
-  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'space', settingLevels()));
-  const myModuleSettings = createMemo<SettingRow[]>(() =>
-    settingRows(settingGroups(), 'agent-in-space', settingLevels()),
-  );
+  /*
+    The groups that apply here: a community-decided module this space has off asks nothing of it.
+    A poll setting on the settings page of a space with no polls is a control for nothing.
+  */
+  const groupsHere = createMemo(() => {
+    const on = new Set(enabledModules());
+    return settingGroups().filter((group) => {
+      const definition = moduleRegistry.get(group.id)?.definition;
+      return !definition || !isCommunityDecided(definition) || on.has(group.id);
+    });
+  });
+  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'space', settingLevels()));
+  const myModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
   const agentModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'agent', settingLevels()));
 
   /**
@@ -2768,7 +3414,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     decision to spend somebody's LLM budget.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
-  const shareExtractionDetail = createMemo<boolean>(() => currentSpace()?.shareExtractionDetail === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
 
   /*
@@ -2932,8 +3577,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     */
     const byAgent = moduleRegistry
       .all()
-      .filter(({ definition }) => definition.scope === 'agent' && installed.has(definition.id))
-      .map(({ definition }) => definition.id);
+      .filter(({ definition }) => definition.manifest.scope === 'agent' && installed.has(definition.manifest.id))
+      .map(({ definition }) => definition.manifest.id);
     return [...new Set([...bySpace, ...byAgent])];
   });
 
@@ -2960,9 +3605,20 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const routableViews = createMemo<ResolvedView[]>(() => routableSections(availableViews(), defaultViewOrder()));
 
+  /**
+   * The routable views this space may show — less any whose module the community has off.
+   *
+   * Filtered here rather than in `routableViews`, which the Router is built from and must stay put
+   * when a switch flips. What changes is which sections the nav lists and which route bodies render.
+   */
+  const routableHere = createMemo<ResolvedView[]>(() => {
+    const off = viewsOffFor(enabledModules());
+    return routableViews().filter((view) => !off.has(view.id));
+  });
+
   const spaceViews = createMemo<ResolvedView[]>(() =>
     activeSections({
-      routable: routableViews(),
+      routable: routableHere(),
       enabledRaw: currentSpace()?.enabledViews,
       hidden: hiddenViewsFor(datasetStore.currentDataset()?.id),
       fallbackOrder: defaultViewOrder(),
@@ -2983,7 +3639,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const enabledViewIds = createMemo<string[]>(() =>
     activeSections({
-      routable: routableViews(),
+      routable: routableHere(),
       enabledRaw: currentSpace()?.enabledViews,
       hidden: [],
       fallbackOrder: defaultViewOrder(),
@@ -3025,13 +3681,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     const installed = installedSet();
     return moduleRegistry.all().map(({ definition }) => {
       const surface = moduleSurface(definition);
+      const { manifest } = definition;
       return {
-        id: definition.id,
-        name: definition.name,
-        description: definition.description ?? '',
-        icon: definition.icon ?? 'puzzle-piece',
-        installed: installed.has(definition.id),
+        id: manifest.id,
+        name: manifest.name,
+        description: manifest.description ?? '',
+        icon: manifest.icon ?? 'puzzle-piece',
+        installed: installed.has(manifest.id),
         surface,
+        /**
+         * What a person is agreeing to — derived from the manifest and what the module contributes,
+         * never authored, so it cannot go stale. The list a module used to declare was written by
+         * six modules and read by nothing; this is read here, and is the honest version.
+         */
+        capabilities: moduleRegistry.capabilitiesOf(manifest.id),
         /**
          * A capability module is listed but not switchable.
          *
@@ -3333,7 +3996,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // component out from under it, and the route stops rendering with nothing to explain why. This
     // guard is what makes a capability module safe to offer a switch for at all.
     if (!installed && requiredModules().includes(moduleId)) {
-      const name = moduleRegistry.get(moduleId)?.definition.name ?? moduleId;
+      const name = moduleRegistry.get(moduleId)?.definition.manifest.name ?? moduleId;
       const template = templateStore.currentTemplate.meta?.name ?? 'current';
       toastService.error(`${name} can't be turned off — the ${template} template uses it`);
       return;
@@ -3540,7 +4203,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     Tell the shell which modules' chrome is live here.
 
     The same predicate `gateOnSpace` wraps every module slot in — enabled here, *or* the module says
-    it is holding on regardless (`holdsWhen`, which is how a call keeps its bar in a space that
+    it is holding on regardless (`holds`, which is how a call keeps its bar in a space that
     never enabled calls). Only this store can answer it, and `ShellStore` mounts above this one, so
     it is injected rather than read.
 
@@ -3552,10 +4215,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     const on = new Set(activeModules());
     shellStore.provideModuleGate((moduleId: string) => {
       if (on.has(moduleId)) return true;
-      const definition = moduleRegistry.all().find((m) => m.definition.id === moduleId)?.definition;
-      // `holdsWhen` is a full store path (`modules.call.active`); only its final key is a store member.
-      const key = definition?.holdsWhen?.split('.').pop();
-      return read(moduleId, key, false);
+      // `holds` is a bare key on the module's own store. See `ModuleContributions.holds`.
+      return read(moduleId, moduleRegistry.get(moduleId)?.definition.contributes?.holds, false);
     });
   });
 
@@ -3568,34 +4229,92 @@ export function SpaceStoreProvider(props: ParentProps) {
     save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
   });
 
+  /**
+   * The rows the rail was last handed, so a recompute that changes nothing about a button hands back
+   * the same object.
+   *
+   * The rail draws these through `$each`, which keys rows by reference, and this memo now reads the
+   * shell's dock geometry to answer `concealed` — geometry that changes on every frame of a drag and on
+   * every tab flash. Fresh objects each time rebuilt every rail button under the pointer, so a hovered
+   * button lost its hover fill and got it back: a flicker for as long as anything on screen moved.
+   */
+  let lastLaunchers: LauncherRow[] = [];
   const moduleLaunchers = createMemo(() => {
     const on = new Set(activeModules());
-    return (
-      moduleRegistry
-        .all()
-        .filter(({ definition }) => on.has(definition.id))
+    const rows: LauncherRow[] = moduleRegistry
+      .all()
+      .filter(({ definition }) => on.has(definition.manifest.id))
+      .flatMap(({ definition }) => {
+        const id = definition.manifest.id;
         /*
-        A module may offer more than one way in, and transcription is why: recording and extraction
-        are two surfaces with different lifetimes — one follows this agent's microphone, the other
-        follows a pass that may be somebody else's — so one button cannot open both. The key is the
-        plain module id for a module with a single launcher, which is every other one, so nothing
-        about their rail entries changes.
-      */
-        .flatMap(({ definition }) => moduleRegistry.launchersOf(definition).map((entry) => ({ definition, ...entry })))
-        .filter(({ definition, launcher }) => read(definition.id, launcher.availableWhen, true))
-        .map(({ definition, key, launcher }) => {
-          const active = read(definition.id, launcher.activeWhen, false);
-          return {
-            id: key,
-            icon: launcher.icon,
-            // The active label where there is one, so a tooltip cannot describe an act the button has
-            // stopped performing. Most launchers declare none and this is `label` in both states.
-            label: (active && launcher.activeLabel) || launcher.label,
-            active,
-          };
-        })
-    );
+          A rail entry per panel that asks for one, then the module's own launchers.
+
+          A panel's button is derived from the panel — its icon, its title, whether it is open — so a
+          module with a panel declares nothing about the rail. A launcher that is not a panel's (the
+          call's "start a call" / "go to the call") is declared separately, and reads its state off
+          the store as it always did.
+        */
+        const panels = moduleRegistry
+          .panelsOf(id)
+          .filter(({ panel }) => panel.icon && read(id, panel.availableWhen, true))
+          .map(({ dockId, panel, isOpen }) => {
+            const active = isOpen();
+            return {
+              id: dockId,
+              icon: panel.icon!,
+              // The active label where there is one, so a tooltip cannot describe an act the button
+              // has stopped performing.
+              label: (active && panel.activeLabel) || panel.label || panel.title,
+              active,
+              // Background work the module reports — a running pass. Read separately from `active`,
+              // since a panel can be shut while its module is busy.
+              busy: read(id, panel.busyWhen, false),
+              concealed: dockConcealed(dockId),
+            };
+          });
+        const launchers = moduleRegistry
+          .launchersOf(definition)
+          .filter(({ launcher }) => read(id, launcher.availableWhen, true))
+          .map(({ key, launcher }) => {
+            const active = read(id, launcher.activeWhen, false);
+            return {
+              id: key,
+              icon: launcher.icon,
+              label: (active && launcher.activeLabel) || launcher.label,
+              active,
+              busy: read(id, launcher.busyWhen, false),
+              concealed: false,
+            };
+          });
+        return [...panels, ...launchers];
+      });
+    const same = (a: LauncherRow, b: LauncherRow) =>
+      a.id === b.id &&
+      a.icon === b.icon &&
+      a.label === b.label &&
+      a.active === b.active &&
+      a.busy === b.busy &&
+      a.concealed === b.concealed;
+    const stable = rows.map((row) => lastLaunchers.find((previous) => same(previous, row)) ?? row);
+    if (stable.length !== lastLaunchers.length || stable.some((row, i) => row !== lastLaunchers[i]))
+      lastLaunchers = stable;
+    return lastLaunchers;
   });
+
+  /**
+   * Whether a panel is open and nobody can see it — behind another tab of its stack, folded to its
+   * bar, or in a lane collapsed to its edge.
+   *
+   * Asked of the shell's resolved geometry rather than re-derived, because the shell is what decides
+   * all three. Not eclipsed-by-full-screen: the rail hides while a panel is maximised, so no rail
+   * button is ever pressed in that state to be wrong about it.
+   */
+  function dockConcealed(dockId: string | null): boolean {
+    if (!dockId) return false;
+    const geometry = shellStore.dockGeometry()[dockId];
+    if (!geometry?.edge || geometry.home) return false;
+    return Boolean(geometry.hidden || geometry.collapsed || geometry.stowed);
+  }
 
   /**
    * Invoke a module's launcher.
@@ -3604,22 +4323,44 @@ export function SpaceStoreProvider(props: ParentProps) {
    * over modules cannot build `modules.<id>.<method>` per entry. The rail passes the id instead and
    * this dereferences it.
    */
-  function launchModule(moduleId: string) {
+  function launchModule(entryId: string) {
     /*
-      The rail's key, which is the module id for a module with one launcher and `<id>:<key>` for one
-      with several. Split rather than looked up twice: the whole of the addressing is in the key, so
-      a rail iterating over entries needs nothing else, which is the constraint that put this here
-      rather than in a schema in the first place.
+      The rail's key: a panel's dock id (`<module>:<name>`) or a launcher's key (`<module>:<key>`, or
+      the bare module id). The whole of the addressing is in the key, so a rail iterating over entries
+      needs nothing else, which is the constraint that put this here rather than in a schema.
     */
-    const [id] = moduleId.split(':');
+    const panel = moduleRegistry.panel(entryId);
+    if (panel) {
+      /*
+        The panel is open and out of sight: bring it into sight, and do not toggle it.
+
+        A toggle reads "open" and closes, so a button lit for a panel stacked behind another tab put
+        that panel away when pressed — the one thing the person pressing it could not have wanted.
+        Only the shell knows where the panel is, so the shell answers.
+      */
+      if (dockConcealed(panel.dockId)) {
+        shellStore.revealDock(panel.dockId);
+        return;
+      }
+      shellStore.toggleModulePanel(panel.dockId);
+      // A panel the press just opened comes to the front of wherever it opened. `revealDock` leaves a
+      // panel that is still closed alone.
+      shellStore.revealDock(panel.dockId);
+      return;
+    }
+
+    const [id] = entryId.split(':');
     const definition = moduleRegistry.get(id)?.definition;
     if (!definition) return;
-    const action = moduleRegistry.launchersOf(definition).find((entry) => entry.key === moduleId)?.launcher.action;
-    if (!action) return;
+    const launcher = moduleRegistry.launchersOf(definition).find((entry) => entry.key === entryId)?.launcher;
+    if (!launcher?.action) return;
     const store = moduleStores[id] as Record<string, unknown> | undefined;
-    const fn = store?.[action];
-    if (typeof fn === 'function') (fn as () => void)();
-    else console.warn(`module "${id}" declares launcher action "${action}" but its store has no such method`);
+    const fn = store?.[launcher.action];
+    if (typeof fn !== 'function') {
+      console.warn(`module "${id}" declares launcher action "${launcher.action}" but its store has no such method`);
+      return;
+    }
+    (fn as () => void)();
   }
 
   /**
@@ -3646,35 +4387,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     setCurrentSpace((prev) =>
       prev
         ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { autoInterpret: enabled }) as Space)
-        : prev,
-    );
-  }
-
-  /**
-   * Turn extraction diagnostics on or off for the space.
-   *
-   * Same shape and same failure handling as `setAutoInterpret`, which is the setting it sits beside
-   * — a switch that reports success without persisting is worse than one that fails visibly,
-   * because the next member to open the page sees the old decision.
-   */
-  async function setShareExtractionDetail(enabled: boolean, spaceUuid?: string) {
-    const ds = targetDataset(spaceUuid);
-    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
-    if (!ds || !space) return;
-    try {
-      await Space.update(ds.handle, space.id, { shareExtractionDetail: enabled });
-    } catch (error) {
-      console.error('SpaceStore: could not persist shareExtractionDetail', error);
-      toastService.error('Could not save this change for the space.');
-      throw error;
-    }
-    updateSpaceInCache(ds, { shareExtractionDetail: enabled } as never);
-    if (!isCurrent(ds)) return;
-    setCurrentSpace((prev) =>
-      prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
-            shareExtractionDetail: enabled,
-          }) as Space)
         : prev,
     );
   }
@@ -4057,7 +4769,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const segs = routeStore.segments();
     if (segs[0] !== 'space' || !segs[1]) return false;
     if (!datasetStore.datasetsLoaded()) return false;
-    return !datasetStore.datasets().some((d) => d.id === segs[1] || d.sharedId === segs[1]);
+    return !datasetStore.datasets().some((d) => datasetAddressedBy(d, segs[1]));
   });
 
   // Resolve the route segment to a local dataset whenever the route changes.
@@ -4069,7 +4781,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (segs[0] !== 'space' || !segs[1]) return;
     const seg = segs[1];
 
-    const ds = datasetStore.datasets().find((d) => d.id === seg || d.sharedId === seg);
+    const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, seg));
     if (!ds) {
       // Routing policy, not backend dialect: a segment that isn't a local id is treated as a
       // shared link the agent hasn't joined — clear the current dataset so the join gate shows.
@@ -4147,6 +4859,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     taskStates,
     offeredTaskStates,
     taskStatesLoaded,
+    involvementTypes,
+    offeredInvolvementTypes,
+    involvementTypesLoaded,
     installedModules,
     requiredModules,
     missingModules,
@@ -4161,6 +4876,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     enabledViewIds,
     viewNav,
     foreignSpacePrefill,
+    linkLanguageTemplateOptions,
+    defaultLinkLanguageTemplate,
 
     // Actions
     createSpace,
@@ -4196,8 +4913,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     setMyModuleSetting,
     setAgentModuleSetting,
     setAutoInterpret,
-    shareExtractionDetail,
-    setShareExtractionDetail,
     extractionTargets,
     setExtractionTarget,
     setModuleInstalled,
@@ -4214,8 +4929,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     createRelationshipType,
     setSignalTypeRetired,
     createTaskState,
+    updateTaskState,
     setTaskStateRetired,
     reorderTaskStates,
+    setInvolvement: involvements.setInvolvement,
+    respondTo: involvements.respond,
+    createInvolvementType,
+    updateInvolvementType,
+    setInvolvementTypeRetired,
     upsertSignal,
     navigateToSpace,
     openRecordRef,
@@ -4225,6 +4946,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     copyGuestLink,
     getSubgroupMessages,
     exportCallTranscript,
+    exportExtractionLog,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

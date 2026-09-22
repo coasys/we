@@ -15,8 +15,10 @@ export type StoreDeclaration = Record<string, true | { actions?: string[]; state
  * - **`node`** supplies the content itself. The shell owns the frame and the open flag, because
  *   there is no module to own them.
  *
- * Named positions only, never pixels — the same reason `DockSize` is a name. A template cannot see
- * the viewport, and a pixel it guessed would be wrong on a display it never ran on.
+ * Positions are named, never pixels — the same reason `DockSize` is a name. A template cannot see
+ * the viewport, and a coordinate it guessed would be wrong on a display it never ran on. A *size*
+ * may be pixels, through `box`, because the host clamps it to the room there is: a box too big for
+ * the window is capped rather than hung off its edge.
  */
 export type TemplatePanel = {
   /**
@@ -91,6 +93,22 @@ export type TemplatePanel = {
   fixed?: boolean;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
+  /**
+   * The box it opens at, in pixels, where a named size is the wrong shape. Either side may be omitted.
+   *
+   * `size` gives a card whose width comes from a table and whose height is 16:9 of that, which is
+   * right for "a panel" and wrong for anything with a shape of its own: a key is tall and narrow, a
+   * strip of faces is wide and low, and neither is a `sm` of anything. This says the shape.
+   *
+   * The whole panel, titlebar and frame included — the same box `min` is measured against, so the
+   * two can be compared. Content that wants a given area adds the host's chrome to it.
+   *
+   * An opening bid, exactly as `size` is: clamped to the room there is, beaten by a drag, never
+   * written. A width alone keeps the 16:9 height derived from it; a height alone keeps the width
+   * `size` names. On a displacing edge the side across the edge is the thickness, and the side along
+   * it is the base a lane divides by `grow`.
+   */
+  box?: { width?: number; height?: number };
   /**
    * Its share of the spare room in a floating column, relative to its neighbours. Absent means 1.
    *
@@ -225,6 +243,18 @@ export type TemplateMeta = {
    * stray drag somebody made once.
    */
   panels?: TemplatePanel[];
+  /**
+   * What this interface depends on that a deployment might not have.
+   *
+   * `modules` names the feature modules whose stores or parts this template reaches —
+   * `modules.call.*` in an expression, a `$part` of theirs, a `meta.panels` entry placing one. The
+   * host cannot derive that: it can walk the component types a schema mounts, and it does, but an
+   * expression naming a module store and a part naming a module are invisible to that walk. So a
+   * template that leans on one says so, and a deployment omitting the module sees the reason instead
+   * of a blank panel. Reported through `spaceStore.missingModules`, and checked by the validator
+   * against the deployment's module list.
+   */
+  requires?: { modules?: string[] };
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };
@@ -365,8 +395,14 @@ export type QueryToken = {
      *
      * Prefer a literal wherever the type IS known: the validator can say nothing about a name it
      * only sees at runtime, and a typo in an expression fails as a silently empty list.
+     *
+     * A **list** — literal, or an expression answering with one — asks the same question of every
+     * entity in it and answers with one list: each row tagged with the entity it came from under
+     * `__subjectClass`, a record two entities share listed once, and `order` and `limit` applied to
+     * the whole. An empty list is an answer (loaded, no rows), not a wait. `offset` is refused.
+     * See `combineEntityRows` in `@we/backend-shared`.
      */
-    entity: string | Record<string, unknown>;
+    entity: string | string[] | Record<string, unknown>;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
     /**
@@ -472,7 +508,8 @@ export type CallLocalToken = { $callLocal: string };
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
   /**
-   * The entity to query, as authored: a name, or an expression that answers with one.
+   * The entity to query, as authored: a name, a list of names, or an expression that answers with
+   * either.
    *
    * `unknown` rather than `string` because this resolver is pure and an expression can only be
    * evaluated against stores and a row's bindings, which the framework layer holds. Every other

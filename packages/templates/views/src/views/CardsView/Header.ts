@@ -63,17 +63,23 @@ const startCallButton: SchemaNode = {
  * and a switch in a header row reads as a setting for the whole view.
  */
 const emptyCallsToggle: SchemaNode = {
-  type: 'we-button',
-  props: {
-    variant: { $: "local.showEmptyCalls ? 'secondary' : 'ghost'" },
-    size: 'sm',
-    title: { $: "local.showEmptyCalls ? 'Hide calls nobody spoke in' : 'Show calls nobody spoke in'" },
-    onClick: { $toggleLocal: 'showEmptyCalls' },
-  },
-  // The icon says what is on screen, not what the press would do: eye when the empties are showing,
-  // eye-slash when they are hidden. Fixed as an icon that never changed, which read as a control
-  // that had not worked.
-  children: [{ type: 'we-icon', props: { name: { $: "local.showEmptyCalls ? 'eye' : 'eye-slash'" } } }],
+  type: 'we-tooltip',
+  props: { content: { $: "local.showEmptyCalls ? 'Hide calls nobody spoke in' : 'Show calls nobody spoke in'" } },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        label: { $: "local.showEmptyCalls ? 'Hide calls nobody spoke in' : 'Show calls nobody spoke in'" },
+        variant: { $: "local.showEmptyCalls ? 'secondary' : 'ghost'" },
+        size: 'sm',
+        onClick: { $toggleLocal: 'showEmptyCalls' },
+      },
+      // The icon says what is on screen, not what the press would do: eye when the empties are showing,
+      // eye-slash when they are hidden. Fixed as an icon that never changed, which read as a control
+      // that had not worked.
+      children: [{ type: 'we-icon', props: { name: { $: "local.showEmptyCalls ? 'eye' : 'eye-slash'" } } }],
+    },
+  ],
 };
 
 const contentTypeOptions = [

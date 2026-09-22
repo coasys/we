@@ -75,6 +75,12 @@ describe('style resolution', () => {
     expect(visual.borderColor).toBeDefined();
   });
 
+  it('carries a dashed border through to what is drawn, and says nothing when unset', () => {
+    // A suggestion nobody has kept is drawn dashed on a canvas, as it is on a board.
+    expect(nodeVisual(belief, { borderStyle: 'dashed', borderWidth: 1 }, NO_METRICS).borderStyle).toBe('dashed');
+    expect(nodeVisual(belief, {}, NO_METRICS).borderStyle).toBeUndefined();
+  });
+
   it('falls back to the type when a node has no label', () => {
     const visual = nodeVisual({ id: 'x', kind: 'entity', type: 'Task' }, {}, NO_METRICS);
     expect(visual.label).toBe('Task');
@@ -141,7 +147,8 @@ describe('field references', () => {
   it('refuses a card shape it does not know', () => {
     // This reads a *stored* value, so a canvas written by a newer version of the app must fall back
     // rather than hand the renderer a name it has no drawing for.
-    const visual = nodeVisual(card({ s: 'hexagon' }), { shape: 'card', cardShape: { from: 'data.s' } }, NO_METRICS);
+    // A hexagon is a shape now; a blob is not.
+    const visual = nodeVisual(card({ s: 'blob' }), { shape: 'card', cardShape: { from: 'data.s' } }, NO_METRICS);
     expect(visual.cardShape).toBe('note');
   });
 
@@ -153,6 +160,12 @@ describe('field references', () => {
     expect(
       nodeVisual(card({ s: 99 }), { shape: 'card', contentScale: { from: 'data.s' } }, NO_METRICS).contentScale,
     ).toBe(4);
+  });
+
+  it('reads a stacking order as a whole number, and leaves an unset one off', () => {
+    expect(nodeVisual(card({ z: 2.6 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS).z).toBe(3);
+    expect(nodeVisual(card({ z: -1 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS).z).toBe(-1);
+    expect('z' in nodeVisual(card({ z: 0 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS)).toBe(false);
   });
 
   it('keeps a card big enough to grab', () => {

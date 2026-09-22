@@ -1,9 +1,20 @@
 /**
  * The call store — what a template can read and drive.
  *
- * Written against `ModuleStoreDeps` alone: `signal` and `effect` for reactivity, `ephemeral` for
- * transport, `presence` for membership, `dataset`/`selfId` for scope. It imports no framework and no
- * backend, which is what lets the whole module ship as schema fragments.
+ * Written against `ModuleStoreDeps` alone: `signal` and `effect` for reactivity, `dataset`/`selfId`
+ * for scope, and under `deps.kernels` exactly the five the manifest asks for — `ephemeral` for
+ * transport, `presence` for membership, `records` for the call's record, `media` for this agent's
+ * devices, `peerConnection` for the mesh. It imports no framework and no backend, which is what lets
+ * the whole module ship as schema fragments.
+ *
+ * ## What a template may reach
+ *
+ * Members are private to this module's own chrome unless marked with `deps.state` or `deps.action`
+ * at the bottom of this file. The marked set is the call's *domain* — who is in it, which record it
+ * is, join/leave/mute — and every key a space template already names as `modules.call.<key>`. The
+ * stage's plumbing (`stageBid`, the track strings, the per-tile style lookups) is not marked: it is
+ * read by the panel declaration and by this module's own fragments, which render at chrome tier and
+ * see everything.
  *
  * ## The shape of the thing
  *
@@ -17,16 +28,17 @@
  * drives the mesh, and media drives what the mesh sends. Nothing flows back — the mesh never tells
  * presence who is in the call, because a connection failing is not the same as a peer leaving.
  */
-import type { MediaSettings } from '@we/module-shared';
+import type { DockAspect, MediaSettings, PanelBid } from '@we/module-shared';
 import type { Focus, ModuleStoreDeps, Peer } from '@we/module-shared';
 import type { EphemeralScope } from '@we/module-shared';
 import { activitiesOfType } from '@we/module-shared';
 import { planEphemeral } from '@we/module-shared';
 
 import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPeerCount } from './devPeers';
+import { parseIceServers } from './iceServers';
 import { createMediaController, type MediaController } from './media';
-import { type CallMesh, createCallMesh } from './mesh';
-import { CALL_KIND, CALL_PREDICATE, recordCallId } from './protocol';
+import { type CallMesh, createCallMesh, DEFAULT_ICE_SERVERS, type RecoveryRung } from './mesh';
+import { CALL_KIND, CALL_PREDICATE, CALL_PROTOCOL_VERSION, recordCallId } from './protocol';
 import { solveStrip } from './strip';
 
 // ── Session backend ──────────────────────────────────────────────────
@@ -139,6 +151,22 @@ export interface CallTileState {
    * spinning at them forever would be a lie about a state that is never going to change.
    */
   connecting: boolean;
+  /**
+   * Something is being done about it right now — the mesh is on a rung of its recovery ladder.
+   *
+   * Distinct from {@link connecting}, which only says a picture is expected. The difference is the
+   * one a person actually wants: a spinner that has been turning for thirty seconds says nothing
+   * about whether anything is happening, and "Reconnecting…" says the app has noticed and is not
+   * waiting for you to. It is also what stops the reconnect button reading as the only hope.
+   */
+  retrying: boolean;
+  /** How many repairs this pair has had, so a tile can stop promising after several. */
+  attempts: number;
+  /**
+   * How this peer's media is reaching us — `host` on a LAN, `srflx` through NAT, `relay` through
+   * TURN — or `''` before the connection settles. Diagnostic; shown on the connection badge.
+   */
+  transport: string;
   /** The connection gave up. Not something waiting will fix, so it must not read as progress. */
   failed: boolean;
 }
@@ -147,9 +175,9 @@ export interface CallTileState {
  * The stage's own padding and the gap between tiles, in pixels — `300` on the space scale.
  *
  * Named because two places have to agree about them and they are far apart: the stage node in
- * `index.ts` sets them as design tokens, and `dockAspect` below subtracts them so "fit to content"
- * solves for the right height. They drifted apart once already — the aspect ignored them entirely,
- * and the fit came out short by exactly their sum.
+ * `index.ts` sets them as design tokens, and the aspect `stageBid` carries subtracts them so "fit to
+ * content" solves for the right height. They drifted apart once already — the aspect ignored them
+ * entirely, and the fit came out short by exactly their sum.
  */
 export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
@@ -207,56 +235,16 @@ export interface CallSfuNodeState {
   bindAddress: string;
 }
 
-/**
- * Summary of relay (SFU) availability for the current call.
- *
- * Surfaced to the UI so it can show relevant hints without
- * exposing any technical terminology to end users.
- */
+/** Summary of relay (SFU) availability for the current call. */
 export interface RelayInfo {
-  /** Whether a relay server handled this call's media. */
   relayActive: boolean;
-  /** Total participants (including self). */
   participantCount: number;
-  /**
-   * True when the call runs peer-to-peer and the participant count
-   * exceeds the comfortable mesh limit (6).  The UI can surface a
-   * hint like "Call quality may degrade with more participants."
-   */
   meshLimitReached: boolean;
 }
 
-/** Participant thresholds for auto-quality and mesh warnings. */
 const MESH_LIMIT = 6;
 const AUTO_QUALITY_MEDIUM = 5;
 const AUTO_QUALITY_LOW = 9;
-
-export interface CallStoreDeps extends ModuleStoreDeps {
-  /** Overridable for tests; defaults to the browser's WebRTC and media APIs. */
-  createPeerConnection?: () => RTCPeerConnection;
-  /**
-   * A Session backend that manages the WebRTC topology (mesh or SFU).
-   *
-   * When provided, the store delegates join / leave / track replacement / quality to the backend
-   * instead of building its own peer-to-peer mesh. The backend must already hold the room id,
-   * topology config, signalling channel, and agent identity — this module only drives its lifecycle.
-   *
-   * Pass `Session` from `@coasys/ad4m` directly — it satisfies the {@link CallBackend} interface.
-   * The Session resolves topology automatically (mesh, SFU, or auto).
-   */
-  backend?: CallBackend;
-  /**
-   * Factory that creates a CallBackend for a specific call room.
-   *
-   * Called at join time with the call id.  The host builds this from its backend
-   * connection — on AD4M, `NeighbourhoodProxy.createSession(roomName)` returns a
-   * Session that satisfies CallBackend structurally.
-   *
-   * When both `createBackend` and `backend` exist, `createBackend` takes
-   * precedence — a factory is always more specific than a static instance.
-   */
-  createBackend?: (callId: string) => Promise<unknown>;
-}
 
 /**
  * Whether a stream is actually carrying a picture, rather than merely existing.
@@ -271,20 +259,28 @@ function hasLiveVideo(stream: MediaStream | null): boolean {
   return !!stream?.getVideoTracks().some((track) => track.readyState === 'live');
 }
 
-export function createCallStore(deps: CallStoreDeps) {
+export function createCallStore(deps: ModuleStoreDeps) {
   const {
     signal,
     effect,
     dataset,
     datasetUri,
     selfId,
-    ephemeral,
-    presence,
     identities,
     datasets,
     onDispose,
-    createEntity,
+    callOnScreen,
+    settings,
+    state,
+    action,
   } = deps;
+  /*
+    Only the kernels the manifest names are on the bag, and every one is optional at the type level:
+    registration refuses a host that implements none of them, but a module must still degrade rather
+    than throw, so each is checked where it is reached. `media` is renamed on the way in because
+    `media` below is the signal carrying this agent's mute/camera/share state, which a template reads.
+  */
+  const { presence, ephemeral, records, media: mediaKernel, peerConnection } = deps.kernels;
 
   /**
    * The transport scope this call holds, so leaving can give it back.
@@ -323,9 +319,10 @@ export function createCallStore(deps: CallStoreDeps) {
   /**
    * Whether the stage is on screen. False between calls, and set by `join` — see there.
    *
-   * The initial value is the state of a module that is not in a call, which is the only state this
-   * is ever read in before one starts: `dockEdge` is null while `callId` is, so nothing is placed
-   * either way.
+   * This is the one panel whose openness the module owns rather than the host: whether the stage is
+   * up is a fact about the call, and the panel declaration names this key as its `open`. The initial
+   * value is the state of a module that is not in a call, which is the only state this is ever read
+   * in before one starts — a closed panel is simply not placed.
    */
   const [visible, setVisible] = signal(false);
   /**
@@ -434,8 +431,25 @@ export function createCallStore(deps: CallStoreDeps) {
    * The controller returns the same `MediaStream` object each time, so those later writes dedupe on
    * `===` and consumers do not churn — which is what keeps muting from tearing down and rebuilding
    * the transcription pipeline. A muted track stays in the stream and simply goes silent.
+   *
+   * ## Published through the `media` kernel, not by a string key
+   *
+   * The definition used to say `audioSource: 'localAudio'` and the host read the member off this
+   * store and lent it to every other module. That is `media.publish` now: this module says what it
+   * is capturing, a module that wants to hear it reads `media.input()`, and neither names the other.
+   * The publish happens in the setter so the two cannot disagree — every write to the signal is a
+   * publish, and the dedupe above is what keeps a mute from re-announcing the same stream.
    */
-  const [localAudio, setLocalAudio] = signal<MediaStream | null>(null);
+  const [localAudio, writeLocalAudio] = signal<MediaStream | null>(null);
+  function setLocalAudio(stream: MediaStream | null) {
+    // The dedupe is load-bearing for the kernel as much as for the signal: `publish` replaces the
+    // current publisher, so re-publishing the same stream on every mute would be noise, and
+    // publishing `null` at teardown when nothing was ever published would take *another* module's
+    // microphone off the air.
+    if (stream === localAudio()) return;
+    writeLocalAudio(stream);
+    mediaKernel?.publish(stream);
+  }
 
   let mesh: CallMesh | null = null;
   let backend: CallBackend | null = null;
@@ -444,6 +458,17 @@ export function createCallStore(deps: CallStoreDeps) {
   let peerStates = new Map<string, RTCPeerConnectionState>();
   let dataUnsubscribe: (() => void) | null = null;
   const dataListeners: Set<(msg: BackendDataMessage) => void> = new Set();
+  const recovering = new Map<string, { rung: RecoveryRung; attempts: number }>();
+  const transports = new Map<string, string>();
+  const warmed = new WeakSet<object>();
+
+  function iceServers(): RTCIceServer[] {
+    const { servers, problems } = parseIceServers(settings?.().iceServers);
+    if (problems.length) {
+      console.warn(`call: ignoring ICE server settings that could not be read — ${problems.join(', ')}`);
+    }
+    return servers.length ? servers : DEFAULT_ICE_SERVERS;
+  }
 
   /**
    * The previous tile object per participant, reused when nothing about them changed.
@@ -531,6 +556,10 @@ export function createCallStore(deps: CallStoreDeps) {
         // Your own tile waits on the device rather than on a peer: `join` announces before it calls
         // `getUserMedia`, so this covers the seconds a permission prompt is on screen.
         connecting: ownWantsPicture && !ownPicture,
+        // There is no connection to yourself to repair or to describe.
+        retrying: false,
+        attempts: 0,
+        transport: '',
         failed: false,
       });
     }
@@ -541,6 +570,7 @@ export function createCallStore(deps: CallStoreDeps) {
       const stream = remoteStreams.get(peer.agentId) ?? null;
       next.push(stabilise({ id: peer.agentId, did: peer.agentId, stream, isSelf: false }));
       const connection = peerStates.get(peer.agentId);
+      const repair = recovering.get(peer.agentId);
       const wantsPicture = (settings?.videoEnabled ?? true) || (settings?.screenShareEnabled ?? false);
       const picture = wantsPicture && hasLiveVideo(stream);
       states.push({
@@ -555,6 +585,12 @@ export function createCallStore(deps: CallStoreDeps) {
         // Expected and not yet arrived. Keyed on the track rather than on `peerStates`, which holds
         // nothing until the first negotiation — exactly the window that showed nothing at all.
         connecting: wantsPicture && !picture && connection !== 'failed',
+        // A repair is only worth announcing while the connection has not come back. Reading the
+        // connection rather than clearing the map on every state change keeps the two in step
+        // without a second source of truth.
+        retrying: !!repair && connection !== 'connected',
+        attempts: repair?.attempts ?? 0,
+        transport: transports.get(peer.agentId) ?? '',
         failed: connection === 'failed',
       });
     }
@@ -577,6 +613,11 @@ export function createCallStore(deps: CallStoreDeps) {
         connection: 'connected',
         hasPicture: peer.stream !== null,
         connecting: false,
+        retrying: false,
+        attempts: 0,
+        // A synthetic participant has no connection, so it has no transport to describe. Left empty
+        // rather than faked: this exists to make a layout testable, not to make a diagnostic lie.
+        transport: '',
         failed: false,
       });
     }
@@ -675,6 +716,21 @@ export function createCallStore(deps: CallStoreDeps) {
    */
   const [callRecord, setCallRecord] = signal<string | null>(null);
 
+  /**
+   * The record this agent picked back up, when the call was continued rather than started.
+   *
+   * Published beside `record` so the transcriber can tell the two apart. A started call's record is
+   * empty until somebody speaks, so it waits for the first utterance before writing into it; a
+   * continued call's record already holds last time's words, and waiting left every surface reading
+   * "nothing has been said" over a transcript that was plainly there. The transcript panel's own
+   * Continue button worked around this by telling the transcriber directly, which the rail's path
+   * could not do — so the two ways into the same call disagreed about whether it had a transcript.
+   *
+   * A plain `let` compared against the signal rather than a flag on `join`, because `join` tears the
+   * previous call down first and teardown clears the record; the comparison is what survives that.
+   */
+  let continuedRecord: string | null = null;
+
   /** Republish the call activity so peers see mute/camera/screen changes. */
   function publishActivity() {
     const id = callId();
@@ -688,6 +744,8 @@ export function createCallStore(deps: CallStoreDeps) {
       // joining peer adopts rather than deriving. Every participant republishes it, so the record
       // survives the starter leaving.
       ...(callRecord() ? { record: callRecord() } : {}),
+      // And whether that record pre-existed the call — see `continuedRecord`.
+      ...(callRecord() && callRecord() === continuedRecord ? { continued: true } : {}),
     });
   }
 
@@ -711,6 +769,8 @@ export function createCallStore(deps: CallStoreDeps) {
     setLocalAudio(null);
     remoteStreams = new Map();
     peerStates = new Map();
+    recovering.clear();
+    transports.clear();
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
     setTopology('mesh');
@@ -759,6 +819,18 @@ export function createCallStore(deps: CallStoreDeps) {
     const me = selfId?.() ?? null;
     if (!handle || !me) return { reason: 'A call needs a space and a signed-in agent.' };
     if (!ephemeral || !presence) return { reason: 'This host has no transport for calls.' };
+    /*
+      The manifest requires this kernel, so registration should already have refused a host without
+      it — this is the degradation the contract asks for anyway, since a required kernel absent from
+      the bag is a host bug and not a reason to throw from a button. Refused here, with the other
+      refusals knowable without a call id, so `startCall` writes no record for a call the mesh could
+      never carry. Warned as well as surfaced, because the sentence the user sees says what they
+      cannot do and the console line says why the host let it get this far.
+    */
+    if (!peerConnection) {
+      console.warn('call: the host lends no `peerConnection` kernel, so no connection can be made');
+      return { reason: 'This host cannot connect a call between peers.' };
+    }
 
     const scope = ephemeral(handle);
     // A personal space has no neighbourhood — there is nobody to call. Say so rather than
@@ -787,12 +859,14 @@ export function createCallStore(deps: CallStoreDeps) {
   }
 
   async function startCall(anchorNodeId?: string) {
+    // Whatever this makes is new, so nothing about a continued record carries over.
+    continuedRecord = null;
     const uri = datasetUri?.() ?? null;
     if (!uri) {
       setProblem('A call needs a space.');
       return;
     }
-    if (!createEntity) {
+    if (!records) {
       setProblem('This host cannot record calls.');
       return;
     }
@@ -820,7 +894,7 @@ export function createCallStore(deps: CallStoreDeps) {
 
     let recordId: string | null = null;
     try {
-      recordId = await createEntity(
+      recordId = await records.create(
         'CollectionBlock',
         // Feed mode: every participant's transcriber appends to this one record, so it has no single
         // authoring agent and must never be reconciled.
@@ -864,6 +938,7 @@ export function createCallStore(deps: CallStoreDeps) {
    */
   async function continueCall(recordId: string) {
     if (!recordId) return;
+    continuedRecord = recordId;
     const uri = datasetUri?.() ?? null;
     if (!uri) {
       setProblem('A call needs a space.');
@@ -935,6 +1010,13 @@ export function createCallStore(deps: CallStoreDeps) {
       setProblem('A call needs a space and a signed-in agent.');
       return;
     }
+    // Same shape as `me`: `openCallScope` refused its absence, and this re-read is for the type.
+    const connections = peerConnection;
+    if (!connections) {
+      scope.dispose();
+      setProblem('This host cannot connect a call between peers.');
+      return;
+    }
 
     scopeHandle = scope;
     setCallId(id);
@@ -942,10 +1024,10 @@ export function createCallStore(deps: CallStoreDeps) {
       Starting a call shows the call.
 
       Nothing did this, so the first thing that happened when you pressed the call button was that
-      the bar appeared and the video did not: `dockEdge` returns null while `visible` is false, and
-      the host renders no dock for a null edge. The only way to a visible stage was the expand
-      toggle, which reads as a way to *change* something already on screen — so the call looked like
-      it had failed to start any picture at all.
+      the bar appeared and the video did not: the panel is placed only while `stageOpen` is true, and
+      nothing set it. The only way to a visible stage was the expand toggle, which reads as a way to
+      *change* something already on screen — so the call looked like it had failed to start any
+      picture at all.
 
       Placing it is a separate question from showing it, and not this module's: the stage opens as a
       floating card, and where it goes from there is the host's, on the panel itself. Leaving a call
@@ -955,6 +1037,12 @@ export function createCallStore(deps: CallStoreDeps) {
     setVisible(true);
 
     controller = createMediaController({
+      devices: mediaKernel
+        ? {
+            getUserMedia: (constraints) => mediaKernel.getUserMedia(constraints),
+            getDisplayMedia: (constraints) => mediaKernel.getDisplayMedia(constraints),
+          }
+        : undefined,
       onTrackChanged: (kind, track) => {
         if (backend) void backend.replaceTrack(kind, track);
         else void mesh?.setOutboundTrack(kind, track);
@@ -996,7 +1084,7 @@ export function createCallStore(deps: CallStoreDeps) {
         return;
       }
     } else if (deps.backend) {
-      backend = deps.backend;
+      backend = deps.backend as CallBackend;
     }
 
     if (backend) {
@@ -1055,37 +1143,47 @@ export function createCallStore(deps: CallStoreDeps) {
       // ── Mesh path (default — WE's built-in peer-to-peer mesh) ───────
       setTopology('mesh');
 
-      // coalesce: false, emphatically. Presence heartbeats are last-write-wins so a dropped one costs
-      // nothing; an SDP offer dropped because the previous send was slow is simply lost, and that peer
-      // never connects.
       const channel = scope.channel('rtc', { coalesce: false });
+
+      if (!warmed.has(channel)) {
+        warmed.add(channel);
+        channel.publish({ v: CALL_PROTOCOL_VERSION, call: id, warm: true });
+      }
 
       mesh = createCallMesh({
         callId: id,
         selfId: me,
         channel,
-        createPeerConnection: deps.createPeerConnection,
+        iceServers: iceServers(),
+        createPeerConnection: (configuration) => connections.create(configuration),
         onRemoteStreamsChanged: (streams) => {
           remoteStreams = streams;
           rebuildTiles();
         },
         onPeerStateChanged: (peerId, state) => {
           peerStates.set(peerId, state);
+          if (state === 'connected') {
+            recovering.delete(peerId);
+            void mesh?.transportOf(peerId).then((kind) => {
+              if (!kind) return;
+              transports.set(peerId, kind);
+              rebuildTiles();
+            });
+          }
+          if (state === 'closed') transports.delete(peerId);
+          rebuildTiles();
+        },
+        onPeerRecovery: (peerId, attempt) => {
+          recovering.set(peerId, attempt);
           rebuildTiles();
         },
         onError: (context, error) => console.error(`call: ${context}`, error),
       });
 
-      // Announce before acquiring devices: joining should be visible to peers immediately, and the
-      // permission prompt can take as long as the user takes.
       publishActivity();
       rebuildTiles();
 
       await started.start();
-
-      // The call can end while the permission prompt is up — a hot reload, a second join, somebody
-      // pressing leave. `teardown` nulls the controller, so the check below has to be against the one
-      // this join created rather than against whatever is current.
       if (controller !== started) return;
     }
 
@@ -1353,28 +1451,66 @@ export function createCallStore(deps: CallStoreDeps) {
     );
   };
 
+  /**
+   * The shape the stage's content wants, so the host can offer "fit to content".
+   *
+   * Every tile is 16:9 and they divide the stage evenly, so for any width there is exactly one
+   * height at which no band of empty panel is left above or below the pictures — the thing
+   * hand-resizing can never quite land on. `cols × 16 / (rows × 9)` is that shape.
+   *
+   * The insets are the stage's own fixed pixels: `STAGE_PADDING_PX` on each side and
+   * `STAGE_GAP_PX` between tiles. Left out — as they were at first — the host solved on the full
+   * panel width, made the box about twenty pixels too short for its pictures, and the tiles
+   * answered by shrinking to the height and leaving a gap down each side. They are constants at a
+   * given tile count, which is what lets this stay a value rather than a callback taking a width.
+   *
+   * The arrangement is the one the stage is *currently in*, not one solved again here. That is
+   * deliberate: with the width fixed, any column count can be made to fit perfectly, so "fit" that
+   * re-solved could rearrange the call under a click that only asked to remove the empty band.
+   * This takes the slack out and leaves the tiles where they are.
+   */
+  function stageAspect(): DockAspect {
+    /*
+      Spotlight and solo are one 16:9 picture with a band beside or beneath it, so the shape is the
+      tile's and the strip is an inset — which is exactly the pair this contract asks for, and the
+      same band the tracks are written from.
+    */
+    if (focusedId() !== null) {
+      const strip = stripLayout();
+      const band = solo() ? 0 : strip.thickness + STAGE_GAP_PX;
+      const beside = !solo() && strip.side;
+      return {
+        ratio: TILE_ASPECT,
+        insetX: STAGE_PADDING_PX * 2 + (beside ? band : 0),
+        insetY: STAGE_PADDING_PX * 2 + (!solo() && !strip.side ? band : 0),
+      };
+    }
+
+    const { columns, rows } = arrangement();
+    return {
+      ratio: (columns * 16) / (rows * 9),
+      insetX: STAGE_PADDING_PX * 2 + (columns - 1) * STAGE_GAP_PX,
+      insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX,
+    };
+  }
+
   return {
     // ── State ────────────────────────────────────────────────────────────────
-    callId,
+    callId: state(callId, 'The id of the call this agent is in, or null between calls.'),
     /** The call record this agent's call writes into — what transcribe and the panels read. */
-    callRecordId: () => callRecord() ?? '',
-    liveCalls,
-    tiles,
-    tileStates,
-    focusedId,
-    media,
-    problem,
-    /** Whether this call runs through the SFU relay (`'sfu'`) or the peer-to-peer mesh (`'mesh'`). */
-    topology,
-    hasSessionBackend,
-    /** The SFU quality layer this agent prefers. Only meaningful when `topology() === 'sfu'`. */
-    qualityPreference,
-    /**
-     * Relay availability summary — signals the UI without exposing
-     * any SFU terminology.  `meshLimitReached` turns true when the
-     * call runs peer-to-peer and exceeds the comfortable participant
-     * limit; the UI can surface a hint about call quality.
-     */
+    callRecordId: state(() => callRecord() ?? '', "The id of the call record this agent's call writes into."),
+    liveCalls: state(liveCalls, 'Every call running in the space on screen.'),
+    tiles: state(tiles, 'One entry per participant in the call.'),
+    tileStates: state(tileStates, "Each participant's volatile flags by id."),
+    focusedId: state(focusedId, 'Whose tile the stage gives most room to, or null for an even grid.'),
+    media: state(media, "This agent's own { audioEnabled, videoEnabled, screenShareEnabled }."),
+    problem: state(problem, 'Why the call could not start or a device could not be reached, or null.'),
+    topology: state(
+      topology,
+      "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').",
+    ),
+    hasSessionBackend: state(hasSessionBackend, 'Whether this call uses a Session backend.'),
+    qualityPreference: state(qualityPreference, 'The SFU quality layer this agent prefers.'),
     relayInfo: (): RelayInfo => ({
       relayActive: topology() === 'sfu',
       participantCount: tiles().length,
@@ -1383,76 +1519,30 @@ export function createCallStore(deps: CallStoreDeps) {
 
     // ── What the host reads to place the stage ────────────────────────────────
     /**
-     * Which edge the stage occupies, or `null` when there is nothing to place.
+     * How the stage would like to open — the panel declaration's `bid`, read as a store key because
+     * the shape is state.
      *
-     * The module's entire statement about geometry. It does not know the sidebar's width, the module
-     * rail's, or the size of the window — the host owns all of that, which is what lets the same
-     * declaration inset on a monitor and overlay on a laptop with nothing here changing.
+     * The module's entire statement about geometry, and it is an opening bid and nothing else: the
+     * bottom edge, a small card, floating. It does not know the sidebar's width, the module rail's,
+     * or the size of the window — the host owns all of that, which is what lets the same declaration
+     * inset on a monitor and overlay on a laptop with nothing here changing. Size, position, whether
+     * it displaces content and whether it covers the screen are all the host's afterwards, on the
+     * panel's own titlebar, so this module has no opinion about layout left beyond "a card, to begin
+     * with".
      *
-     * `strip` and `max` still name an edge even though neither uses it, because both float: the
-     * value has to stay non-null for the panel to exist at all, and keeping the user's preference
-     * live through those modes is what makes cycling back to `dock` return it where they left it.
+     * `float` because the stage floats when it opens; whether it goes on to *take room* is the
+     * host's toggle, and this module neither sets it nor reads it. That is the point of the split: a
+     * call knows how much of your attention it wants, and the app knows how the app is laid out.
+     *
+     * `aspect` is the one part that varies — see `stageAspect`. It is why this is a key rather than
+     * a static bid on the declaration: the shape the panel wants at "fit to content" depends on how
+     * many people are in the call and who has the spotlight.
+     *
+     * This used to be four keys — `dockEdge`, `dockSize`, `dockFloat`, `dockAspect` — with the edge
+     * doubling as "is it placed" by going null. Openness is the panel's own `open` key now
+     * (`stageOpen`), so the bid can say what it wants and nothing else.
      */
-    dockEdge: () => (!visible() || !callId() ? null : 'bottom'),
-    /**
-     * How much room to ask for, once, when the panel first opens.
-     *
-     * An opening bid and nothing else. Size, position, whether it displaces content and whether it
-     * covers the screen are all the host's now, on the panel's own titlebar — so this module has no
-     * opinion about layout left beyond "a card, to begin with".
-     */
-    dockSize: () => 'sm',
-    /**
-     * Always overlaying, as far as this module is concerned.
-     *
-     * The stage floats when it opens; whether it goes on to *take room* is the host's toggle now, on
-     * the panel itself, and this module neither sets it nor reads it. That is the point of the split:
-     * a call knows how much of your attention it wants, and the app knows how the app is laid out.
-     */
-    dockFloat: () => true,
-
-    /**
-     * The shape this panel's content wants, so the host can offer "fit to content".
-     *
-     * Every tile is 16:9 and they divide the stage evenly, so for any width there is exactly one
-     * height at which no band of empty panel is left above or below the pictures — the thing
-     * hand-resizing can never quite land on. `cols × 16 / (rows × 9)` is that shape.
-     *
-     * The insets are the stage's own fixed pixels: `STAGE_PADDING_PX` on each side and
-     * `STAGE_GAP_PX` between tiles. Left out — as they were at first — the host solved on the full
-     * panel width, made the box about twenty pixels too short for its pictures, and the tiles
-     * answered by shrinking to the height and leaving a gap down each side. They are constants at a
-     * given tile count, which is what lets this stay a value rather than a callback taking a width.
-     *
-     * The arrangement is the one the stage is *currently in*, not one solved again here. That is
-     * deliberate: with the width fixed, any column count can be made to fit perfectly, so "fit" that
-     * re-solved could rearrange the call under a click that only asked to remove the empty band.
-     * This takes the slack out and leaves the tiles where they are.
-     */
-    dockAspect: () => {
-      /*
-        Spotlight and solo are one 16:9 picture with a band beside or beneath it, so the shape is the
-        tile's and the strip is an inset — which is exactly the pair this contract asks for, and the
-        same band the tracks are written from.
-      */
-      if (focusedId() !== null) {
-        const strip = stripLayout();
-        const band = solo() ? 0 : strip.thickness + STAGE_GAP_PX;
-        const beside = !solo() && strip.side;
-        return {
-          ratio: TILE_ASPECT,
-          insetX: STAGE_PADDING_PX * 2 + (beside ? band : 0),
-          insetY: STAGE_PADDING_PX * 2 + (!solo() && !strip.side ? band : 0),
-        };
-      }
-
-      const { columns, rows } = arrangement();
-      return {
-        ratio: (columns * 16) / (rows * 9),
-        insetX: STAGE_PADDING_PX * 2 + (columns - 1) * STAGE_GAP_PX,
-        insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX,
-      };
-    },
+    stageBid: (): PanelBid => ({ edge: 'bottom', size: 'sm', float: true, aspect: stageAspect() }),
 
     /*
       Synthetic participants, and the two controls that change how many — see `devPeers`.
@@ -1477,8 +1567,18 @@ export function createCallStore(deps: CallStoreDeps) {
         }
       : {}),
 
-    /** Whether the video is showing at all — what the show/hide button reflects. */
+    /**
+     * Whether the video is showing at all — what the show/hide button reflects, and the panel
+     * declaration's `open` key. Module-owned because it is a fact about the call, not the screen:
+     * `join` raises it and `teardown` lowers it, and the host reads rather than holds it.
+     */
     stageOpen: visible,
+    /**
+     * Show the video. The panel declaration's `show` — a template's `meta.panels` entry naming this
+     * module's stage calls it to open it, since the module owns the flag the host would otherwise
+     * have set itself. Idempotent, like `goToCall`'s use of the same setter.
+     */
+    openStage: () => setVisible(true),
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**
@@ -1488,11 +1588,18 @@ export function createCallStore(deps: CallStoreDeps) {
      * where the panel's geometry is decided. The alternative was for this module to import the
      * solver and re-derive it, which would mean a module depending on the design system — an edge
      * the package layering does not have — and two copies of an answer that must agree.
+     *
+     * Public, because an interface that draws its own stage out of the `tile` part has to report
+     * what its grid settled on the same way this module's stage does, or "fit to content" fits the
+     * wrong shape.
      */
-    setArrangement,
-    arrangement,
+    setArrangement: action(
+      setArrangement,
+      'Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.',
+    ),
+    arrangement: state(arrangement, 'The { columns, rows } the stage is currently laid out in.'),
     setStageBox,
-    solo,
+    solo: state(solo, 'Whether the spotlight has the stage to itself, with everyone else hidden.'),
 
     /**
      * The stage's grid tracks while somebody has the spotlight — `undefined` the rest of the time.
@@ -1649,8 +1756,11 @@ export function createCallStore(deps: CallStoreDeps) {
         : { 'overflow-x': 'auto', 'overflow-y': 'hidden' };
     },
 
-    /** True when this agent is in a call — the call bar's visibility condition. */
-    active: () => callId() !== null,
+    /**
+     * True when this agent is in a call — the call bar's visibility condition, and the key
+     * `contributes.holds` names so the bar survives navigating to a space without calls.
+     */
+    active: state(() => callId() !== null, 'Whether this agent is in a call right now.'),
 
     /**
      * In a call that is happening somewhere other than the space on screen.
@@ -1659,7 +1769,10 @@ export function createCallStore(deps: CallStoreDeps) {
      * can leave the call's space and come back to it, and the affordance has to disappear again when
      * you do. `anchor.datasetUri` is set for every call — see `join`.
      */
-    elsewhere: callIsElsewhere,
+    elsewhere: state(
+      callIsElsewhere,
+      'Whether the call this agent is in belongs to a space other than the one on screen.',
+    ),
 
     /**
      * The space this call is in, named — or `null` when there is no call.
@@ -1669,15 +1782,15 @@ export function createCallStore(deps: CallStoreDeps) {
      * whatever the host knows, and a space whose record has not arrived yet simply has no name to
      * show, which the bar handles.
      */
-    callSpace: () => {
+    callSpace: state(() => {
       const uri = anchor?.datasetUri;
       if (!callId() || !uri) return null;
       const known = datasets?.get(uri);
       return { uri, name: known?.name ?? '', avatar: known?.avatar ?? '' };
-    },
+    }, 'The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.'),
 
     /** Go back to the space the call is in. No-op outside a call. */
-    returnToCall,
+    returnToCall: action(returnToCall, 'Go back to the space the call is in; does nothing outside a call.'),
 
     /**
      * The band this module's fixed chrome occupies, for panels to keep clear of.
@@ -1701,11 +1814,13 @@ export function createCallStore(deps: CallStoreDeps) {
     /**
      * The microphone this call is sending, for a module that wants to listen to it.
      *
-     * Published via `audioSource` on the definition so the host can route it without the two modules
-     * knowing about each other. The live stream rather than a copy, deliberately: muting disables
-     * the track rather than removing it, so a listener receives silence and stops producing — which
-     * is what makes "mute the call" also mean "stop transcribing", with no coordination between the
-     * two and no way for them to disagree.
+     * Reached through the `media` kernel — `media.input()` — rather than off this store: every write
+     * to this signal is also a `media.publish`, so the host routes it without the two modules knowing
+     * about each other. Kept on the store, unmarked, for this module's own chrome and its tests; a
+     * template has no business with a `MediaStream`. The live stream rather than a copy,
+     * deliberately: muting disables the track rather than removing it, so a listener receives
+     * silence and stops producing — which is what makes "mute the call" also mean "stop
+     * transcribing", with no coordination between the two and no way for them to disagree.
      */
     localAudio,
 
@@ -1716,8 +1831,14 @@ export function createCallStore(deps: CallStoreDeps) {
      * Offering the button anyway and explaining the failure afterwards is worse than not offering it:
      * the answer never changes, so it is not a failure, it is a property of the space.
      */
-    canCall: () => (datasetUri?.() ?? null) !== null,
-    ongoing: ongoingPeers,
+    canCall: state(
+      () => (datasetUri?.() ?? null) !== null,
+      'Whether a call could be started here — false in a personal space, which has nobody to call.',
+    ),
+    ongoing: state(
+      ongoingPeers,
+      'Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.',
+    ),
 
     // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -1755,7 +1876,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * want and has two controls of its own — the panel's close button, and Video in the call bar —
      * neither of which is named after going somewhere.
      */
-    goToCall: () => {
+    goToCall: action(() => {
       if (!callId()) {
         // Join whatever is already running here rather than starting a second one beside it. With
         // one call per space this was the same act; now that it is not, a launcher that always
@@ -1763,6 +1884,26 @@ export function createCallStore(deps: CallStoreDeps) {
         const ongoing = liveCalls()[0];
         if (ongoing) {
           void join(ongoing.id, undefined, ongoing.recordId ?? undefined);
+          return;
+        }
+        /*
+          Pick up the call the reader is looking at, rather than opening a fresh one beside it.
+
+          On a template built around one conversation — the workshop's `?call=` — pressing the rail
+          took you *out* of the meeting you were plainly in and started another, which is the one
+          reading of "start a call" nobody wants while a call is on screen. The address is what
+          knows; the host publishes it, because a module has no route access and a value a template
+          sets on a click does not survive the refresh this is most needed after.
+
+          Only in this branch, and that is the safety gate rather than an accident of placement.
+          Continuing a past call *while another is running* tears the live one down and re-points
+          every peer's transcript at the old record, since peers adopt an announced record over
+          their own. Both branches above have already ruled that out: something is running, so
+          "go to the call" can only mean the one that is.
+        */
+        const onScreen = callOnScreen?.();
+        if (onScreen) {
+          void continueCall(onScreen);
           return;
         }
         void startCall();
@@ -1778,10 +1919,13 @@ export function createCallStore(deps: CallStoreDeps) {
       }
       // In the call, here. Nowhere to travel to, so the whole of "go to it" is having it on screen.
       setVisible(true);
-    },
+    }, 'Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.'),
 
     /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
-    startCall: (anchorNodeId?: string) => startCall(anchorNodeId),
+    startCall: action(
+      (anchorNodeId?: string) => startCall(anchorNodeId),
+      'Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.',
+    ),
 
     /**
      * Pick a past call back up: start one on the record it already has, writing nothing new.
@@ -1790,14 +1934,17 @@ export function createCallStore(deps: CallStoreDeps) {
      * with nothing running it starts a fresh call, which is right for a launcher and wrong for a row
      * naming the meeting it means.
      */
-    continueCall: (recordId: string) => continueCall(recordId),
+    continueCall: action(
+      (recordId: string) => continueCall(recordId),
+      'Pick a past call back up by its record id, joining anyone already in it and writing no new record.',
+    ),
 
     /** Join a call somebody else started, by the id the roster carries. */
-    joinCall: (id: string) => {
+    joinCall: action((id: string) => {
       if (!id) return;
       const ongoing = liveCalls().find((call) => call.id === id);
       void join(id, undefined, ongoing?.recordId ?? undefined);
-    },
+    }, 'Join a running call by its id, as liveCalls lists it, leaving any call this agent is in.'),
 
     /**
      * Point an in-progress call at a node, without rejoining it.
@@ -1810,12 +1957,12 @@ export function createCallStore(deps: CallStoreDeps) {
      * peer leaving one call and joining another: every connection torn down and rebuilt, and the
      * media with it. The id stays; only what the call says it is about changes.
      */
-    attachAnchor: (nodeId: string) => {
+    attachAnchor: action((nodeId: string) => {
       const uri = datasetUri?.() ?? null;
       if (!callId() || !uri || !nodeId) return;
       anchor = { datasetUri: uri, nodeId };
       publishActivity();
-    },
+    }, 'Make the running call about the record whose id is given, without rejoining it.'),
 
     /**
      * "Call on this post" — join the call already happening about that node, or start one.
@@ -1825,7 +1972,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * on a post while one is running, which is what pressing the same button twice used to be safe
      * from only because the derived id made it the same call.
      */
-    joinAnchoredCall: (nodeId: string) => {
+    joinAnchoredCall: action((nodeId: string) => {
       if (!nodeId) {
         setProblem('A call needs a space and something to anchor to.');
         return;
@@ -1836,11 +1983,14 @@ export function createCallStore(deps: CallStoreDeps) {
         return;
       }
       void startCall(nodeId);
-    },
+    }, 'Join the call already happening about the record whose id is given, or start one about it.'),
 
-    leave: teardown,
+    leave: action(teardown, 'Leave the call, releasing the camera, the microphone and every connection.'),
 
-    toggleAudio: () => controller?.setAudioEnabled(!media().audioEnabled),
+    toggleAudio: action(
+      () => controller?.setAudioEnabled(!media().audioEnabled),
+      'Mute or unmute this agent’s microphone.',
+    ),
     /**
      * Turn the camera on or off — and say so when it refuses.
      *
@@ -1848,21 +1998,28 @@ export function createCallStore(deps: CallStoreDeps) {
      * message text: wanting the camera and not having it afterwards is the whole condition. Until
      * this, a refusal reached the console and nowhere else, so the button appeared to do nothing.
      */
-    toggleVideo: async () => {
+    toggleVideo: action(async () => {
       const wanted = !media().videoEnabled;
       await controller?.setVideoEnabled(wanted);
       if (wanted && !controller?.state().videoEnabled) setProblem(CAMERA_BLOCKED);
-    },
-    toggleScreenShare: async () => {
+    }, 'Turn this agent’s camera on or off, reporting through problem when it is refused.'),
+    toggleScreenShare: action(async () => {
       if (media().screenShareEnabled) {
         controller?.stopScreenShare();
         return;
       }
       // Only a genuine failure is worth a message. Closing the picker is an answer, not a fault.
       if ((await controller?.startScreenShare()) === 'failed') setProblem(SCREEN_UNAVAILABLE);
-    },
-    /** Show the video, or put it away. The other half of what one button used to do alone. */
+    }, 'Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.'),
+    /**
+     * Show the video, or put it away. The other half of what one button used to do alone.
+     *
+     * Unmarked, with `closeStage` and `openStage`: the panel declaration names two of them and the
+     * bar's Video toggle calls the third, all at chrome tier. A space template opens the stage by
+     * declaring the panel in its `meta.panels`, which is the host's door, not this one.
+     */
     toggleStage: () => setVisible(!visible()),
+    /** Put the video away. The panel declaration's `close`, so the titlebar has a way to dismiss it. */
     closeStage: () => setVisible(false),
 
     /**
@@ -1872,7 +2029,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * on the next heartbeat. Clearing focus counts as a choice too — "show me everyone" is an
      * instruction, not an absence of one.
      */
-    focusTile: (id: string) => {
+    focusTile: action((id: string) => {
       const next = focusedId() === id ? null : id;
       focusIsManual = true;
       setFocusedId(next);
@@ -1882,7 +2039,7 @@ export function createCallStore(deps: CallStoreDeps) {
       if (next === null) setSolo(false);
       // The states array carries `focused`, so the change has to reach it for the layout to move.
       rebuildTiles();
-    },
+    }, 'Give the participant with this id the spotlight, or take it back if they already have it.'),
 
     /**
      * Give the spotlight the stage to itself, or bring the others back.
@@ -1890,54 +2047,40 @@ export function createCallStore(deps: CallStoreDeps) {
      * Only meaningful while something is focused, and the bar only shows it then — but guarded here
      * too, since a store method is reachable by anything a template can write.
      */
-    toggleSolo: () => {
+    toggleSolo: action(() => {
       if (focusedId() === null) return;
       setSolo(!solo());
-    },
+    }, 'Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.'),
 
-    dismissProblem: () => setProblem(null),
+    dismissProblem: action(() => setProblem(null), 'Dismiss the problem message.'),
 
-    /**
-     * Ask the backend to forward a different simulcast layer.
-     *
-     * `'high'` is the full-resolution stream, `'medium'` halves each dimension, `'low'` quarters it.
-     * The preference propagates to the backend (SFU relay), which selects the matching layer for
-     * every forwarded stream. Silently accepted on a mesh call (no simulcast layers).
-     */
-    setQualityPreference: async (quality: BackendQuality) => {
+    reconnectPeer: action((id: string) => {
+      if (!id || !mesh) return;
+      if (id === (selfId?.() ?? null)) return;
+      recovering.set(id, { rung: 'rebuild', attempts: 0 });
+      transports.delete(id);
+      mesh.reconnect(id);
+      rebuildTiles();
+    }, "Build one peer's connection again from scratch, without leaving the call."),
+
+    setQualityPreference: action(async (quality: BackendQuality) => {
       qualityIsManual = true;
       setQualityPreferenceSignal(quality);
       if (backend) await backend.setQualityPreference(quality);
-    },
+    }, 'Set the SFU quality layer preference.'),
 
-    /**
-     * Cycle through quality presets: high → medium → low → high.
-     *
-     * A template action for the bar — one button rather than three, since a call bar has limited
-     * real estate and the quality labels read better as a cycling indicator than as a picker.
-     */
-    cycleQuality: async () => {
+    cycleQuality: action(async () => {
       const order: BackendQuality[] = ['high', 'medium', 'low'];
       const next = order[(order.indexOf(qualityPreference()) + 1) % order.length];
       qualityIsManual = true;
       setQualityPreferenceSignal(next);
       if (backend) await backend.setQualityPreference(next);
-    },
+    }, 'Cycle through quality presets: high, medium, low.'),
 
-    /**
-     * Send data to all other call participants via the session's relay.
-     *
-     * Only works when a backend (Session) handles the call — mesh-only calls
-     * have no server relay for data. Returns silently if no backend exists.
-     */
     sendData: async (label: string, data: string, binary?: boolean) => {
       if (backend) await backend.sendData(label, data, binary);
     },
 
-    /**
-     * Subscribe to data channel messages from other call participants.
-     * Returns an unsubscribe function.
-     */
     onData: (cb: (msg: BackendDataMessage) => void) => {
       dataListeners.add(cb);
       return () => {
@@ -1947,20 +2090,12 @@ export function createCallStore(deps: CallStoreDeps) {
 
     // ── Call config (space-level topology defaults) ──────────────────────
 
-    /** Per-neighbourhood SFU config read from Social DNA, or null when unsupported / not loaded. */
     callConfig,
-    /** SFU-capable executor nodes discovered in the neighbourhood. */
     availableSfuNodes,
-    /** Whether the backend supports call configuration at all. */
     callConfigSupported,
-    /** Whether a config save runs right now. */
     callConfigSaving,
 
-    /**
-     * Write one field of the call config.  Round-trips through the adapter and
-     * refreshes the local signal on success.
-     */
-    setCallConfigField: async (field: string, value: unknown) => {
+    setCallConfigField: action(async (field: string, value: unknown) => {
       const current = callConfig();
       if (!deps.setCallConfig) return;
       const next = { ...current, [field]: value } as CallConfigState;
@@ -1973,13 +2108,9 @@ export function createCallStore(deps: CallStoreDeps) {
       } finally {
         setCallConfigSaving(false);
       }
-    },
+    }, 'Write one field of the call config.'),
 
-    /**
-     * Replace the entire call config.  Used when the settings form saves
-     * multiple fields at once.
-     */
-    saveCallConfig: async (config: CallConfigState) => {
+    saveCallConfig: action(async (config: CallConfigState) => {
       if (!deps.setCallConfig) return;
       setCallConfigSaving(true);
       try {
@@ -1990,10 +2121,9 @@ export function createCallStore(deps: CallStoreDeps) {
       } finally {
         setCallConfigSaving(false);
       }
-    },
+    }, 'Replace the entire call config.'),
 
-    /** Re-scan the neighbourhood for SFU-capable executor nodes. */
-    refreshSfuNodes: async () => {
+    refreshSfuNodes: action(async () => {
       if (!deps.getAvailableSfuNodes) return;
       try {
         const nodes = await deps.getAvailableSfuNodes();
@@ -2001,11 +2131,8 @@ export function createCallStore(deps: CallStoreDeps) {
       } catch {
         setAvailableSfuNodes([]);
       }
-    },
+    }, 'Re-scan the neighbourhood for SFU-capable executor nodes.'),
 
-    // ── Connection info (per-call, for the in-call panel) ───────────────
-
-    /** Summary of the current call's connection state — what the in-call panel reads. */
     connectionInfo: () => ({
       topology: topology(),
       hasBackend: hasSessionBackend(),

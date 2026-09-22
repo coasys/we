@@ -76,11 +76,15 @@ const sectionRow: SchemaNode = {
               props: { 'data-we-handle': '', style: { display: 'flex', cursor: 'grab' } },
               children: [
                 {
-                  type: 'we-button',
-                  props: {
-                    variant: 'bare',
-                    title: 'Reorder',
-                    /*
+                  type: 'we-tooltip',
+                  props: { content: 'Reorder' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        label: 'Reorder',
+                        variant: 'bare',
+                        /*
                       Stated on the button, not only on the carrier around it.
 
                       `we-button` carries `cursor: 'pointer'` in its default props, and the pointer
@@ -93,10 +97,12 @@ const sectionRow: SchemaNode = {
                       reports pointer movement of its own, which is a second claim on a press that
                       `we-sortable` is already handling.
                     */
-                    cursor: 'grab',
-                    activeProps: { cursor: 'grabbing' },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'text-faint' } }],
+                        cursor: 'grab',
+                        activeProps: { cursor: 'grabbing' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'text-faint' } }],
+                    },
+                  ],
                 },
               ],
             },

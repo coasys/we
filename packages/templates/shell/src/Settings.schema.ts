@@ -14,6 +14,7 @@ import { languagesLocalState, languagesSection } from './LanguageSettings.schema
 import {
   backup,
   connectedApps,
+  executorSupport,
   logging,
   loggingLocalState,
   mcpServer,
@@ -98,7 +99,6 @@ const templatesSection: SchemaNode = {
                     { type: 'we-icon', props: { name: { $: 'template.icon' }, size: '20px' } },
                     {
                       type: 'Column',
-                      props: { gap: '50' },
                       children: [
                         {
                           type: 'we-text',
@@ -501,6 +501,22 @@ function moduleRow(control: SchemaNode): SchemaNode {
                 props: { variant: 'footnote', color: 'text-faint' },
                 children: [{ $: 'mod.description' }],
               },
+              /*
+                What the module can reach — derived by the host from its manifest and what it
+                contributes, so it cannot go stale. The contract used to carry a list every module
+                wrote and nothing read; this is the row that reads it.
+              */
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'count(mod.capabilities)' },
+                  then: {
+                    type: 'we-text',
+                    props: { variant: 'footnote', color: 'text-faint' },
+                    children: [{ $: "`Can: ${join(mod.capabilities, ', ')}`" }],
+                  },
+                },
+              },
             ],
           },
         ],
@@ -590,17 +606,22 @@ const agentModuleSettingsSection: SchemaNode = {
                   props: {
                     condition: { $: 'setting.set' },
                     then: {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        size: 'xs',
-                        title: 'Stop deciding this',
-                        onClick: {
-                          $action: 'spaceStore.setAgentModuleSetting',
-                          args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                      type: 'we-tooltip',
+                      props: { content: 'Stop deciding this' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'xs',
+                            onClick: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                            },
+                          },
+                          children: ['Use default'],
                         },
-                      },
-                      children: ['Use default'],
+                      ],
                     },
                   },
                 },
@@ -729,14 +750,12 @@ const modulesSection: SchemaNode = {
         },
       ],
     },
-
     moduleGroup(
       'Embedded apps',
       'Whole applications, running alongside your spaces rather than inside one. Turning one off takes it out of the app switcher.',
       'app',
       moduleSwitch,
     ),
-
     moduleGroup(
       'Space modules',
       'Panels and buttons that appear inside a space. A community still decides which of these it runs in theirs, in that space\u2019s settings.',
@@ -756,7 +775,6 @@ const modulesSection: SchemaNode = {
       'capability',
       { type: 'we-tag', props: { variant: 'neutral' }, children: ['Always on'] },
     ),
-
     agentModuleSettingsSection,
   ],
 };
@@ -934,7 +952,7 @@ function page(children: SchemaNode[]): SchemaNode {
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
+  props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
   // Every route below declares whatever local state it needs. A route is rendered by `buildRoutes`
   // as its own `RenderSchema` call with a fresh context — so it is not a descendant of this node at
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
@@ -968,7 +986,7 @@ export const settingsTemplate: TemplateSchema = {
       // Logging sits here rather than on a page of its own: this is where someone goes when the
       // data layer is misbehaving, which is the same moment they want more of it in the log.
       $localState: { ...networkLocalState, ...loggingLocalState },
-      ...page([runtimeError, trustedAgents, peerNetwork, logging]),
+      ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging]),
     },
     { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
     // No `$if` on the route itself: its nav entry is already gated, and a production build resolves

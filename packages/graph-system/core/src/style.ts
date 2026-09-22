@@ -35,7 +35,7 @@ import { normaliseCurve } from './geometry';
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
 
 /** Read a match key off a node or edge. `data.x` reaches into the data bag; everything else is a field. */
-function readField(subject: GraphNode | GraphEdge, key: string): unknown {
+export function readField(subject: GraphNode | GraphEdge, key: string): unknown {
   if (key.startsWith('data.')) return subject.data?.[key.slice(5)];
   return (subject as unknown as Record<string, unknown>)[key];
 }
@@ -226,12 +226,19 @@ export function resolveColor(
   return scale[index];
 }
 
-/** Defaults chosen so a graph with no `nodeStyle` at all still reads clearly. */
-const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labelColor' | 'labelSize'>> = {
+/**
+ * Defaults chosen so a graph with no `nodeStyle` at all still reads clearly.
+ *
+ * No `labelColor`. It was `neutral-800`, and it was the one default here that a renderer could do
+ * better without: a caption under a dot sits on the page and wants the page's ink, and a card's
+ * text sits on the card and wants black or white by the fill's own lightness — both of which the
+ * renderer answers from its stylesheet when nothing is set, and neither of which a fixed step on
+ * the neutral ramp gets right in both polarities. A rule that names one still wins.
+ */
+const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labelSize'>> = {
   shape: 'circle',
   size: 14,
   color: 'primary-500',
-  labelColor: 'neutral-800',
   labelSize: 12,
 };
 
@@ -242,7 +249,7 @@ const DEFAULT_CARD = { width: 160, height: 120 };
 /** Below this a card is a speck with no content visible and no corner big enough to grab. */
 const MIN_CARD = 40;
 
-const CARD_SHAPES: readonly CardShape[] = ['note', 'square', 'round'];
+const CARD_SHAPES: readonly CardShape[] = ['note', 'square', 'round', 'triangle', 'diamond', 'pentagon', 'hexagon'];
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -254,7 +261,8 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     size: resolveNumber(style.size, node, metrics, DEFAULT_NODE.size),
     color: resolveColor(style.color, node, metrics, DEFAULT_NODE.color),
     label: node.label ?? node.type,
-    labelColor: style.labelColor ?? DEFAULT_NODE.labelColor,
+    // Only where a rule chose one — see `DEFAULT_NODE`.
+    ...(style.labelColor !== undefined ? { labelColor: style.labelColor } : {}),
     labelSize: style.labelSize ?? DEFAULT_NODE.labelSize,
     // Scaling by default: the intuition people arrive with is a canvas, where zooming magnifies the
     // whole drawing. Constant-size text is the specialist choice, so it is the one you ask for.
@@ -277,8 +285,15 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     if (style.content !== undefined) visual.content = style.content;
     if (style.contentMinZoom !== undefined) visual.contentMinZoom = style.contentMinZoom;
   }
+  if (style.z !== undefined) {
+    // Only when it says something: an absent `z` and a zero are the same order, and leaving the field
+    // off keeps every graph that never stacks anything drawing exactly as it did.
+    const z = Math.round(resolveNumber(style.z, node, metrics, 0));
+    if (z) visual.z = z;
+  }
   if (style.borderColor !== undefined) visual.borderColor = style.borderColor;
   if (style.borderWidth !== undefined) visual.borderWidth = style.borderWidth;
+  if (style.borderStyle !== undefined) visual.borderStyle = style.borderStyle;
   if (style.opacity !== undefined) visual.opacity = style.opacity;
   if (style.icon !== undefined) visual.icon = style.icon;
   if (style.image !== undefined) visual.image = style.image;

@@ -25,7 +25,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   disabledProps: { cursor: 'default', opacity: 'var(--we-theme-disabled-opacity, 0.5)' },
 };
 
-const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
+export const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   primary: {
     bg: 'accent',
     color: 'on-accent',
@@ -53,6 +53,41 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     color: 'text',
     hoverProps: { bg: 'surface-hover', color: 'text' },
     activeProps: { bg: 'control-surface', color: 'text' },
+  },
+  /*
+    The confirming half of a yes/no pair — `danger`'s counterpart, and only that.
+
+    ## When it earns its place, and when `primary` is still right
+
+    Reach for it where a screen asks a **binary** question and the two answers sit side by side:
+    keep or discard a suggestion, approve or refuse a request. It is not "the important button" and
+    it is not a louder `primary` — a form's Save is `primary`, however positive saving feels. Used
+    that way a status colour becomes an emphasis level, and the vocabulary stops meaning anything.
+
+    ## Why not `primary` for the yes
+
+    `accent` is the *brand* colour. A theme may legitimately set it to anything, including something
+    close to `danger`, at which point the two answers to a yes/no question read as the same kind of
+    thing. `success` is semantic, so a theme that keeps roles meaning what they say keeps this
+    readable. That is the same argument the `danger` note below makes from the other side: a status
+    fill deserves a role, so a theme can say something about it beyond its hue.
+
+    ## The colour is never the whole message
+
+    Green and red are the classic pair to fail on, which is why `we-alert` carries a glyph per
+    variant. A confirm/refuse pair built from these two must pair them with icons or words that say
+    the same thing — the colour is the fast path for people who can use it, never the only one.
+
+    Nothing new was needed underneath: `success`, `on-success`, `successHover` and `successActive`
+    all exist, and `success` is in FILL_LABELS, so its label is derived and contrast-corrected
+    exactly as `danger`'s is.
+  */
+  success: {
+    bg: 'success',
+    color: 'on-success',
+    // Steps from the fill, for `danger`'s reason below.
+    hoverProps: { bg: 'var(--we-role-success-hover)', color: 'on-success' },
+    activeProps: { bg: 'var(--we-role-success-active)', color: 'on-success' },
   },
   /*
     On the `danger` role, which exists now.

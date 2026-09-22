@@ -171,7 +171,18 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
     label: 'Elevation',
     hint: 'How far a thing sits from the page. Ordered here the way they stack.',
     roles: [
-      { role: 'page', label: 'Page', hint: 'The background behind everything, including the window itself.' },
+      // First because it is the bottom of the stack and the one the rest is measured from — the
+      // group is ordered the way things sit, and everything here sits on the app's own ground.
+      {
+        role: 'chrome',
+        label: 'Chrome',
+        hint: "The app's own furniture — the sidebar, the module rail, a docked panel's frame, and the app's own screens. How dark the app is; everything else is measured from it.",
+      },
+      {
+        role: 'page',
+        label: 'Page',
+        hint: "The plane a space's content sits on, a step above the chrome framing it. Set it to the chrome to have them match.",
+      },
       {
         role: 'surfaceSunken',
         label: 'Sunken',
@@ -1184,6 +1195,11 @@ export function ThemePanel() {
             alpha
             styles={{ ...editedPalette(), '--we-color-picker-swatch': '28px' }}
             value={shown()}
+            // Both, so the theme follows the thumb as it moves and the draft is written when it
+            // settles — the picker separated the two once a drag's worth of writes turned out to be
+            // a real cost elsewhere. A role pin is a signal rather than a record, so previewing it
+            // is free; keeping the pair here is what stops this panel losing its live feel.
+            on:preview={(e: CustomEvent) => setRole(role, e.detail as string)}
             on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
           />
           <Column flex="1" gap="0">
@@ -1192,7 +1208,7 @@ export function ThemePanel() {
             need one, and a column of forty ⓘ glyphs is noise standing in for an explanation. The
             label is already the thing you point at when you are wondering what it means.
           */}
-            <we-tooltip title={hint} placement="left">
+            <we-tooltip content={hint} placement="left">
               <we-text fontSize="300" color={pinned() ? 'text' : 'text-muted'} cursor="help">
                 {label}
               </we-text>
@@ -1202,7 +1218,7 @@ export function ThemePanel() {
             </we-text>
           </Column>
           <Show when={pinned()}>
-            <we-tooltip title="Back to the parametric default">
+            <we-tooltip content="Back to the parametric default">
               <we-button variant="ghost" size="xs" onClick={() => setRole(role, undefined)}>
                 <we-icon name="arrow-counter-clockwise" />
               </we-button>

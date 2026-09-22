@@ -1,3 +1,11 @@
+/*
+  Defines the custom elements the seed's `elements` names — a library's chart, a rating. Imported
+  beside the vocabulary a template renders against, because that is what these tags join: the
+  renderer mounts any hyphenated tag already, and without this import one would mount as an empty
+  element nothing ever upgrades.
+*/
+import '@shared/registries/foreignElements.generated';
+
 import {
   AudioDisplay,
   BlockComposer,
@@ -27,6 +35,7 @@ import {
   EditableImage,
   FlipCard,
   Grid,
+  ImageLightbox,
   RerenderLog,
   Row,
   Search,
@@ -46,21 +55,11 @@ import { lazy } from 'solid-js';
  * This is code-splitting inside one build, not loading separately-built bundles: Rollup still gives
  * every chunk the same `solid-js`, so the single-instance guarantee the module system depends on is
  * untouched — see the note in `bundledModules.ts`, which is about the other thing.
+ *
+ * **Module components are not here.** `CesiumGlobe` and `GraphView` arrive through the module
+ * registry — `registerModuleComponents` below adds whatever the registered modules contribute — so
+ * that what a template may name and which module provides it are one list. See `moduleComponents.tsx`.
  */
-
-/** Cesium, three, and the layer stack — several times the size of the rest of the app. */
-const CesiumGlobeOnDemand = lazy(async () => {
-  const [{ CesiumGlobe }, { layerFactoryRegistry }] = await Promise.all([
-    import('@we/globe-widget'),
-    import('@we/module-globe/layers'),
-  ]);
-  return {
-    default: (props: Record<string, unknown>) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
-  };
-});
-
-/** The graph engine, its expanders, layouts and d3-force — loaded when a template first draws one. */
-const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
 
 /*
   The body of a panel an interface declared, rendered with the interface's own grants.
@@ -127,6 +126,12 @@ export const componentRegistry: ComponentRegistry = {
   EditableImage,
   FlipCard,
   Grid,
+  /*
+    The viewer a picture in a post opens into — `ImageDisplay` mounts it directly. Registered so a
+    template opening an image does not grow a second one: a relation's photos in the inspector and on
+    the record page open here too.
+  */
+  ImageLightbox,
   Row,
   Search,
   Select,
@@ -137,13 +142,6 @@ export const componentRegistry: ComponentRegistry = {
   EditorCodePanel,
   EditorInspectorPanel,
   EditorThemePanel,
-  // Contributed by @we/module-globe — registered here rather than injected by the module registry so
-  // the static registry stays the single source for what a template may name. When modules become
-  // installable this entry comes from moduleRegistry.components() instead.
-  CesiumGlobe: CesiumGlobeOnDemand,
-  // Contributed by @we/module-graph. Registered here for the same reason the globe is: this registry
-  // is the single source for what a template may name.
-  GraphView: GraphViewOnDemand,
   // Host-only: a template names panels, never this. It is what a panel's *frame* wraps around the
   // template's node so the two can be rendered with different grants.
   TemplatePanelBody: TemplatePanelBodyOnDemand,
@@ -190,3 +188,22 @@ export const componentRegistry: ComponentRegistry = {
   // 3D
   WeCube: WeCubeOnDemand,
 };
+
+/**
+ * Add what the registered modules contribute to the registry a template renders against.
+ *
+ * Called once at boot, after the seed's modules have registered and before anything renders. The
+ * registry is a plain object read at render, so adding to it here is enough; a module registered
+ * later — a test, a hot reload — calls this again. A module's component never overrides a host one:
+ * the host's vocabulary is the one templates were written against, and a module shadowing `Column`
+ * would break every template at once.
+ */
+export function registerModuleComponents(contributed: Record<string, unknown>): void {
+  for (const [name, component] of Object.entries(contributed)) {
+    if (name in componentRegistry && componentRegistry[name] !== component) {
+      console.warn(`module component "${name}" would shadow a host component and was not registered`);
+      continue;
+    }
+    (componentRegistry as Record<string, unknown>)[name] = component;
+  }
+}

@@ -448,7 +448,7 @@ export const callsList: SchemaNode = {
                                 then: {
                                   type: 'we-tooltip',
                                   props: {
-                                    title: { $: "modules.call.active ? 'Go to the call' : 'Continue this call'" },
+                                    content: { $: "modules.call.active ? 'Go to the call' : 'Continue this call'" },
                                     placement: 'top',
                                   },
                                   children: [
@@ -487,14 +487,18 @@ export const callsList: SchemaNode = {
                                                 call left in the space, and every surface reading
                                                 `callRecordId` about it instead of the meeting chosen.
 
-                                                `resume` stays: the transcriber learns the call's
-                                                record through presence, which is a round trip, and
-                                                this says the answer immediately.
+                                                One action, where there were two. A
+                                                `modules.transcribe.resume` was chained after this to
+                                                tell the transcriber which record to adopt without
+                                                waiting for presence — and that method no longer
+                                                exists. It went when the call module started marking
+                                                a continued call's activity `continued`, which the
+                                                transcriber acts on itself; an action naming a
+                                                missing module method resolves to nothing, so this
+                                                had been a silent no-op with a comment claiming
+                                                otherwise.
                                               */
-                                              then: [
-                                                { $action: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
-                                                { $action: 'modules.transcribe.resume', args: [{ $: 'call.id' }] },
-                                              ],
+                                              then: { $action: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
                                             },
                                           },
                                         ],
@@ -533,7 +537,7 @@ export const callsList: SchemaNode = {
                                 condition: { $: 'modules.transcribe.extractable' },
                                 then: {
                                   type: 'we-tooltip',
-                                  props: { title: 'Find the tasks and events in this call', placement: 'top' },
+                                  props: { content: 'Find the tasks and events in this call', placement: 'top' },
                                   children: [
                                     {
                                       type: 'we-button',
@@ -579,7 +583,7 @@ export const callsList: SchemaNode = {
                         */
                             {
                               type: 'we-tooltip',
-                              props: { title: 'Export the transcript', placement: 'top' },
+                              props: { content: 'Export the transcript', placement: 'top' },
                               children: [
                                 {
                                   type: 'we-button',
@@ -660,7 +664,7 @@ export const callsList: SchemaNode = {
                                 },
                                 then: {
                                   type: 'we-tooltip',
-                                  props: { title: { $: 'modules.transcribe.extractError' }, placement: 'top' },
+                                  props: { content: { $: 'modules.transcribe.extractError' }, placement: 'top' },
                                   children: [
                                     {
                                       type: 'we-text',

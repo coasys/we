@@ -38,6 +38,7 @@ function sightingDraft(): ShapeDraft {
     icon: 'binoculars',
     classHint: 'A specific observation of a bird.',
     identityMember: species.rowId,
+    nameMember: '',
     extractable: false,
     members: [
       { ...species, hint: 'The common name.' },
@@ -61,9 +62,11 @@ describe('draftToManifest', () => {
     const result = draftToManifest(sightingDraft(), UUID);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(validateManifest(result.manifest, { externalEntities: ['LocationBlock'] }).valid).toBe(true);
+    expect(validateManifest(result.manifest, { externalEntities: ['LocationBlock', 'WeNode'] }).valid).toBe(true);
 
     const entity = result.manifest.entities.Sighting;
+    // A community's model is a node, so it can be commented on and reacted to like any post.
+    expect(entity.extends).toBe('WeNode');
     expect(entity.flag).toEqual({ predicate: 'we://flag', value: 'we://shape/abc-123/sighting' });
     expect(entity.interpretationHint).toBe('A specific observation of a bird.');
     expect(entity.properties.species).toMatchObject({
@@ -370,6 +373,52 @@ describe('manifestToDraft', () => {
     const identity = lifted.members.find((m) => m.rowId === lifted.identityMember);
     expect(identity?.name).toBe('species');
   });
+
+  it('survives a re-save of the naming field, which is what the picker is for', () => {
+    /*
+      The trap this closes. `display` was always readable — `displayFor` honours it whatever wrote
+      it — but the wizard could not represent it, so lowering the draft dropped the key: a model
+      whose naming field somebody (or an LLM) had declared lost it the next time anybody opened it
+      in the wizard and pressed save. Nothing would have said so.
+    */
+    const draft = sightingDraft();
+    // `certainty`: a select, and nothing a guess would ever pick — `species` is the required
+    // string, so both the conventional and the structural pass would answer that.
+    draft.nameMember = draft.members.find((m) => m.name === 'certainty')!.rowId;
+    const first = draftToManifest(draft, UUID);
+    if (!first.ok) throw new Error('fixture failed');
+    expect(first.manifest.entities.Sighting.display).toEqual({ title: 'certainty' });
+
+    const lifted = manifestToDraft('Sighting', first.manifest);
+    expect(lifted.members.find((m) => m.rowId === lifted.nameMember)?.name).toBe('certainty');
+
+    const again = draftToManifest(lifted, UUID);
+    if (!again.ok) throw new Error('round trip failed');
+    expect(again.manifest.entities.Sighting.display).toEqual({ title: 'certainty' });
+  });
+
+  it('declares nothing when the naming field is left to be worked out', () => {
+    // The default, and it must stay absent rather than being written as the guess's answer: a
+    // stored key would freeze today's guess into the model and stop tracking a later rename.
+    const first = draftToManifest(sightingDraft(), UUID);
+    if (!first.ok) throw new Error('fixture failed');
+    expect(first.manifest.entities.Sighting.display).toBeUndefined();
+    expect(manifestToDraft('Sighting', first.manifest).nameMember).toBe('');
+  });
+
+  it('refuses a naming field pointing at a relationship, or at a deleted row', () => {
+    const relation = sightingDraft();
+    relation.nameMember = relation.members.find((m) => m.kind === 'relationship')!.rowId;
+    const a = draftToManifest(relation, UUID);
+    expect(a.ok).toBe(false);
+    if (!a.ok) expect(a.errors.join(' ')).toContain('is a relationship');
+
+    const dangling = sightingDraft();
+    dangling.nameMember = 'gone';
+    const b = draftToManifest(dangling, UUID);
+    expect(b.ok).toBe(false);
+    if (!b.ok) expect(b.errors.join(' ')).toContain('no longer exists');
+  });
 });
 
 describe('additiveViolations', () => {
@@ -447,5 +496,37 @@ describe('a new draft', () => {
     const result = draftToManifest({ ...emptyShapeDraft(), name: 'Note' }, UUID);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.join(' ')).toMatch(/at least one property/);
+  });
+});
+
+describe('link and paragraph properties', () => {
+  it('store as text with the control that edits and draws them, and read back as the same type', () => {
+    const draft = {
+      ...emptyShapeDraft(),
+      name: 'Recipe',
+      members: [draftMember({ name: 'method', type: 'paragraph' }), draftMember({ name: 'source', type: 'link' })],
+    };
+    const result = draftToManifest(draft, UUID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const { properties } = result.manifest.entities.Recipe;
+    expect(properties.method).toMatchObject({ type: 'string', control: 'textarea' });
+    expect(properties.source).toMatchObject({ type: 'string', control: 'url' });
+
+    const back = manifestToDraft('Recipe', result.manifest);
+    expect(back.members.map((m) => m.type)).toEqual(['paragraph', 'link']);
+  });
+
+  it('may be switched to and from text, since the stored meaning is unchanged', () => {
+    const asText = draftToManifest(
+      { ...emptyShapeDraft(), name: 'Recipe', members: [draftMember({ name: 'source', type: 'text' })] },
+      UUID,
+    );
+    const asLink = draftToManifest(
+      { ...emptyShapeDraft(), name: 'Recipe', members: [draftMember({ name: 'source', type: 'link' })] },
+      UUID,
+    );
+    if (!asText.ok || !asLink.ok) throw new Error('both drafts should lower');
+    expect(additiveViolations(asText.manifest, asLink.manifest)).toEqual([]);
   });
 });

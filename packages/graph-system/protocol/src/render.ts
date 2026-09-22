@@ -27,6 +27,7 @@ export interface NodeVisual {
   color: string;
   borderColor?: string;
   borderWidth?: number;
+  borderStyle?: 'solid' | 'dashed';
   opacity?: number;
   label?: string;
   labelColor?: string;
@@ -43,6 +44,8 @@ export interface NodeVisual {
   cardShape?: CardShape;
   /** Multiplier on the size the card's content is drawn at. See `NodeStyle.contentScale`. */
   contentScale?: number;
+  /** Stacking order among nodes, a whole number. Absent is 0. See `NodeStyle.z`. */
+  z?: number;
 }
 
 /**

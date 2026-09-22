@@ -3,11 +3,21 @@ import { expr } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
 
-export interface EmptyStateOptions {
+/**
+ * A placeholder needs a sentence, and there are two ways to give it one.
+ *
+ * `label` builds the default phrasing; `message` replaces it. The union is how the type says "one
+ * of these" while still allowing both, which several callers pass deliberately — the label is what
+ * a reader of the schema sees the list *is*, even where the sentence on screen says something
+ * better. What is refused is neither, which produced "This space doesn't have any undefined."
+ */
+export type EmptyStateOptions = EmptyStateFields & ({ label: string } | { message: Content });
+
+interface EmptyStateFields {
   /** The content type's own icon — the same name the type picker uses for it. */
   icon: string;
   /** What the list would have held, as a plural noun phrase: `posts`, `Flux channels`. */
-  label: string;
+  label?: string;
   /**
    * The list filters on `local.searchText`, so an empty result may only mean the search
    * excluded everything. Says that instead of asserting the space holds nothing.
@@ -52,12 +62,11 @@ export interface EmptyStateOptions {
  * left-aligned sentence under a header reads as a caption for content that is about to appear.
  */
 export function emptyState(opts: EmptyStateOptions): SchemaNode {
-  const nothingHere = `This space doesn't have any ${opts.label}.`;
+  const label = opts.label ?? 'items';
+  const nothingHere = `This space doesn't have any ${label}.`;
   const message: Content =
     opts.message ??
-    (opts.searchable
-      ? expr`local.searchText ? ${`No ${opts.label} match your search.`} : ${nothingHere}`
-      : nothingHere);
+    (opts.searchable ? expr`local.searchText ? ${`No ${label} match your search.`} : ${nothingHere}` : nothingHere);
 
   const placeholder: SchemaNode = {
     type: 'Column',

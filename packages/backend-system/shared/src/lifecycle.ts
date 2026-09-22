@@ -41,6 +41,20 @@ export interface DatasetChangeHandlers {
   onRemoved?: (id: string) => void;
 }
 
+/** A template a shared dataset's sync layer can be instantiated from, as `publish` accepts it. */
+export interface LinkLanguageTemplate {
+  address: string;
+  /** The backend's own name for it — technical, for a detail line rather than a label. */
+  name: string;
+  /**
+   * How a dataset published with it syncs: directly between members' devices, or through a server.
+   * What a person choosing between templates actually needs to know, so it is what a picker labels.
+   */
+  kind: 'peer-to-peer' | 'server';
+  /** The server it syncs through, for `kind: 'server'`. */
+  serverUrl?: string;
+}
+
 /**
  * Dataset lifecycle — list/create/remove/share the containers themselves.
  *
@@ -52,8 +66,12 @@ export interface DatasetLifecyclePort {
   get(id: string): Promise<DatasetRef | null>;
   create(name: string): Promise<DatasetRef>;
   remove(id: string): Promise<void>;
-  /** Publish an existing local dataset for sharing. Returns its shared URI and scheme-less id. */
-  publish?(id: string): Promise<{ uri: string; sharedId: string }>;
+  /**
+   * Publish an existing local dataset for sharing. Pass `linkLanguageTemplate` to choose
+   * which link language backs the neighbourhood; omit (or pass '') to use the first of
+   * `linkLanguageTemplates`.
+   */
+  publish?(id: string, linkLanguageTemplate?: string): Promise<{ uri: string; sharedId: string }>;
   /**
    * Join a shared dataset. Accepts the backend's full URI or a bare shared id — normalization is
    * the adapter's dialect, not the caller's.
@@ -61,6 +79,12 @@ export interface DatasetLifecyclePort {
   join?(idOrUri: string): Promise<DatasetRef>;
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
+  /**
+   * The templates `publish` can use, default first — the first is what `publish` picks when given
+   * none. Templates needing parameters `publish` cannot supply are
+   * left out.
+   */
+  linkLanguageTemplates?(): Promise<LinkLanguageTemplate[]>;
   /** Subscribe to change events. Returns an unsubscribe function. */
   subscribe(handlers: DatasetChangeHandlers): () => void;
 }
@@ -79,9 +103,32 @@ export interface AgentSessionStatus {
 }
 
 /**
+ * The backend did not finish an agent-session call in time.
+ *
+ * Distinct from a refusal, and the reason it is its own type: a timed-out unlock says nothing about
+ * the password. Reporting it as "Incorrect password" sent people to retype a password that was
+ * right, against a backend that was still starting. Adapters throw this so the shell can tell the
+ * two apart without knowing the backend's transport or its error codes.
+ */
+export class SessionTimeoutError extends Error {
+  constructor(message = 'The backend did not finish in time') {
+    super(message);
+    this.name = 'SessionTimeoutError';
+  }
+}
+
+/** By name as well as by class, so a second copy of this package in a bundle still matches. */
+export function isSessionTimeout(err: unknown): err is SessionTimeoutError {
+  return err instanceof SessionTimeoutError || (err instanceof Error && err.name === 'SessionTimeoutError');
+}
+
+/**
  * The agent session — whether the backend's identity is present and usable, and the create/unlock/
  * lock operations around it. Connection *establishment* stays with the host-supplied connector (it
  * is platform-specific); this port is what the shell needs once a connection exists.
+ *
+ * `generate` and `unlock` reject with {@link SessionTimeoutError} when the backend is still working
+ * after the adapter has waited as long as it will, and with any other error when it refused.
  */
 export interface AgentSessionPort {
   status(): Promise<AgentSessionStatus>;

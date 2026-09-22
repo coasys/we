@@ -43,7 +43,19 @@ export const BADGE_APPEARANCE_DEFAULTS: Record<
   Record<ComponentVariant, Partial<DesignSystemProps>>
 > = {
   soft: {
-    neutral: { bg: 'surface-sunken', color: 'text-muted' },
+    /*
+      `control-surface`, not `surface-sunken`, and the difference is whether the badge is visible.
+
+      `surface-sunken` is the fill of a *well* — an inset box, a code block, an input trough — and
+      it is also what a row inset into a card is painted with. So a neutral badge on any such row
+      was drawn in exactly its own background colour and disappeared: the transcript's `typed` mark
+      is where this surfaced, and it would have been true of every neutral badge on a sunken row.
+
+      `control-surface` is the role for precisely this — the vocabulary names "a count chip" among
+      its uses — and it is a step away from both `surface` and `surface-sunken`, so the badge reads
+      as a quiet chip on either rather than vanishing into one of them.
+    */
+    neutral: { bg: 'control-surface', color: 'text-muted' },
     primary: { bg: 'accent-muted', color: 'accent-text' },
     success: { bg: 'success-surface', color: 'success-text' },
     warning: { bg: 'warning-surface', color: 'warning-text' },
@@ -66,9 +78,18 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
   xl: { fontSize: '500', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
 };
 
+/*
+  A badge is one atomic word, so it never gives up room and never breaks.
+
+  The same rule `we-timestamp` carries, for the same reason: a flex item's automatic minimum size is
+  its content, so a short label is the thing a tight row squeezes — and a wrapped badge is simply
+  broken. Consumers were patching this by hand a row at a time.
+*/
 const styles = css`
   :host {
     --we-badge-host-display: inline-flex;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   /* Provide icon sizing context and size-specific padding/gap for slotted we-icon children */

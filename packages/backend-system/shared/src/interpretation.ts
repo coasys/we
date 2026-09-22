@@ -53,6 +53,18 @@ export interface TranscriptTurn {
   text: string;
   /** ISO-8601. */
   timestamp: string;
+  /**
+   * How this turn came to be — `spoken`, `typed` or `corrected`, and empty where nothing said.
+   *
+   * "Who said it" stopped being the whole story once a person could type into a transcript or mend
+   * what the recogniser heard. A consumer that renders or exports these is asserting somebody's
+   * words, and this is what lets it be accurate about which of them were spoken aloud.
+   *
+   * Optional, and ignorable. A backend that has no use for it drops it exactly as it always did,
+   * and a turn from a writer that does not set it is unchanged — which is every turn written before
+   * `TextBlock.source` existed. See that field for the three values and why they are recorded.
+   */
+  source?: string;
 }
 
 /** Where interpreted instances go, and what may be created. */
@@ -72,6 +84,20 @@ export interface InterpretationRequest {
    * `parent` option on the module contract's `createEntity` for the same reason.
    */
   parent?: { id: string; predicate: string };
+  /**
+   * A second link written beside `parent`, saying the same node *produced* what the pass wrote.
+   *
+   * Two links because they are two claims. `parent` is containment — the record is part of that
+   * collection, which is what makes a board gather it and a delete take it. This is provenance: a
+   * model proposed it from reading that node, rather than somebody typing it there. They diverge
+   * exactly when it matters, since a task composed into a call by hand is contained and not
+   * extracted.
+   *
+   * Named by the caller rather than known here, for the reason `parent` is: the predicate is the
+   * host's vocabulary, and an interpretation port that hard-coded one would be a backend deciding
+   * what a relation in somebody else's graph is called. Omit it and nothing extra is written.
+   */
+  provenance?: { id: string; predicate: string };
   /**
    * URI namespace new instances are minted under. Backend-specific and usually best left to the
    * adapter, which derives one from `parent` so a call's extractions are confined to that call.
@@ -98,6 +124,20 @@ export interface InterpretationResult {
    * Always a subset of `ids`; empty from a backend with no provenance gate.
    */
   proposed: string[];
+  /**
+   * What the model was asked and what it answered, where the backend reported them.
+   *
+   * Returned rather than left to the progress feed, because a caller writing the pass down has the
+   * facts about it — how many turns, what it was looking for, whether it threw — at the moment this
+   * resolves, and the exchange arrives on a different channel with its own timing. Handing it back
+   * here is what lets one write hold the whole pass rather than a row that has to be found again
+   * and amended.
+   *
+   * Absent on a runtime that cannot report progress, which is the same runtime whose live readout
+   * shows nothing either.
+   */
+  prompt?: string;
+  response?: string;
 }
 
 /**
@@ -119,9 +159,34 @@ export interface InterpretationProposal {
   /** Whether the model authored the whole instance, or proposed changes to an existing one. */
   kind: 'create' | 'update';
   /**
+   * Which model this is a suggestion of — `'TaskBlock'`, or a shape the community defined.
+   *
+   * ## Why a proposal has to say
+   *
+   * Without it a review surface can show the *values* and nothing about what they are: no icon, no
+   * model name, and no way to write an edit back, since every record mutation takes the entity name
+   * first. A reviewer reads "status: todo" with no indication whether they are being offered a task,
+   * an event or something this community invented last week.
+   *
+   * It is also what makes {@link values} legible at all. A predicate is shared across models on
+   * purpose (`we://title` is `title` on eight of them and `label` on two), so reading it back to a
+   * name is one-to-many and only the class settles it. An adapter without the class has to guess,
+   * and guessing wrong is silent: the name it picks is the one a UI prints and an edit writes to.
+   *
+   * Optional because it is not always knowable. A backend that cannot classify an instance, or a
+   * base belonging to a model this dataset has not registered, leaves it absent rather than
+   * inventing one — and a consumer should degrade to showing the values alone rather than refusing
+   * the proposal, which is still a real decision waiting on somebody.
+   */
+  entity?: string;
+  /**
    * Proposed values, keyed by the host's property name (`'title'`) rather than the backend
    * predicate — so a UI can render "title: Ship the docs" without knowing what `we://title` is.
    * Properties the adapter cannot map back to a name are omitted rather than shown raw.
+   *
+   * Resolved against {@link entity} where it is known, so a name is the one *that model* uses. Where
+   * it is not, the mapping falls back to whatever the dataset's shapes agree on, which is right for
+   * the predicates only one model declares and arbitrary for the few that several do.
    */
   values: Record<string, unknown>;
 }
@@ -215,8 +280,30 @@ export interface InterpretationPort {
   /**
    * Drop a staged suggestion. Rejecting a `'create'` removes the instance; rejecting an `'update'`
    * leaves the existing value alone.
+   *
+   * Like {@link accept}, answers `false` for a suggestion that is no longer staged rather than
+   * throwing — somebody else getting there first is the ordinary case in a shared space.
    */
   reject(dataset: DatasetHandle, id: string, property?: string): Promise<boolean>;
+
+  /**
+   * Hear that the set of staged suggestions may have changed — somebody's pass staged one, or
+   * somebody, anywhere in the neighbourhood, accepted or rejected one.
+   *
+   * ## Why a signal and not the list
+   *
+   * {@link proposals} is a read, and a consumer holding its answer had no way to learn that answer
+   * had gone stale. A pass settling was the only prompt it had, and resolving a suggestion is not a
+   * pass: one member accepting a card left it pending on every other member's screen until the next
+   * extraction or a restart. What changed is cheap to notice and expensive to describe — an overlay
+   * is several links on a backend that stores them — so this says only *that* something did, and
+   * the consumer re-reads whatever it was showing.
+   *
+   * Events arrive in bursts (a pass stages many suggestions at once), so a consumer should coalesce
+   * before re-reading. Returns an unsubscribe. Optional and feature-detected: without it a host
+   * falls back to re-reading when passes settle, which is what it did before this existed.
+   */
+  onProposalsChanged?(dataset: DatasetHandle, cb: () => void): Promise<() => void>;
 
   /**
    * Report passes as they run, rather than only when they finish.

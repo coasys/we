@@ -501,6 +501,13 @@ export function ProfileStoreProvider(props: ParentProps) {
    */
   onCleanup(
     provideModuleHostServices({
+      /*
+        A module's one way to say something outside its own panels — see `notify` on the contract.
+
+        Wired here because this store already provides the other services a module reads about
+        people, and because the host is what decides that "tell somebody" means a toast.
+      */
+      notify: (tone, message) => toastService[tone](message),
       identities: {
         get: (agentId) => {
           const profile = profiles().find((entry) => entry.did === agentId);

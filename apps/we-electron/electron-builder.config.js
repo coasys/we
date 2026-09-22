@@ -72,6 +72,7 @@ export default {
   artifactName: '${productName}-${version}-${os}-${arch}.${ext}',
   mac: {
     category: 'public.app-category.social-networking',
+    target: ['dmg', 'zip'],
   },
   linux: {
     target: ['AppImage'],

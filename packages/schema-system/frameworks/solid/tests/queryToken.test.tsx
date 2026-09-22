@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { render } from '@solidjs/testing-library';
-import type { RendererStores } from '@we/backend-shared';
+import {
+  type AdapterCapabilities,
+  irToFlatQuery,
+  planQuery,
+  type QueryAdapter,
+  type QueryIR,
+  type RendererStores,
+} from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import { createRoot, createSignal } from 'solid-js';
 import { render as webRender } from 'solid-js/web';
@@ -10,10 +17,53 @@ import { RenderSchema } from '../src/SchemaRenderer';
 import type { ComponentRegistry } from '../src/types';
 
 /**
+ * A backend that can do everything, so a test can be about the token rather than about capabilities.
+ *
+ * Every query the renderer issues is compiled to the IR and lowered by the host's own adapter — there
+ * is no path around it — so a store bag without one is not a host with fewer features, it is a host
+ * whose queries all refuse. That is what {@link asStores} supplies below, and what these tests would
+ * otherwise all be asserting instead of what they are about.
+ */
+const passthroughAdapter: QueryAdapter = (() => {
+  const capabilities: AdapterCapabilities = {
+    operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'startsWith', 'endsWith', 'exists'],
+    booleanCombinators: true,
+    relationFilters: true,
+    scope: true,
+    include: { supported: true },
+    aggregate: ['count'],
+    sort: { multiKey: true, byRelationPath: true, byAggregate: true },
+    pagination: ['offset'],
+    live: 'push',
+  };
+  return {
+    capabilities,
+    plan: (ir: QueryIR) => planQuery(ir, capabilities),
+    lower: (ir: QueryIR) => {
+      const { scope, ...rest } = ir;
+      const { entity: _entity, ...opts } = irToFlatQuery(rest as QueryIR);
+      void _entity;
+      return scope ? { ...opts, scope } : opts;
+    },
+  };
+})();
+
+/**
  * Mocks are deliberately loose (vitest stubs don't structurally match `EntityClass`). The
  * `RendererStores` contract exists to type-check real hosts at the boundary, not test doubles.
+ *
+ * A bag that names its own `$queryAdapter` keeps it — including as `undefined`, for a test about a
+ * host that supplies none.
+ *
+ * Copied by *descriptor* rather than spread. A bag may declare a binding as a getter so the renderer
+ * re-reads it reactively — `get $getEntity()` is how the "backend connects after mount" case is
+ * written — and a spread would call that getter once and freeze whatever it answered at copy time.
  */
-const asStores = (s: object): RendererStores => s as unknown as RendererStores;
+const asStores = (s: object): RendererStores => {
+  const bag = Object.defineProperties({}, Object.getOwnPropertyDescriptors(s)) as Record<string, unknown>;
+  if (!('$queryAdapter' in bag)) bag.$queryAdapter = passthroughAdapter;
+  return bag as unknown as RendererStores;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -142,8 +192,9 @@ describe('$query token', () => {
     expect(builder.subscribe).toHaveBeenCalledOnce();
     expect(builder.dispose).not.toHaveBeenCalled();
 
-    // Trigger cleanup
+    // Trigger cleanup. Released a microtask later, so a node re-running the same question keeps it.
     dispose();
+    await tick();
     expect(builder.dispose).toHaveBeenCalledOnce();
   });
 
@@ -528,5 +579,227 @@ describe('$query when', () => {
     tasks.push([{ id: 't1' }]);
     await tick();
     expect(el()).toEqual([true, [{ id: 't1' }]]);
+  });
+
+  /*
+    The other direction: a selection let go of. The inspector asks for the record a URL parameter
+    names, gated on that parameter; clearing it must empty the list rather than leave the last
+    record's rows standing — and must not re-ask with the id pruned, which would answer with any
+    record at all.
+  */
+  it('empties when the condition turns falsy again, and asks nothing further', async () => {
+    const builder = createMockBuilder();
+    const Task = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const [params, setParams] = createSignal<Record<string, string>>({ card: 't1' });
+    const stores = {
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $getEntity: () => Task,
+      routeStore: {
+        get params() {
+          return params();
+        },
+      },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $queries: {
+        card: {
+          entity: 'Task',
+          where: { id: { $: 'routeStore.params.card' } },
+          limit: 1,
+          when: { $: 'routeStore.params.card' },
+        },
+      },
+      props: { data: { $: '[local.cardLoaded, local.card]' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    builder.push([{ id: 't1' }]);
+    await tick();
+    const el = () => JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]');
+    expect(el()).toEqual([true, [{ id: 't1' }]]);
+
+    setParams({});
+    await tick();
+    expect(el()).toEqual([false, []]);
+    expect(Task.query).toHaveBeenCalledTimes(1);
+    expect(builder.dispose).toHaveBeenCalled();
+  });
+
+  /*
+    The same, with the answer arriving late — which is the order it happens in against a real backend,
+    where a record is a round trip away. Pressing a card and letting go of it before the first answer
+    came back left the answer to land on a query that no longer existed, and the inspector showed the
+    card anyway.
+  */
+  it('ignores an answer that arrives after the condition turned falsy', async () => {
+    let resolveInitial: ((rows: unknown[]) => void) | null = null;
+    let pushRows: ((rows: unknown[]) => void) | null = null;
+    const builder = {
+      subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
+        pushRows = cb;
+        return new Promise<unknown[]>((resolve) => {
+          resolveInitial = resolve;
+        });
+      }),
+      dispose: vi.fn(),
+    };
+    const Task = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const [params, setParams] = createSignal<Record<string, string>>({ card: 't1' });
+    const stores = {
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $getEntity: () => Task,
+      routeStore: {
+        get params() {
+          return params();
+        },
+      },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $queries: { card: { entity: 'Task', limit: 1, when: { $: 'routeStore.params.card' } } },
+      props: { data: { $: 'local.card' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    expect(Task.query).toHaveBeenCalledTimes(1);
+
+    setParams({});
+    await tick();
+    resolveInitial!([{ id: 't1' }]);
+    pushRows!([{ id: 't1', status: 'done' }]);
+    await tick();
+
+    expect(container.querySelector('[data-testid="data"]')?.textContent).toBe('[]');
+  });
+});
+
+describe('$query over several entities', () => {
+  /*
+    `entity: ['TaskBlock', 'EventBlock']` — one question over records of more than one kind. Backends
+    answer an entity at a time, so the renderer asks each and puts the answers together; these pin
+    the parts a template relies on: every row says what it is, nothing shows until every kind has
+    answered, the list is ordered and limited as a whole, and "no kinds" is an answer.
+  */
+  it('combines each entity’s answer, tagged, once every one has answered', async () => {
+    let answerTasks: ((rows: unknown[]) => void) | null = null;
+    const tasks = {
+      subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
+        answerTasks = cb;
+        return new Promise<unknown[]>(() => {});
+      }),
+      dispose: vi.fn(),
+    };
+    const events = createMockBuilder();
+    const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
+    const Event = { query: vi.fn(() => events), findAll: vi.fn() };
+    const stores = {
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $getEntity: (name: string) => (name === 'TaskBlock' ? Task : Event),
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $queries: {
+        found: { entity: ['TaskBlock', 'EventBlock'], order: { at: 'asc' }, limit: 2, subscribe: true },
+      },
+      props: { data: { $: '[local.foundLoaded, local.found.map(r, [r.id, r.__subjectClass])]' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    const el = () => JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]');
+
+    // Each entity was asked with the query's own options; the events have answered and the tasks
+    // have not, so nothing is shown and nothing claims to be loaded.
+    expect(Task.query).toHaveBeenCalledOnce();
+    expect((Event.query.mock.calls[0] as unknown[])[1]).toMatchObject({ order: { at: 'asc' }, limit: 2 });
+    events.push([{ id: 'e1', at: 2 }]);
+    await tick();
+    expect(el()).toEqual([false, []]);
+
+    answerTasks!([
+      { id: 't1', at: 3 },
+      { id: 't2', at: 1 },
+    ]);
+    await tick();
+    expect(el()).toEqual([
+      true,
+      [
+        ['t2', 'TaskBlock'],
+        ['e1', 'EventBlock'],
+      ],
+    ]);
+
+    // A later push from one entity re-combines with the other's last answer.
+    events.push([{ id: 'e0', at: 0 }]);
+    await tick();
+    expect(el()).toEqual([
+      true,
+      [
+        ['e0', 'EventBlock'],
+        ['t2', 'TaskBlock'],
+      ],
+    ]);
+  });
+
+  it('answers an empty list as loaded and empty, asking nothing', async () => {
+    const getEntity = vi.fn();
+    const stores = { $currentDataset: () => ({ uuid: 'p1' }), $getEntity: getEntity };
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      $localState: { kinds: { type: 'array', initial: [] } },
+      $queries: { found: { entity: { $: 'local.kinds' } } },
+      props: { data: { $: '[local.foundLoaded, local.found]' } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(getEntity).not.toHaveBeenCalled();
+    expect(JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]')).toEqual([true, []]);
+  });
+
+  it('keeps the entities it can read when one fails', async () => {
+    const onError = vi.fn();
+    const Task = { query: vi.fn(), findAll: vi.fn(() => Promise.resolve([{ id: 't1' }])) };
+    const Event = { query: vi.fn(), findAll: vi.fn(() => Promise.reject(new Error('no such shape'))) };
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: (name: string) => (name === 'TaskBlock' ? Task : Event),
+      $onError: onError,
+    };
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: ['TaskBlock', 'EventBlock'], subscribe: false } } },
+    };
+
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(JSON.parse(container.querySelector('[data-testid="data"]')?.textContent ?? '[]')).toEqual([
+      { id: 't1', __subjectClass: 'TaskBlock' },
+    ]);
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('"EventBlock" failed: no such shape'));
+  });
+
+  it('refuses an offset, rather than paging a union wrongly', async () => {
+    const onError = vi.fn();
+    const Task = { query: vi.fn(), findAll: vi.fn(() => Promise.resolve([])) };
+    const stores = { $currentDataset: () => ({ uuid: 'p1' }), $getEntity: () => Task, $onError: onError };
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: ['TaskBlock', 'EventBlock'], offset: 20, subscribe: false } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(Task.findAll).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('cannot take an offset'));
   });
 });

@@ -125,7 +125,7 @@ export function ConditionEditor(props: {
           {props.label ?? 'Condition'}
         </we-text>
         <Show when={!unsupported()}>
-          <we-tooltip title={rawMode() ? 'Back to the builder' : 'Edit as JSON'}>
+          <we-tooltip content={rawMode() ? 'Back to the builder' : 'Edit as JSON'}>
             <we-button variant="ghost" size="xs" square onClick={() => setRawMode((v) => !v)} aria-label="Edit as JSON">
               <we-icon name={rawMode() ? 'sliders-horizontal' : 'code'} size="xs" />
             </we-button>
@@ -273,7 +273,7 @@ function ConditionRow(props: {
               />
             </Column>
             <Show when={props.removable}>
-              <we-tooltip title="Remove this condition">
+              <we-tooltip content="Remove this condition">
                 <we-button variant="ghost" size="xs" square onClick={props.onRemove} aria-label="Remove condition">
                   <we-icon name="x" size="xs" />
                 </we-button>

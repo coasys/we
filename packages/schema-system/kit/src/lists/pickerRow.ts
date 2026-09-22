@@ -97,7 +97,7 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
                   condition: opts.isDefault ?? false,
                   then: {
                     type: 'we-tooltip',
-                    props: { title: "This space's default", placement: 'top' },
+                    props: { content: "This space's default", placement: 'top' },
                     children: [{ type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } }],
                   },
                 },
@@ -109,7 +109,7 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
       ...(opts.actions ?? []).map((action) => {
         const button: SchemaNode = {
           type: 'we-tooltip',
-          props: { title: action.tooltip, placement: 'top' },
+          props: { content: action.tooltip, placement: 'top' },
           children: [
             {
               type: 'we-button',

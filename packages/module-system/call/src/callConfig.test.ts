@@ -9,9 +9,12 @@
  * - Refreshes available SFU nodes on demand
  * - Falls back to mesh defaults when the backend lacks support
  */
+import { markAction, markState } from '@we/module-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type CallConfigState, type CallSfuNodeState, createCallStore } from './store';
+
+const baseDeps = { state: markState, action: markAction, kernels: {} } as const;
 
 /** Minimal reactive system — same shape the store.test.ts helpers use. */
 function signal<T>(initial: T): [() => T, (next: T) => void] {
@@ -54,7 +57,7 @@ const SFU_NODES: CallSfuNodeState[] = [
 
 describe('call config — store integration', () => {
   it('defaults to mesh config before any load', () => {
-    const store = createCallStore({ signal });
+    const store = createCallStore({ ...baseDeps, signal });
     expect(store.callConfig()).toEqual(MESH_DEFAULT);
     expect(store.callConfigSupported()).toBe(false);
     expect(store.availableSfuNodes()).toEqual([]);
@@ -70,6 +73,7 @@ describe('call config — store integration', () => {
     const callConfigSupported = vi.fn().mockReturnValue(true);
 
     const store = createCallStore({
+      ...baseDeps,
       signal,
       effect,
       dataset: dataset as () => null,
@@ -105,6 +109,7 @@ describe('call config — store integration', () => {
     const callConfigSupported = vi.fn().mockReturnValue(true);
 
     const store = createCallStore({
+      ...baseDeps,
       signal,
       effect,
       dataset: () => ({ id: 'test' }) as never,
@@ -124,6 +129,7 @@ describe('call config — store integration', () => {
     const { effect, flush } = createEffectRunner();
 
     const store = createCallStore({
+      ...baseDeps,
       signal,
       effect,
       dataset: () => ({ id: 'test' }) as never,
@@ -141,6 +147,7 @@ describe('call config — store integration', () => {
     const setCallConfig = vi.fn().mockResolvedValue(true);
 
     const store = createCallStore({
+      ...baseDeps,
       signal,
       getCallConfig: async () => SFU_CONFIG,
       setCallConfig,
@@ -163,6 +170,7 @@ describe('call config — store integration', () => {
     const setCallConfig = vi.fn().mockResolvedValue(true);
 
     const store = createCallStore({
+      ...baseDeps,
       signal,
       setCallConfig,
     });
@@ -183,7 +191,7 @@ describe('call config — store integration', () => {
   it('does not update the signal when setCallConfig returns false', async () => {
     const setCallConfig = vi.fn().mockResolvedValue(true);
 
-    const store = createCallStore({ signal, setCallConfig });
+    const store = createCallStore({ ...baseDeps, signal, setCallConfig });
 
     // Pre-populate — this write succeeds
     await store.saveCallConfig(SFU_CONFIG);
@@ -202,7 +210,7 @@ describe('call config — store integration', () => {
     let resolveWrite: (v: boolean) => void;
     const setCallConfig = vi.fn().mockImplementation(() => new Promise<boolean>((r) => (resolveWrite = r)));
 
-    const store = createCallStore({ signal, setCallConfig });
+    const store = createCallStore({ ...baseDeps, signal, setCallConfig });
 
     expect(store.callConfigSaving()).toBe(false);
 
@@ -217,7 +225,7 @@ describe('call config — store integration', () => {
   it('refreshes SFU nodes on demand', async () => {
     const getAvailableSfuNodes = vi.fn().mockResolvedValue(SFU_NODES);
 
-    const store = createCallStore({ signal, getAvailableSfuNodes });
+    const store = createCallStore({ ...baseDeps, signal, getAvailableSfuNodes });
 
     expect(store.availableSfuNodes()).toEqual([]);
 
@@ -228,7 +236,7 @@ describe('call config — store integration', () => {
   });
 
   it('connectionInfo reflects current call state', () => {
-    const store = createCallStore({ signal });
+    const store = createCallStore({ ...baseDeps, signal });
 
     const info = store.connectionInfo();
     expect(info.topology).toBe('mesh');
@@ -239,7 +247,7 @@ describe('call config — store integration', () => {
   });
 
   it('quality can be set directly instead of cycling', async () => {
-    const store = createCallStore({ signal });
+    const store = createCallStore({ ...baseDeps, signal });
 
     expect(store.qualityPreference()).toBe('high');
 

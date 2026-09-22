@@ -312,7 +312,6 @@ const monthGrid: SchemaNode = {
                 // Seven to a row, by width rather than by a grid the schema cannot express.
                 width: 'calc(14.28% - 6px)',
                 minHeight: '92px',
-                gap: '050',
                 p: '100',
                 r: '300',
                 cursor: 'pointer',

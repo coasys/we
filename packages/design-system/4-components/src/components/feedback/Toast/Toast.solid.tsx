@@ -48,6 +48,18 @@ function ToastItem(props: { toast: ToastItem }) {
     >
       <we-icon name={VARIANT_ICONS[variant()]} color={VARIANT_COLORS[variant()]} size="20px" />
       <span class="we-toast__message">{props.toast.message}</span>
+      {props.toast.action && (
+        <button
+          class="we-toast__action"
+          onClick={() => {
+            const action = props.toast.action;
+            toastService.remove(props.toast.id);
+            action?.run();
+          }}
+        >
+          {props.toast.action.label}
+        </button>
+      )}
       <button onClick={() => toastService.remove(props.toast.id)} aria-label="Dismiss" class="we-toast__dismiss">
         <we-icon name="x" size="16px" />
       </button>

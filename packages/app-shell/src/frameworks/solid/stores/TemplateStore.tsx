@@ -138,6 +138,16 @@ export interface TemplateStore {
   loadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
+  /**
+   * The space on screen has not yet settled which template it renders with.
+   *
+   * True between a dataset becoming current and its template being applied (or found to be the one
+   * already showing) — on a deep link or a reload, the length of a network fetch, during which the
+   * agent's own default is on screen standing in for a template it may not be. Anything that would
+   * act on *which* template this is waits on it: the section guard read the stand-in's section list,
+   * decided a Workshop URL was a section the space did not have, and rewrote the address.
+   */
+  spaceTemplatePending: Accessor<boolean>;
 
   // Loading state
   operationLoading: Accessor<string | null>;
@@ -482,6 +492,21 @@ export function TemplateStoreProvider(props: ParentProps) {
       : allKnownSpaces.find((s) => s.uuid === dataset.id);
   }
 
+  /**
+   * The dataset whose template question has been answered — applied, or found to have nothing to
+   * apply.
+   *
+   * `spaceTemplatePending` is derived from this against the current dataset rather than being a flag
+   * the effect below raises, so it is true from the very frame the dataset changes. A flag would
+   * depend on that effect running before every reader of it, and the reader that matters — the
+   * section guard in TemplateProvider — is an effect too.
+   */
+  const [templateResolvedFor, setTemplateResolvedFor] = createSignal<string | null>(null);
+  const spaceTemplatePending = () => {
+    const dataset = datasetStore.currentDataset();
+    return !!dataset && templateResolvedFor() !== dataset.id;
+  };
+
   // On space switch: apply default template.
   // When navigateToSpace pre-loads templates, the cache is already populated and the
   // template switches synchronously here. For deep links / page refresh, takes the async path.
@@ -505,9 +530,15 @@ export function TemplateStoreProvider(props: ParentProps) {
           allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId);
         if (template) replaceTemplate(template);
       }
+      setTemplateResolvedFor(perspective.id);
     } else {
-      // Deep link or first boot — async path
-      void applySpaceTemplate(perspective);
+      // Deep link or first boot — async path. Settled on every way out, a failure included: the
+      // template on screen is then the answer, and anything waiting on one should stop waiting. Only
+      // while still in that space: a slow answer for one already left must not overwrite the
+      // answer for the space now open, which would leave it pending for good.
+      void applySpaceTemplate(perspective).finally(() => {
+        if (lastSpacePerspectiveUuid === perspective.id) setTemplateResolvedFor(perspective.id);
+      });
     }
   });
 
@@ -1571,6 +1602,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     preloadSpaceTemplates,
     loadSpaceTemplates,
     clearSpaceTemplates,
+    spaceTemplatePending,
 
     // Loading state
     operationLoading,

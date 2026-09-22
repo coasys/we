@@ -265,6 +265,27 @@ export type WriteProperties<T extends RecordInstance> = { [K in RecordDataKeys<T
  * as, and what a backend's registered implementations must answer to. Dataset handles are
  * `unknown`: which kind of handle "a dataset" is, is the backend's business (an AD4M
  * `PerspectiveProxy`, an inmemory store, a connection).
+ *
+ * ## Why the relation writes below are statics
+ *
+ * Two reasons, and the first is the plain one: until they existed, the neutral write vocabulary was
+ * `create`/`update`/`delete` over a flat field bag, which cannot express a relation at all. So every
+ * relation write in the app went around the contract to a model instance's own accessors, and a
+ * backend could satisfy this interface completely and still be unable to run a board — where a
+ * column's cards, their order, and a board's columns are all relation writes and nothing else.
+ *
+ * The second is about *seeing* the write. `defineEntity` in `@we/entities` forwards statics to
+ * whichever implementation is registered, and it says so plainly: instances come back from the real
+ * implementation, so their methods are the implementation's own. A write spelled as an instance
+ * method is therefore invisible to every neutral layer — nothing can count it, log it, batch it, or
+ * stand in for it while it lands. Spelled as a static it passes through the one place that sees
+ * every read already.
+ *
+ * ## Why they are not on `MutationApi`
+ *
+ * That is the surface templates reach through `record.create`/`update`/`delete`, and whether a
+ * template may relink arbitrary relations is a capability question nobody has answered. These are
+ * for stores, which are code that ships with the app.
  */
 export interface EntityStatic<T extends RecordInstance> {
   create(dataset: unknown, properties: WriteProperties<T>, options?: Record<string, unknown>): Promise<T>;
@@ -277,4 +298,52 @@ export interface EntityStatic<T extends RecordInstance> {
   update(dataset: unknown, id: string, properties: WriteProperties<T>): Promise<T | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: TypedEntityQuery<T>): Promise<number>;
+
+  /**
+   * Replace a relation's whole membership, in the order given.
+   *
+   * The write a drag makes: a board column's cards after somebody rearranged them, a board's columns
+   * after somebody moved one. `targetIds` is the list as it should now read, and a backend whose
+   * relation is declared `ordered` is expected to preserve that order on the way back — where the
+   * ordering is *held* is its business (AD4M keeps position hints beside the membership links and
+   * merges them, so two people dragging at once converge rather than one write discarding the other).
+   *
+   * Nothing here indexes, renumbers or breaks a tie. Handing over the whole list and letting the
+   * backend diff it is what makes that possible: a backend that can merge has everything it needs,
+   * and one that cannot can still write the list.
+   *
+   * Ids the relation does not already hold join it; ids it holds that the list omits leave it.
+   *
+   * **To-many relations only, for now.** A to-one link is a different write — "point this at that",
+   * not "your membership is this list" — and the two are told apart by the manifest rather than by
+   * anything a record carries at runtime, so a backend cannot reliably decide which it was handed.
+   * Writing one stays an instance call until there is a reason to settle that, and an implementation
+   * is expected to refuse a to-one here rather than guess.
+   */
+  setRelation(
+    dataset: unknown,
+    id: string,
+    relation: string,
+    targetIds: readonly string[],
+    batch?: string,
+  ): Promise<void>;
+
+  /**
+   * Put one record into a relation, leaving the rest alone.
+   *
+   * Not sugar for {@link EntityStatic.setRelation} with the current list plus one. That spelling
+   * needs a read first, and between the read and the write somebody else's addition is lost — which
+   * is the whole failure an unordered relation should be immune to. Where the relation is ordered,
+   * an addition with no position lands at the end.
+   */
+  addRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
+
+  /**
+   * Take one record out of a relation.
+   *
+   * The counterpart, and the same argument: expressing it as a `set` of everything-but-one turns a
+   * removal into a claim about every other member. Removing something the relation does not hold is
+   * not an error — it is the state the caller asked for.
+   */
+  removeRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
 }

@@ -4,7 +4,7 @@
  * A dataset is the neutral term for a queryable data container — an AD4M perspective in this
  * backend (a repo/branch or database elsewhere). This store owns the dataset list and ordering,
  * the active dataset (with its registered models and we-space status), the system datasets
- * (root/test/global/marketplace), and the agent's root-dataset settings.
+ * (root/personal/test/global/marketplace), and the agent's root-dataset settings.
  *
  * Dataset lifecycle (list/create/remove/subscribe) runs through the session's
  * `DatasetLifecyclePort`. The coupling that remains is the model layer: schema install and
@@ -21,6 +21,7 @@ import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@s
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
+import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import { createCallConfigAccessors, createCallSessionFactory } from '@we/backend-ad4m';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
@@ -31,6 +32,20 @@ import { useSessionStore } from './SessionStore';
 
 /** Where a pass hangs off the collection it read — `CollectionBlock.extractionPasses`. */
 const EXTRACTION_PASS_PREDICATE = 'we://extraction_pass_record';
+
+/**
+ * The relation saying a record came out of reading a collection — `CollectionBlock.extracted`.
+ *
+ * Written beside containment rather than instead of it. `children` is ownership, and the call's
+ * board gathers through it, so a record that stopped being a child would vanish from the board it
+ * exists to appear on. This is the other fact about the same record: a model proposed it from the
+ * conversation, rather than somebody typing it there.
+ *
+ * Named here because it is WE's vocabulary. The interpretation port takes the predicate as an
+ * argument for the same reason it takes `parent` as one — a backend that hard-coded it would be
+ * deciding what a relation in somebody else's graph is called.
+ */
+const EXTRACTED_PREDICATE = 'we://extracted';
 
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
@@ -81,7 +96,16 @@ export interface DatasetStore {
    */
   datasetsLoaded: Accessor<boolean>;
   systemDatasetUuids: Accessor<string[]>;
+  /** The app's configuration — settings, installed templates and themes, per-space preferences. */
   rootDataset: Accessor<AppDataset | null>;
+  /**
+   * The agent's own things — notes, the Pocket — in a dataset with the ordinary space schema.
+   *
+   * Separate from the root so content a person made is never in the blast radius of repairing or
+   * resetting configuration, and so it can be published to follow them between devices without
+   * their per-machine settings. `null` until its schema is installed. See `systemDatasets.ts`.
+   */
+  personalDataset: Accessor<AppDataset | null>;
   testDataset: Accessor<AppDataset | null>;
   globalDataset: Accessor<AppDataset | null>;
   marketplaceDataset: Accessor<AppDataset | null>;
@@ -129,6 +153,27 @@ export interface DatasetStore {
   loadDatasets: () => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
+  /**
+   * Write down a pass the *standing watch* ran, once it has settled.
+   *
+   * The manual path writes its own, on the way back from a run that returned it everything. A
+   * watched pass has no such moment: it happens inside the executor and is only ever reported, so
+   * the record has to be written by whoever is watching the report — and that is
+   * InterpretationStore, which is the one place subscribed to it.
+   *
+   * Here rather than there because this is where an `ExtractionPass` is written and where a call's
+   * target list is resolved, and neither is worth a second copy. Called only for this agent's own
+   * passes: every peer sees the same event, and a row per peer would be a history of who was
+   * watching rather than of what ran.
+   */
+  recordWatchPass: (pass: {
+    collection: string;
+    outcome: string;
+    recordCount: number;
+    error?: string;
+    prompt?: string;
+    response?: string;
+  }) => Promise<void>;
   /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
   provideAutoInterpretGate: (gate: () => boolean) => () => void;
   /**
@@ -182,6 +227,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
+  const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
@@ -251,7 +297,16 @@ export function DatasetStoreProvider(props: ParentProps) {
   async function recordPass(
     handle: DatasetProxy,
     collectionId: string,
-    pass: { outcome: string; recordCount: number; targets: string[]; error?: string },
+    pass: {
+      outcome: string;
+      recordCount: number;
+      targets: string[];
+      error?: string;
+      /** What started it. Defaults to a press, which is what the only writer used to be. */
+      trigger?: 'manual' | 'auto';
+      prompt?: string;
+      response?: string;
+    },
   ): Promise<void> {
     try {
       await ExtractionPass.create(
@@ -261,6 +316,9 @@ export function DatasetStoreProvider(props: ParentProps) {
           recordCount: pass.recordCount,
           targets: JSON.stringify(pass.targets),
           error: pass.error ?? '',
+          trigger: pass.trigger ?? 'manual',
+          prompt: pass.prompt ?? '',
+          response: pass.response ?? '',
         } as never,
         { parent: { id: collectionId, predicate: EXTRACTION_PASS_PREDICATE } } as never,
       );
@@ -320,6 +378,22 @@ export function DatasetStoreProvider(props: ParentProps) {
           const port = session.backendPorts()?.transcription;
           if (!port) throw new Error('transcription: this backend cannot transcribe');
           return port.open(modelId, onText, tuning);
+        },
+        offeredModel: () => session.backendPorts()?.transcription?.offeredModel?.() ?? null,
+        installOfferedModel: async () => {
+          const install = session.backendPorts()?.transcription?.installOfferedModel;
+          if (!install) throw new Error('transcription: this backend cannot install a model');
+          return install();
+        },
+      },
+      // The node's own language model, for a module that summarises, translates or tags. The port
+      // existed on the backend and was never handed to a module; this is the whole of handing it over.
+      languageModel: {
+        available: async () => (await session.backendPorts()?.languageModel?.available()) ?? false,
+        prompt: async (system, input) => {
+          const port = session.backendPorts()?.languageModel;
+          if (!port) throw new Error('languageModel: this backend has no language model');
+          return port.prompt(system, input);
         },
       },
       // Same late read as transcription, but this one answers `available()` honestly — the wrapper is
@@ -397,6 +471,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           const result = await port.interpret(dataset.handle, turns, {
             classes,
             parent: { id: collectionId, predicate },
+            provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
           });
           await recordPass(dataset.handle, collectionId, {
             // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
@@ -405,6 +480,10 @@ export function DatasetStoreProvider(props: ParentProps) {
             outcome: classes.length === 0 ? 'skipped' : 'done',
             recordCount: result.ids.length,
             targets: classes,
+            // Handed back by the run rather than found on the progress feed afterwards, so one
+            // write holds the whole pass — see `prompt` on the result.
+            prompt: result.prompt,
+            response: result.response,
           });
           return result;
         } catch (error) {
@@ -502,6 +581,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           watchId: watchIdFor(collectionId),
           classes,
           parent: { id: collectionId, predicate },
+          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
         });
       },
 
@@ -570,7 +650,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   const systemDatasetUuids = createMemo(() =>
     datasets()
-      .filter((d) => ['we-root', 'we-test'].includes(d.name))
+      .filter((d) => isSystemDataset(d.name))
       .map((d) => d.id),
   );
 
@@ -586,7 +666,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   // Derived: datasets sorted by user-defined order (falls back to load order), system datasets excluded
   const orderedDatasets = createMemo(() => {
-    const all = datasets().filter((d) => !['we-root', 'we-test'].includes(d.name));
+    const all = datasets().filter((d) => !isSystemDataset(d.name));
     const order = getDatasetOrder();
     if (order.length === 0) return all;
     const byUuid = new Map(all.map((d) => [d.id, d]));
@@ -653,7 +733,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         if (datasets().some((d) => d.id === ref.id)) return;
         // Backend bookkeeping datasets never arrive here — the adapter filters its own (see
         // createAd4mDatasetLifecycle). What this store still filters is the HOST's convention:
-        // we-root/we-test, excluded from the sidebar by `orderedDatasets`.
+        // the system datasets, excluded from the sidebar by `orderedDatasets`.
         // Re-check after the async gap: createSpace's eager update may have run while
         // the adapter resolved the handle, which would add a duplicate.
         if (datasets().some((d) => d.id === ref.id)) return;
@@ -686,7 +766,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
       if (!agentSettings()?.datasetOrder) {
-        const systemOrder = ['we-root', 'we-test', 'we-global'];
+        const systemOrder = [...SYSTEM_DATASETS, 'we-global'];
         const initialOrder = [...refs]
           .sort((a, b) => {
             const ai = systemOrder.indexOf(a.name);
@@ -709,63 +789,108 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Find or create the root dataset and all other system datasets.
-   * Also restores global/marketplace datasets if previously joined. */
+  /**
+   * Find or create every system dataset — the root, the personal space, the test sandbox.
+   *
+   * Each in its own `try`. They were one, which was harmless while the root was the only one that
+   * mattered; with a personal space beside it, a failure bringing one schema up to date must not
+   * leave the other unset — no settings because the notes schema failed to refresh is the wrong
+   * way round.
+   */
   async function initSystemDatasets(): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
+    let refs: AppDataset[];
     try {
-      const refs = (await lifecycle.list()).map(toApp);
-      const rootRef = refs.find((d) => d.name === 'we-root');
-
-      if (rootRef) {
-        // Ensure all models are registered (handles new models added after initial creation)
-        const rootSchemas = session.backendPorts()!.schemas;
-        await rootSchemas.installRoot(rootRef.handle, moduleRegistry.agentSchemas(rootSchemas));
-        setRootDataset(rootRef);
-
-        const settings = await AgentSettings.findOne(rootRef.handle);
-        if (settings) setAgentSettings(settings);
-
-        // Find or create we-test system dataset (uses same snapshot)
-        const existingTest = refs.find((d) => d.name === 'we-test');
-        if (existingTest) {
-          setTestDataset(existingTest);
-        } else {
-          setTestDataset(toApp(await lifecycle.create('we-test')));
-        }
-
-        return;
-      }
-
-      // No root dataset exists — create one
-      trace('dataset', 'root:create');
-      const rootCreated = toApp(await lifecycle.create('we-root'));
-      const newRootSchemas = session.backendPorts()!.schemas;
-      await newRootSchemas.installRoot(rootCreated.handle, moduleRegistry.agentSchemas(newRootSchemas));
-
-      const settings = await AgentSettings.create(rootCreated.handle, {
-        currentTemplateId: 'default',
-        currentThemeId: 'dark',
-        defaultThemeId: 'dark',
-      });
-
-      setRootDataset(rootCreated);
-      setAgentSettings(settings);
-
-      trace('dataset', 'root:created', { id: rootCreated.id });
-
-      // Find or create we-test system dataset
-      const allRefs = (await lifecycle.list()).map(toApp);
-      const existingTest = allRefs.find((d) => d.name === 'we-test');
-      if (existingTest) {
-        setTestDataset(existingTest);
-      } else {
-        setTestDataset(toApp(await lifecycle.create('we-test')));
-      }
+      refs = (await lifecycle.list()).map(toApp);
     } catch (error) {
       console.error('DatasetStore: initSystemDatasets error', error);
+      return;
     }
+
+    try {
+      await initRootDataset(refs);
+    } catch (error) {
+      console.error('DatasetStore: root dataset error', error);
+    }
+    try {
+      await initPersonalDataset(refs);
+    } catch (error) {
+      console.error('DatasetStore: personal dataset error', error);
+    }
+    try {
+      const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
+      setTestDataset(existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test)));
+    } catch (error) {
+      console.error('DatasetStore: test dataset error', error);
+    }
+  }
+
+  /**
+   * The root: the app's configuration, and nothing a person made.
+   *
+   * Its schema is reinstalled on every boot so a model added after the dataset was created is there
+   * to query. Module entities no longer install here — an agent-scoped module's records are the
+   * agent's own things, and they live in the personal space. See `systemDatasets.ts`.
+   */
+  async function initRootDataset(refs: AppDataset[]): Promise<void> {
+    const lifecycle = session.lifecycle()!;
+    const schemas = session.backendPorts()!.schemas;
+    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.root);
+
+    if (existing) {
+      await schemas.installRoot(existing.handle);
+      setRootDataset(existing);
+      const settings = await AgentSettings.findOne(existing.handle);
+      if (settings) setAgentSettings(settings);
+      return;
+    }
+
+    trace('dataset', 'root:create');
+    const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
+    await schemas.installRoot(created.handle);
+    const settings = await AgentSettings.create(created.handle, {
+      currentTemplateId: 'default',
+      currentThemeId: 'dark',
+      defaultThemeId: 'dark',
+    });
+    setRootDataset(created);
+    setAgentSettings(settings);
+    trace('dataset', 'root:created', { id: created.id });
+  }
+
+  /**
+   * The personal space: what this agent made or kept, with the ordinary space schema.
+   *
+   * A space's schema rather than the root's, because what lives here is content — a note is a post
+   * nobody else can see — and the composer, the renderer and file storage all assume a space's
+   * models. Every module's entities install here too, the space-scoped ones included: a note can
+   * hold any block a post can, and a block a module contributes is one of those.
+   *
+   * Published only once its schema is in, since the first thing a reader does is query it — the
+   * Pocket's effect fires the moment `personalDataset` is set, and a query ahead of the install
+   * fails with "No SHACL shape" rather than returning nothing.
+   *
+   * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
+   * list that reads `Space` — which is exactly the listing a system dataset stays out of.
+   */
+  async function initPersonalDataset(refs: AppDataset[]): Promise<void> {
+    const lifecycle = session.lifecycle()!;
+    const schemas = session.backendPorts()!.schemas;
+    const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
+    const personal = existing ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.personal));
+    const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
+
+    if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
+      await schemas.installSpace(personal.handle, moduleSchemas);
+    } else {
+      // The same two catches a space gets on every switch — see `switchDataset`.
+      await schemas.installModules(personal.handle, moduleSchemas);
+      await schemas.refreshSpace(personal.handle).catch((err) => {
+        console.error('DatasetStore: personal space schema refresh failed', err);
+      });
+    }
+    setPersonalDataset(personal);
   }
 
   /**
@@ -811,8 +936,21 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Add a dataset to the list, or replace the entry already there.
+   *
+   * Replace, not skip. The backend's added event routinely wins the race with the action that made
+   * the dataset — a shared space is created, then published, and the event lands in between — so the
+   * entry already listed can predate the publish: no `sharedUri`, and a handle whose `sharedUrl` is
+   * empty. Anything looking the space up by its shared uri then misses it, which is how a new space's
+   * presence never started and its transcript had no call to write into until a reload re-listed it.
+   * The caller's ref is the one that knows how the action ended.
+   */
   async function trackDataset(ref: DatasetRef): Promise<void> {
-    if (datasets().some((existing) => existing.id === ref.id)) return;
+    if (datasets().some((existing) => existing.id === ref.id)) {
+      setDatasets((prev) => prev.map((d) => (d.id === ref.id ? toApp(ref) : d)));
+      return;
+    }
     setDatasets((prev) => [...prev, toApp(ref)]);
     // reorderDatasets dedupes, so re-tracking a dataset the change event already ordered is safe.
     await reorderDatasets([...getDatasetOrder(), ref.id]);
@@ -831,13 +969,28 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * The switch most recently asked for — not the one most recently finished.
+   *
+   * A switch is several round trips long (`hasCoreSchema`, `installModules`, `refreshSpace`), so two
+   * of them overlap routinely: clicking a space runs one, and the route change that follows runs
+   * another. They finish in whatever order the network decides, and the last to finish used to be
+   * the one on screen — so a switch nobody wanted any more could land on top of the one they did,
+   * leaving the sidebar and the URL naming one space and every query reading another.
+   *
+   * Requested rather than started, because that is the question with an answer: "is this still what
+   * the reader asked for". Whichever ask is latest wins, however long it takes to arrive.
+   */
+  let requestedDataset: string | null = null;
+
   async function switchDataset(uuid: string): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
+    requestedDataset = uuid;
 
     try {
       const ref = await lifecycle.get(uuid);
-      if (!ref) return;
+      if (!ref || requestedDataset !== uuid) return;
       const app = toApp(ref);
       const handle = app.handle;
 
@@ -881,6 +1034,10 @@ export function DatasetStoreProvider(props: ParentProps) {
         });
         if (written.length) console.info(`DatasetStore: brought space schemas up to date — ${written.join(', ')}`);
       }
+
+      // Everything above is a round trip, and the reader may have asked for somewhere else while
+      // they ran. Publishing now would overwrite a newer switch with an older answer.
+      if (requestedDataset !== uuid) return;
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
@@ -952,6 +1109,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     datasetsLoaded,
     systemDatasetUuids,
     rootDataset,
+    personalDataset,
     testDataset,
     globalDataset,
     marketplaceDataset,
@@ -967,6 +1125,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     removeDataset,
     updateAgentSettings,
     clearCurrentDataset: () => {
+      // Withdraws any switch still in flight as well — a join gate that had a space arrive behind
+      // it a second later is the same bug `requestedDataset` exists for, pointed the other way.
+      requestedDataset = null;
       setCurrentDataset(null);
       setIsWeSpace(false);
     },
@@ -978,6 +1139,21 @@ export function DatasetStoreProvider(props: ParentProps) {
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,
+    recordWatchPass: async (pass) => {
+      const dataset = currentDataset();
+      if (!dataset || !pass.collection) return;
+      await recordPass(dataset.handle, pass.collection, {
+        outcome: pass.outcome,
+        recordCount: pass.recordCount,
+        // Resolved here rather than carried on the event: what a call looks for is three layers of
+        // host state, and the executor is told class URIs rather than the model names this stores.
+        targets: targetsForCollection(pass.collection),
+        error: pass.error,
+        trigger: 'auto',
+        prompt: pass.prompt,
+        response: pass.response,
+      });
+    },
     provideAutoInterpretGate: autoInterpretGate.provide,
     provideExtractionCandidates: extractionCandidatesGate.provide,
     provideCallExtraction: callExtraction.provide,

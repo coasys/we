@@ -23,6 +23,7 @@ export {
   connectedApps,
   mcpServer,
   networkLocalState,
+  executorSupport,
   peerNetwork,
   runtimeError,
   trustedAgents,

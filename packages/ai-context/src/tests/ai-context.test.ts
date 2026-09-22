@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { assembleReference } from '../assembler.js';
 import { extractPrimitives } from '../extractors/cem.js';
 import { extractEntities } from '../extractors/entities.js';
+import { foreignElementsFromManifest } from '../extractors/foreignElements.js';
 import { extractTokens } from '../extractors/tokens.js';
 import { extractComponentProps } from '../extractors/typescript.js';
 import { contributionSurfaces } from '../fragments/contribution-surfaces.js';
@@ -50,7 +51,12 @@ describe('extractPrimitives', () => {
   });
 });
 
-describe('extractComponentProps', () => {
+// Both of these build a TypeScript program over a whole package, which is cheap warm and several
+// seconds cold — and CI runs every package's suite at once, so a cold compile under contention
+// passed 5s there while taking under one here. A timeout, not a hang.
+const TYPESCRIPT_PROGRAM_TIMEOUT = 30_000;
+
+describe('extractComponentProps', { timeout: TYPESCRIPT_PROGRAM_TIMEOUT }, () => {
   it('extracts components', () => {
     const components = extractComponentProps(paths.components, 'components');
     expect(components.length).toBeGreaterThan(0);
@@ -102,7 +108,7 @@ describe('extractEntities', () => {
   });
 });
 
-describe('assembleReference', () => {
+describe('assembleReference', { timeout: TYPESCRIPT_PROGRAM_TIMEOUT }, () => {
   it('contains all expected sections', async () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
@@ -280,5 +286,55 @@ describe('contribution surfaces', () => {
     expect(readFileSync(resolve(repoRoot, 'docs/README.md'), 'utf-8')).toContain('contributing/surfaces.md');
     expect(readFileSync(resolve(repoRoot, 'CONTRIBUTING.md'), 'utf-8')).toContain('contributing/surfaces.md');
     expect(rel).toBe('docs/contributing/surfaces.md');
+  });
+});
+
+describe('foreign elements from a custom-elements manifest', () => {
+  const manifest = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/foreign-elements.json'), 'utf-8'));
+
+  it('reads each element’s public writable fields, attribute-only props and events', () => {
+    const [rating] = foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']);
+    expect(rating).toMatchObject({
+      tagName: 'x-rating',
+      package: '@acme/elements',
+      description: 'A row of stars somebody picks from.',
+    });
+    expect(rating.props.map((p) => p.name)).toEqual(['value', 'max', 'label']);
+    expect(rating.events).toEqual(['x-change', 'x-hover']);
+  });
+
+  it('keeps to the tags the seed allows, and reads every element when it names none', () => {
+    expect(foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']).map((e) => e.tagName)).toEqual([
+      'x-rating',
+    ]);
+    expect(foreignElementsFromManifest(manifest, '@acme/elements').map((e) => e.tagName)).toEqual([
+      'x-rating',
+      'x-chart',
+    ]);
+  });
+
+  it('documents them in their own section, with the event spelling a dashed name needs', () => {
+    const elements = foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']);
+    const reference = assembleReference({
+      primitives: [],
+      components: [],
+      models: [],
+      tokens: [],
+      storeEntries: [],
+      foreignElements: elements,
+      fragments: {
+        schemaOperators: '',
+        designSystemProps: '',
+        routing: '',
+        panels: '',
+        stores: '',
+        storePatterns: '',
+        patterns: '',
+        rules: '',
+      },
+    });
+    expect(reference).toContain('## Foreign Elements (this deployment)');
+    expect(reference).toContain('- x-rating — A row of stars somebody picks from.');
+    expect(reference).toContain('Events: on:x-change, on:x-hover');
   });
 });

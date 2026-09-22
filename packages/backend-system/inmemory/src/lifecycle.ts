@@ -245,7 +245,7 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
 
     // Rows here are keyed by entity and property name rather than by predicate, so the neutral
     // projection is the whole answer — there is no wire vocabulary for this backend to mint.
-    entries: (manifest) => manifestEntries(manifest),
+    entries: (manifest) => manifestEntries(manifest, { parents: CORE_MANIFEST }),
 
     declareInDataset(dataset, manifest) {
       // Rows need no per-dataset schema separation here — the runtime resolves entities by name at

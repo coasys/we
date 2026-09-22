@@ -57,7 +57,11 @@ const canvasCards: SchemaNode = {
     // Nothing opens automatically: a canvas shows what is on it, and drilling into a card's own
     // blocks would turn a wall of notes into a tree of fragments.
     expansion: { defaultDepth: 0 },
-    layout: { type: 'manual' },
+    // The card's size, so a card nobody has placed is parked in a slot it fits, clear of the rest.
+    layout: {
+      type: 'manual',
+      options: { size: { width: 180, height: 135 }, widthField: 'canvasWidth', heightField: 'canvasHeight' },
+    },
     nodeStyle: [
       /*
         A card carries its content inside the box — the node *is* the thing, rather than a mark with
@@ -116,6 +120,7 @@ const canvasCards: SchemaNode = {
           contentScale: { from: 'data.canvasContentScale' },
           cardShape: { from: 'data.canvasCardShape' },
           color: { from: 'data.canvasColor' },
+          z: { from: 'data.canvasZ' },
         },
       },
     ],
@@ -320,7 +325,8 @@ export const canvasBar: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'count(recordStore.creatableEntities)' },
+                // Form-made content only: this opens the record form. Notes have their own button.
+                condition: { $: "count(recordStore.creatableEntities.filter(k, k.via == 'form'))" },
                 then: {
                   type: 'we-button',
                   props: {

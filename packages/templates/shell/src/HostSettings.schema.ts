@@ -197,7 +197,7 @@ export const hostSection: SchemaNode = {
                 credits,
                 {
                   type: 'Column',
-                  props: { gap: '150' },
+                  props: { gap: '100' },
                   children: [
                     detail('Address', { $: 'sessionStore.host.url' }),
                     detail('Location', { $: 'sessionStore.host.location' }),

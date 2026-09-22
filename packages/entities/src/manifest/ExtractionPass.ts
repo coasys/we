@@ -14,17 +14,17 @@ import type { CoreEntityDef } from './defs';
  * is indistinguishable from one that found nothing. Both of those are questions somebody asks about
  * a meeting they are reviewing, and the answer was gone.
  *
- * ## Why the prompt and the response are not here
+ * ## The prompt and the response are here, and they are the expensive part
  *
- * They are the most useful thing about a pass and the most expensive to keep. A prompt is the whole
- * transcript, so storing one per pass in a shared neighbourhood means every member replicating a
- * second copy of every conversation — for a payload almost nobody opens. And `shareExtractionDetail`
- * is off by default precisely because the exchange is sensitive: "prompts stay on each person's
- * machine" is a promise this would quietly retract.
+ * A prompt is the whole transcript, so one per pass in a shared neighbourhood means every member
+ * replicating a second copy of every conversation, for a payload almost nobody opens.
  *
- * So the exchange stays where it is — in the live feed, on the machine that ran the pass, for as
- * long as the session lasts. This is the part that is safe to write down and worth having later: a
- * few short fields per pass, bounded, and true about the call rather than about the model.
+ * They are written anyway, because a log that omits what was actually asked cannot answer the
+ * question people have about a pass: not "did it run" but "why did it decide *that*". So every
+ * member of the space can read every exchange — which is also why this record, and not the live
+ * relay, is how a peer's exchange reaches anyone: the relay never sends it. There was a space
+ * setting that claimed to keep the exchange private; once this was written it no longer could, and
+ * it was removed rather than left promising something untrue.
  *
  * ## Why it hangs off the call
  *
@@ -71,6 +71,27 @@ export const ExtractionPass: CoreEntityDef = {
       targets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
       /** Why it failed, verbatim from the backend. Empty on any other outcome. */
       error: { type: 'string', predicate: 'we://error', default: '' },
+      /**
+       * What started it — `manual` for a press of Extract now, `auto` for the standing watch.
+       *
+       * The reason there is one history rather than two. Only manual passes were written down at
+       * all, and only automatic ones reached the live feed, so a call read automatically showed
+       * records with no reading behind them and a call read by hand showed the opposite. Recording
+       * both makes the two comparable, and this is the one fact that is lost by making them so.
+       *
+       * `manual` as the default because that is what the only writer wrote before this existed, so
+       * a row from before the flag reads as what it actually was.
+       */
+      trigger: { type: 'string', predicate: 'we://trigger', default: 'manual' },
+      /**
+       * The prompt the model was given, verbatim. Empty where the executor did not report one.
+       *
+       * The large one. See the note above about what writing it costs and what it retracts — this
+       * is not a field to copy onto another entity without reading that first.
+       */
+      prompt: { type: 'string', predicate: 'we://prompt', default: '' },
+      /** What the model answered, verbatim. Same rules as {@link prompt}. */
+      response: { type: 'string', predicate: 'we://response', default: '' },
     },
     // None. Who ran it is `author`, which every record carries, and when is `createdAt`.
     relations: {},

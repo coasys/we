@@ -53,7 +53,7 @@ function section(token: string, title: string, children: (SchemaNode | string)[]
 function check(label: string, expected: string, actual: SchemaProp, condition: SchemaProp): SchemaNode {
   return {
     type: 'Row',
-    props: { gap: '300', ay: 'center', py: '50' },
+    props: { gap: '300', ay: 'center' },
     children: [
       {
         type: '$if',
@@ -75,7 +75,7 @@ function check(label: string, expected: string, actual: SchemaProp, condition: S
 function boolCheck(label: string, condition: SchemaProp): SchemaNode {
   return {
     type: 'Row',
-    props: { gap: '300', ay: 'center', py: '50' },
+    props: { gap: '300', ay: 'center' },
     children: [
       {
         type: '$if',
@@ -94,7 +94,7 @@ function boolCheck(label: string, condition: SchemaProp): SchemaNode {
 function interactiveLabel(label: string): SchemaNode {
   return {
     type: 'Row',
-    props: { gap: '200', ay: 'center', py: '50' },
+    props: { gap: '200', ay: 'center' },
     children: [
       { type: 'we-icon', props: { name: 'arrow-clockwise', size: 'xs', color: 'accent-text' } },
       { type: 'we-text', children: [label] },

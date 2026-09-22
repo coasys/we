@@ -166,7 +166,7 @@ function Section(props: { panel: TemplatePanel }) {
           not exist on a touchscreen, and a grip somebody cannot tab to is a control some people
           cannot use. The tooltip carries the verb.
         */}
-        <we-tooltip title="Break out into a panel" placement="left">
+        <we-tooltip content="Break out into a panel" placement="left">
           <we-move-handle
             label={`Break ${props.panel.title ?? props.panel.id} out into a panel`}
             style={{

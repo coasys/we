@@ -41,7 +41,7 @@ import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
 
-import { buildRoutes } from '../utils/buildRoutes';
+import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
 import { resolveShellView, type ShellViewEntry } from './shellViews';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -155,13 +155,16 @@ function ShellOverlayInner({
             ref={overlaySurface.outerRef}
           >
             <div {...overlaySurface.tierAttrs} ref={overlaySurface.tierRef} />
-            <RenderSchema
-              node={schema}
-              stores={shellStores}
-              registry={registry}
-              context={{ surface: overlaySurface.surface }}
-              children={props.children}
-            />
+            {/* The overlay's routes measure against the overlay, as its own chrome does — see `RouteSurface`. */}
+            <RouteSurface.Provider value={overlaySurface.surface}>
+              <RenderSchema
+                node={schema}
+                stores={shellStores}
+                registry={registry}
+                context={{ surface: overlaySurface.surface }}
+                children={props.children}
+              />
+            </RouteSurface.Provider>
           </div>
         </ShellRouterRoot>
       )}
@@ -200,7 +203,7 @@ export function TemplateLayout(
 
     Registered from here rather than published by the template, because a template is data and has
     no store to publish from. The host reads the declaration and folds it into the same sum a
-    module's `chromeReserve` lands in — see `moduleChrome` in ShellStore.
+    module's declared reserve lands in — see `moduleChrome` in ShellStore.
 
     Keyed on the template, and withdrawn on unmount: a shell that stops declaring a bar must stop
     reserving the band, or every panel keeps dodging chrome that is not there any more.
@@ -470,11 +473,17 @@ export function TemplateLayout(
             }
           >
             <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-              <RenderSchema
-                node={templateWithParts()}
-                stores={templateStores}
-                registry={registry}
-                /*
+              {/*
+                The template's routes are rendered into `props.children` below, each through a pass of
+                its own that inherits none of this context — so the surface goes to them as a Solid
+                context as well. Without it `surface.tier` was undefined in every route.
+              */}
+              <RouteSurface.Provider value={templateSurface.surface}>
+                <RenderSchema
+                  node={templateWithParts()}
+                  stores={templateStores}
+                  registry={registry}
+                  /*
                   `$nav` so a template's own chrome can navigate relatively.
 
                   Chrome lives in the template's root node, which is rendered here rather than by
@@ -487,9 +496,10 @@ export function TemplateLayout(
                   every template at. Harmless for the marker kind, whose chrome uses absolute paths
                   because its links cross spaces.
                 */
-                context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
-                children={props.children}
-              />
+                  context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
+                  children={props.children}
+                />
+              </RouteSurface.Provider>
             </Show>
           </TemplateBoundary>
         </Column>

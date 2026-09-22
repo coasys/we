@@ -22,7 +22,7 @@
  * formatting, so "0:42" and "Extracted 3 tasks" are unreachable from a template — the same reason
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
-import { detailWithheld } from '@shared/interpretation/activityView';
+import { watchPassRecord } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
@@ -76,7 +76,8 @@ export interface InterpretationActivityView {
   finishedAt: string;
   /** Why, for a pass that skipped or failed. Empty otherwise. */
   detail: string;
-  /** The raw prompt and response, when they are available at all. */
+  /** The raw prompt and response — on this agent's own rows only. A peer's exchange is not sent
+   *  live; it arrives with the `ExtractionPass` record once the pass settles. */
   prompt: string;
   response: string;
   /** Whether there is anything behind the disclosure triangle — so a UI can disable it with an
@@ -110,12 +111,6 @@ export interface InterpretationStore {
   runningPasses: Accessor<InterpretationActivityView[]>;
   settledPasses: Accessor<InterpretationActivityView[]>;
   settledCount: Accessor<number>;
-  /**
-   * A peer's pass is on screen whose exchange this agent cannot open, because the space does not
-   * share it. What a footnote explaining the absence is gated on — the row's own `hasDetail` cannot
-   * answer it, since a pass has no exchange until it reaches the model whatever the setting says.
-   */
-  detailWithheld: Accessor<boolean>;
   /**
    * Whether this node can interpret at all — as distinct from being able to and having no model
    * configured. False means no rebuild-free fix exists, so a UI should say so rather than offering
@@ -198,6 +193,9 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
   }
 }
 
+/** How long a burst of staged-suggestion changes is gathered before modules are told to re-read. */
+const PROPOSALS_COALESCE_MS = 250;
+
 export function InterpretationStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
@@ -205,15 +203,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const spaceStore = useSpaceStore();
 
   const [rows, setRows] = createSignal<InterpretationActivity[]>([]);
-  /*
-    Whether this space shares extraction detail, read from the space rather than held here.
-
-    It was a local signal, which made it per-device and lost on reload — and, worse, scoped the
-    decision to one agent when the useful state is collective: "I share and you do not" is an
-    asymmetry with no use. It lives on the Space now, beside `autoInterpret`, so it persists, syncs,
-    and is set once where somebody would look for it.
-  */
-  const shareDetail = () => spaceStore.shareExtractionDetail();
   const [now, setNow] = createSignal(Date.now());
   const [dismissed, setDismissed] = createSignal<string[]>([]);
   /*
@@ -224,6 +213,14 @@ export function InterpretationStoreProvider(props: ParentProps) {
     that can interpret perfectly well.
   */
   const [capable, setCapable] = createSignal(true);
+  /*
+    Bumped whenever the staged suggestions in this space may have changed, by anybody.
+
+    A count rather than the list because the list is a read a module makes for one conversation at a
+    time, and only it knows which it is showing. What this store can do that a module cannot is hold
+    the subscription for the space's lifetime.
+  */
+  const [proposalsRevision, setProposalsRevision] = createSignal(0);
 
   let relay: InterpretationRelay | null = null;
 
@@ -279,26 +276,58 @@ export function InterpretationStoreProvider(props: ParentProps) {
       exactly a space with nobody in it, and means the store below reads `relay.rows()` whether or
       not there is a network.
     */
-    const local = createInterpretationRelay(channel ?? { publish: () => {}, onMessage: () => () => {} }, {
-      shareDetail,
-    });
+    const local = createInterpretationRelay(channel ?? { publish: () => {}, onMessage: () => () => {} });
     relay = local;
 
     const sync = () => setRows(local.rows().sort(byActivityInterest));
     const unwatch = local.onChange(sync);
 
     /*
-      Ask for the model exchange here and decide later whether to forward it.
+      Write down a watched pass as it settles, so the history holds both kinds.
+
+      What makes a row worth writing is `watchPassRecord`, next to the other rule about this feed
+      that was worth deciding away from a store. What is here is the two things only a store can do:
+      find the merged row, and make the write happen once.
+
+      The **merged** row, because the exchange and the outcome arrive on different events —
+      `llmRequestSent` carries the prompt, `processed` carries the ids, and several steps separate
+      them. Reading the settling event alone stored every watched pass with an empty prompt and
+      response, which is the one thing this was added to keep. `mine` narrows the lookup because a
+      peer's row can carry the same pass id and is kept under its own key.
+
+      `written` is the guard that makes it once: a settled row goes on receiving updates.
+    */
+    const written = new Set<string>();
+    const record = (activity: InterpretationActivity) => {
+      if (!isSettled(activity.phase) || written.has(activity.passId)) return;
+      const merged = local.rows().find((row) => row.passId === activity.passId && row.mine) ?? activity;
+      const fields = watchPassRecord({ ...merged, settled: isSettled(merged.phase) });
+      if (!fields) return;
+      written.add(activity.passId);
+      void datasetStore.recordWatchPass(fields).catch((error) => {
+        // The pass happened either way; a lost note about it is a gap in a list, not a failure
+        // worth interrupting anybody over. `recordPass` logs its own reason.
+        console.warn('[interpretation] could not write down a watched pass', error);
+      });
+    };
+
+    /*
+      Ask for the model exchange here, for this agent's own rows and for the `ExtractionPass` record.
 
       The backend's `detail` is a subscription-time choice and the events carry the payload over a
-      local socket regardless, so refusing it here would mean re-subscribing — and, on AD4M,
-      re-registering a shared watch — the moment somebody opened a row. Taking it costs nothing and
-      is what makes the disclosure instant. What leaves this machine is governed by `shareDetail`
-      alone, on the relay.
+      local socket regardless, so taking it costs nothing and is what makes the disclosure instant.
+      It never leaves this machine live — the relay does not send it; the record carries it.
     */
     let stop: (() => void) | undefined;
     void ports.interpretation
-      .observe?.(handle, (activity) => local.publish(activity), { detail: true })
+      .observe?.(
+        handle,
+        (activity) => {
+          local.publish(activity);
+          record(activity);
+        },
+        { detail: true },
+      )
       .then((off) => {
         stop = off;
       })
@@ -308,9 +337,36 @@ export function InterpretationStoreProvider(props: ParentProps) {
         console.info('[interpretation] this runtime does not report pass progress', error);
       });
 
+    /*
+      Hear about suggestions being staged and settled, whoever settles them.
+
+      Settling one used to reach only the screen it was settled on. The review list re-read when a
+      pass finished, and accepting is not a pass — so a card one member accepted stayed pending,
+      faded and offering its buttons, on everybody else's canvas until the next extraction ran.
+
+      Coalesced: a pass stages its suggestions in a burst, and accepting a whole record removes
+      several links at once, so an event per link would be a re-read per link.
+    */
+    let stopProposals: (() => void) | undefined;
+    let coalesce: ReturnType<typeof setTimeout> | undefined;
+    void ports.interpretation
+      .onProposalsChanged?.(handle, () => {
+        clearTimeout(coalesce);
+        coalesce = setTimeout(() => setProposalsRevision((n) => n + 1), PROPOSALS_COALESCE_MS);
+      })
+      .then((off) => {
+        stopProposals = off;
+      })
+      .catch((error) => {
+        // Settling still works without it; peers' screens just catch up on the next pass, as before.
+        console.info('[interpretation] this runtime does not report staged-suggestion changes', error);
+      });
+
     onCleanup(() => {
       unwatch();
       stop?.();
+      stopProposals?.();
+      clearTimeout(coalesce);
       local.dispose();
     });
   });
@@ -334,21 +390,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
       setRows(relay?.rows().sort(byActivityInterest) ?? []);
     }, 1_000);
     onCleanup(() => clearInterval(timer));
-  });
-
-  /*
-    Re-broadcast this agent's rows when the space turns sharing on.
-
-    The relay reads the flag as it sends, and a settled pass sends nothing further — so without this
-    the setting would reach every pass except the ones already on screen, which are precisely the
-    ones somebody turned it on to look at. It runs on the space's value now rather than a local
-    switch, so it fires wherever that gets flipped, including on another member's machine.
-  */
-  let wasSharing = false;
-  createEffect(() => {
-    const sharing = shareDetail();
-    if (sharing && !wasSharing) relay?.resend();
-    wasSharing = sharing;
   });
 
   /**
@@ -423,18 +464,10 @@ export function InterpretationStoreProvider(props: ParentProps) {
     provideModuleHostServices({
       interpretationAvailable: () => capable(),
       interpretationActivity: () => activity(),
+      interpretationProposalsRevision: () => proposalsRevision(),
       /*
-        The space's sharing decision, for a module explaining why a peer's row will not open.
-
-        Published rather than left for the module to infer from `hasDetail`: a row can lack detail
-        for reasons that have nothing to do with the setting — a peer's pass that has not reached the
-        model yet, a skipped pass that never had an exchange, a row broadcast before the setting
-        synced — and gating an explanation of the *setting* on those showed it with sharing on.
-      */
-      interpretationDetailShared: () => shareDetail(),
-      /*
-        Whether automatic extraction is on, published for the same reason the sharing one is: a module
-        has to be able to *react* to it.
+        Whether automatic extraction is on, published because a module has to be able to *react* to
+        it.
 
         Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
         it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
@@ -460,10 +493,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
     runningPasses: createMemo(() => activity().filter((row) => row.running)),
     settledPasses: createMemo(() => activity().filter((row) => !row.running)),
     settledCount: createMemo(() => activity().filter((row) => !row.running).length),
-    // The rule itself is in `shared/interpretation/activityView.ts`, where it can be tested without
-    // a store — it has been got wrong twice, and its failure is a footnote that outlives the thing
-    // it explains, which nobody reports.
-    detailWithheld: createMemo(() => detailWithheld(activity(), shareDetail())),
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>

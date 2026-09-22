@@ -7,6 +7,7 @@
 import { Flag, HasMany, HasManyMethods, HasOne, Model, Property } from '@coasys/ad4m';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 
+import { ExtractionAmendment } from './ExtractionAmendment';
 import { ExtractionPass } from './ExtractionPass';
 import { WeNode } from './WeNode';
 
@@ -137,6 +138,27 @@ export class CollectionBlock extends WeNode {
   textContent: string = '';
 
   /**
+   * Where this was posted before it was posted here — a reference to the original, and its space
+   * by name.
+   *
+   * Written only when an author brings their own post from one shared space into another, and
+   * only as a **portable** reference (`we:n:<cid>/…`): a reference into a personal dataset names
+   * nothing to anybody else, and would say that a private note exists. So a note shared into a
+   * space carries neither, and reads as what it is — a post, written here.
+   *
+   * Somebody else's post is never copied, so it never gets these: bringing one in makes a post
+   * that *quotes* it, through an `EmbedBlock` carrying its author. See `bringIn` in the shell.
+   *
+   * `sourceName` is a snapshot, for the reason the Pocket keeps one: a card must be able to say
+   * "also posted in Gardeners" without resolving a dataset its reader may not have joined.
+   */
+  @Property({ through: 'we://source_ref' })
+  sourceRef: string = '';
+
+  @Property({ through: 'we://source_name' })
+  sourceName: string = '';
+
+  /**
    * What is in this collection, in the order somebody put it there.
    *
    * `ordered` because the sequence is authored: a person dragged the image above the paragraph,
@@ -231,6 +253,60 @@ export class CollectionBlock extends WeNode {
    */
   @HasMany(() => ExtractionPass, { through: 'we://extraction_pass_record' })
   extractionPasses: string[] = [];
+
+  /**
+   * What a model wrote from reading this collection — the provenance of an extracted record.
+   *
+   * ## Why this is not a subset of `children` doing double duty
+   *
+   * Everything a pass writes *is* also a child, and must stay one: `children` is ownership, and
+   * the call's board gathers through it, so a task that stopped being a child would vanish from
+   * the board it exists to appear on. This says something else about the same record — that
+   * nobody typed it, a model proposed it from the conversation — and that is a different fact,
+   * not a narrower spelling of the first. The same split `arranges` makes one level over.
+   *
+   * It is also the *true* question a review surface asks. "Which children are tasks" and "which
+   * children came from a pass" answer differently the moment somebody composes a task into a
+   * call by hand: the first counts it as extracted, the second does not.
+   *
+   * ## Why a link rather than a field on the record
+   *
+   * A property saying which call produced it would be unreadable in one query. An `include` on
+   * the call traverses *relations*, so provenance has to be a relation for "everything this call
+   * produced" to come back polymorphically in one round trip. Through `children` that question
+   * cannot be asked at all: an untyped include is all-or-nothing and carries no class
+   * constraint, so it would return every utterance in the transcript alongside the handful of
+   * records — which is why the panel had one subscription per model before this existed.
+   *
+   * Untyped, and deliberately: a pass writes whatever the space has said it may write, which
+   * includes shapes a community defined this morning. Unordered, because the sequence that
+   * matters is when each record was made and `createdAt` already says that — where `children`
+   * is ordered because somebody arranged it.
+   */
+  @HasMany({ through: 'we://extracted', polymorphic: true })
+  extracted: string[] = [];
+
+  /**
+   * Changes a pass suggested to records that already existed, and somebody kept — see
+   * {@link ExtractionAmendment}.
+   *
+   * The counterpart to {@link extracted} for the other kind of suggestion a pass makes, and it
+   * is a separate relation rather than more entries in that one because the two are about
+   * different things. `extracted` names *records* the call produced; this names *amendments*,
+   * which are their own records and whose subject is usually something the call did not create
+   * — a task somebody had already written down, which the conversation then moved on.
+   *
+   * That difference is also why an amendment could not be reported by marking the extracted
+   * record instead. A change accepted on a record no pass here wrote has nothing in `extracted`
+   * to mark, and that is the ordinary case rather than the edge: a change proposal targets an
+   * already-agreed record by definition.
+   *
+   * Typed, unlike `extracted`, because an amendment is always the same entity — there is no
+   * open vocabulary here, only whatever the amended record happens to be, which the amendment
+   * itself points at.
+   */
+  @HasMany(() => ExtractionAmendment, { through: 'we://extraction_amendment' })
+  amendments: string[] = [];
 }
 
 export interface CollectionBlock extends HasManyMethods<'children' | 'arranges'> {

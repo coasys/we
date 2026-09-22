@@ -14,6 +14,18 @@
   overflow: hidden;
   touch-action: none;
   user-select: none;
+
+  // The theme's own face, stated here because a card's text is arbitrary host content inside a
+  // subtree nothing else styles — without it the browser's default serif came through on every
+  // post-it, which is the one place in the app that looked like a different product. The active
+  // face, not `-base`: a theme overrides the former, which is how a retro theme gets its terminal.
+  font-family: var(--we-font-family);
+
+  // The drag session marks the zone a release would land in; a canvas says so with an inset ring
+  // rather than the wash a drop zone paints, since a wash over a whole board hides what is on it.
+  &[data-we-drop-target] {
+    box-shadow: inset 0 0 0 2px var(--we-role-accent);
+  }
 }
 
 // The canvas's own hit target, beneath everything it draws and beneath the chrome.
@@ -34,6 +46,37 @@
 
   &:active {
     cursor: grabbing;
+  }
+
+  /*
+    No ring for the focus a click gives it.
+
+    The surface is focusable wherever the delete key is bound (see `onDeleteSelection`), and it fills
+    its container — so the default outline would draw a box round the entire canvas every time
+    somebody clicked a card. What says the canvas has the keyboard is the selection, which is the
+    thing the key acts on and is already drawn.
+
+    `:focus-visible` keeps its ring, and the order matters: it is a subset of `:focus`, so it has to
+    come second to win. Somebody who reached the canvas by tabbing has no selection ring to read and
+    no pointer to re-orient with, and a tab stop that shows nothing is a tab stop that looks broken.
+  */
+  &:focus {
+    outline: none;
+  }
+
+  /*
+    Not `:focus-visible` alone, because the surface is focused from script and the browser's answer
+    for a scripted focus depends on history this element has no part in.
+
+    Chromium carries the modality of the last focus over to a scripted one: after some earlier click
+    had focused something, a press here drew no ring, but on a freshly loaded page — nothing focused
+    by pointer yet — the very same press drew one round the whole canvas. So the press says so
+    itself (`--pointer-focus`, cleared on blur) and the ring is kept for focus that arrived any
+    other way.
+  */
+  &:focus-visible:not(.we-graph__surface--pointer-focus) {
+    outline: 2px solid var(--we-ring-color);
+    outline-offset: -2px;
   }
 }
 
@@ -174,6 +217,10 @@
   white-space: nowrap;
   pointer-events: none;
 
+  // A label sits on the page, so it reads in the page's ink unless a rule chose otherwise — the
+  // same cascade a node's label uses, and for the reason given where it is set.
+  color: var(--edge-label-color, var(--we-role-text));
+
   // Legible over the edge it sits on, without a background plate that would hide the line.
   text-shadow:
     0 0 3px var(--we-color-neutral-0),
@@ -192,13 +239,67 @@
 //
 // Zero-size means there is no box to be widened, and absolute children make the dot's centre exactly
 // the node's coordinates whatever the label does.
-.we-graph__node {
+//
+// `.we-graph__chrome` is the same anchor for a selected node's handles and action bar, which are
+// drawn in a layer after the nodes rather than inside one — see `.we-graph__nodes`.
+.we-graph__node,
+.we-graph__chrome {
   position: absolute;
   top: 0;
   left: 0;
   width: 0;
   height: 0;
   pointer-events: none;
+}
+
+/*
+  Every node, in one stacking context.
+
+  A node is positioned by a transform, and a transform makes it a stacking context: whatever it holds
+  is stacked as one unit with it, so a node's `z-index` orders it among the other nodes and nothing
+  inside it can rise past a sibling. `isolation` gives the whole set a context of its own as well, so a
+  card with a high `z` still sits below the chrome layer that follows — the selection's handles and
+  its action bar are above every card, whatever order the cards are in.
+*/
+.we-graph__nodes {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.we-graph__chrome {
+  /*
+    Where a connect dot sits and how big its target is — in screen pixels, since both are constant
+    on screen whatever the camera is doing.
+
+    Here rather than inside `.we-graph__connect` because a second rule needs them: the action bar
+    above a selected card has to clear the dot at its top edge, and the bar and the dot are drawn by
+    rules that cannot see each other. Two numbers in one place beats a clearance somebody arrived at
+    by eye and that stops being a clearance the day either moves.
+  */
+  --connect-reach: 20px;
+  --connect-hit: 30px;
+}
+
+/*
+  A card whose top edge carries a connect dot — see `.we-graph__actions`.
+
+  The class exists to answer one question in CSS that only the renderer can answer: whether this
+  node is drawing the dots at all. A template that does not listen for a connection has no dot to
+  clear, and a bar lifted over a dot that is not there is a bar that has drifted away from its card
+  for no reason.
+*/
+.we-graph__chrome--connectable {
+  /*
+    Clear of the dot's whole target, not of the disc painted inside it.
+
+    The disc is 10px and the target is 30, and aiming at the dot means landing anywhere in the
+    target — so a bar that cleared only the paint would still be taking half the presses meant for
+    it. Plus the gap the bar already kept from the card, so the three read as a stack rather than as
+    a bar resting on a dot.
+  */
+  --actions-lift: calc(var(--connect-reach) + var(--connect-hit) / 2 + 4px);
 }
 
 .we-graph__dot {
@@ -215,7 +316,7 @@
   height: var(--node-size);
   border-radius: var(--node-radius);
   background: var(--node-color);
-  border: var(--node-border-width) solid var(--node-border);
+  border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
   overflow: hidden;
   transition: box-shadow 120ms ease-out;
 
@@ -239,7 +340,9 @@
 
 .we-graph__label {
   position: absolute;
-  color: var(--node-label-color);
+
+  // A caption sits on the page, so it reads in the page's ink unless a rule chose otherwise.
+  color: var(--node-label-color, var(--we-role-text));
   font-size: var(--node-label-size);
   left: 0;
 
@@ -281,15 +384,153 @@
   display: flex;
   width: var(--node-width);
   height: var(--node-height);
-  padding: var(--we-space-300);
-  border-radius: var(--node-radius);
-  background: var(--node-color);
-  border: var(--node-border-width) solid var(--node-border);
-  box-shadow: var(--we-shadow-sm);
-  overflow: hidden;
 
   // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
   opacity: var(--node-opacity, 1);
+
+  /*
+    Ink by the lightness of the fill, unless a rule chose a colour.
+
+    A card's fill is anybody's: a token that flips with the theme, a hex somebody picked, a state's
+    colour from the vocabulary. The theme's text role is measured against the page, not against any
+    of those, so it went near-white on a pale post-it in a dark theme and near-black on a dark card
+    in a light one. Relative colour syntax reads the fill's own lightness — whatever a `var()`
+    resolves to, at the moment it resolves — and snaps to black above the threshold and white below
+    it, with no script measuring anything and nothing to re-run when the theme changes.
+
+    The plain line first is the fallback for an engine without relative colours; one that has them
+    takes the second. Set on the card so its content inherits it, the fallback text included.
+  */
+  /* stylelint-disable-next-line declaration-block-no-duplicate-properties -- the fallback pair below */
+  color: var(--node-label-color, var(--we-role-text));
+  color: var(--node-label-color, oklch(from var(--node-color) calc((0.65 - l) * infinity) 0 0deg));
+}
+
+// The card's shape: fill, border, radius, and for the polygons the clip — see the markup.
+.we-graph__card-shape {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: var(--we-space-300);
+  border-radius: var(--node-radius);
+
+  // For the shapes a radius cannot make — see `nodeClip`. `none` for the rest.
+  clip-path: var(--node-clip, none);
+  background: var(--node-color);
+  border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
+  box-shadow: var(--we-shadow-sm);
+  overflow: hidden;
+}
+
+/*
+  Text that flows to a cut shape.
+
+  `shape-inside` exists in no engine, but floats with `shape-outside` do: one hugging each cut edge,
+  the full height of the content box and half its width, shaped to the polygon's *exterior* on that
+  side — so every line box shortens to what the shape leaves between them. In the float's own
+  coordinates, since that is what `shape-outside` measures in: a float half the card wide sees the
+  card's 25% as its 50%. A hair of `shape-margin` keeps the words off the edge.
+*/
+.we-graph__card-flow {
+  height: 100%;
+  width: 50%;
+  pointer-events: none;
+  shape-margin: 4px;
+
+  &--left {
+    float: left;
+  }
+
+  &--right {
+    float: right;
+  }
+}
+
+.we-graph__card--flow .we-graph__card-scale {
+  // The floats need a height to stand in; the scale box already sets one.
+  position: relative;
+
+  /*
+    Whole words. The design system breaks inside a word by default, so a URL cannot push a card
+    wide; beside a float that makes a line squeezed near an apex split a word into its letters. A
+    word that does not fit a line moves down to one it does, which is what a shape wants.
+  */
+  overflow-wrap: normal;
+  word-break: normal;
+
+  .we-block-content {
+    overflow-wrap: normal;
+  }
+
+  /*
+    The fallback label flows too: it was a clamped box, which starts a formatting context of its
+    own and ignores floats, so a task in a diamond ran its name straight to the edges. Beside a
+    float it is ordinary text, and the clip is what bounds it.
+  */
+  .we-graph__card-text {
+    display: block;
+    -webkit-line-clamp: none;
+    overflow: visible;
+  }
+
+  /*
+    The document's own wrappers step out of the way.
+
+    A float only shapes line boxes in the formatting context it sits in, and the renderer wraps its
+    document in a flex column — which starts a context of its own, so the paragraphs inside never
+    saw the floats beside it and the text ran straight to the cut edges. With the wrappers reduced
+    to their contents the paragraphs are laid out here, beside the floats, and wrap to them. What
+    the wrappers set still reaches the text: the size, the line height and the ink are inherited,
+    and inheritance passes through an element that makes no box.
+  */
+  .we-block-renderer-wrapper,
+  .we-block-renderer {
+    // Over the wrapper's own inline `display`, which a design-system component writes on itself;
+    // nothing else in this stylesheet fights an inline style, and nothing else has to.
+    display: contents !important;
+  }
+}
+
+/*
+  A cut shape is its silhouette and nothing else.
+
+  A border on the shape layer is cut with it, so a hexagon kept its top and bottom edges and lost
+  the four that slope — lines drawn and not meeting. And the note's radius rounded the box's own
+  corners before the clip, so a triangle's base corners came out rounded. Neither belongs on a
+  polygon: the shape layer goes without both, and the box outside the clip carries the shadow that
+  gives the shape its edge, since a shadow there follows the silhouette.
+*/
+.we-graph__card--cut > .we-graph__card-shape {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.we-graph__card--cut {
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--we-role-shadow-color) 30%, transparent));
+}
+
+// Per shape, the exterior each float carves out — `nodeFlow` in the renderer, beside the clip.
+.we-graph__card-flow--left {
+  shape-outside: var(--flow-left, none);
+}
+
+.we-graph__card-flow--right {
+  shape-outside: var(--flow-right, none);
+}
+
+/*
+  What cannot flow sits in the rectangle the shape holds.
+
+  A block-level box does not narrow around floats the way a line does, so an image or an embed
+  would run under the cut edges and be clipped. Those blocks — the custom ones, which carry a type;
+  text is serialised as plain paragraphs and headings and carries none — are inset to the largest
+  rectangle inside the shape instead. `--node-inset` comes from the renderer, per shape.
+*/
+.we-graph__card--flow .we-block-content .we-block[data-block-type] {
+  margin-inline: var(--node-inset, 0);
+  clear: both;
 }
 
 /**
@@ -309,6 +550,55 @@
   // Inherited from the layer, but stated here because this subtree is arbitrary host content and
   // one element in it setting `pointer-events: auto` would put a hole in the canvas.
   pointer-events: none;
+
+  /*
+    Whatever a host draws here is at the card's type size, like the label it stands in for.
+
+    A document and the fallback label each state this for themselves below; a host's own content — a
+    record's fields — had nothing to inherit but the page's body size, and drew three sizes larger
+    than the note beside it. Stated once here, it reaches content nobody wrote a rule for, and `em`
+    inside that content scales from it.
+  */
+  font-size: var(--node-label-size);
+  line-height: 1.4;
+
+  /*
+    The document's ink is the card's — see the card's own `color`.
+
+    A rendered document pins `--we-role-text` on itself and on every block in it, which is right
+    on the page and wrong here: the role is measured against the page, and this content sits on a
+    fill the reader chose. The block stylesheet `@extend`s its `.we-block` rule onto the elements a
+    document is made of, so those are named here too — a paragraph carries the pin directly, not
+    through a class. `:is()` takes the highest specificity inside it, which with the two classes
+    outside puts this above the block sheet's own rules whichever order the sheets load in.
+  */
+  .we-block-content,
+  .we-block-content :is(.we-block, p, h1, h2, h3, h4, h5, h6, blockquote, .we-list-item) {
+    color: inherit;
+  }
+
+  /*
+    And the document at the card's scale, not the page's.
+
+    A rendered document inherits the page's body size and gives every block the padding a page
+    wants between paragraphs, so a note read three sizes larger than the task beside it with a
+    gap under every line. The type is the label size every other card draws its text at, on the
+    same line height, and a block keeps a hair of room rather than a page's — which is what makes
+    a card of prose and a card of one line look like the same kind of thing. The list marker's
+    offset follows the padding it was measured against, so a bullet stays on its first line.
+  */
+  .we-block-content {
+    font-size: var(--node-label-size);
+    line-height: 1.4;
+  }
+
+  .we-block-content :is(.we-block, p, h1, h2, h3, h4, h5, h6, blockquote, .we-list-item) {
+    padding: var(--we-space-100) 0;
+  }
+
+  .we-block-content .we-list-item::before {
+    top: var(--we-space-100);
+  }
 
   &::after {
     content: '';
@@ -333,11 +623,11 @@
 }
 
 .we-graph__card-text {
-  color: var(--node-label-color);
+  // From the card, which has already decided — see `.we-graph__card`.
+  color: inherit;
 
-  // Scaled with the card's content, so the fallback answers the same slider as the real thing —
-  // otherwise the setting would appear to do nothing on a card whose content has not arrived.
-  font-size: calc(var(--node-label-size) * var(--content-scale, 1));
+  // Inside the scaled box now, like a document, so the slider reaches it the same way.
+  font-size: var(--node-label-size);
   line-height: 1.4;
 
   // Clamped rather than scrolled: a card is a glance, and the inspector is where the whole value is.
@@ -351,7 +641,7 @@
   position: absolute;
   right: var(--we-space-200);
   bottom: var(--we-space-200);
-  color: var(--node-label-color);
+  color: inherit;
 }
 
 /*
@@ -362,10 +652,41 @@
   `outline` rather than a border: a border changes the box and nudges the content inside it, and on
   a surface where a card can be sized to the pixel a hover that moves the layout reads as a bug.
 */
-.we-graph__node--card.we-graph__node--hovered .we-graph__card {
+.we-graph__node--card.we-graph__node--hovered .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   box-shadow: var(--we-shadow-md);
   outline: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-300);
   outline-offset: calc(1px / var(--graph-zoom));
+}
+
+/*
+  The same rings on a cut shape, as a second polygon drawn behind the first.
+
+  A clip removes everything on its own element outside the polygon — a ring drawn around it
+  included, which is why the first three shapes had one and the rest did not. Shadows were tried
+  next and are wrong twice over: four offset copies never meet at an acute corner, so a diamond's
+  points showed a gap, and an offset that is a fraction of a pixel in the layer's units rasterises
+  to nothing, so the ring thinned and vanished as the board was zoomed in. So the ring is the same
+  shape again, a little larger, in the ring's colour, on a pseudo-element behind the shape layer:
+  every edge is a real edge and every corner is where two of them meet. The enlargement is
+  screen-constant, like the rings on the rounded shapes.
+*/
+// The outline pushed out by a constant distance, from the renderer — see `ringClip` for why it
+// is an offset rather than a scaled copy, and why it is written in pixels.
+.we-graph__card--cut::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--ring-pad, 0px));
+  clip-path: var(--ring-clip, none);
+  background: var(--ring-color, transparent);
+  pointer-events: none;
+}
+
+.we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
+  --ring-color: var(--we-color-primary-300);
+}
+
+.we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
+  --ring-color: var(--we-color-primary-500);
 }
 
 /*
@@ -377,13 +698,13 @@
   distance off the edge, were pushed into it and then under it. Reported as the dots drifting inwards
   as you zoom, which is the ring growing outwards past them.
 */
-.we-graph__node--card.we-graph__node--selected .we-graph__card {
+.we-graph__node--card.we-graph__node--selected .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-color-primary-500);
 }
 
 // A card that is both selected and hovered keeps the selection ring alone — two rings around one
 // card says nothing the stronger of them does not.
-.we-graph__node--card.we-graph__node--selected.we-graph__node--hovered .we-graph__card {
+.we-graph__node--card.we-graph__node--selected.we-graph__node--hovered .we-graph__card > .we-graph__card-shape {
   outline: none;
 }
 
@@ -407,9 +728,10 @@
   node can easily be both held and selected.
 */
 .we-graph__node--pinned .we-graph__dot,
-.we-graph__node--pinned .we-graph__card {
+.we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles
-  // too, and this sits further out than the selection ring does.
+  // too, and this sits further out than the selection ring does. A cut shape goes without: a dashed
+  // ring cannot be made from shadows, and on a canvas every card is placed so the mark means nothing.
   outline: calc(2px / var(--graph-zoom)) dashed var(--we-color-neutral-500);
   outline-offset: calc(3px / var(--graph-zoom));
 }
@@ -542,17 +864,22 @@
  * finger expects at every zoom.
  *
  * `bottom: 100%` was the obvious spelling and it put the row in the middle of the card.
- * `.we-graph__node` is a zero-size anchor point — every visible part of a node positions itself
- * against it, and the card is centred there — so a percentage resolved against nothing and left the
+ * `.we-graph__chrome` is a zero-size anchor point at the node's position, as `.we-graph__node` is —
+ * every visible part of a node positions itself against one, and the card is centred there — so a
+ * percentage resolved against nothing and left the
  * strip at the anchor. Its top-left is half the width left and half the height up, which is how the
  * resize handles reach their edges too.
  */
 .we-graph__actions {
   position: absolute;
-  left: calc(var(--node-width) / -2);
+
+  // On the node's own point, which is the card's centre; the transform below centres the bar on it.
+  left: 0;
   top: calc(var(--node-height) / -2);
   display: flex;
-  gap: 4px;
+
+  // The bar's own look — its padding, gap, surface and shadow — is the design-system row inside
+  // this box, in the renderer. This box only places it and takes the presses.
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;
@@ -560,77 +887,58 @@
   /*
     Scaled last in the list, so the lift is measured before it is scaled.
 
-    A transform list applies right to left: the row is lifted by its own height plus a gap in its own
+    A transform list applies right to left: the bar is lifted by its own height plus a gap in its own
     unscaled units, and the whole displacement is scaled with it — so the strip sits a constant six
     screen pixels above the card's top edge at every zoom. Written the other way round the gap would
     be in world units and drift as the camera moved.
 
-    Everything inside is therefore already in screen pixels: 24px buttons, a 4px gap, and no
+    Everything inside is therefore already in screen pixels: small-control squares, a 2px gap, and no
     `/ var(--graph-zoom)` on either. Dividing there as well was the double compensation that made the
     row grow as the board was zoomed out.
+
+    Centred: the bar's left edge sits on the card's centre line and the bar is moved left by half
+    its own width, in its own units, before the scale. The origin is that same point — the top left
+    of the unscaled box, which is where the card's centre line is — so the scale keeps the bar's
+    centre on it at every zoom. `top center` was wrong by half the bar's width times the zoom's
+    departure from one: the origin sat half a bar to the right of the centre line, and the bar
+    drifted right as the board was zoomed in. Eleven pixels clear of the card's top edge.
   */
-  transform: scale(calc(1 / var(--graph-zoom))) translateY(calc(-100% - 6px));
+  transform: scale(calc(1 / var(--graph-zoom))) translate(-50%, calc(-100% - var(--actions-lift, 11px)));
   transform-origin: top left;
 }
 
-.we-graph__action {
+/*
+  A host control in the header — a colour picker, a shape menu, a scale slider.
+
+  The buttons beside it are `we-button`s, ghost and square, so a control's own trigger should be the
+  same primitive and needs nothing from here; this box only anchors what the control opens.
+  `.we-graph__control-popup` is where anything larger than a square goes — under the bar, in screen
+  pixels like everything else in it. Named here rather than in the host, since it is the contract a
+  control is written against.
+*/
+.we-graph__control {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  color: var(--we-role-text-muted);
+  min-width: var(--we-component-height-md);
+  height: var(--we-component-height-md);
+}
+
+.we-graph__control-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--we-space-200);
+  padding: var(--we-space-200);
   background: var(--we-role-surface-raised);
   border: 1px solid var(--we-role-border);
-  border-radius: var(--we-radius-full);
-  box-shadow: var(--we-shadow-sm);
-  cursor: pointer;
-
-  &:hover {
-    color: var(--we-role-text);
-    background: var(--we-role-surface-hover);
-    border-color: var(--we-role-border-hover);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--we-ring-color);
-    outline-offset: 1px;
-  }
-}
-
-/*
- * The two answers, coloured — a status foreground at rest, filling on hover.
- *
- * Said in colour rather than only in the icon: a bin and a tick the same shade is a pair of buttons
- * you have to read before pressing, on a control small enough that reading it is most of the work.
- *
- * The foreground role rather than the fill for the resting state, because at 24px the icon *is* the
- * button and it has to stay legible against the raised surface behind it; `dangerText` and
- * `successText` are the two that are corrected for exactly that. The fill takes over on hover,
- * where its own label role answers for the contrast.
- *
- * A pair, always. A red cross beside a grey tick is one decision that looks real and one that looks
- * unavailable, which is the wrong hint on the half people are usually looking for.
- */
-.we-graph__action--positive {
-  color: var(--we-role-success-text);
-
-  &:hover {
-    color: var(--we-role-on-success);
-    background: var(--we-role-success);
-    border-color: var(--we-role-success);
-  }
-}
-
-.we-graph__action--danger {
-  color: var(--we-role-danger-text);
-
-  &:hover {
-    color: var(--we-role-on-danger);
-    background: var(--we-role-danger);
-    border-color: var(--we-role-danger);
-  }
+  border-radius: var(--we-radius-300);
+  box-shadow: var(--we-shadow-md);
+  white-space: nowrap;
 }
 
 /**
@@ -666,7 +974,7 @@
  * down by the camera instead. Integers at every zoom, one rasterised circle, one centred arrow.
  *
  * `scale` is written FIRST in the list, which means it applies LAST, and that is the whole trick —
- * the same one `.we-graph__actions` above uses for its 24px buttons. A transform list applies right
+ * the same one `.we-graph__actions` above uses for its bar. A transform list applies right
  * to left, so `translate(-50%, -50%)` is measured against the element's own unscaled 30px box and the
  * displacement is then scaled with it. Written the other way round the translate would be 15 *world*
  * pixels and the handle would drift off its anchor by however far the camera is from 1 — which is the
@@ -679,9 +987,11 @@
  * in `left`/`top`, which are the parent's coordinates, and those are world units.
  */
 .we-graph__connect {
-  --hit: 30px;
+  // The node's own two constants, in the units each is used in: the target is laid out at its screen
+  // size and scaled back, where the reach is a `top`/`left` and those are world units.
+  --hit: var(--connect-hit);
   --dot: 10px;
-  --reach: calc(20px / var(--graph-zoom));
+  --reach: calc(var(--connect-reach) / var(--graph-zoom));
   --half-w: calc(var(--node-width) / 2);
   --half-h: calc(var(--node-height) / 2);
 
@@ -868,4 +1178,26 @@
 .we-graph we-tooltip::part(tooltip),
 .we-graph we-tooltip::part(arrow) {
   pointer-events: none;
+}
+
+/**
+ * What a folded card is holding — a count on the card, and the press that brings it back.
+ *
+ * Inside the card's bottom-right corner, and only while the card is unselected: a selected one has
+ * the same count in its action bar, and this corner is where a resize grip sits. Two things taking
+ * presses in one place is one thing too many, and the count moves rather than disappearing.
+ *
+ * Counter-scaled by the camera like the action bar, so it stays the size a finger expects at any
+ * zoom, and with the same transform order — placed in its own units, then scaled — so the inset is
+ * in screen pixels rather than world ones.
+ */
+.we-graph__fold {
+  position: absolute;
+  left: calc(var(--node-width) / 2);
+  top: calc(var(--node-height) / 2);
+
+  // The node layer is inert so the canvas can hit-test in world space; this takes its own presses.
+  pointer-events: auto;
+  transform-origin: top left;
+  transform: scale(calc(1 / var(--graph-zoom))) translate(calc(-100% - 6px), calc(-100% - 6px));
 }

@@ -133,6 +133,25 @@ export interface InterpretationActivity {
   detail?: string;
   /** The model exchange, when a consumer asked for it and this is its own pass. */
   llm?: InterpretationLlmExchange;
+  /**
+   * The record this pass read, where the backend can say — a call's collection, in WE.
+   *
+   * `watchId` almost answers this and cannot be trusted to: it is a processor id, which a backend
+   * derives from the collection however it likes, and WE's own derivation flattens every character
+   * a URI is made of. Good enough to tell two passes apart, useless for finding what they read.
+   *
+   * What it unlocks is a durable history: a consumer that knows which call settled can write the
+   * pass down against it, rather than holding a feed that starts empty on every reload.
+   */
+  collection?: string;
+  /**
+   * What started the pass — a person, or a standing watch.
+   *
+   * The two arrive through different paths and looked like different features because of it. A
+   * consumer keeping a history needs to say which a row was, and only the backend knows: by the
+   * time a pass settles the two are the same shape.
+   */
+  trigger?: 'manual' | 'auto';
 }
 
 /**
@@ -231,6 +250,10 @@ export function mergeActivity(
       ...previous,
       ids: update.ids ?? previous.ids,
       llm: mergeExchange(previous.llm, update.llm),
+      // Same rule, and it matters more here: the collection arrives on the runner's own `processed`
+      // step, which is exactly the late update this branch exists to absorb.
+      collection: update.collection ?? previous.collection,
+      trigger: update.trigger ?? previous.trigger,
     };
     rows.set(kept.passId, kept);
     return kept;
@@ -248,6 +271,9 @@ export function mergeActivity(
     ids: update.ids ?? previous?.ids,
     detail: update.detail ?? previous?.detail,
     llm: mergeExchange(previous?.llm, update.llm),
+    // Both are said once, on whichever step knows them, and must survive every step after.
+    collection: update.collection ?? previous?.collection,
+    trigger: update.trigger ?? previous?.trigger,
   };
   rows.set(merged.passId, merged);
   return merged;

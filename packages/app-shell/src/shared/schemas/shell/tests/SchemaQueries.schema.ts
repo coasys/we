@@ -2,10 +2,16 @@
  * Schema Queries Test Page
  *
  * One page that exercises every distinct `$query` shape the app uses, against a deterministic
- * `TestItem`/`TestChild` dataset. Its purpose: verify the QueryIR routing (seed.features.useQueryIR)
- * against the REAL AD4M backend — flip the flag, reload, and every section should render identically.
- * Every shape here (drill-down included, now that it is a neutral `scope`) routes natively through the
- * IR; there is no silent fallback — a capability gap reports through `$onError` and renders nothing.
+ * `TestItem`/`TestChild` dataset — on the REAL AD4M backend, which is the whole of what it adds.
+ * Every shape here (drill-down included, now that it is a neutral `scope`) routes natively through
+ * the IR; there is no silent fallback — a capability gap reports through `$onError` and renders
+ * nothing.
+ *
+ * It used to carry a toggle: flip `seed.features.useQueryIR`, reload, and check that every section
+ * rendered identically. That comparison is now `@we/backend-inmemory`'s `queryRouting.test.ts`,
+ * which runs the same shapes routed and unrouted and asserts one answer — so the thing a person had
+ * to remember to do is done on every commit, and what is left here is the question a test cannot
+ * ask: does the real executor agree?
  *
  * Seed (click "Seed known data" first): Alpha (2 children, 1 mine) · Beta (0) · Gamma (1, mine).
  */
@@ -48,35 +54,6 @@ function labeledRow(label: string, query: SchemaProp): SchemaNode {
 // ---------------------------------------------------------------------------
 // Sections
 // ---------------------------------------------------------------------------
-
-// Live toggle — flips the QueryIR routing at runtime (no reload); watch sections re-route.
-const irToggle: SchemaNode = {
-  type: 'Row',
-  props: { gap: '300', ay: 'center', wrap: true, bg: 'surface-sunken', border: '1px solid border', r: '400', p: '300' },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        variant: { $: "testStore.queryIRenabled ? 'primary' : 'secondary'" },
-        onClick: { $action: 'testStore.toggleQueryIR' },
-      },
-      children: [
-        {
-          type: 'we-icon',
-          props: {
-            name: { $: "testStore.queryIRenabled ? 'toggle-right' : 'toggle-left'" },
-          },
-        },
-        { $: "testStore.queryIRenabled ? 'QueryIR routing: ON' : 'QueryIR routing: OFF'" },
-      ],
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'footnote', color: 'text-muted' },
-      children: ['Flip live — every section re-routes without a reload. Watch for anything that changes.'],
-    },
-  ],
-};
 
 const seedControls: SchemaNode = {
   type: 'Row',
@@ -251,7 +228,7 @@ const notesSection = section('Not covered here — check on real screens', 'Thes
 export const schemaQueriesTemplate: TemplateSchema = {
   meta: {
     name: 'Queries',
-    description: 'Exercises every $query shape through the QueryIR routing (seed.features.useQueryIR)',
+    description: 'Exercises every $query shape against a real backend, through the routing every query takes',
     icon: 'magnifying-glass',
     stores: ['testStore'],
   },
@@ -262,10 +239,9 @@ export const schemaQueriesTemplate: TemplateSchema = {
       type: 'we-text',
       props: { variant: 'body', color: 'text-muted' },
       children: [
-        'Toggle seed.features.useQueryIR and reload — every section should render identically. There is no silent fallback: if a query needed a capability the backend lacks, it would report an error and render nothing rather than quietly reverting to the raw backend path.',
+        'Every section should render what its expectation says. There is no silent fallback: a query needing a capability this backend lacks reports an error and renders nothing, rather than quietly going to the backend unrouted. The same shapes are compared routed-against-unrouted in @we/backend-inmemory; what this page adds is a real backend under them.',
       ],
     },
-    irToggle,
     seedControls,
     filterSection,
     sortSection,

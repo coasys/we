@@ -16,7 +16,7 @@ import { mentionedDids, parseMarks, serializeMarks } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
 import { getBlockRegistration, getRegisteredBlockEntities } from './registry';
-import { encodeBase64Utf8 } from './utils';
+import { decodeEditorState, encodeBase64Utf8 } from './utils';
 
 /**
  * The dataset a block tree persists into — whatever handle the connected backend takes. This
@@ -392,6 +392,57 @@ export async function resolveExpressionAddresses(
   return out;
 }
 
+/**
+ * A stored composition, as something another dataset can be written from.
+ *
+ * Two things stop a composition moving as it is stored:
+ *
+ * - **Its files are addresses in this dataset's storage.** Nobody outside the dataset can fetch
+ *   them, so a copy that kept them would draw a broken picture for everybody but its author. They
+ *   are resolved to payloads here, and `createBlocks` in the destination uploads them again — under
+ *   their original names, which `resolveExpressionAddresses` carries forward.
+ * - **Its keys are record ids in this dataset.** In another they name nothing, so they come off.
+ *
+ * `only` narrows it to one block, by its key, wherever it sits in the composition — a picture taken out
+ * of a post rather than the post.
+ *
+ * `null` for a value that is not a composition — a record written by something else, or nothing —
+ * and for a key the composition does not hold.
+ */
+export async function copyableContent(
+  perspective: BlockDataset,
+  editorState: unknown,
+  only?: string,
+): Promise<ContentBlock[] | null> {
+  const decoded = decodeEditorState(editorState);
+  if (!decoded) return null;
+  const blocks = only ? findByKey(decoded, only) : decoded;
+  if (!blocks) return null;
+  return withoutKeys(await resolveExpressionAddresses(perspective, blocks));
+}
+
+function findByKey(blocks: readonly ContentBlock[], key: string): ContentBlock[] | null {
+  for (const block of blocks) {
+    if (block._key === key) return [block];
+    if (isCollectionBlock(block)) {
+      const inner = findByKey((block as CollectionContentBlock).content ?? [], key);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
+function withoutKeys(blocks: readonly ContentBlock[]): ContentBlock[] {
+  return blocks.map((block) => {
+    const { _key: _dropped, ...rest } = block;
+    return (
+      isCollectionBlock(block)
+        ? { ...rest, content: withoutKeys((block as CollectionContentBlock).content ?? []) }
+        : rest
+    ) as ContentBlock;
+  });
+}
+
 // ── Mentions ─────────────────────────────────────────────────────────────────
 
 /** A model exposing `WeNode`'s mentions relation — every block root does, but the type is erased. */
@@ -476,6 +527,11 @@ export interface CreateBlocksOptions {
    * unpositioned and then moving.
    */
   batchId?: string;
+  /**
+   * Scalars to set on the root beside `kind` and `mode`, in the same save — where a copied post
+   * came from (`sourceRef`, `sourceName`). Only fields the root's model declares are written.
+   */
+  fields?: Record<string, string>;
 }
 
 /**
@@ -504,7 +560,7 @@ export async function createBlocks(
   input: ContentInput,
   options: CreateBlocksOptions = {},
 ): Promise<BlockRecord | undefined> {
-  const { kind, mode = kind ? 'document' : undefined, anchor, batchId } = options;
+  const { kind, mode = kind ? 'document' : undefined, anchor, batchId, fields } = options;
   const { blocks } = normalizeInput(input);
   const registration = getBlockRegistration('root') ?? getBlockRegistration('collection');
   if (!registration) throw new Error('createBlocks: no collection model is registered');
@@ -530,6 +586,9 @@ export async function createBlocks(
       // second round trip for one string.
       if (kind && 'kind' in root) root.kind = kind;
       if (mode && 'mode' in root) root.mode = mode;
+      for (const [name, value] of Object.entries(fields ?? {})) {
+        if (value && name in root) root[name] = value;
+      }
 
       if ('editorState' in root) {
         root.editorState = asFileField(encodeEditorState(uploaded));
@@ -543,6 +602,41 @@ export async function createBlocks(
       return root;
     },
     { batchId },
+  );
+}
+
+/**
+ * Write one block as a record of its own — no post around it — optionally anchored to something that
+ * already exists.
+ *
+ * For a block that belongs somewhere a composition does not: a picture dropped onto a canvas is a
+ * node on that canvas, and wrapping it in a post first gave the canvas a card holding one picture.
+ * The block's files arrive as payloads (see `copyableContent`) and the model layer uploads them, the
+ * same path a composition's blocks take. A collection block brings its descendants.
+ *
+ * Mentions are not written: they hang off a post, and there is none.
+ */
+export async function createBlock(
+  perspective: BlockDataset,
+  block: ContentBlock,
+  options: { anchor?: BlockAnchor; batchId?: string } = {},
+): Promise<{ id: string; entity: string } | undefined> {
+  const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
+  if (!registration) return undefined;
+
+  return runEntityTransaction(
+    perspective,
+    async (tx) => {
+      const model = (await registration.model.create(perspective, modelData(registration.entity, block), {
+        batchId: tx.batchId,
+        ...(options.anchor && { parent: { id: options.anchor.id, predicate: options.anchor.predicate } }),
+      })) as BlockRecord;
+      if (isCollectionBlock(block)) {
+        for (const child of block.content ?? []) await persistBlock(perspective, tx.batchId, child, undefined, model);
+      }
+      return { id: model.id, entity: registration.entity };
+    },
+    { batchId: options.batchId },
   );
 }
 

@@ -83,7 +83,7 @@ export function ValueEditor(props: {
                 Custom expression — edit as JSON
               </we-text>
             </Row>
-            <we-tooltip title="Pick a value from data">
+            <we-tooltip content="Pick a value from data">
               <we-button
                 variant="ghost"
                 size="xs"

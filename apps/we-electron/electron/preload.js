@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electron', {
   getPort: () => ipcRenderer.invoke('get-port'),
   getToken: () => ipcRenderer.invoke('get-token'),
   getIsDevelopment: () => ipcRenderer.invoke('get-is-development'),
+  getDevLinkLanguageBundle: () => ipcRenderer.invoke('get-dev-link-language-bundle'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
 
   // Account management. Every mutation is registry-only until applyAccountSelection() takes effect.
@@ -21,4 +22,7 @@ contextBridge.exposeInMainWorld('electron', {
   setExecutorSettings: (settings) => ipcRenderer.invoke('executor-settings-set', settings),
   restartExecutor: () => ipcRenderer.invoke('executor-restart'),
   chooseFile: (options) => ipcRenderer.invoke('executor-choose-file', options),
+
+  // Every download in the app: the main process asks where, and writes it. See `save-file` in main.js.
+  saveFile: (file) => ipcRenderer.invoke('save-file', file),
 });

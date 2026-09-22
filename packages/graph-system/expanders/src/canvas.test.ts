@@ -542,6 +542,70 @@ describe('the canvas seed — pending records', () => {
 });
 
 /**
+ * A suggested change to an agreed record is told apart from a suggested record, and a reader can
+ * leave suggestions off the canvas altogether.
+ *
+ * The two used to be one list, so an accepted task a pass merely had an opinion about was faded like
+ * a draft — and a "hide suggestions" built on that list would have hidden agreed work.
+ */
+describe('the canvas seed — changed and hidden records', () => {
+  const twoCards = {
+    Placement: [
+      { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+      { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+    ],
+    CollectionBlock: [
+      { id: 'c1', title: 'Agreed' },
+      { id: 'c2', title: 'Suggested' },
+    ],
+    Relationship: [
+      { id: 'r1', source: 'c1', sourceType: 'CollectionBlock', target: 'c2', targetType: 'CollectionBlock' },
+    ],
+  };
+
+  it('marks a changed record apart from a pending one', async () => {
+    const { context: ctx } = context(twoCards);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', pending: ['c2'], changed: ['c1'] }, ctx);
+
+    const agreed = nodes.find((n) => n.id.endsWith('c1'));
+    expect(agreed?.data?.changed).toBe(true);
+    expect(agreed?.data).not.toHaveProperty('pending');
+    expect(nodes.find((n) => n.id.endsWith('c2'))?.data).not.toHaveProperty('changed');
+  });
+
+  it('leaves a hidden record off, with the connections that reach it', async () => {
+    const { context: ctx } = context(twoCards);
+    const { nodes, edges } = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', hidden: ['c2'] },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id.split(/[/:]/).pop())).toEqual(['c1']);
+    expect(edges).toHaveLength(0);
+  });
+
+  it('leaves a whole type off, with the connections that reach it, and reads nothing of it', async () => {
+    const mixed = {
+      ...twoCards,
+      Placement: [...twoCards.Placement, { id: 'p3', node: 'i1', nodeType: 'ImageBlock', x: 400, y: 0 }],
+      ImageBlock: [{ id: 'i1', src: 'x.png' }],
+      Relationship: [
+        ...twoCards.Relationship,
+        { id: 'r2', source: 'c1', sourceType: 'CollectionBlock', target: 'i1', targetType: 'ImageBlock' },
+      ],
+    };
+    const { context: ctx } = context(mixed);
+    const { nodes, edges } = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', hiddenTypes: ['ImageBlock'] },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id.split(/[/:]/).pop()).sort()).toEqual(['c1', 'c2']);
+    expect(edges.map((e) => e.id)).toEqual(['canvas-connection|r1']);
+  });
+});
+
+/**
  * How a canvas draws its connections — which side of a card each line leaves and arrives on.
  *
  * The same shape as the type key above and quiet in the same way: a route that does not reach its

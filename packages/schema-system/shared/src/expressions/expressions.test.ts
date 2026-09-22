@@ -112,6 +112,14 @@ describe('evaluation', () => {
     expect(run("count(store.byId['we://a-call'].targets)", roots)).toBe(1);
   });
 
+  it('splits a string into a list and joins it back, with no empty pieces', () => {
+    expect(run("split('ImageBlock, TextBlock')")).toEqual(['ImageBlock', 'TextBlock']);
+    expect(run("split('')")).toEqual([]);
+    expect(run("split('a|b', '|')")).toEqual(['a', 'b']);
+    expect(run("join(split('a,,b'), ',')")).toBe('a,b');
+    expect(run("'b' in split('a,b')")).toBe(true);
+  });
+
   it('is total on bad input', () => {
     expect(run('missing.deep.path')).toBeUndefined();
     expect(run('1 / 0')).toBe(0);
@@ -153,6 +161,31 @@ describe('evaluation', () => {
     expect(run('{ a: 1 }.map(x, x.a)', roots)).toBe(1);
   });
 
+  it('lists each value once, across every list given', () => {
+    // The key's question: the kinds extraction wrote, and the kinds somebody placed, each once.
+    const roots = {
+      found: [{ __subjectClass: 'TaskBlock' }, { __subjectClass: 'EventBlock' }, { __subjectClass: 'TaskBlock' }],
+      placements: [{ nodeType: 'NoteBlock' }, { nodeType: 'EventBlock' }],
+    };
+    expect(run('distinct(found.map(r, r.__subjectClass), placements.map(p, p.nodeType))', roots)).toEqual([
+      'TaskBlock',
+      'EventBlock',
+      'NoteBlock',
+    ]);
+    // Records by id, so two reads of one record are one entry.
+    expect(
+      run('distinct(a, b).map(r, r.v)', {
+        a: [{ id: 1, v: 'x' }],
+        b: [
+          { id: 1, v: 'y' },
+          { id: 2, v: 'z' },
+        ],
+      }),
+    ).toEqual(['x', 'z']);
+    expect(run('distinct(nothing, [1, 1, 2])')).toEqual([1, 2]);
+    expect(run('distinct()')).toEqual([]);
+  });
+
   it('calls host sources after the built-ins', () => {
     const e = env({}, { calendarMonth: (options) => [(options as { month: number }).month] });
     expect(evaluateExpression(parseExpression('calendarMonth({ month: 8 })'), e)).toEqual([8]);
@@ -164,6 +197,20 @@ describe('evaluation', () => {
     expect(run("filter(items, { OR: [{ name: 'Bob' }, { name: 'Anna' }] }).count()", { items })).toBe(2);
     expect(run('find(items, { tags: { exists: false } }).name', { items })).toBe('Bob');
     expect(run("find(items, { name: 'Zed' }).name", { items })).toBeUndefined();
+  });
+  it('takes range bounds in a where-object, with the same meaning a $query gives them', () => {
+    const roots = {
+      events: [
+        { id: 'a', startDate: '2026-09-14', seats: 4 },
+        { id: 'b', startDate: '2026-09-30T18:00', seats: '12' },
+        { id: 'c', startDate: '2026-10-02', seats: 20 },
+      ],
+    };
+    expect(run("filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)", roots)).toEqual([
+      'b',
+    ]);
+    // A string stored where a number was meant matches no numeric bound, rather than being coerced.
+    expect(run('filter(events, { seats: { gt: 5 } }).map(e, e.id)', roots)).toEqual(['c']);
   });
 });
 

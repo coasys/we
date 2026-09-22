@@ -14,9 +14,10 @@ import { adminSection, discardGuard, emptyNote } from '@we/template-kit';
  * and a schema can express that only as nested conditionals over state it cannot compute from.
  * With the form in the store, each input reads one field and writes one field.
  *
- * Not ported: the launcher's live API check, which calls the provider's /models and /chat endpoints
- * to validate a key before saving. It is a genuinely nice touch and a second implementation of the
- * provider's own auth, and what it saves the user is one failed generation.
+ * The launcher's live API check was left out while it would have meant a second implementation of
+ * each provider's auth in the app. It is back as "List models", which asks the *node* to call the
+ * endpoint (`runtimeStore.discoverAiModels`): the node already speaks every protocol it offers, and
+ * a list of models is a better answer than "the key works" — it is the next field somebody fills in.
  */
 
 /** Every input in the form is this: read one field, write one field. */
@@ -175,11 +176,129 @@ const modelForm: SchemaNode = {
         ]),
 
         whenSource('api', [
-          field('Base URL', 'apiBaseUrl', 'https://api.openai.com/v1'),
+          {
+            type: 'we-form-field',
+            props: { label: 'Service' },
+            children: [
+              {
+                type: 'we-select',
+                props: {
+                  value: { $: 'runtimeStore.aiForm.apiService' },
+                  options: { $: 'runtimeStore.aiServiceOptions' },
+                  onChange: { $action: 'runtimeStore.setAiService', args: [{ $: 'event.detail' }] },
+                },
+              },
+            ],
+          },
+          /*
+            Protocol and URL only for an endpoint no service describes. They are two facts — OpenRouter
+            serves Claude over the OpenAI protocol, a gateway speaks Anthropic's from its own address —
+            but a named service settles both, and showing them beside it let the two disagree.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: "runtimeStore.aiForm.apiService == 'custom'" },
+              then: {
+                type: 'Column',
+                props: { gap: '300' },
+                children: [
+                  {
+                    type: 'we-form-field',
+                    props: {
+                      label: 'Protocol',
+                      // Most services speak OpenAI's format; Anthropic's own is what carries prompt caching and
+                      // native tool calls for Claude, so it is worth choosing where it is on offer.
+                      description: {
+                        $: "runtimeStore.aiForm.apiProtocol == 'anthropic' ? 'Claude’s own API — prompt caching and native tool calls.' : 'The format OpenAI, OpenRouter, Groq, Gemini and local servers share.'",
+                      },
+                    },
+                    children: [
+                      {
+                        type: 'we-select',
+                        props: {
+                          value: { $: 'runtimeStore.aiForm.apiProtocol' },
+                          options: [
+                            { label: 'OpenAI-compatible', value: 'openai' },
+                            { label: 'Anthropic', value: 'anthropic' },
+                          ],
+                          onChange: {
+                            $action: 'runtimeStore.setAiFormField',
+                            args: ['apiProtocol', { $: 'event.detail' }],
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  field('Base URL', 'apiBaseUrl', 'https://gateway.example.com/v1'),
+                ],
+              },
+            },
+          },
           // The key is stored by the backend and sent to the provider; masking it here only stops
           // it being read over a shoulder, which is the threat that applies to a settings page.
           field('API key', 'apiKey', 'sk-…', 'password'),
-          field('Model', 'apiModel', 'e.g. gpt-4o'),
+          {
+            type: 'Row',
+            props: { gap: '200', ay: 'end' },
+            children: [
+              {
+                type: 'Column',
+                props: { flex: '1', minWidth: '0' },
+                children: [
+                  {
+                    type: '$if',
+                    props: {
+                      // A list once the endpoint has answered, a typed id until then — and always where
+                      // the backend cannot ask, since a model id is still a thing a person can know.
+                      condition: { $: 'count(runtimeStore.aiDiscoveredModelOptions)' },
+                      then: {
+                        type: 'we-form-field',
+                        props: { label: 'Model' },
+                        children: [
+                          {
+                            type: 'we-select',
+                            props: {
+                              value: { $: 'runtimeStore.aiForm.apiModel' },
+                              searchable: true,
+                              options: { $: 'runtimeStore.aiDiscoveredModelOptions' },
+                              onChange: {
+                                $action: 'runtimeStore.setAiFormField',
+                                args: ['apiModel', { $: 'event.detail' }],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                      else: field('Model', 'apiModel', 'e.g. claude-sonnet-5 or gpt-4o'),
+                    },
+                  },
+                ],
+              },
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'runtimeStore.canDiscoverAiModels' },
+                  then: {
+                    type: 'we-tooltip',
+                    props: { content: 'Ask the service which models it serves — which also checks the key' },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          text: 'List models',
+                          variant: 'secondary',
+                          loading: { $: "'discoverAiModels' in runtimeStore.pending" },
+                          disabled: { $: '!runtimeStore.aiForm.apiBaseUrl' },
+                          onClick: { $action: 'runtimeStore.discoverAiModels' },
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
         ]),
 
         whenSource('huggingface', [
@@ -197,6 +316,16 @@ const modelForm: SchemaNode = {
         ]),
 
         {
+          // The page's own error slot sits behind this modal, so a refused save or a failed model
+          // listing would otherwise say nothing where the person is looking.
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
+            then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
+          },
+        },
+
+        {
           type: 'Row',
           props: { gap: '200', ax: 'end' },
           children: [
@@ -209,7 +338,7 @@ const modelForm: SchemaNode = {
               type: 'we-button',
               props: {
                 text: 'Save',
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'saveAiModel' in runtimeStore.pending" },
                 disabled: { $: '!runtimeStore.aiFormComplete' },
                 onClick: { $action: 'runtimeStore.saveAiModel' },
               },
@@ -258,11 +387,15 @@ const modelCard: SchemaNode = {
                   type: 'Row',
                   props: { gap: '200', ay: 'center' },
                   children: [
-                    // Only offered for a model that is not already the one apps get for its kind.
+                    // Only offered for a model that is not already the one apps get for its kind —
+                    // and, for now, only for language models. AD4M saves a default for an LLM and
+                    // silently drops one for any other kind, so on a transcription or embedding
+                    // model the button reported success and changed nothing. Widen the condition
+                    // back to `!model.isDefault` once the executor persists every kind.
                     {
                       type: '$if',
                       props: {
-                        condition: { $: '!model.isDefault' },
+                        condition: { $: "!model.isDefault && model.kind == 'llm'" },
                         then: {
                           type: 'we-button',
                           props: {

@@ -7,6 +7,58 @@
 
 import type { SchemaNode } from '@we/schema-shared';
 
+/**
+ * One module a deployment ships, when a bare id is not enough to say.
+ *
+ * `package` names the npm package the module's `createModule` factory comes from, for a module that
+ * is not one of this monorepo's own — the deployment adds the package, names it here, and rebuilds.
+ * Omitted, the id resolves to `@we/module-<id>`.
+ */
+export interface WeSeedModule {
+  id: string;
+  /** The package exporting `createModule`. Defaults to `@we/module-<id>`. */
+  package?: string;
+  /**
+   * Whether a space that has never decided has this module on. Defaults to true. `false` ships the
+   * module for communities to opt into without putting it in every existing space at once.
+   */
+  enabled?: boolean;
+}
+
+/**
+ * Custom elements from a library this deployment bundles — a chart, a rating, a map — that templates
+ * may then name as ordinary nodes.
+ *
+ * ## Why this is a seed decision
+ *
+ * A template is data and cannot load code, so a visual primitive WE does not ship used to mean a merge
+ * into this repository. But the renderer already mounts any hyphenated tag, and a custom element
+ * is framework-neutral by construction. What was missing was a deployment saying "these tags are
+ * defined here, trust them" — so the validator stops calling them unknown, the reference documents
+ * them, and the build imports what defines them. The trust is the deployment's, exactly as it is for
+ * a bundled module: it chose the package and rebuilt.
+ */
+export interface WeSeedElements {
+  /** The npm package providing the elements. Must be a dependency of `@we/app-shell`. */
+  package: string;
+  /**
+   * Modules imported for their side effect of defining the elements, in order. Defaults to the package
+   * itself. Name the per-component entry points where a library offers them, so the build carries
+   * only the elements listed.
+   */
+  define?: string[];
+  /**
+   * The tags templates may name. Defaults to every element the package's custom-elements manifest
+   * declares — list them to allow a few from a large library.
+   */
+  tags?: string[];
+  /**
+   * Path to the custom-elements manifest within the package. Defaults to the `customElements` field
+   * of its `package.json`, which is where the convention puts it.
+   */
+  manifest?: string;
+}
+
 export interface WeSeedFile {
   /** Project metadata */
   project: {
@@ -24,29 +76,28 @@ export interface WeSeedFile {
     license?: string;
   };
 
-  /** Experimental feature flags (dev/rollout toggles read by the running app). */
-  features?: {
-    /**
-     * Route each template query through the neutral QueryIR (compileQuery → irToFlatQuery)
-     * before it reaches the backend. Off by default; falls back to the direct (non-IR) path for anything the
-     * IR can't yet express, so it's always safe. In dev the seed is a watched static import, so
-     * flipping this + reloading takes effect (a production build bakes the seed → needs a rebuild).
-     */
-    useQueryIR?: boolean;
-  };
+  /**
+   * Feature modules this deployment ships, by module id — or as an entry naming more.
+   *
+   * A deployment declaring what it includes is what the seed is *for*. Ids are matched against the
+   * bundled module set at boot; an id with no bundled module is reported rather than ignored, since a
+   * silently missing module surfaces later as an unexplained missing component.
+   *
+   * **The order is the module rail's order.** And the list is what `pnpm --filter @we/app-shell
+   * generate-modules` bundles: an unlisted module leaves the build rather than merely the rail.
+   *
+   * `AgentSettings.installedModules` and `Space.enabledModules` carry the per-agent and per-space
+   * halves; `enabled: false` here is what a space starts with for a module the deployment ships for
+   * people to opt into. See {@link WeSeedModule}.
+   */
+  modules?: Array<string | WeSeedModule>;
 
   /**
-   * Feature modules this deployment ships, by module id.
-   *
-   * A deployment declaring what it includes is what the seed is *for* — "which modules to include" is
-   * already in its stated purpose. Ids here are matched against the bundled module set at boot; an id
-   * with no bundled module is reported rather than ignored, since a silently missing module surfaces
-   * later as an unexplained missing component.
-   *
-   * Bundled only for now. When modules become installable, this stays the deployment-level list and
-   * `AgentSettings.installedModules` / `Space.enabledModules` carry the per-agent and per-space halves.
+   * Custom elements from libraries this deployment bundles, which templates may name. See
+   * {@link WeSeedElements}. Generated into the build by `pnpm --filter @we/app-shell generate-elements`,
+   * and into the reference and the validator by `generate-context`.
    */
-  modules?: string[];
+  elements?: WeSeedElements[];
 
   /**
    * What this deployment believes each capability's settings should start as.
@@ -125,6 +176,16 @@ export interface WeSeedFile {
      * way back. Change it deliberately, on a fresh install or after moving the directory yourself.
      */
     dataPath?: string;
+    /**
+     * A link server shared spaces can sync through, e.g. `https://links.example.org`. Setting it
+     * is what offers the server link language when creating a shared space; each space gets a
+     * fresh room on it.
+     *
+     * The server has to be reachable by every member, and should run with `AUTO_ADMIT=true`:
+     * otherwise only the space's creator is admitted to its room, and nothing in WE can admit
+     * anyone else. Unset, spaces keep publishing on the node's default link language.
+     */
+    linkServerUrl?: string;
     /**
      * The `ad4m-executor` binary the desktop hosts bundle, relative to the workspace root (or
      * absolute). Required — `setup-workspace` and `validate-seed` both fail without it.

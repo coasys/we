@@ -2,10 +2,13 @@ import type { BackendConnector } from '@shared/backend/types';
 import { initializeIntegrations } from '@shared/initializeIntegrations';
 import { PlatformAdapter } from '@shared/platform/types';
 import { createModuleStoreDeps } from '@shared/registries/moduleHostServices';
-import { createContext, createEffect, createSignal, ParentComponent, useContext } from 'solid-js';
+import { moduleRegistry } from '@shared/registries/moduleRegistry';
+import { provideFileSaver } from '@we/design-utils';
+import { createContext, createEffect, createSignal, onCleanup, ParentComponent, useContext } from 'solid-js';
 
 import type { WeSeedFile } from '../../../types/seed';
-import { componentRegistry } from '../registries/componentRegistry';
+import { registerModuleComponents } from '../registries/componentRegistry';
+import { moduleHostComponents } from '../registries/moduleComponents';
 
 const PlatformContext = createContext<PlatformAdapter>();
 const BackendContext = createContext<BackendConnector>();
@@ -30,7 +33,8 @@ export const PlatformProvider: ParentComponent<{
   // Components are handed over here, where the framework is known — `initializeIntegrations` itself
   // stays framework-neutral.
   initializeIntegrations(props.platform, props.seed, {
-    components: { CesiumGlobe: componentRegistry.CesiumGlobe },
+    // The framework halves of the modules that have one, lent so their packages never import Solid.
+    components: moduleHostComponents,
     // Reactivity lent to module stores. Solid's primitives already have the shapes the port asks
     // for, so a module store gets reactivity without importing a framework. The remaining deps
     // (transport, presence, the current dataset) are bound late — the stores that own them mount
@@ -39,7 +43,15 @@ export const PlatformProvider: ParentComponent<{
       signal: <T,>(initial: T) => createSignal(initial) as [() => T, (next: T) => void],
       effect: (fn) => createEffect(fn),
     }),
+    host: { backend: props.backend.id ?? 'ad4m', framework: 'solid' },
   });
+  // What the modules contributed becomes vocabulary a template may name — one list, from the
+  // registry, rather than a second hand-kept in the component registry.
+  registerModuleComponents(moduleRegistry.components());
+
+  // Every download in the app goes through `saveFile`; a host with its own save dialog lends it here,
+  // once, rather than to each of the packages that offer a download.
+  if (props.platform.saveFile) onCleanup(provideFileSaver(props.platform.saveFile));
 
   return (
     <PlatformContext.Provider value={props.platform}>

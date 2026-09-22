@@ -33,6 +33,8 @@ import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
+import { VIEWING_LIVE_EXPR } from './subject';
+
 /**
  * How big the leading glyph is, whichever glyph it happens to be.
  *
@@ -53,7 +55,7 @@ const GLYPH_SIZE = 'sm';
  * thing to look at rather than as a hint about where the row goes. 16px is the size the prompt's
  * own caret already used and looked right at, so the three carets in the bar now agree.
  */
-const CARET_SIZE = 'xs';
+export const CARET_SIZE = 'xs';
 
 /**
  * A spinner while it runs, the outcome's own glyph once it stops.
@@ -105,11 +107,24 @@ const runnerFace: SchemaNode = {
  *
  * The elapsed time renders only while the pass is running — the store returns `''` once it has
  * settled, since a finished pass reports what it did and how long it took stops being the question.
+ *
+ * ## Who gives up room
+ *
+ * The label, and only the label. It wraps between words rather than truncating: "Anna is writing
+ * what she found" is a sentence, and cutting it to "Anna is writing wh…" drops the part that says
+ * what is happening — in a panel narrow enough to need it, a second line costs less than that.
+ * `minWidth: '0'` is what lets it wrap at all; without it a flex item will not be narrower than its
+ * longest line.
+ *
+ * The clock never gives up anything. It was a `we-text` like the label, so when the label refused
+ * to shrink the row took the room out of the clock instead and folded "1:23" onto two lines. It is
+ * an elapsed duration rather than an instant, so `we-timestamp` — which already holds this rule —
+ * is not the element for it; the rule is written out here instead.
  */
 const passRowChildren: SchemaNode[] = [
   phaseIcon,
   runnerFace,
-  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: [{ $: 'pass.label' }] },
+  { type: 'we-text', props: { fontSize: '200', flex: '1', minWidth: '0' }, children: [{ $: 'pass.label' }] },
   {
     type: '$if',
     props: {
@@ -117,7 +132,13 @@ const passRowChildren: SchemaNode[] = [
       then: {
         // Tabular, so the seconds column does not jitter the row every time it ticks.
         type: 'we-text',
-        props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
+        props: {
+          fontSize: '200',
+          color: 'text-faint',
+          flexShrink: '0',
+          whiteSpace: 'nowrap',
+          styles: { fontVariantNumeric: 'tabular-nums' },
+        },
         children: [{ $: 'pass.elapsed' }],
       },
       /*
@@ -206,7 +227,7 @@ function paneLabel(label: string): SchemaNode {
  * The label is the control. It is already the heading, and a separate button beside it would be a
  * second thing to aim at for one behaviour.
  */
-function codePane(options: {
+export function codePane(options: {
   label: string;
   /** The already-indented text, from the store — a schema has no `JSON.stringify`. */
   value: SchemaProp;
@@ -214,6 +235,16 @@ function codePane(options: {
   isOpen: SchemaNode | Record<string, unknown>;
   /** The `$localState` array field this pane's toggle writes into. */
   field: string;
+  /**
+   * What identifies the row this pane belongs to, in the `$localState` set.
+   *
+   * The live bar keys on `pass.passId`, the processor id its rows are built around. The durable
+   * history renders `ExtractionPass` *records*, which have an ordinary record id and no passId at
+   * all — so the key is a parameter rather than the constant it started as. Both halves of the
+   * exchange are then read and displayed the same way whichever list they are in, which is the
+   * whole point of the manual and automatic passes now being stored alike.
+   */
+  key?: SchemaProp;
 }): SchemaNode {
   return {
     type: '$if',
@@ -228,7 +259,7 @@ function codePane(options: {
             props: {
               variant: 'bare',
               width: '100%',
-              onClick: { $toggleLocalIn: options.field, value: { $: 'pass.passId' } },
+              onClick: { $toggleLocalIn: options.field, value: options.key ?? { $: 'pass.passId' } },
             },
             children: [
               {
@@ -419,126 +450,25 @@ const runningList: SchemaNode = {
   children: [passEntry],
 };
 
-/**
- * Everything already finished, folded behind a count.
- *
- * A long call runs a pass every few minutes, and each one that completed stayed on screen — so the
- * bar grew all conversation, pushing the call's own chrome down to make room for a history nobody
- * had asked to see. Collapsing them keeps the bar the size of what is happening now while leaving
- * the record one click away.
- *
- * Deliberately not auto-dismissed after a delay. A result that vanishes on a timer is a result
- * somebody can miss entirely, and "what did that extract?" is asked minutes later as often as
- * immediately.
- */
-const settledSection: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'interpretationStore.settledCount' },
-    then: {
-      type: 'Column',
-      props: { gap: '200', width: '100%' },
-      children: [
-        {
-          type: 'we-button',
-          props: { variant: 'bare', width: '100%', onClick: { $toggleLocal: 'historyOpen' } },
-          children: [
-            {
-              type: 'Row',
-              props: { ay: 'center', gap: '200', width: '100%' },
-              children: [
-                /*
-                  A sparkle, not a tick.
+/*
+  The settled half of this feed is gone, and the "N extractions processed" fold with it.
 
-                  A tick here said "these succeeded", which is both wrong — some of them found
-                  nothing, some failed — and a repeat of the per-row glyph one level down. The row
-                  is about extraction having happened, so the icon names the activity rather than
-                  grading it, and the ticks stay where they mean something.
-                */
-                { type: 'we-icon', props: { size: GLYPH_SIZE, name: 'sparkle', color: 'text-faint' } },
-                {
-                  type: 'we-text',
-                  props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
-                  children: [
-                    { $: 'interpretationStore.settledCount' },
-                    ' ',
-                    { $: "plural(interpretationStore.settledCount, 'extraction processed', 'extractions processed')" },
-                  ],
-                },
-                {
-                  type: 'we-icon',
-                  props: {
-                    size: CARET_SIZE,
-                    color: 'text-muted',
-                    name: { $: "local.historyOpen ? 'caret-up' : 'caret-down'" },
-                  },
-                },
-              ],
-            },
-          ],
-        },
-        /*
-          A way to forget what has finished.
+  It collapsed every finished pass behind a count so the bar stayed the size of what was happening
+  now — the right shape while this was the only place a finished pass was reported. It stopped being
+  that when every pass, one-shot and watched alike, started being written down as an `ExtractionPass`
+  and listed under "Logs" in this same panel: two lists of the same rows a few hundred pixels apart,
+  neither saying which was which.
 
-          The store has published `dismissSettled` since the readout existed and nothing called it,
-          so a history could only ever grow — and this is a list somebody watches for minutes at a
-          time, so "everything that has ever happened" is the state it spends most of its life in.
-          Only what has settled: a running pass is not this agent's to dismiss, which is why the
-          store's action leaves those alone rather than taking a filter.
-
-          Beside the count rather than on each row, because the decision is about the list. Offered
-          only while the list is open, so the collapsed line stays a summary and not a control strip.
-        */
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'local.historyOpen' },
-            then: {
-              type: 'Row',
-              props: { width: '100%', ax: 'end' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: {
-                    variant: 'ghost',
-                    size: 'xs',
-                    onClick: { $action: 'interpretationStore.dismissSettled' },
-                  },
-                  children: [{ type: 'we-text', props: { variant: 'footnote' }, children: ['Clear'] }],
-                },
-              ],
-            },
-          },
-        },
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'local.historyOpen' },
-            enterTransition: { type: 'reveal', duration: 200 },
-            exitTransition: { type: 'reveal', duration: 160 },
-            then: {
-              type: 'Column',
-              props: { gap: '200', width: '100%' },
-              children: [
-                {
-                  type: '$each',
-                  props: { items: { $: 'interpretationStore.settledPasses' }, as: 'pass' },
-                  children: [passEntry],
-                },
-              ],
-            },
-          },
-        },
-      ],
-    },
-  },
-};
+  The durable one wins on every count. It survives a reload, it is scoped to the call by containment
+  rather than to whatever this session happened to observe, and it carries the outcome, the trigger
+  and the stored exchange. What this feed keeps is the half the log cannot give: a pass while it is
+  still running. See `extractionHistory` in Panel.schema.ts.
+*/
 
 /**
  * The disclosures a pass carries, and the state that opens them.
  *
- * Split out from the chrome node because the two now live in different places — see
- * {@link extractionActivity} and {@link extractionControl} below.
+ * Split out from the chrome node it used to live in — see {@link extractionActivity} below.
  */
 const activityLocalState = {
   /**
@@ -560,14 +490,15 @@ const activityLocalState = {
   openPrompts: { type: 'array', initial: [] },
   /** Which responses have been closed — see `responsePane` on why this one is inverted. */
   closedResponses: { type: 'array', initial: [] },
-  /**
-   * Whether the finished-passes history is open.
-   *
-   * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
-   * bar's job is to report what is happening, and a history that unfolded itself every time
-   * something finished would be the growth this collapse exists to stop.
-   */
-  historyOpen: { type: 'boolean', initial: false },
+  /*
+    There was a `historyOpen` here, folding this readout's own list of finished passes.
+
+    It went with the list. Every pass is written down as an `ExtractionPass` and read back under
+    "Logs" in the panel, so the settled half of this feed was the same rows again a few hundred
+    pixels away; what is left is a pass *while it runs*, which is never a list long enough to fold.
+    The field outlived the thing it opened and nothing read it — declared state that no expression
+    names is invisible, so it sat here through two rewrites of the section it belonged to.
+  */
 };
 
 /**
@@ -589,9 +520,12 @@ const activityLocalState = {
  * the glance stays in the chrome as one line.
  *
  * The original argument for the chrome — that a pass outlives the panel that started it, and that
- * the four people who did *not* start it are the ones most likely to want the readout — is what
- * {@link extractionControl} still satisfies. It says who and how long, for everybody, without
- * needing the panel open.
+ * the four people who did *not* start it are the ones most likely to want the readout — is now
+ * answered by the module rail: the Extraction launcher declares `busyWhen`, so it spins while any
+ * peer's pass runs, for everybody, without the panel open. The square this module used to add to
+ * the call bar for the same purpose doubled as the switch for automatic extraction — a group
+ * decision, beside a personal one that looked identical — and the bar only exists during a call,
+ * which is the one time nobody needs to be told to open the panel.
  */
 export const extractionActivity: SchemaNode = {
   type: '$if',
@@ -607,7 +541,21 @@ export const extractionActivity: SchemaNode = {
     which are written down and hang off the collection. See `extractionHistory`.
   */
   props: {
-    condition: { $: 'interpretationStore.hasActivity && !routeStore.params.call' },
+    /*
+      Running passes only, and `runningCount` rather than `hasActivity` is the whole of that.
+
+      `hasActivity` counts settled rows too — deliberately, so a readout gated on it did not vanish
+      the instant a pass finished and take its result with it. That was right while this was the only
+      place a finished pass was reported. It is not any more: every pass, one-shot and watched alike,
+      is now written down as an `ExtractionPass` and listed under "Logs" in the same panel, so the
+      settled half of this feed was the same passes again a few hundred pixels higher, with no
+      heading to say which list was which.
+
+      What is left here is the half the log genuinely cannot give: a pass *while it runs*, whoever
+      started it, with its phase and its elapsed clock. A row appears when somebody begins and leaves
+      when the durable entry takes over.
+    */
+    condition: { $: `interpretationStore.runningCount && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
       $localState: activityLocalState,
@@ -615,116 +563,11 @@ export const extractionActivity: SchemaNode = {
         gap: '200',
         width: '100%',
       },
-      children: [
-        runningList,
-        settledSection,
-        /*
-          Why somebody else's row will not open, said once.
-
-          This was a tooltip on every row — the wrong place twice over: hover text is not where
-          anyone looks for an explanation of why a control is inert, and one setting's worth of
-          explanation was repeated per pass. It also happened to be the box that stopped the caret
-          reaching the right edge.
-
-          Shown only while the space's setting is the reason a peer's row will not open, and it
-          names the way out: this is the one moment somebody wants that setting, and settings is not
-          where anyone looks for a control they have never seen. Gated on the setting rather than on
-          a row lacking detail — see `detailWithheld` in the store for what the other gate showed.
-
-          One short line at footnote size. Two sentences at body size took more of the bar than the
-          rows it was explaining, for a fact that is the same on every pass.
-        */
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'interpretationStore.detailWithheld' },
-            then: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Prompts stay on each person’s machine — share them in space settings.'],
-            },
-          },
-        },
-      ],
-    },
-  },
-};
-
-/**
- * Read this call as it happens, or stop — the extraction counterpart of the record button.
- *
- * ## Why a verb and not a way in
- *
- * It opened the extraction panel first, which the rail already does, so the bar carried a second
- * button for something a person could already reach. The record button beside it is not a way in
- * either: it *starts and stops the thing*, and opening the panel is a side effect of switching it
- * on. That is the pairing the bar wants — one control for capturing the conversation, one for
- * reading it — and the rail keeps the panels.
- *
- * ## The three states are the record button's three states
- *
- * Off is `ghost`, matching the call's own mute and camera buttons so the row reads as one set of
- * controls. On but idle is `secondary` — the watch is registered and waiting for something to be
- * said. A pass actually in flight is `danger`, and it is the same argument recording makes: a state
- * that arrives on its own, spending somebody's tokens, has to be legible without being looked for,
- * and the loudest thing in the bar is the way out of it.
- *
- * ## What it changes is everyone's
- *
- * The button beside it is this agent's microphone; this is the whole call's. A standing watch is one
- * registration the neighbourhood shares, so it cannot be a private preference — which makes two
- * near-identical squares with different blast radii, and the tooltip is the only place that can say
- * so. It says so.
- *
- * Absent where there is no call to decide about, rather than disabled: `canChooseTargets` asks about
- * the same record, and a control explaining why it cannot work belongs in the panel, which has room
- * for a sentence.
- */
-export const extractionControl: SchemaNode = {
-  type: '$if',
-  props: {
-    /*
-      The live call's answer, named as such.
-
-      Extraction is asked per call now — a panel can be about one somebody opened from a link — so
-      the store answers by record id. This control is in the *call bar*, which only ever exists
-      during a call, so the record it means is always `callId`.
-    */
-    condition: { $: 'modules.transcribe.extractionFor[modules.transcribe.callId].canChoose' },
-    then: {
-      type: 'we-tooltip',
-      props: {
-        title: {
-          $: "modules.transcribe.autoExtract ? 'Stop reading this call for everyone in it' : 'Read this call as it happens, for everyone in it'",
-        },
-        placement: 'bottom',
-      },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            // No `size`, and `square`, for `callControl`'s reasons: a contributed button is only one
-            // of the bar's controls while it is the same shape as the rest of them.
-            square: true,
-            variant: {
-              $: "interpretationStore.runningCount ? 'danger' : modules.transcribe.autoExtract ? 'secondary' : 'ghost'",
-            },
-            onClick: { $action: 'modules.transcribe.toggleAutoExtract' },
-          },
-          children: [
-            {
-              // A spinner while a pass is in flight, so "on" and "working right now" are told apart
-              // in the control rather than by a second object appearing beside it.
-              type: '$if',
-              props: {
-                condition: { $: 'interpretationStore.runningCount' },
-                then: { type: 'we-spinner', props: { size: 'xs' } },
-                else: { type: 'we-icon', props: { name: 'sparkle' } },
-              },
-            },
-          ],
-        },
-      ],
+      /*
+        No footnote about a peer's row not opening: a peer's exchange is never sent live, and every
+        member reads it from the call's `ExtractionPass` record once the pass settles.
+      */
+      children: [runningList],
     },
   },
 };

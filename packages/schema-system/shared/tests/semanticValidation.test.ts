@@ -158,6 +158,51 @@ describe('buildValidationContext', () => {
   });
 });
 
+describe('foreign elements a seed allows', () => {
+  const withRating = () =>
+    buildValidationContext(
+      makeContext({
+        foreignElements: [
+          {
+            tagName: 'sl-rating',
+            package: '@shoelace-style/shoelace',
+            props: [
+              { name: 'value', type: 'number', optional: true },
+              { name: 'max', type: 'number', optional: true },
+            ],
+            events: ['sl-change'],
+          },
+        ],
+      }),
+    );
+
+  it('accepts the tag, its documented props and an exact-name event handler', () => {
+    const result = validateSemantic(
+      {
+        type: 'sl-rating',
+        props: {
+          value: 3,
+          max: 5,
+          'on:sl-change': { $action: 'routeStore.navigate', args: [{ $: 'event.target.value' }] },
+        },
+      },
+      withRating(),
+    );
+    expect(result.errors.filter((e) => e.severity === 'error')).toEqual([]);
+    expect(result.errors.filter((e) => e.message.includes('Unknown prop'))).toEqual([]);
+  });
+
+  it('warns on a prop the element does not document — a design-system prop included', () => {
+    const result = validateSemantic({ type: 'sl-rating', props: { vlaue: 3 } }, withRating());
+    expect(result.errors.map((e) => e.message).join('\n')).toContain('Unknown prop "vlaue"');
+  });
+
+  it('still refuses a hyphenated tag nobody allowed', () => {
+    const result = validateSemantic({ type: 'sl-button' }, withRating());
+    expect(result.errors[0]?.message).toContain('Unknown component "sl-button"');
+  });
+});
+
 describe('unknown component', () => {
   it('errors for unknown component type', () => {
     const result = validateSemantic({ type: 'we-buttn' }, ctx());

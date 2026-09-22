@@ -33,6 +33,7 @@ export const TaskBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'Something to do, with a status and someone on it',
     interpretationHint:
       'A piece of work the speakers say needs doing and that is not done yet. Includes anything phrased as "we need to…", "one task is…", "someone should…", or a commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. It must be work in the world that outlives this conversation. Exclude work described as already finished, work raised purely to rule it out, and anything about the act of talking or testing itself — "let me add another one", "I need to say more to trigger this" and the like are about the conversation, not work anybody committed to.',
     flag: { predicate: 'we://flag', value: 'we://task_block' },
@@ -113,6 +114,10 @@ export const TaskBlock: CoreEntityDef = {
         type: 'string',
         predicate: 'we://status',
         options: ['todo', 'doing', 'done'],
+        // And the space's own states are the real list, where a host can resolve one — see
+        // `vocabulary` on the declaration, and `spaceStore.offeredTaskStates`, which is where the
+        // community's `TaskState` records are resolved against these defaults.
+        vocabulary: 'taskState',
         interpretationHint:
           'Exactly one of: "todo", "doing", "done". Use "todo" unless the speaker says work has begun.',
         default: 'todo',

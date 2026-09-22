@@ -482,7 +482,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
 export const landingPageTemplate: TemplateSchema = {
   meta: { name: 'About WE', description: 'What WE is and why it exists', icon: 'info' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
+  props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
   children: [
     {
       type: 'Column',

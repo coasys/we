@@ -89,6 +89,21 @@ export interface PropertySchema {
   options?: (string | number)[];
 
   /**
+   * Names a vocabulary the **community** owns, for which {@link options} is only the floor.
+   *
+   * A task's status is the case this exists for. `options` there is `todo`/`doing`/`done`, and that
+   * list is deliberately not what a space may have defined: it steers an extraction model, which
+   * cannot be asked to guess words it has never been shown. But a space that has named "Blocked" can
+   * hold a task in it — nothing enforces `options`, and the declaration says so — and a picker built
+   * from `options` alone then cannot offer the state the record is already in.
+   *
+   * So the two facts are separated. `options` stays the model's floor, and this says whose list the
+   * *real* one is, for a host that can resolve it. A host that cannot falls back to `options`, which
+   * is what every consumer did before this existed.
+   */
+  vocabulary?: string;
+
+  /**
    * Which control a derived form should offer, where the scalar type does not say.
    *
    * The sibling of `options`, and here for the same reason: a form generated from a manifest can
@@ -101,7 +116,7 @@ export interface PropertySchema {
    * Presentation, not storage — `format` is the storage counterpart and stays about where bytes
    * live. Absent means "whatever the type implies", which is right for most properties.
    */
-  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url';
+  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url' | 'icon';
 }
 
 /**
@@ -195,6 +210,16 @@ export interface EntitySchema {
   properties: Record<string, PropertySchema>;
   /** Typed edges, keyed by relation name. */
   relations: Record<string, RelationSchema>;
+
+  /**
+   * What this kind of thing is, in one line a person reads — "A picture, uploaded".
+   *
+   * Shown wherever a type is chosen or explained: the chooser's card, the key, an inspector's
+   * heading. On the declaration rather than in a table beside the icons, because it is part of what
+   * the type *is*, and a community's own types already carry one from the wizard — one field serves
+   * both. Absent reads as nothing to say, not as an error.
+   */
+  description?: string;
 
   /**
    * How instances of this entity are told apart from everything else in the same dataset.
@@ -318,8 +343,28 @@ export interface EntitySchema {
    * someone deciding it should have one. Entities a *community* defines are the other way round —
    * every property of a shape somebody wrote is theirs by construction, so those need no
    * declaration and never carry one.
+   *
+   * ## A form is not a place in "create something"
+   *
+   * What a person can create as content is every **block** there is a way to make (see `blockable`
+   * and `composed`), and a community's own shapes. `Relationship` and `RelationshipType` have forms
+   * and are not blocks: one is drawn between two records, the other named in space settings, and a
+   * generic picker would make either wrong. Being content is what puts an entity in a picker, not
+   * having a form — so no flag is needed to keep those two out.
+   *
+   * There was one, `offered`, and it had been asked to carry a second judgement as well: that a
+   * picture or a file with nothing to belong to is not a thing anybody sets out to make. That did not
+   * hold — a picture is as much a thing as a link — and it is gone with the flag.
    */
   authoring?: { fields: string[] };
+
+  /**
+   * Made by composing a document rather than by filling in fields — a post, a note, a board's card.
+   * The composer is its authoring surface, so a surface offering "create something" opens that for
+   * it instead of a form. Separate from `authoring`, which is a field list and would give a
+   * container's display a list of fields it has nothing to say in.
+   */
+  composed?: boolean;
 
   /**
    * How an instance of this entity is shown when nothing was written to show it — the read-side
@@ -367,7 +412,7 @@ const propertySchema = z.object({
   interpretationHint: z.string().optional(),
   identity: z.boolean().optional(),
   options: z.array(z.union([z.string(), z.number()])).optional(),
-  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url']).optional(),
+  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url', 'icon']).optional(),
 });
 const relationSchema = z.object({
   target: z.string(),
@@ -384,9 +429,11 @@ const entitySchema = z.object({
   extends: z.string().optional(),
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
+  description: z.string().optional(),
   extractable: z.boolean().optional(),
   blockable: z.boolean().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),
+  composed: z.boolean().optional(),
   display: z
     .object({
       title: z.string().optional(),

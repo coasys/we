@@ -76,12 +76,26 @@ export { badgedAvatar } from './layout/badgedAvatar.ts';
 export type { BadgedAvatarOptions } from './layout/badgedAvatar.ts';
 export { pageShell } from './layout/pageShell.ts';
 export type { PageShellOptions } from './layout/pageShell.ts';
-export { PANEL_TITLE_PROPS, panelHeader, panelShell, SECTION_LABEL_PROPS, sectionLabel } from './layout/panelShell.ts';
-export type { PanelHeaderOptions, PanelShellOptions, SectionLabelOptions } from './layout/panelShell.ts';
+export {
+  PANEL_TITLE_PROPS,
+  panelHeader,
+  panelScroll,
+  panelShell,
+  SECTION_LABEL_PROPS,
+  sectionLabel,
+} from './layout/panelShell.ts';
+export type {
+  PanelHeaderOptions,
+  PanelScrollOptions,
+  PanelShellOptions,
+  SectionLabelOptions,
+} from './layout/panelShell.ts';
 export { recordCard } from './layout/recordCard.ts';
 export type { RecordCardOptions } from './layout/recordCard.ts';
 export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';
 export type { RailButtonOptions, RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
+export { iconDisc } from './layout/iconDisc.ts';
+export type { IconDiscOptions } from './layout/iconDisc.ts';
 export { sectionCard } from './layout/sectionCard.ts';
 export type { SectionCardOptions } from './layout/sectionCard.ts';
 export { statChip } from './layout/statChip.ts';
@@ -92,7 +106,7 @@ export { field } from './input/field.ts';
 export type { FieldOptions } from './input/field.ts';
 
 // Overlays.
-export { composerModal } from './overlays/composerModal.ts';
+export { backButton, composerModal } from './overlays/composerModal.ts';
 export type { ComposerModalOptions } from './overlays/composerModal.ts';
 export { confirmModal } from './overlays/confirmModal.ts';
 export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
@@ -100,6 +114,8 @@ export { discardGuard } from './overlays/discardGuard.ts';
 export type { DiscardGuardOptions } from './overlays/discardGuard.ts';
 export { formModal } from './overlays/formModal.ts';
 export type { FormModalOptions } from './overlays/formModal.ts';
+export { helpTip } from './overlays/helpTip.ts';
+export type { HelpTipOptions } from './overlays/helpTip.ts';
 /*
   Filed here rather than in the WE tier it was written in, because it names no store: the people, the
   pictures and the names all arrive as options. It was the fragment a module wanted first, and the

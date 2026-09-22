@@ -29,6 +29,8 @@ import {
   Space,
 } from '@we/entities';
 
+import { spliceSubsetOrder } from './shapes/subsetOrder';
+
 /** What the board actions need from the app around them. */
 export interface BoardDeps {
   /**
@@ -53,6 +55,26 @@ export interface BoardDeps {
    * before it writes. Optional, since a host without extraction has nothing to settle.
    */
   resolveSuggestion?: (recordId: string, property: string) => Promise<void>;
+  /**
+   * Show an arrangement before it is stored, and stop showing it when it fails.
+   *
+   * A drop writes a relation and then waits about a second for the subscription to come back, during
+   * which the card is drawn from the last answer — back where it started. `hold` is what the board
+   * draws in the meantime; `release` withdraws it, and is called only when the write **failed**.
+   *
+   * A write that succeeded is not released here, and that is the point. Releasing on success would
+   * mean releasing when the promise resolves, which is earlier than the data arriving — so the card
+   * would go back for the rest of the round trip, which is the flash again with extra steps. What
+   * releases a successful one is the data moving, which only whatever draws the board can see.
+   *
+   * Optional, so a host that would rather wait for the truth simply passes neither.
+   */
+  hold?: (recordId: string, relation: string, ids: readonly string[]) => void;
+  /** Withdraw a held arrangement — the write failed, so what is on screen is a lie. */
+  release?: (recordId: string, relation: string) => void;
+  /** The same pair for a card's state, which a drop into a bound column writes alongside the order. */
+  holdStatus?: (recordId: string, status: string) => void;
+  releaseStatus?: (recordId: string) => void;
 }
 
 export interface CreateBoardOptions {
@@ -75,8 +97,15 @@ export interface BoardActions {
   removeBoardColumn: (boardId: string, columnId: string) => Promise<void>;
   renameBoardColumn: (columnId: string, name: string) => Promise<void>;
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
-  arrangeColumn: (columnId: string, orderedIds: string[]) => Promise<void>;
-  moveCardToColumn: (fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[]) => Promise<void>;
+  arrangeColumn: (columnId: string, orderedIds: string[], columnOrder?: string[]) => Promise<void>;
+  moveCardToColumn: (
+    fromColumnId: string,
+    toColumnId: string,
+    cardId: string,
+    orderedIds?: string[],
+    toSlug?: string,
+    columnOrder?: string[],
+  ) => Promise<void>;
   addTaskToColumn: (columnId: string, title: string, anchorId?: string) => Promise<void>;
 }
 
@@ -84,6 +113,10 @@ const ids = (value: unknown): string[] => (Array.isArray(value) ? (value as stri
 
 export function createBoardActions(deps: BoardDeps): BoardActions {
   const { dataset, offeredStates, notify, resolveSuggestion } = deps;
+  const hold = deps.hold ?? (() => {});
+  const release = deps.release ?? (() => {});
+  const holdStatus = deps.holdStatus ?? (() => {});
+  const releaseStatus = deps.releaseStatus ?? (() => {});
 
   /**
    * The title a column stores: nothing, when it is the name of the state it stands for.
@@ -127,12 +160,31 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * any number of boards, all of them its children; one of them is the one it points at.
    *
    * One transaction, so nobody sees a board with no columns between the writes.
+   *
+   * ## The columns are made first, and handed to the board as it is created
+   *
+   * Not written onto it afterwards. A record created in a batch cannot be read back until the batch
+   * commits — the executor stages it out of every query — and a relation write by id starts with
+   * exactly that read. So `setRelation(board.id, 'children', …)` inside this transaction found no
+   * board, did nothing, and said nothing: every board came out pointed at by its call and holding no
+   * columns, while three column records sat in the space with nothing pointing at them. The columns
+   * themselves are only *named* by the board's create, never read, so making them first is safe.
    */
   async function createBoard(title: string, parentId?: string, options?: CreateBoardOptions): Promise<string> {
     const p = dataset(options?.dataset);
     if (!p || !title.trim()) return '';
     try {
       return await runEntityTransaction(p, async (tx) => {
+        // Sequential rather than parallel: the order they are made in is the board's own.
+        const columns: string[] = [];
+        for (const state of offeredStates()) {
+          const column = await CollectionBlock.create(
+            p,
+            { kind: 'column', mode: 'feed', title: '', slug: state.slug, type: '' },
+            { batchId: tx.batchId },
+          );
+          columns.push(column.id);
+        }
         const board = await CollectionBlock.create(
           p,
           {
@@ -143,26 +195,16 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
             // An untyped to-one is written as a one-element list at creation, the way `Placement`
             // writes `node`: the generated class exposes no setter for a relation with no target.
             ...(options?.gathers ? { gathers: [options.gathers] } : {}),
+            // In the order made, which is the community's order — see the note above on why here.
+            ...(columns.length ? { children: columns } : {}),
           } as never,
           { batchId: tx.batchId },
         );
-        // Sequential rather than parallel: the columns have to exist before `setChildren` can name
-        // them in order, and their order is the board's own.
-        const columns: string[] = [];
-        for (const state of offeredStates()) {
-          const column = await CollectionBlock.create(
-            p,
-            { kind: 'column', mode: 'feed', title: '', slug: state.slug, type: '' },
-            { batchId: tx.batchId },
-          );
-          columns.push(column.id);
-        }
-        if (columns.length) await board.setChildren(columns, tx.batchId);
         if (parentId) {
           const parent = await CollectionBlock.findOne(p, { where: { id: parentId } });
           // A parent that has gone leaves the board loose rather than failing the create: the board
           // is already made, and losing it to report a missing container helps nobody.
-          if (parent) await parent.addChildren(board.id, tx.batchId);
+          if (parent) await CollectionBlock.addRelation(p, parent.id, 'children', board.id, tx.batchId);
         }
         return board.id;
       });
@@ -299,7 +341,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           { kind: 'column', mode: 'feed', title: columnTitle(name, slug), slug, type: '' },
           { batchId: tx.batchId },
         );
-        await board.addChildren(column.id, tx.batchId);
+        await CollectionBlock.addRelation(p, board.id, 'children', column.id, tx.batchId);
       });
     } catch (error) {
       console.error('SpaceStore: could not add that column', error);
@@ -371,8 +413,12 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         if (board) {
           const held = ids(board.arranges);
           const orphans = ids(column?.arranges).filter((id) => !held.includes(id));
-          if (orphans.length) await board.setArranges([...held, ...orphans], tx.batchId);
-          await board.setChildren(
+          if (orphans.length)
+            await CollectionBlock.setRelation(p, board.id, 'arranges', [...held, ...orphans], tx.batchId);
+          await CollectionBlock.setRelation(
+            p,
+            board.id,
+            'children',
             ids(board.children).filter((id) => id !== columnId),
             tx.batchId,
           );
@@ -428,15 +474,26 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   async function reorderBoardColumns(boardId: string, orderedIds: string[]): Promise<void> {
     const p = dataset();
     if (!p || !boardId || !Array.isArray(orderedIds) || !orderedIds.length) return;
+    // On the tick of the drop, for the reason `arrangeColumn` gives.
+    hold(boardId, 'children', orderedIds);
     try {
       const board = await CollectionBlock.findOne(p, { where: { id: boardId } });
-      if (!board) return;
+      if (!board) {
+        release(boardId, 'children');
+        return;
+      }
       const current = ids(board.children);
       const known = new Set(current);
       const ordered = orderedIds.filter((id) => known.has(id));
       if (!ordered.length) return;
       const moved = new Set(ordered);
-      await board.setChildren([...ordered, ...current.filter((id) => !moved.has(id))]);
+      const next = [...ordered, ...current.filter((id) => !moved.has(id))];
+      try {
+        await CollectionBlock.setRelation(p, board.id, 'children', next);
+      } catch (error) {
+        release(board.id, 'children');
+        throw error;
+      }
     } catch (error) {
       console.error('SpaceStore: could not reorder the columns', error);
       notify('Could not save that order');
@@ -454,13 +511,35 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * An ordered relation rather than a `position` scalar, and this is the thing that could not be
    * done before: two people rearranging the same column at the same moment converge, where two
    * writes of the same number lose one of the answers.
+   *
+   * **`columnOrder` is for a column showing part of itself** — a people filter hiding cards, or one
+   * person's row. The sortable hands over only what it shows, and "that, then everything else" sends
+   * every hidden card to the bottom of the column for everybody. Given the column's whole order as
+   * the board draws it unfiltered, the moved cards go back into their own slots instead; see
+   * `spliceSubsetOrder`. Omitted, the list is taken to be the whole column, as it always was.
    */
-  async function arrangeColumn(columnId: string, orderedIds: string[]): Promise<void> {
+  async function arrangeColumn(columnId: string, shownIds: string[], columnOrder?: string[]): Promise<void> {
     const p = dataset();
-    if (!p || !columnId || !Array.isArray(orderedIds) || !orderedIds.length) return;
+    if (!p || !columnId || !Array.isArray(shownIds) || !shownIds.length) return;
+    const orderedIds = Array.isArray(columnOrder) ? spliceSubsetOrder(columnOrder, shownIds) : shownIds;
+    /*
+      Held before anything is read, which is the difference between "almost instant" and instant.
+
+      `we-sortable` restores the dragged card's opacity and *then* dispatches, in the same tick — so
+      whatever it dispatches to has one synchronous chance to reorder the list before the browser
+      paints. Holding after the `findOne` below forfeits it: the card is painted undimmed at its old
+      position and stays there for a whole read round trip.
+
+      What the relation read as before this is neither known nor needed yet — the first draw supplies
+      it. See `PendingOrder.before`.
+    */
+    hold(columnId, 'arranges', orderedIds);
     try {
       const column = await CollectionBlock.findOne(p, { where: { id: columnId } });
-      if (!column) return;
+      if (!column) {
+        release(columnId, 'arranges');
+        return;
+      }
       const current = ids(column.arranges);
       const moved = new Set(orderedIds);
       /*
@@ -469,7 +548,15 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         before writing ordering entries, so sending the full order costs entries only for the cards
         that actually moved, and a concurrent drag of a card nobody here touched is not overwritten.
       */
-      await column.setArranges([...orderedIds, ...current.filter((id) => !moved.has(id))]);
+      // The visible order, then whatever the column still names that it no longer shows. The overlay
+      // above already draws the visible part; this is what gets stored.
+      const next = [...orderedIds, ...current.filter((id) => !moved.has(id))];
+      try {
+        await CollectionBlock.setRelation(p, column.id, 'arranges', next);
+      } catch (error) {
+        release(column.id, 'arranges');
+        throw error;
+      }
     } catch (error) {
       console.error('SpaceStore: could not save the column arrangement', error);
       notify('Could not save that arrangement');
@@ -497,15 +584,42 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * One transaction. Before this the three were separate round trips, ordered add-then-remove so a
    * failure between them left the card in two columns rather than none. A batch makes the question
    * moot: every reader sees the card in one column, in one state, or the move did not happen.
+   *
+   * `columnOrder` is the target column's whole order, for a drop into a column showing only part of
+   * itself — `arrangeColumn` says why.
    */
   async function moveCardToColumn(
     fromColumnId: string,
     toColumnId: string,
     cardId: string,
-    orderedIds?: string[],
+    shownIds?: string[],
+    toSlug?: string,
+    columnOrder?: string[],
   ): Promise<void> {
     const p = dataset();
     if (!p || !cardId || !toColumnId || fromColumnId === toColumnId) return;
+    const orderedIds =
+      Array.isArray(shownIds) && Array.isArray(columnOrder) && shownIds.includes(cardId)
+        ? spliceSubsetOrder(
+            columnOrder.filter((id) => id !== cardId),
+            shownIds,
+          )
+        : shownIds;
+    /*
+      Both halves, on the tick of the drop.
+
+      A drop into a bound column writes an order and a state, and they come back on two different
+      subscriptions — so holding only the order leaves a window where the target claims the card while
+      the card still reads as the old state, and the stale-hint rule throws it out of the target for
+      exactly that. Drawn in neither column, which is worse than the flash.
+
+      Which is why `toSlug` is a parameter. The state to hold is the target column's, and reading it
+      here costs the round trip this timing exists to avoid — while the board that dispatched the drop
+      has the slug on screen already. It is a **hint for the drawing only**: the write below still
+      reads the column and uses what it finds, so a stale hint costs a frame, never a wrong write.
+    */
+    if (Array.isArray(orderedIds) && orderedIds.includes(cardId)) hold(toColumnId, 'arranges', orderedIds);
+    if (toSlug) holdStatus(cardId, toSlug);
     try {
       const [from, to] = await Promise.all([
         /*
@@ -521,7 +635,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           : Promise.resolve(null),
         CollectionBlock.findOne(p, { where: { id: toColumnId } }),
       ]);
-      if (!to) return;
+      if (!to) {
+        release(toColumnId, 'arranges');
+        return;
+      }
       const task = to.slug
         ? await getEntitiesForPerspective('TaskBlock', p)?.findOne(p, { where: { id: cardId } })
         : null;
@@ -529,25 +646,67 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
       // cannot race.
       if (task && resolveSuggestion) await resolveSuggestion(cardId, 'status');
+      /*
+        Shown before it is written — see `BoardDeps.hold`.
+
+        Both halves, because a drop into a bound column writes two things that arrive on two
+        different subscriptions: the target's order and the card's own state. Holding only the order
+        leaves a window where the target claims the card while the card still reads as the old state,
+        and the stale-hint rule below throws it out for exactly that — so it would be drawn in
+        neither column, which is worse than the flash this replaces.
+
+        After the reads rather than at the top, because the state to hold is the target column's
+        slug and nothing knows it until the column has been read. That leaves one round trip of the
+        old behaviour; closing it means the caller passing the slug in, which is a wider change than
+        this is.
+      */
+      // The card appended, for a move with no position — the menu's path, which has no drop point.
+      if (!Array.isArray(orderedIds) || !orderedIds.includes(cardId)) {
+        hold(to.id, 'arranges', [...ids(to.arranges), cardId]);
+      }
+      // Only where the caller gave no hint, or gave the wrong one. Re-holding with the same value
+      // would reset the entry's age and its baseline, undoing the draw that has already happened.
+      if (to.slug && to.slug !== toSlug) holdStatus(cardId, to.slug);
+      // The hint said a state and the column turns out to name none — a lane, whose whole point is
+      // that dropping a card there changes nothing about the work. Stop claiming otherwise.
+      if (!to.slug && toSlug) releaseStatus(cardId);
+      // A lane writes no state, so nothing would take the card out of the column it left. Hold that
+      // side too, so the card is not drawn in both at once.
+      if (!to.slug && from) {
+        hold(
+          from.id,
+          'arranges',
+          ids(from.arranges).filter((id) => id !== cardId),
+        );
+      }
+
       await runEntityTransaction(p, async (tx) => {
         const current = ids(to.arranges);
         const dropped = Array.isArray(orderedIds) && orderedIds.includes(cardId) ? orderedIds : null;
         if (dropped) {
           const moved = new Set(dropped);
-          await to.setArranges([...dropped, ...current.filter((id) => !moved.has(id))], tx.batchId);
+          await CollectionBlock.setRelation(
+            p,
+            to.id,
+            'arranges',
+            [...dropped, ...current.filter((id) => !moved.has(id))],
+            tx.batchId,
+          );
         } else if (!current.includes(cardId)) {
-          await to.addArranges(cardId, tx.batchId);
+          await CollectionBlock.addRelation(p, to.id, 'arranges', cardId, tx.batchId);
         }
-        if (from) await from.removeArranges(cardId, tx.batchId);
+        if (from) await CollectionBlock.removeRelation(p, from.id, 'arranges', cardId, tx.batchId);
         if (task) {
           (task as Record<string, unknown>).status = to.slug;
           await (task as { save: (batch?: string) => Promise<unknown> }).save(tx.batchId);
-          // Development only: the write half of the picture the renderer's `[query]` lines give.
-          // Together they say whether a status that reached the backend came back to the screen.
-          if (import.meta.env.DEV) console.info(`[board] wrote status ${to.slug} to ${cardId}`);
         }
       });
     } catch (error) {
+      // The card goes back where it was: what is on screen is a lie the moment the write is refused,
+      // and the toast is the only thing saying so.
+      if (toColumnId) release(toColumnId, 'arranges');
+      if (fromColumnId) release(fromColumnId, 'arranges');
+      releaseStatus(cardId);
       console.error('SpaceStore: could not move that card', error);
       notify('Could not move that card');
     }
@@ -578,7 +737,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           ...(anchorId ? { parent: { id: anchorId, predicate: 'we://children' } } : {}),
           batchId: tx.batchId,
         } as never);
-        await column.addArranges((task as { id: string }).id, tx.batchId);
+        await CollectionBlock.addRelation(p, column.id, 'arranges', (task as { id: string }).id, tx.batchId);
       });
     } catch (error) {
       console.error('SpaceStore: could not add that task', error);

@@ -136,15 +136,21 @@ const editing: SchemaNode = {
           children: [
             { type: 'we-text', props: { variant: 'heading-md' }, children: [{ $: 'link.label' }] },
             {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'ghost',
-                ml: 'auto',
-                title: 'Edit',
-                onClick: { $setLocal: 'editOpen', value: true },
-              },
-              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+              type: 'we-tooltip',
+              props: { content: 'Edit' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    label: 'Edit',
+                    size: 'xs',
+                    variant: 'ghost',
+                    ml: 'auto',
+                    onClick: { $setLocal: 'editOpen', value: true },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                },
+              ],
             },
           ],
         },

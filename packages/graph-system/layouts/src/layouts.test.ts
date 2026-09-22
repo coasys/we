@@ -161,6 +161,57 @@ describe('manual layout', () => {
     expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
   });
 
+  it('keeps holding the drop while re-reads still carry the old coordinate', () => {
+    // A refresh for some unrelated write can land before this drop's own write does.
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    const result = layout.init(input([node('a', { x: 42, y: 84 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
+  });
+
+  it('lets a peer move a card this agent has already dragged', () => {
+    /*
+      The regression. The hold used to outlive its write for the life of the page, so once
+      somebody had dragged a card their canvas drew their drop point whatever the data said next —
+      and two people who had both touched it each saw their own arrangement until a reload.
+    */
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+    // This agent's write lands…
+    layout.init(input([node('a', { x: 5, y: 5 })]));
+    // …and then a peer moves the same card.
+    const result = layout.init(input([node('a', { x: 300, y: 400 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 300, y: 400 });
+  });
+
+  it('gives way to a peer write that lands before its own', () => {
+    // Both dragged at once: whatever the data settles on is what both canvases show.
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+
+    const result = layout.init(input([node('a', { x: 300, y: 400 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 300, y: 400 });
+  });
+
+  it('gives way once a card dragged out of the tray has a placement', () => {
+    const layout = manualLayout();
+    layout.init(input([node('a')]));
+    layout.fix?.('a', { x: 5, y: 5 });
+    expect(layout.init(input([node('a')])).positions.get('a')).toMatchObject({ x: 5, y: 5 });
+
+    const result = layout.init(input([node('a', { x: 6, y: 7 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 6, y: 7 });
+  });
+
   it('parks an unplaced node where the reader is looking, not at the origin', () => {
     // The origin is the one place guaranteed to be wrong: it is wherever the camera is not, so a
     // card created while panned elsewhere appeared to vanish.
@@ -181,6 +232,64 @@ describe('manual layout', () => {
     // Same row, evenly spaced — a tray rather than a scatter.
     expect(result.positions.get('a')!.y).toBe(result.positions.get('b')!.y);
     expect(result.positions.get('b')!.x - result.positions.get('a')!.x).toBe(100);
+  });
+
+  it('spaces parked cards by their size, so neighbours never overlap', () => {
+    // The default slot was 160 and a canvas card 180 wide, so every pair of new cards overlapped.
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const result = manualLayout({ size: { width: 180, height: 135 }, margin: 20 }).init(
+      input([node('a'), node('b')], [], { visible }),
+    );
+
+    expect(result.positions.get('b')!.x - result.positions.get('a')!.x).toBe(200);
+  });
+
+  it('skips a slot a placed card already covers', () => {
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const layout = manualLayout({ size: { width: 180, height: 135 }, margin: 20 });
+    // A placed card sitting over the first slot of the tray.
+    const result = layout.init(input([node('placed', { x: 100, y: 80 }), node('new')], [], { visible }));
+
+    expect(result.positions.get('new')!.x).toBe(300);
+  });
+
+  it('parks a second batch beside the first rather than on top of it', () => {
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const layout = manualLayout({ size: { width: 180, height: 135 }, margin: 20 });
+    const first = layout.init(input([node('a')], [], { visible }));
+    const second = layout.init(input([node('a'), node('b')], [], { visible, previous: first.positions }));
+
+    expect(second.positions.get('a')).toEqual(first.positions.get('a'));
+    expect(second.positions.get('b')!.x).not.toBe(second.positions.get('a')!.x);
+  });
+
+  it('never stacks parked cards, even when the view has room for only a few', () => {
+    // Zoomed in close there were two slots in view, and every card after the second landed on them.
+    const visible = { x: 0, y: 0, width: 450, height: 300 };
+    const nodes = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => node(id));
+    const result = manualLayout({ size: { width: 180, height: 135 }, margin: 20 }).init(input(nodes, [], { visible }));
+    const boxes = nodes.map((n) => result.positions.get(n.id)!);
+
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const apart = Math.abs(boxes[i].x - boxes[j].x) >= 180 || Math.abs(boxes[i].y - boxes[j].y) >= 135;
+        expect(apart, `${nodes[i].id} and ${nodes[j].id} overlap`).toBe(true);
+      }
+    }
+    // It still starts where the reader is looking.
+    expect(boxes[0].x).toBeLessThan(visible.width);
+    expect(boxes[0].y).toBeLessThan(visible.height);
+  });
+
+  it('parks a card afresh when it comes back, in the view the reader has now', () => {
+    // Hiding suggestions and showing them again, zoomed out, is how a reader moves a batch that
+    // landed on their work — so a card that left the graph is not held to where it was parked.
+    const layout = manualLayout({ size: { width: 180, height: 135 } });
+    layout.init(input([node('a')], [], { visible: { x: 0, y: 0, width: 800, height: 600 } }));
+    layout.init(input([], [], { visible: { x: 0, y: 0, width: 800, height: 600 } }));
+    const back = layout.init(input([node('a')], [], { visible: { x: 5000, y: 5000, width: 800, height: 600 } }));
+
+    expect(back.positions.get('a')!.x).toBeGreaterThanOrEqual(5000);
   });
 
   it('falls back to the origin before a surface has been measured', () => {

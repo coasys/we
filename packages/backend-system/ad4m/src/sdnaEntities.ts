@@ -14,9 +14,12 @@ import {
   EdgeRoute,
   EmbedBlock,
   EventBlock,
+  ExtractionAmendment,
   ExtractionPass,
   FileBlock,
   ImageBlock,
+  Involvement,
+  InvolvementType,
   LinkBlock,
   LocationBlock,
   MutedAgent,
@@ -532,10 +535,10 @@ export async function ensureEntityRegistered(p: PerspectiveProxy, model: typeof 
  * Safe to call on every boot, and safe to call from multiple independent peers/processes —
  * only models not already present on the perspective are written.
  */
-export async function installRootSdna(p: PerspectiveProxy, moduleSchemas: readonly unknown[] = []): Promise<void> {
-  // Agent-scoped module entities go here rather than into a space: they are what a module knows
-  // about *you*, and the root perspective is the one that is never synced to anybody.
-  await ensureEntitiesRegistered(p, [...ROOT_MODELS, ...(moduleSchemas as (typeof Ad4mModel)[])]);
+export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
+  // Configuration only. Agent-scoped module entities install into the personal space, beside the
+  // content they belong with — see `SYSTEM_DATASET_NAMES` in the app shell.
+  await ensureEntitiesRegistered(p, [...ROOT_MODELS]);
 }
 
 /**
@@ -591,6 +594,16 @@ export const SPACE_MODELS = [
     differently for every member, and for most of them not at all.
   */
   ExtractionPass,
+  /*
+    A change a pass suggested to a record that already existed, and somebody kept.
+
+    Shared for the same reason the pass is, and one step more so: an amendment is the record of a
+    *decision*, and the decision was taken on everyone's behalf — the value it applied is in the
+    space for every member to read, so the account of where that value came from has to be too.
+    Private, a member would see the record change with no explanation that anybody else could see
+    either.
+  */
+  ExtractionAmendment,
   Template,
   Theme,
   WeNode,
@@ -612,6 +625,15 @@ export const SPACE_MODELS = [
   TaskState,
   TextBlock,
   VideoBlock,
+  /*
+    A person's part in a record, and the community's words for the kinds of part there are.
+
+    Shared, both of them, for `Relationship`'s reason: "Sarah is reviewing this" is a claim made to
+    the community, and an RSVP held privately would be a note to self about an event everyone else
+    is planning around.
+  */
+  Involvement,
+  InvolvementType,
 ] as const;
 
 /**

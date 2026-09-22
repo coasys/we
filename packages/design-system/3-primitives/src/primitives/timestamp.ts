@@ -5,10 +5,25 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { formatDate, formatRelativeTime } from '../utils';
 
+/*
+  A time is one atomic phrase, so it never gives up room and never breaks.
+
+  A flex item's automatic minimum size is its content, which makes a run of text the sibling that
+  yields when a row runs short — and "4 minutes ago" has no useful narrower form. Shrinking it does
+  not reflow anything; it folds the phrase onto two lines mid-sentence, which is what every consumer
+  then patched by hand. `recordCard` and the editor's inspector both carried `flexShrink: '0'`, one
+  of them with `whiteSpace: 'nowrap'` beside it, which is this rule written out twice.
+
+  The trade is deliberate: in a genuinely too-narrow box it now overflows rather than wrapping. That
+  is the better failure — legible and visibly wrong, rather than quietly mangled — and `truncate` is
+  there for the case that wants clipping.
+*/
 const styles = css`
   :host {
     --we-timestamp-host-display: inline;
     display: var(--we-timestamp-host-display);
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 `;
 
@@ -20,6 +35,8 @@ const styles = css`
  *
  * @attr {string}  value      - ISO 8601 date string or any value accepted by `new Date()`
  * @attr {boolean} relative   - Show relative time ("3 minutes ago") instead of absolute
+ * @attr {string}  relativeStyle - How wordy a relative time is: 'long' (default, "4 minutes ago"),
+ *                                 'short' ("4 min. ago") or 'narrow' ("4m ago")
  * @attr {string}  locale     - BCP 47 locale (default: 'en')
  * @attr {string}  dateStyle  - Intl.DateTimeFormat dateStyle: 'full'|'long'|'medium'|'short'
  * @attr {string}  timeStyle  - Intl.DateTimeFormat timeStyle: 'full'|'long'|'medium'|'short'
@@ -39,6 +56,15 @@ export default class WeTimestamp extends DesignSystemElement {
 
   @property({ type: String, reflect: true }) value = '';
   @property({ type: Boolean, reflect: true }) relative = false;
+  /**
+   * How wordy a relative time is — `Intl.RelativeTimeFormat`'s own `style`, and localised by it.
+   *
+   * `long` stays the default because it is what every byline in the app already reads as. A dense
+   * row — a transcript line, a card footer — asks for `short` or `narrow` and gets a properly
+   * translated abbreviation rather than a sliced string, which is the only reason this is a prop
+   * and not something a consumer could do for itself.
+   */
+  @property({ type: String, reflect: true }) relativeStyle: Intl.RelativeTimeFormatStyle = 'long';
   @property({ type: String, reflect: true }) locale = 'en';
 
   // Intl.DateTimeFormat options (mirrored as attributes)
@@ -91,7 +117,7 @@ export default class WeTimestamp extends DesignSystemElement {
     if (isNaN(date.getTime())) return this.value;
 
     if (this.relative) {
-      return formatRelativeTime(date, new Date(), this.locale);
+      return formatRelativeTime(date, new Date(), this.locale, this.relativeStyle);
     }
 
     const options: Intl.DateTimeFormatOptions = {};

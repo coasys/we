@@ -311,3 +311,113 @@ describe('breakpoint tiers', () => {
     expect(warnings[0]).toContain('did you mean "mdUpProps"');
   });
 });
+
+describe('"open" on a panel that supplies its own node', () => {
+  /*
+    The failure class this validator exists for, in its purest form: a field that typechecks,
+    validates, reads exactly as intended and is never consulted.
+
+    `open` suppresses a MODULE launcher — the call module's is `goToCall`, which joins a call when
+    there is not one, so `open: false` is what lets an interface place the call window without
+    starting a call for whoever walks in. An authored panel has no launcher to suppress: the host
+    places it and it is up. The shell reads the flag under a `panel.module &&` guard and there is no
+    second read site, so on a `node` entry it does nothing at all.
+
+    It shipped that way in the workshop template, which declared its calls list `open: false` and
+    got a panel that was always open — and was never wrong on screen, which is exactly why nobody
+    noticed for as long as they did.
+  */
+  const shell = (panel: Record<string, unknown>): SchemaNode =>
+    ({
+      meta: { name: 'T', description: 'D', icon: 'i', panels: [panel] },
+      type: 'Column',
+      props: { bg: 'page' },
+    }) as unknown as SchemaNode;
+
+  it('warns when an authored panel declares it', () => {
+    const warnings = messages(shell({ id: 'notes', node: { type: 'Column' }, open: false }), 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"module"');
+  });
+
+  it('warns on `open: true` as well — it is equally unread, not merely redundant', () => {
+    expect(messages(shell({ id: 'notes', node: { type: 'Column' }, open: true }), 'warning')).toHaveLength(1);
+  });
+
+  it('says nothing about a module panel, which is what the field is for', () => {
+    expect(messages(shell({ id: 'call', module: 'call', open: false }), 'warning')).toEqual([]);
+  });
+
+  it('says nothing about an authored panel that leaves it alone', () => {
+    expect(messages(shell({ id: 'notes', node: { type: 'Column' } }), 'warning')).toEqual([]);
+  });
+
+  it('warns rather than refuses, so a stranger’s template still installs', () => {
+    const result = check(shell({ id: 'notes', node: { type: 'Column' }, open: false }));
+    expect(result.valid).toBe(true);
+  });
+});
+
+describe('a query over several entities', () => {
+  it('checks each name in a literal list, and points at the one that is wrong', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $queries: { found: { entity: ['TaskBlock', 'EvntBlock'] } },
+    };
+    const errors = check(node).errors.filter((e) => e.severity === 'error');
+    expect(errors.map((e) => e.message)).toEqual(['Unknown model "EvntBlock" in $query. Did you mean "EventBlock"?']);
+    expect(errors[0].path).toContain('entity[1]');
+  });
+
+  it('leaves an expression answering with a list to runtime', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $localState: { kinds: { type: 'array', initial: [] } },
+      $queries: { found: { entity: { $: 'local.kinds' } } },
+    };
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});
+
+/**
+ * `gap: '050'` shipped in six places and was never a token: the scale goes 0, 100, 200. It resolved
+ * to a variable nothing declares, so there was no gap, and the prop's type — `SpaceValue`, a string —
+ * gave this validator nothing to compare against.
+ */
+describe('space values', () => {
+  it('rejects a number that is not a step of the scale, wherever it is written', () => {
+    for (const props of [
+      { gap: '050' },
+      { p: '050' },
+      { mdUpProps: { px: '250' } },
+      { gap: { $: "local.open ? '400' : '050'" } },
+    ]) {
+      const errors = messages(
+        { type: 'Column', props, $localState: { open: { type: 'boolean', initial: false } } },
+        'error',
+      );
+      expect(errors, JSON.stringify(props)).toHaveLength(1);
+      expect(errors[0]).toContain('is not a space token');
+    }
+  });
+
+  it('accepts steps, theme families where the axis has them, and CSS', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      props: {
+        gap: 'surface',
+        p: '400',
+        mt: '-8px',
+        top: 'calc(100% - 4px)',
+        left: 'auto',
+        mdUpProps: { gap: '0', px: 'var(--we-space-300)' },
+      },
+    };
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('rejects a family on an axis that has none', () => {
+    // A family says how much room a box puts inside itself, which answers nothing about a margin.
+    expect(messages({ type: 'Column', props: { m: 'surface' } }, 'error')).toHaveLength(1);
+  });
+});
