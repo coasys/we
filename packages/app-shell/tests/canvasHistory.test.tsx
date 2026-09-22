@@ -84,6 +84,15 @@ const datasetStub = {
   personalDataset: () => null,
 };
 
+/*
+  The decision `bringOne` delegates to, stubbed so `dropOnCanvas`'s "from another space" branch
+  actually reaches its placement. Without it the branch returns null and the test below would pass
+  because nothing happened at all, which is the sort of green that means nothing.
+*/
+vi.mock('../src/shared/bringIn', () => ({
+  bringIn: async () => ({ id: 'brought-1', entity: 'TaskBlock', mode: 'copy', from: '' }),
+}));
+
 vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({ useDatasetStore: () => datasetStub }));
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ me: () => ({ did: 'did:key:z6Mk' }) }),
@@ -319,6 +328,107 @@ describe('restyling one card', () => {
     await store.undoCanvas(CANVAS);
 
     expect(rowOf('n1')?.cardShape).toBe('we:unset');
+  });
+});
+
+describe('a peer who changed the same card', () => {
+  /*
+    The rule that keeps one agent's undo from overwriting another's work. Moves were guarded from
+    the start; the presentation writes were not, which meant recolouring a card, a peer recolouring
+    it, and pressing Ctrl+Z put your colour back over theirs.
+  */
+  it('keeps their colour rather than putting yours back', async () => {
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    await store.setCardStyle(CANVAS, 'n1', 'color', 'primary-500');
+
+    rowOf('n1')!.color = 'success-500';
+    await store.undoCanvas(CANVAS);
+
+    expect(rowOf('n1')?.color).toBe('success-500');
+  });
+
+  it('keeps their size rather than redoing yours', async () => {
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    await store.resizeOnCanvas(CANVAS, { recordId: 'n1', width: 300, height: 200, x: 10, y: 10 });
+    await store.undoCanvas(CANVAS);
+
+    rowOf('n1')!.width = 555;
+    await store.redoCanvas(CANVAS);
+
+    expect(rowOf('n1')?.width).toBe(555);
+  });
+
+  it('refuses all four fields of a resize when one of them has moved', async () => {
+    // All or nothing per card: putting half a resize back leaves a card at the old size in the new
+    // place, which is a worse answer than leaving it alone.
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    await store.resizeOnCanvas(CANVAS, { recordId: 'n1', width: 300, height: 200, x: 60, y: 50 });
+
+    rowOf('n1')!.height = 999;
+    await store.undoCanvas(CANVAS);
+
+    expect(rowOf('n1')).toMatchObject({ width: 300, x: 60, y: 50 });
+  });
+
+  it('does not put a card back on the canvas they have already restored', async () => {
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    await store.removeFromCanvas(CANVAS, 'n1');
+
+    /*
+      The peer's write goes straight into the stand-in rather than through the store, which is what
+      makes it somebody *else's*: a placement made through the store would record an entry of its
+      own and the undo below would replay that one instead.
+    */
+    world.rows.set('peer-row', { id: 'peer-row', node: 'n1', x: 400, y: 400, parent: CANVAS });
+    await store.undoCanvas(CANVAS);
+
+    // One row, theirs — not a second one beside it disagreeing about where the card is.
+    expect([...world.rows.values()]).toEqual([{ id: 'peer-row', node: 'n1', x: 400, y: 400, parent: CANVAS }]);
+  });
+
+  it('still lets a fresh gesture decide, whatever a peer did', async () => {
+    // Only a *replay* carries an expectation. Choosing a colour now is somebody deciding now.
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    rowOf('n1')!.color = 'success-500';
+
+    await store.setCardStyle(CANVAS, 'n1', 'color', 'danger-500');
+
+    expect(rowOf('n1')?.color).toBe('danger-500');
+  });
+});
+
+describe('records being made', () => {
+  /*
+    The history is arrangement only, and a creation is not arrangement. An entry for one would undo
+    by removing the placement — leaving the new record behind, and, where the canvas owns it, parked
+    back in the corner by the tray. Both creating paths write their placement without recording one.
+  */
+  it('leaves no entry for a record brought in from another space', async () => {
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    // A restyle, so the label on top is one a stray placement entry could not be mistaken for —
+    // two "move card" entries look identical and the assertion below would hold either way.
+    await store.setCardStyle(CANVAS, 'n1', 'color', 'primary-500');
+    expect(store.canvasHistory().undoLabel).toBe('restyle card');
+
+    await store.dropOnCanvas(CANVAS, { entity: 'TaskBlock', id: 'n2', dataset: 'elsewhere', x: 5, y: 5 });
+
+    // It really was placed — the branch ran — and it still recorded nothing.
+    expect(spotOf('brought-1')).toEqual({ x: 5, y: 5 });
+    expect(store.canvasHistory().undoLabel).toBe('restyle card');
+  });
+
+  it('still records a record that was only placed, which is an arrangement act', async () => {
+    const store = mount();
+
+    await store.dropOnCanvas(CANVAS, { entity: 'TaskBlock', id: 'n2', x: 5, y: 5 });
+
+    expect(store.canvasHistory().undoLabel).toBe('move card');
   });
 });
 

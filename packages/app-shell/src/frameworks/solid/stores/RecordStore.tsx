@@ -1488,6 +1488,24 @@ export function RecordStoreProvider(props: ParentProps) {
   const sameSpot = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1;
 
+  /**
+   * Whether a stored presentation value is the one a replay expects to find.
+   *
+   * Normalised the same way `stylePlacement` records a baseline, because the two have to agree: a
+   * field that holds nothing is recorded as the value the canvas seed reads as *absent* — the
+   * sentinel for text, `0` for a number — so a redo expecting "it was unset" has to match a row
+   * where the field is genuinely missing.
+   *
+   * Numbers compare with a pixel of tolerance, for the reason `sameSpot` does: a width that came
+   * back as 300.00000000000006 is a width nobody changed, and refusing on that is refusing for a
+   * reason no person could see.
+   */
+  const sameStored = (held: unknown, want: unknown): boolean => {
+    const normalised = held === undefined || held === '' ? (typeof want === 'number' ? 0 : PLACEMENT_UNSET) : held;
+    if (typeof want === 'number' && typeof normalised === 'number') return Math.abs(want - normalised) < 1;
+    return String(normalised) === String(want);
+  };
+
   /** Replay a set of moves in one direction, skipping any card a peer has moved since. */
   async function replayMoves(canvas: string, moves: CardMove[], direction: 'undo' | 'redo'): Promise<void> {
     for (const move of moves) {
@@ -1522,10 +1540,10 @@ export function RecordStoreProvider(props: ParentProps) {
       scope: canvas,
       label,
       undo: async () => {
-        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.before);
+        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.before, change.after);
       },
       redo: async () => {
-        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.after);
+        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.after, change.before);
       },
     });
   }
@@ -1586,6 +1604,7 @@ export function RecordStoreProvider(props: ParentProps) {
     canvas: string,
     nodeId: string,
     patch: Record<string, unknown>,
+    expect?: Record<string, unknown>,
   ): Promise<Record<string, unknown> | undefined> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeId || !Object.keys(patch).length) return undefined;
@@ -1620,6 +1639,22 @@ export function RecordStoreProvider(props: ParentProps) {
           return [field, typeof patch[field] === 'number' ? 0 : PLACEMENT_UNSET];
         }),
       );
+
+      /*
+        The concurrency guard, and the same bargain `writePlacement` strikes for a position.
+
+        A replay says "put this back, if it is still what I left"; a peer who has recoloured the
+        card since means the answer is no, and the press leaves their colour alone rather than
+        overwriting it. Only a *replay* passes `expect` — a fresh gesture is somebody deciding now,
+        and deciding now beats whatever was there.
+
+        All or nothing per card, because a resize writes four fields as one act: putting half of it
+        back would leave a card at the old size in the new place.
+      */
+      if (expect && !Object.entries(expect).every(([field, want]) => sameStored(already[field], want))) {
+        drop(nodeId, patch);
+        return undefined;
+      }
 
       await Placement.update(dataset.handle, already.id, patch);
       // The write is back, so the hold stops being exempt from what the next draw says — see
@@ -1939,13 +1974,23 @@ export function RecordStoreProvider(props: ParentProps) {
         { ...payload, ref: { entity: payload.entity, id: payload.id, dataset: from } },
         { canvas },
       );
-      if (brought) await placeOnCanvas(canvas, brought.id, brought.entity, payload.x, payload.y);
+      /*
+        `writePlacement` rather than `placeOnCanvas`, so this leaves no undo entry.
+
+        Bringing something in from another space *creates* a record here, and the canvas history is
+        arrangement only — an entry for it would undo by removing the placement, which leaves the new
+        record behind, loose and usually parked back in the corner by the tray. The act already has
+        its own way back: `bringOne` raises a toast with Undo that deletes what it made.
+      */
+      if (brought) await writePlacement(canvas, brought.id, brought.entity, payload.x, payload.y);
       return;
     }
     if (!schemaFor(payload.entity)) {
       toastService.error('That is not something a canvas can hold.');
       return;
     }
+    // A record that is already in this space is only being *placed*, which is an arrangement act
+    // like a drag — so it is undoable, and undoing it takes the card off the canvas again.
     await placeOnCanvas(canvas, payload.id, payload.entity, payload.x, payload.y);
   }
 
@@ -2127,15 +2172,19 @@ export function RecordStoreProvider(props: ParentProps) {
   async function restorePlacement(canvas: string, nodeId: string, row: PlacementRow): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset) return;
+    const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
     const { id: _id, node: _node, ...fields } = row;
     try {
-      await Placement.create(
-        dataset.handle as never,
-        { ...fields, node: [nodeId] } as never,
-        {
-          parent: { id: canvas, predicate: PREDICATES.CHILDREN },
-        } as never,
-      );
+      /*
+        Not if somebody has already put it back.
+
+        The guard the other replays make, in the only shape this one can take: there is no stored
+        value to compare against, so the question is whether a placement exists at all. A peer who
+        dragged the card back on has a position of their own, and a second placement beside it would
+        be two rows disagreeing about where the card is.
+      */
+      if (await drawnPlacement(dataset.handle, parent, nodeId)) return;
+      await Placement.create(dataset.handle as never, { ...fields, node: [nodeId] } as never, { parent } as never);
     } catch (error) {
       console.error('RecordStore: putting a card back on a canvas failed', error);
       toastService.error('Could not put that back.');
@@ -2172,7 +2221,10 @@ export function RecordStoreProvider(props: ParentProps) {
         for (const { nodeId, row } of removed) await restorePlacement(canvas, nodeId, row);
       },
       redo: async () => {
-        for (const { nodeId } of removed) await clearPlacement(canvas, nodeId);
+        // Where the undo put it back, so a card a peer has since moved is left where they put it.
+        for (const { nodeId, row } of removed) {
+          await clearPlacement(canvas, nodeId, { x: Number(row.x) || 0, y: Number(row.y) || 0 });
+        }
       },
     });
   }
@@ -2302,7 +2354,9 @@ export function RecordStoreProvider(props: ParentProps) {
         instead dressed "nobody said" up as an answer, and put the card at the world origin.
       */
       const at = pendingPoint();
-      if (canvas && at && created?.id) await placeOnCanvas(canvas, created.id, draft.entity, at.x, at.y);
+      // No undo entry, for `dropOnCanvas`'s reason: this is a record being *made*, and undoing it by
+      // unplacing would leave the new record behind rather than putting anything back.
+      if (canvas && at && created?.id) await writePlacement(canvas, created.id, draft.entity, at.x, at.y);
 
       batch(() => {
         setLastCreatedId(created?.id ?? '');
