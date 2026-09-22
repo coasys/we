@@ -4,7 +4,7 @@
  * `backendPorts.ts` says the boot suite "doubles as the conformance test", but
  * until now the in-memory bundle stubbed its data plane (`ephemeral: () =>
  * null`, two bindings) — so a suite running against it could exercise
- * lifecycle and nothing else, while the AD4M adapter shipped a full
+ * lifecycle and nothing else, while the production adapter shipped a full
  * $getEntity/$queryAdapter/mutations/$identities surface nothing compared
  * against. These tests pin the bundle to the full binding surface and run a
  * create → query → update → delete round-trip plus the ephemeral bus through
@@ -38,15 +38,15 @@ async function makeBindings(ports: ReturnType<typeof makePorts>) {
 }
 
 describe('binding-surface conformance', () => {
-  it('exposes the same data-plane bindings the AD4M adapter does', async () => {
+  it('exposes the same data-plane bindings the production adapter does', async () => {
     const { bindings } = await makeBindings(makePorts());
-    // The renderer's data contract (RendererDataBindings): every key the AD4M
+    // The renderer's data contract (RendererDataBindings): every key the production
     // adapter provides and a template can depend on must be present here too,
     // or "runs on the in-memory backend" quietly means "boot only".
     for (const key of [
       '$currentDataset',
       '$getEntity',
-      '$getEntitiesForPerspective',
+      '$getEntityForDataset',
       '$queryAdapter',
       '$identities',
       '$ephemeral',
@@ -123,7 +123,7 @@ describe('data plane through the bundle', () => {
 /**
  * The two model-layer facts a relation can now carry, held to the same meaning on both backends.
  *
- * `ordered` and `polymorphic` are declared once, in the manifest, and implemented twice — the AD4M
+ * `ordered` and `polymorphic` are declared once, in the manifest, and implemented twice — the production
  * adapter hands them to decorators the executor reads, this backend implements them itself. Nothing
  * makes the two agree, and the ways they can disagree are all quiet: a collection that reads back in
  * a different order, or members that arrive without saying what they are, look like data problems
@@ -157,7 +157,7 @@ describe('model-layer conformance', () => {
 
   it('says what each member of a heterogeneous relation is', async () => {
     // Without this a consumer holding a mixed bag can do nothing with it — the graph cannot address
-    // a node, a card cannot pick a display. The key is a wire format AD4M chooses, so both backends
+    // a node, a card cannot pick a display. The key is a wire format the production backend chooses, so both backends
     // have to write the same one; `RECORD_TYPE_KEY` is where that is recorded.
     const ports = makePorts();
     const handle = (await ports.lifecycle.get('ds-main'))!.handle;

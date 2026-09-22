@@ -90,7 +90,7 @@ import {
   DEFAULT_TASK_STATES,
   type FileData,
   FOLLOW_SPACE,
-  getEntitiesForPerspective,
+  getEntityForDataset,
   type InvolvementSemantic,
   InvolvementType,
   LocationBlock,
@@ -2645,7 +2645,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * decision, and an export that answered it differently would disagree with what the model was shown.
    */
   async function callTranscript(p: DatasetProxy, callId: string) {
-    const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+    const modelFor = (entity: string) => getEntityForDataset(entity, p);
     const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
     const turns = predicate
       ? await gatherTranscriptTurns(
@@ -5009,7 +5009,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getEntitiesForPerspective('Community', ds.handle) as any;
+    const CommunityClass = getEntityForDataset('Community', ds.handle) as any;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;

@@ -18,7 +18,7 @@ import type {
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import {
   type EntityClass,
-  getEntitiesForPerspective,
+  getEntityForDataset,
   mergeDynamicEntities,
   registerDynamicEntities,
   registerEntity,
@@ -85,7 +85,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
         // this reads the global registry, where the native classes are registered before any
         // module compiles — and the thunk is lazy, so the order does not matter either way.
         resolveExternal: (name) =>
-          (opts.resolveExternal?.(name) ?? getEntitiesForPerspective(name)) as typeof Ad4mModel | undefined,
+          (opts.resolveExternal?.(name) ?? getEntityForDataset(name)) as typeof Ad4mModel | undefined,
       });
       for (const [name, cls] of Object.entries(classes)) registerEntity(name, cls as EntityClass);
       return classes;
@@ -99,11 +99,11 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
       const classes = compileManifest(manifest, {
         ...opts,
         // Core vocabulary and the dataset's other dynamic entities are legitimate relation
-        // targets; getEntitiesForPerspective already prefers native classes, so a shape cannot
+        // targets; getEntityForDataset already prefers native classes, so a shape cannot
         // resolve a target to a shadowed core name.
         // The registry hands back the neutral class handle; this compiler is AD4M's own, so the
         // narrowing is definitionally sound here — everything registered on this backend IS one.
-        resolveExternal: (name) => getEntitiesForPerspective(name, dataset) as typeof Ad4mModel | undefined,
+        resolveExternal: (name) => getEntityForDataset(name, dataset) as typeof Ad4mModel | undefined,
       });
       mergeDynamicEntities(proxy(dataset).uuid, classes as Record<string, EntityClass>);
       return classes;

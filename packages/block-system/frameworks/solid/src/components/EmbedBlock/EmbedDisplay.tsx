@@ -21,7 +21,7 @@ interface EmbedDisplayProps {
    *
    * Rarely passed: the host provides it through `BlockHostValue.openRef`, so an embed inside a post
    * is followable wherever the app renders one without any call site threading a handler. The prop
-   * wins where it is given — the same rule `perspective` follows, and what an editor previewing
+   * wins where it is given — the same rule `dataset` follows, and what an editor previewing
    * another space's content needs.
    */
   onOpenRef?: (ref: string) => void;

@@ -60,7 +60,7 @@ function editor(opts: { editorState?: SchemaProp; save: Record<string, SchemaPro
               ...(opts.editorState !== undefined && { editorState: opts.editorState }),
               // Stored files in a note are addresses in the personal space; without this the composer
               // would try to fetch them from whichever space is on screen, and draw broken pictures.
-              perspective: personalHandle,
+              dataset: personalHandle,
               onReady: { $setLocal: 'saveNote', value: { $: 'event.save' } },
               onSave: [opts.save],
             },
@@ -199,7 +199,7 @@ const noteCard: SchemaNode = {
               type: 'BlockRenderer',
               props: {
                 editorState: { $: 'note.editorState' },
-                perspective: personalHandle,
+                dataset: personalHandle,
                 // A picture or a paragraph out of a note, into the Pocket or a space, on its own.
                 blockDrag: { within: { $: 'note.id' }, datasetKey: personalKey },
               },

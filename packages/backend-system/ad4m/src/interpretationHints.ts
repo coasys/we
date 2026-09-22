@@ -18,7 +18,7 @@
  */
 import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type { EntityHintState } from '@we/backend-shared';
-import { getEntitiesForPerspective, getEntityTargetClass } from '@we/entities';
+import { getEntityForDataset, getEntityTargetClass } from '@we/entities';
 
 import { declaredShape, forgetStoredShapes } from './sdnaEntities';
 
@@ -41,7 +41,7 @@ async function locateShape(
   p: PerspectiveProxy,
   entity: string,
 ): Promise<{ shapeUri: string; propNodes: Map<string, string> } | null> {
-  const model = getEntitiesForPerspective(entity, p);
+  const model = getEntityForDataset(entity, p);
   const targetClass = model ? getEntityTargetClass(model) : undefined;
   if (!targetClass) return null;
 
@@ -130,7 +130,7 @@ export async function writeInterpretationHints(
 export async function resetInterpretationHints(p: PerspectiveProxy, entity: string): Promise<void> {
   const located = await locateShape(p, entity);
   if (!located) return;
-  const model = getEntitiesForPerspective(entity, p);
+  const model = getEntityForDataset(entity, p);
   if (!model) return;
   const declared = declaredShape(model);
   const { shapeUri, propNodes } = located;

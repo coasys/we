@@ -24,7 +24,7 @@ import { getSeed } from '@shared/seedRegistry';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, type DatasetProxy, ExtractionPass, getEntitiesForPerspective } from '@we/entities';
+import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
@@ -429,7 +429,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate)
           throw new Error('interpretation: this space has no collection schema to read a transcript from');
@@ -505,7 +505,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       proposalsForCollection: async (dataset, collectionId) => {
         const port = session.backendPorts()?.interpretation;
         if (!port) return [];
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         // Unscoped rather than empty when containment cannot be named here: too many suggestions is
         // a nuisance, none is a review surface that looks broken.
@@ -547,7 +547,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate)
           throw new Error('interpretation: this space has no collection schema to read a transcript from');
@@ -577,7 +577,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!port?.reconcile || !dataset) return 0;
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate) return 0;
 

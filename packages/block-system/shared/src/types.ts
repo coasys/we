@@ -21,7 +21,7 @@ export interface MentionCandidate {
 
 export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
   editorState?: EditorStateInput;
-  perspective?: BlockDataset | null;
+  dataset?: BlockDataset | null;
   /**
    * Receives the composed document on save: the blocks, and for an edit the keys of the blocks
    * that were loaded, so the save can tell the author's removals from other people's additions.
@@ -99,7 +99,7 @@ export interface BlockDragSource {
 
 export type BlockRendererProps = Omit<DesignSystemProps, 'direction'> & {
   editorState?: EditorStateInput;
-  perspective?: BlockDataset | null;
+  dataset?: BlockDataset | null;
   /**
    * Let every block be picked up on its own — a picture out of a post, a paragraph by the grip that
    * appears beside it. Absent, only whatever wraps the renderer can be dragged. The words stay

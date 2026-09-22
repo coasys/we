@@ -33,7 +33,7 @@ import type {
   WatchRequest,
 } from '@we/backend-shared';
 import { trace } from '@we/backend-shared';
-import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
+import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 import { recordMissingMethod } from './missingMethods';
 
@@ -1194,7 +1194,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           path: this attaches what a pass already minted, so a name it cannot resolve has nothing to
           find and nothing to lose.
         */
-        const model = getEntitiesForPerspective(name, perspective) as unknown as
+        const model = getEntityForDataset(name, perspective) as unknown as
           { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
         if (!model) continue;
         for (const instance of await model.findAll(perspective)) {
@@ -1346,7 +1346,7 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
  */
 function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): string[] {
   return names.map((name) => {
-    const model = getEntitiesForPerspective(name, perspective);
+    const model = getEntityForDataset(name, perspective);
     const targetClass = model ? getEntityTargetClass(model as never) : undefined;
     if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
     return targetClass;

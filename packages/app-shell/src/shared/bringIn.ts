@@ -107,7 +107,7 @@ export async function bringIn(
     ? formatRef({ datasetKey: key, entity: 'CollectionBlock', id: postId })
     : formatRef({ datasetKey: key, entity: item.ref.entity, id: item.ref.id });
 
-  const source = kind === 'personal' || kind === 'neighbourhood' ? ctx.held(key) : null;
+  const source = kind === 'personal' || kind === 'shared' ? ctx.held(key) : null;
   const post = source && postId ? await ctx.readPost(source.handle, postId) : null;
 
   // ── A copy: the author's own ────────────────────────────────────────────────
@@ -119,7 +119,7 @@ export async function bringIn(
       if (written) return { ...written, mode: 'copy', from };
     } else if (blocks?.length) {
       // Portable sources only: a personal dataset's key names nothing to anybody else.
-      const fields = kind === 'neighbourhood' ? { sourceRef: from, sourceName: source.name } : undefined;
+      const fields = kind === 'shared' ? { sourceRef: from, sourceName: source.name } : undefined;
       const written = await ctx.write(blocks, fields);
       if (written) return { id: written.id, entity: 'CollectionBlock', mode: 'copy', from };
     }

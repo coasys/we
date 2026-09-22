@@ -1272,7 +1272,7 @@ const ALWAYS_PRESENT = new Set([
   '$me',
   '$currentDataset',
   '$getEntity',
-  '$getEntitiesForPerspective',
+  '$getEntityForDataset',
   '$queryAdapter',
   '$identities',
   '$ephemeral',

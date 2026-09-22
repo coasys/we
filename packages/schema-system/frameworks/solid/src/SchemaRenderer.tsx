@@ -255,7 +255,7 @@ function runQuery(request: {
 }): boolean {
   const { names, union, dataset, options, stores } = request;
   const getEntity = stores.$getEntity;
-  const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
+  const getEntityForDataset = stores.$getEntityForDataset;
   if (!getEntity) return false;
 
   if (union && options.offset != null) {
@@ -272,7 +272,7 @@ function runQuery(request: {
     // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
     // registry. The dataset stays opaque here: the host derives whatever key its per-dataset model
     // registry needs, since only it knows the concrete handle type.
-    const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, dataset) : undefined;
+    const dynamicCls = getEntityForDataset ? getEntityForDataset(entity, dataset) : undefined;
     let Model: EntityClass;
     try {
       Model = dynamicCls ?? getEntity(entity);

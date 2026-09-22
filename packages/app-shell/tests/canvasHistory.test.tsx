@@ -74,7 +74,7 @@ vi.mock('@we/entities', async () => {
         delete: async () => void world.deleted.push(query.where.id),
       }),
     }),
-    getEntitiesForPerspective: () => undefined,
+    getEntityForDataset: () => undefined,
   };
 });
 

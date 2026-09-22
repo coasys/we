@@ -49,7 +49,7 @@ import type {
   Scope,
 } from '@we/backend-shared';
 import { irToFlatQuery, planQuery } from '@we/backend-shared';
-import { type EntityClass as Ad4mEntityClass, getEntitiesForPerspective, getEntity } from '@we/entities';
+import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } from '@we/entities';
 
 import type { EntityManifestEntry } from './manifestTypes';
 
@@ -165,14 +165,14 @@ export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getEntity' | '$getEntitiesForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
+  '$getEntity' | '$getEntityForDataset' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
     // so `toRendererEntity` maps them onto the neutral `query`/`findAll` the renderer depends on.
     $getEntity: (name) => toRendererEntity(getEntity(name)),
-    $getEntitiesForPerspective: (name, dataset) => {
-      const model = getEntitiesForPerspective(name, dataset);
+    $getEntityForDataset: (name, dataset) => {
+      const model = getEntityForDataset(name, dataset);
       return model ? toRendererEntity(model) : undefined;
     },
     // The renderer treats this as opaque and hands it straight back, so the proxy passes through

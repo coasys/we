@@ -14,7 +14,7 @@ import { POCKET_PREDICATES } from './entities';
  * ## Where its data comes from
  *
  * The agent's personal space, read straight from the fragments with
- * `dataset: 'datasetStore.personalDataset'` and written with `record.create`'s `perspective` option. That surface already existed; what the module
+ * `dataset: 'datasetStore.personalDataset'` and written with `record.create`'s `dataset` option. That surface already existed; what the module
  * contract was missing was permission for a *module's own* entities to be installed there, which is
  * what `entities: { scope: 'agent' }` adds. Only the parts a template genuinely cannot do — building
  * a reference, asking whether one is already held, going to one, and remembering which folder you
@@ -762,7 +762,7 @@ const newFolderForm: SchemaNode = {
                   'PocketFolder',
                   { name: { $: 'local.newFolderName' } },
                   {
-                    perspective: PERSONAL,
+                    dataset: PERSONAL,
                     parent: { id: currentFolder, predicate: POCKET_PREDICATES.folders },
                   },
                 ],

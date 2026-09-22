@@ -10,8 +10,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   type EntityClass,
-  getEntitiesForPerspective,
   getEntity,
+  getEntityForDataset,
   getRegisteredEntityNames,
   registerDynamicEntities,
   registerEntity,
@@ -40,28 +40,28 @@ describe('global registry', () => {
   });
 });
 
-describe('getEntitiesForPerspective', () => {
+describe('getEntityForDataset', () => {
   it('prefers the globally registered native class over a synthesised one', () => {
     registerEntity('Post', Native);
     registerDynamicEntities('uuid-1', { Post: Synth });
     // Native classes carry decorator metadata a SHACL-synthesised class never has.
-    expect(getEntitiesForPerspective('Post', { uuid: 'uuid-1' })).toBe(Native);
+    expect(getEntityForDataset('Post', { uuid: 'uuid-1' })).toBe(Native);
     unregisterEntity('Post');
   });
 
   it('falls back to the per-perspective registry for external models', () => {
     registerDynamicEntities('uuid-2', { Channel: Synth });
-    expect(getEntitiesForPerspective('Channel', { uuid: 'uuid-2' })).toBe(Synth);
-    expect(getEntitiesForPerspective('Channel', { uuid: 'other-uuid' })).toBeUndefined();
+    expect(getEntityForDataset('Channel', { uuid: 'uuid-2' })).toBe(Synth);
+    expect(getEntityForDataset('Channel', { uuid: 'other-uuid' })).toBeUndefined();
   });
 
   it('reads uuid, never id — a proxy also carries an unrelated subscription id', () => {
     registerDynamicEntities('uuid-3', { Message: Synth });
-    expect(getEntitiesForPerspective('Message', { id: 'uuid-3' })).toBeUndefined();
-    expect(getEntitiesForPerspective('Message', { uuid: 'uuid-3', id: 'subscription-9' })).toBe(Synth);
+    expect(getEntityForDataset('Message', { id: 'uuid-3' })).toBeUndefined();
+    expect(getEntityForDataset('Message', { uuid: 'uuid-3', id: 'subscription-9' })).toBe(Synth);
   });
 
   it('returns undefined rather than throwing, so callers can fall back', () => {
-    expect(getEntitiesForPerspective('Nothing', undefined)).toBeUndefined();
+    expect(getEntityForDataset('Nothing', undefined)).toBeUndefined();
   });
 });

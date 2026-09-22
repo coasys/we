@@ -1,32 +1,34 @@
 /**
  * The data seam — WE's renderer ↔ backend contract, made explicit.
  *
- * The renderer never imports AD4M. It reaches the data layer entirely through the small set of
+ * The renderer never imports a backend. It reaches the data layer entirely through the small set of
  * functions the host injects into the `stores` bag, and through the duck-typed model handles those
  * return. Historically that contract lived only as `as`-casts inside `SchemaRenderer`; these types
- * declare it so a non-AD4M host (in-memory, NextGraph, GraphQL, …) knows exactly what to implement.
+ * declare it, so what the renderer depends on is a readable list rather than something recovered
+ * by grepping for casts.
  *
- * `QueryOptions` is deliberately the *current* contract — an AD4M-flavored query-option pass-through,
- * forwarded verbatim. It is expected to be superseded by a specified, backend-neutral query IR; the
- * shape of the seam — dataset handle + model handle with `query`/`findAll` — stays either way.
+ * `QueryOptions` is the flat query dialect a model handle consumes, forwarded verbatim. Every
+ * `$query` is lifted to the IR (`queryIR.ts`), planned, and lowered back to this shape by the
+ * adapter; the shape of the seam — dataset handle + model handle with `query`/`findAll` — is what
+ * the renderer depends on.
  */
 import type { EphemeralPort } from './ephemeral';
 import type { AdapterCapabilities, QueryPlan } from './queryCapabilities';
 import type { QueryIR } from './queryIR';
 
 /**
- * A handle to the bounded dataset a query runs against — AD4M's `PerspectiveProxy`, NextGraph's
- * document/branch, a REST host's collection id.
+ * A handle to the bounded dataset a query runs against — whatever the backend's own object for one
+ * is.
  *
  * **Genuinely opaque: the renderer never looks inside one.** It obtains a handle from
  * `$currentDataset` (or a `dataset:` path), checks it is present, and hands it back to the host via
- * `EntityClass.query` / `findAll` and `$getEntitiesForPerspective`. Only the host that minted a handle
+ * `EntityClass.query` / `findAll` and `$getEntityForDataset`. Only the host that minted a handle
  * ever interprets it.
  *
  * Typed `unknown` rather than a structural `{ id, uri }` on purpose. A structural shape would force
- * every backend to *destroy* its native handle and then reconstruct it on the way back — AD4M would
- * flatten a `PerspectiveProxy` to an id and re-resolve it through a lookup on every query — all to
- * satisfy fields nothing reads. The contract should state what the renderer actually requires, and
+ * a backend to *destroy* its native handle and then reconstruct it on the way back — flatten a
+ * live proxy to an id and re-resolve it through a lookup on every query — all to satisfy fields
+ * nothing reads. The contract should state what the renderer actually requires, and
  * of a dataset it requires only that it round-trips.
  *
  * Anything a host needs *from* a handle (dataset-scoped model registries, subscription caches) it
@@ -35,8 +37,8 @@ import type { QueryIR } from './queryIR';
 export type DatasetHandle = unknown;
 
 /**
- * Query options passed through to a model handle. Currently the AD4M-flavored shape (opaque
- * `where`/`order`/`include`), forwarded verbatim. Superseded by `QueryIR` in a later phase.
+ * Query options passed through to a model handle — the flat dialect (opaque `where`/`order`/
+ * `include`), as the adapter's `lower` produces it from the IR.
  */
 export interface QueryOptions {
   where?: Record<string, unknown>;
@@ -70,8 +72,8 @@ export interface MutationApi {
 }
 
 /**
- * The formal backend contract an adapter implements (AD4M today; NextGraph/GraphQL/in-memory next).
- * A host wires these into the `stores` bag via {@link RendererDataBindings}.
+ * The formal backend contract an adapter implements. A host wires these into the `stores` bag via
+ * {@link RendererDataBindings}.
  */
 export interface DataSource {
   currentDataset(): DatasetHandle | null;
@@ -81,13 +83,12 @@ export interface DataSource {
 }
 
 /**
- * The query-execution port an adapter implements to run a neutral `QueryIR` on its backend.
+ * The query-execution port an adapter implements to run a `QueryIR` on its backend.
  *
- * `compileQuery` (DSL→IR), `irToFlatQuery` (IR→flat options), and `executeQueryIR` (the compute-up
- * engine) are neutral building blocks in `@we/schema-shared`. A `QueryAdapter` *composes* them with
- * this backend's capability profile and quirks, so the renderer routes every query through the port
- * and never hardcodes a backend. AD4M is the reference implementation; NextGraph/GraphQL/in-memory
- * are others.
+ * `compileQuery` (DSL→IR), `irToFlatQuery` (IR→flat options), and `executeQueryIR` (the reference
+ * engine) are shared building blocks in this package. A `QueryAdapter` *composes* them with its
+ * backend's capability profile and quirks, so the renderer routes every query through the port and
+ * never hardcodes a backend.
  */
 export interface QueryAdapter {
   /** What this backend does natively — drives {@link QueryAdapter.plan}. */
@@ -95,8 +96,8 @@ export interface QueryAdapter {
   /**
    * Classify an IR for this backend: which features push down natively vs need the compute-up
    * fallback. Beyond `planQuery(ir, capabilities)`, an adapter folds in its own conditional
-   * degradations — e.g. AD4M silently disables its sort/pagination pushdown when `where` uses
-   * OR/AND/NOT, and a projection/relation-path sort needs a `limit`.
+   * degradations — a sort that only pushes down beside a `limit`, say — that no capability
+   * boolean can express.
    */
   plan(ir: QueryIR): QueryPlan;
   /** Lower a fully-native IR to the flat query options this backend's {@link EntityClass} consumes. */
@@ -114,12 +115,12 @@ export interface RendererDataBindings {
   /** Resolve a model name to its queryable handle. */
   $getEntity?: (name: string) => EntityClass;
   /**
-   * Dataset-scoped model resolution, for backends whose model classes are per-dataset (AD4M
-   * synthesises them from a perspective's SHACL). Receives the dataset **handle**, not an id
+   * Dataset-scoped model resolution, for backends whose model classes are per-dataset (synthesised
+   * from a schema the dataset itself carries). Receives the dataset **handle**, not an id
    * extracted from it — deriving a key is the host's job, since only the host knows the concrete
    * type. This is what lets the renderer treat a handle as fully opaque.
    */
-  $getEntitiesForPerspective?: (name: string, dataset?: DatasetHandle) => EntityClass | undefined;
+  $getEntityForDataset?: (name: string, dataset?: DatasetHandle) => EntityClass | undefined;
   /** Surface a data-layer error to the host UI. */
   $onError?: (message: string) => void;
   /** Mutation surface for `record.create` / `update` / `delete` actions. */
@@ -130,9 +131,9 @@ export interface RendererDataBindings {
    * **Any host that runs queries must supply this.** Every `$query` is compiled to the IR and lowered
    * through it, and there is no path around it: a host without one has queries that refuse, not
    * queries that take a different route. There used to be such a route — the raw dialect, handed
-   * straight to the backend behind `seed.features.useQueryIR` — and it worked only because AD4M
-   * happens to be both the dialect and the backend, so it hid capability gaps rather than reporting
-   * them.
+   * straight to the backend behind `seed.features.useQueryIR` — and it worked only because the
+   * dialect and the backend's native query happened to coincide, so it hid capability gaps rather
+   * than reporting them.
    *
    * Optional here only because a presentation-only (L0) host supplies none of these bindings and has
    * no queries for it to be required by. Omitting it while issuing queries is reported at the first
@@ -141,8 +142,8 @@ export interface RendererDataBindings {
   $queryAdapter?: QueryAdapter;
   /**
    * Identity directory backing the `$agent` block: look up a profile by id, and ask the host to
-   * fetch one it hasn't cached. Every backend has some version of this (AD4M agents/DIDs, another
-   * host's users), so the renderer names the capability and the host binds whatever it has.
+   * fetch one it hasn't cached. Every backend has some version of this (agents addressed by DID,
+   * another host's users), so the renderer names the capability and the host binds whatever it has.
    *
    * `get` must read reactively — the `$agent` effect re-runs on its dependencies, so a profile that
    * arrives after `fetch` shows up without further prompting.
@@ -157,8 +158,8 @@ export interface RendererDataBindings {
    *
    * **Why this is in the contract at all**, given the host's own stores could just construct one:
    * because *distributable* code needs it. A feature module from the marketplace — the WebRTC call
-   * module, a live-cursor overlay — cannot import a host's AD4M adapter, and cannot know the name of
-   * a host store to call. Naming the capability here is what lets third-party code use it on any
+   * module, a live-cursor overlay — cannot import a host's backend adapter, and cannot know the name
+   * of a host store to call. Naming the capability here is what lets third-party code use it on any
    * host. (Contrast template/theme persistence, deliberately *not* a port: only the host itself ever
    * needs it, so it can stay a host store.)
    */

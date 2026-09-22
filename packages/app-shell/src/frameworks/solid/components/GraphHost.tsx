@@ -105,7 +105,7 @@ function DocumentCard(props: { node: GraphNode; fallback: JSX.Element }) {
 
   return (
     <Show when={editorState()} fallback={props.fallback}>
-      {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
+      {(state) => <BlockRenderer editorState={state() as never} dataset={datasetStore.currentDataset()?.handle} />}
     </Show>
   );
 }
@@ -255,7 +255,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       dataset && dataset !== datasetStore.currentDataset()?.id
         ? datasetStore.datasets().find((d) => d.id === dataset || d.sharedId === dataset)?.handle
         : datasetStore.currentDataset()?.handle;
-    return bound.$getEntitiesForPerspective?.(entity, handle) ?? bound.$getEntity?.(entity);
+    return bound.$getEntityForDataset?.(entity, handle) ?? bound.$getEntity?.(entity);
   }
 
   /**
