@@ -106,6 +106,11 @@ function box(el: Element) {
     */
     scrollW: el.scrollWidth,
     scrollH: el.scrollHeight,
+    // Where the scroller is, which is the only way to ask a question about scroll position at all —
+    // and the thing a case needs to tell "at the bottom" from "somewhere that happens to look like
+    // it". Under `flex-direction: column-reverse` it is also how a case checks that the ordinary
+    // top-is-zero semantics still hold.
+    scrollTop: Math.round(el.scrollTop),
     // Both spellings: a native control carries the attribute, a layout element carries the ARIA
     // one, and `disabledProps` keys off the second.
     disabled: el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true',

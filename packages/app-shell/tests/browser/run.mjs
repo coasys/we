@@ -169,6 +169,25 @@ async function main() {
           thing a screen reader would name.
         */
         count: (sel) => page.locator(sel).count(),
+        /*
+          Put a scroller somewhere, and report where it actually landed.
+
+          Clamping is the point as much as the move: asking for a position past either end and
+          reading back what the browser allowed is how a case discovers the scroll RANGE, which is
+          not otherwise inspectable — and under `flex-direction: column-reverse` the range does not
+          start at zero, which is exactly the sort of thing worth measuring rather than assuming.
+        */
+        scrollTo: (sel, top) =>
+          page.evaluate(
+            ([s, t]) => {
+              const host = document.querySelector(s);
+              const el = host?.shadowRoot?.querySelector("[part='base']") ?? host;
+              if (!el) return null;
+              el.scrollTop = t;
+              return Math.round(el.scrollTop);
+            },
+            [sel, top],
+          ),
         html: () => page.evaluate(() => window.__harness.html()),
         // Some states are only reachable by using the thing — a folded branch, an opened row. A
         // case that cannot press anything can only ever judge a first paint.

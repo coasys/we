@@ -1,62 +1,71 @@
 /**
- * A short pinned list opens at its end, immediately, and does not travel there afterwards.
+ * A pinned list opens at its newest end and **stays there while its rows grow**.
  *
- * This is the case a long list hides. An opening jump longer than `SMOOTH_MAX_PX` is instant
- * whatever else is wrong, so a list of a few hundred rows looks fine while the rule underneath is
- * broken. A list only a little taller than its panel has a whole opening that fits under that cap —
- * and it used to animate, sliding up from the top over a few hundred milliseconds with its last
- * lines under the edge of the panel until it arrived.
+ * The second half is the whole point, and it is what two previous fixes missed. A transcript's rows
+ * keep getting taller for seconds after they mount, as bylines resolve and avatars load. The old
+ * implementation jumped to the bottom, the content grew, the browser moved the scroller to keep the
+ * reader's place, the element read that as the reader scrolling away — and it gave up 45px short of
+ * the end, in silence, permanently. Measured in the app, not inferred: growth of 479px, the scroller
+ * moved 434px, 45px left over.
  *
- * Two assertions, and the second is the one that names the fault. Where the list *ends up* was
- * always right; what was wrong is that it got there by moving, a moment after the panel appeared.
- * So the case measures twice and requires the position to be identical — an animation in flight
- * shows up as movement between the samples, and nothing else does.
+ * So the case presses `grow`, which reflows every row, and requires the newest line to be exactly as
+ * visible afterwards as before. Nothing about that is checkable in jsdom, which lays nothing out —
+ * and nothing about it was checkable in the earlier version of this case, which only measured a
+ * first paint.
  *
- * Deliberately NOT a check that the element never animates. A line arriving in a live call should
- * animate, and that is asserted in the unit tests where a follow can be triggered on demand; here
- * there is only an opening, and an opening must not move.
+ * The short length is deliberate: a list barely taller than its panel was the case that failed while
+ * a long one looked fine, so both lengths run the same assertions.
  */
-export const name = 'a short pinned list opens at its end without travelling';
+export const name = 'a short pinned list opens at its end and stays there';
 export const scenario = 'ds:pinned-short';
 export const widths = [420];
 
-export async function check({ measure, measurePart }) {
+export async function check(api) {
+  return checkPinned(api);
+}
+
+/** Shared by both lengths — see `pinnedPage` for why there are two. */
+export async function checkPinned({ measure, measurePart, click }) {
   const problems = [];
 
   const view = await measurePart('#feed', 'base');
   const last = await measure('#last-line');
   if (!view || !last) return ['expected a scroll area and a findable last line'];
   if (last.h === 0) return ['the last line has no box, so it never rendered'];
-
-  // It has to overflow, or there is no opening scroll to judge.
   if (view.scrollH <= view.h) {
     return [`the content is ${view.scrollH}px in a ${view.h}px box — nothing overflows, so nothing is pinned`];
   }
-  // And it has to be SHORT: the whole journey must fit under the smooth cap, or this is the case
-  // that was already passing and the scenario has drifted into proving nothing.
-  const journey = view.scrollH - view.h;
-  if (journey > 1200) {
+
+  /*
+    At the newest end on the first frame it could be measured on. Under `column-reverse` that is
+    where the box rests by layout, so there is no window in which it is somewhere else — which is
+    what makes this assertion meaningful rather than a race.
+  */
+  const visible = (box, port) => box.y >= port.y - 1 && box.y + box.h <= port.y + port.h + 1;
+  if (!visible(last, view)) {
     problems.push(
-      `the opening journey is ${journey}px, past the smooth cap — this scenario no longer tests the short case`,
+      `the last line (y=${Math.round(last.y)}..${Math.round(last.y + last.h)}) is outside the panel ` +
+        `(y=${Math.round(view.y)}..${Math.round(view.y + view.h)}) on open`,
     );
   }
 
-  const viewBottom = view.y + view.h;
-  if (last.y + last.h > viewBottom + 1) {
-    problems.push(
-      `the last line ends ${Math.round(last.y + last.h - viewBottom)}px under the edge of the panel on the first ` +
-        `frame it could be measured on`,
-    );
-  }
+  // Every row gets taller, as a real transcript's do once their bylines arrive.
+  const before = view.scrollH;
+  await click('#grow');
+  await new Promise((resolve) => setTimeout(resolve, 200));
 
-  // Still there a beat later, and in the same place. Movement between these two readings is an
-  // opening that animated rather than arrived.
-  await new Promise((resolve) => setTimeout(resolve, 250));
-  const settled = await measure('#last-line');
-  if (settled && Math.abs(settled.y - last.y) > 1) {
+  const grown = await measurePart('#feed', 'base');
+  const lastGrown = await measure('#last-line');
+  if (!grown || !lastGrown) return [...problems, 'lost the scroll area after growing'];
+
+  if (grown.scrollH <= before) {
     problems.push(
-      `the list moved ${Math.round(Math.abs(settled.y - last.y))}px after opening — it animated into position ` +
-        `instead of starting there`,
+      `pressing grow did not change the content height (${before} -> ${grown.scrollH}) — the case is inert`,
+    );
+  } else if (!visible(lastGrown, grown)) {
+    problems.push(
+      `after the rows grew ${grown.scrollH - before}px the last line is outside the panel — the list ` +
+        `lost its place, which is the failure this exists for`,
     );
   }
 

@@ -494,17 +494,23 @@ const squareLoading = (): Scenario => ({
  * Rows of real text at a real width, because the thing being measured is layout taking time: a
  * scenario of fixed-height boxes settles in one frame and proves nothing.
  *
- * **Parameterised by length, and the short one is the case that bites.** An opening jump longer than
- * `SMOOTH_MAX_PX` is instant whatever else is wrong, so a long list hides the bug: it is a list only
- * a little taller than its panel whose whole opening fits under the cap and therefore used to
- * animate — arriving a few hundred milliseconds after the panel, with its last lines under the edge
- * until it got there.
+ * **Parameterised by length**, because the two used to fail differently and it is worth keeping both
+ * honest. A pinned list is now `column-reverse`, so it rests at its newest end by layout rather than
+ * by any scroll, and neither length should be able to open anywhere else.
+ *
+ * `grow` is here to make the case that actually mattered testable: the rows in a real transcript
+ * keep getting taller for seconds after they mount, as bylines resolve and avatars load. Pressing it
+ * reflows every row, which is what the old implementation could not survive — it jumped to the
+ * bottom, the content grew, the browser moved the scroller to hold the reader's place, and the
+ * element read that as the reader scrolling away and gave up 108px short.
  */
 const pinnedPage = (rows: number) => (): Scenario => ({
   node: {
     type: 'Column',
     props: { height: '320px', width: '100%' },
+    $localState: { tall: { type: 'boolean', initial: false } },
     children: [
+      { type: 'we-button', props: { id: 'grow', size: 'xs', onClick: { $toggleLocal: 'tall' } }, children: ['grow'] },
       {
         type: 'we-scroll-area',
         props: { id: 'feed', pin: 'end', flex: '1', minHeight: '0' },
@@ -535,6 +541,9 @@ const pinnedPage = (rows: number) => (): Scenario => ({
                           variant: 'body',
                           flex: '1',
                           minWidth: '0',
+                          // What makes a row grow after it has mounted, the way a real one does when
+                          // its byline arrives.
+                          py: { $: "local.tall ? '500' : '0'" },
                           // The last row is findable, so the case can ask the only question that
                           // matters: is the newest line actually on screen.
                           id: { $: "row.last ? 'last-line' : ''" },
