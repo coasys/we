@@ -570,7 +570,7 @@ export interface RecordStore {
    * a size blind. So the drag previews and the release writes, and because both go through the same
    * pending map the card never jumps between them.
    */
-  previewCardStyle: (nodeId: string, field: string, value: unknown) => void;
+  previewCardStyle: (node: string | string[], field: string, value: unknown) => void;
   /**
    * Set the colour every card of one type is drawn in, on one canvas.
    *
@@ -1506,6 +1506,30 @@ export function RecordStoreProvider(props: ParentProps) {
    * Nothing is recorded for a gesture that moved nothing, so a drag the data refused does not leave
    * an entry whose undo would do nothing either.
    */
+  /** One card's presentation before and after a gesture — what an undo of it replays. */
+  type StyleChange = { nodeId: string; before: Record<string, unknown>; after: Record<string, unknown> };
+
+  /**
+   * Record a presentation gesture as one undoable act.
+   *
+   * Shared by every write that lands on a placement's *look* rather than its position — a colour, a
+   * shape, a content scale, a resize — so each of them is undoable by existing rather than by
+   * remembering to say so. `resizeOnCanvas` was the one that had not.
+   */
+  function rememberStyle(canvas: string, changes: StyleChange[], label: string): void {
+    if (!canvas || !changes.length) return;
+    history.push({
+      scope: canvas,
+      label,
+      undo: async () => {
+        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.before);
+      },
+      redo: async () => {
+        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.after);
+      },
+    });
+  }
+
   function rememberMoves(canvas: string, moves: CardMove[]): void {
     if (!canvas || !moves.length) return;
     history.push({
@@ -1562,7 +1586,7 @@ export function RecordStoreProvider(props: ParentProps) {
     canvas: string,
     nodeId: string,
     patch: Record<string, unknown>,
-  ): Promise<unknown | undefined> {
+  ): Promise<Record<string, unknown> | undefined> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeId || !Object.keys(patch).length) return undefined;
     // Before the write, not after it: the point is that the card changes on the gesture rather than
@@ -1576,15 +1600,26 @@ export function RecordStoreProvider(props: ParentProps) {
         return undefined;
       }
       /*
-        What the field held before, read off the row this write is about to land on — the baseline an
-        undo puts back, costing nothing because the read has already happened.
+        What every field in the patch held before, read off the row this write is about to land on —
+        the baseline an undo puts back, costing nothing because the read has already happened.
 
-        The sentinel rather than `undefined` for a field that held nothing: undoing "give these cards
-        a colour" has to be able to say "back to no colour at all", and an empty value is exactly
-        what `Ad4mModel`'s update skips. See `PLACEMENT_UNSET`.
+        **All of them, not the first.** A resize writes a width, a height and both coordinates as one
+        act, and a baseline that carried only the width could put back a card of the right size in
+        the wrong place.
+
+        A field that held nothing goes back as the value the canvas seed reads as *absent*, because
+        undoing "give these cards a colour" has to be able to say "back to no colour of its own" —
+        and an empty string is exactly what `Ad4mModel`'s update skips, so it cannot be stored. For
+        text that is `PLACEMENT_UNSET`; for a number it is `0`, which `placementStyle` drops the same
+        way.
       */
-      const [field] = Object.keys(patch);
-      const before = already[field] === undefined || already[field] === '' ? PLACEMENT_UNSET : already[field];
+      const before = Object.fromEntries(
+        Object.keys(patch).map((field) => {
+          const held = already[field];
+          if (held !== undefined && held !== '') return [field, held];
+          return [field, typeof patch[field] === 'number' ? 0 : PLACEMENT_UNSET];
+        }),
+      );
 
       await Placement.update(dataset.handle, already.id, patch);
       // The write is back, so the hold stops being exempt from what the next draw says — see
@@ -1777,12 +1812,16 @@ export function RecordStoreProvider(props: ParentProps) {
     // Position travels with the size. Resizing from one edge anchors the other, and a card drawn
     // from its centre has to move that centre to hold an edge still — so writing only the size would
     // slide the card sideways by half the change every time.
-    await stylePlacement(canvas, event.recordId, {
+    const after = {
       width: Math.round(event.width),
       height: Math.round(event.height),
       ...(typeof event.x === 'number' ? { x: Math.round(event.x) } : {}),
       ...(typeof event.y === 'number' ? { y: Math.round(event.y) } : {}),
-    });
+    };
+    const before = await stylePlacement(canvas, event.recordId, after);
+    // Undoable like every other placement write. It was not, which is the sort of gap that only
+    // shows up as "undo does not cover the thing I just did" — the four fields go back together.
+    if (before) rememberStyle(canvas, [{ nodeId: event.recordId, before, after }], 'resize card');
   }
 
   /**
@@ -1808,12 +1847,14 @@ export function RecordStoreProvider(props: ParentProps) {
     return typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
   }
 
-  function previewCardStyle(nodeId: string, field: string, value: unknown): void {
+  function previewCardStyle(node: string | string[], field: string, value: unknown): void {
     const scalar = cardStyleValue(field, value);
-    if (scalar === undefined || !nodeId) return;
-    // A preview, not a write — nothing is coming back for it, so counting one would leave the hold
-    // exempt from judgement until the backstop. See `preview` in `@we/optimism`.
-    cardStyle.preview(keyOf(nodeId, field), scalar);
+    if (scalar === undefined) return;
+    for (const nodeId of (Array.isArray(node) ? node : [node]).filter(Boolean)) {
+      // A preview, not a write — nothing is coming back for it, so counting one would leave the hold
+      // exempt from judgement until the backstop. See `preview` in `@we/optimism`.
+      cardStyle.preview(keyOf(nodeId, field), scalar);
+    }
   }
 
   /**
@@ -1832,24 +1873,14 @@ export function RecordStoreProvider(props: ParentProps) {
     const nodeIds = (Array.isArray(node) ? node : [node]).filter(Boolean);
     if (!nodeIds.length) return;
 
-    const changed: { nodeId: string; before: unknown }[] = [];
+    const after = { [field]: scalar };
+    const changed: StyleChange[] = [];
     for (const nodeId of nodeIds) {
-      const before = await stylePlacement(canvas, nodeId, { [field]: scalar });
+      const before = await stylePlacement(canvas, nodeId, after);
       // `undefined` is a write that did not happen — an unplaced card, or one the write failed for.
-      if (before !== undefined) changed.push({ nodeId, before });
+      if (before) changed.push({ nodeId, before, after });
     }
-    if (!canvas || !changed.length) return;
-
-    history.push({
-      scope: canvas,
-      label: changed.length > 1 ? `restyle ${changed.length} cards` : 'restyle card',
-      undo: async () => {
-        for (const { nodeId, before } of changed) await stylePlacement(canvas, nodeId, { [field]: before });
-      },
-      redo: async () => {
-        for (const { nodeId } of changed) await stylePlacement(canvas, nodeId, { [field]: scalar });
-      },
-    });
+    rememberStyle(canvas, changed, changed.length > 1 ? `restyle ${changed.length} cards` : 'restyle card');
   }
 
   async function setTypeColor(canvas: string, nodeType: string, color: unknown): Promise<void> {

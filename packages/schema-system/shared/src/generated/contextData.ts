@@ -129,6 +129,7 @@ export const contextData: ContextData = {
         { name: 'tokens', type: 'boolean', optional: false, default: 'false' },
         { name: 'alpha', type: 'boolean', optional: false, default: 'false' },
         { name: 'clearable', type: 'boolean', optional: false, default: 'false' },
+        { name: 'confirm', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {

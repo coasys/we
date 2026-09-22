@@ -342,10 +342,16 @@
   // Centres the box on the anchor, which is the middle of the selection.
   transform: translate(-50%, -50%);
 
-  // Room to read the outline as surrounding the cards rather than resting on them. The negative
-  // margin takes the padding back out of the box so the centring above still lands.
+  /*
+    Room to read the outline as surrounding the cards rather than resting on them.
+
+    `content-box`, so the padding grows the border box symmetrically around the content — and then
+    `translate(-50%, -50%)` above, which measures the *border* box, puts that grown box's centre on
+    the anchor. There is deliberately no margin: a negative one looks like it should cancel the
+    padding, and instead shifts the whole element by that much, which showed up as clearance above
+    and to the left of the cards and none below or to the right.
+  */
   padding: calc(8px / var(--graph-zoom));
-  margin: calc(-8px / var(--graph-zoom));
   border: calc(1px / var(--graph-zoom)) dashed var(--we-color-primary-500);
   border-radius: calc(6px / var(--graph-zoom));
 
@@ -931,6 +937,20 @@
 
   // The bar's own look — its padding, gap, surface and shadow — is the design-system row inside
   // this box, in the renderer. This box only places it and takes the presses.
+
+  /*
+    The bar is one row, whatever text is in it.
+
+    It is absolutely positioned inside `.we-graph__chrome`, which is a zero-width anchor — so
+    shrink-to-fit has no available width to work with and the box takes its *min-content* width.
+    Every typography component in the design system sets `overflow-wrap: anywhere`, which is right
+    everywhere else and means min-content here is about one character: the selection's "3 selected"
+    came out stacked one word per line, in a bar two characters wide.
+
+    On the container rather than on that one label, because the next thing anybody puts in a bar
+    will have the same problem and no reason to expect it.
+  */
+  white-space: nowrap;
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;

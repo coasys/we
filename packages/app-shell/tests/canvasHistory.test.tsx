@@ -22,6 +22,9 @@ interface Row {
   x?: number;
   y?: number;
   color?: string;
+  cardShape?: string;
+  width?: number;
+  height?: number;
   parent?: string;
 }
 
@@ -269,6 +272,53 @@ describe('restyling a selection', () => {
     await store.undoCanvas(CANVAS);
 
     expect([colourOf('n1'), colourOf('n2')]).toEqual(['primary-500', 'success-500']);
+  });
+});
+
+describe('restyling one card', () => {
+  it('undoes a shape change', async () => {
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    await store.setCardStyle(CANVAS, 'n1', 'cardShape', 'note');
+
+    expect(rowOf('n1')?.cardShape).toBe('note');
+    expect(store.canvasHistory().canUndo).toBe(true);
+
+    await store.undoCanvas(CANVAS);
+
+    expect(rowOf('n1')?.cardShape).toBe('we:unset');
+  });
+
+  it('undoes a resize, putting back all four fields it wrote', async () => {
+    /*
+      A resize writes a width, a height and both coordinates as one act — the position travels with
+      the size because resizing from one edge has to hold the other still. A baseline that carried
+      only the first of those would put back a card of the right size in the wrong place.
+    */
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    await store.setCardStyle(CANVAS, 'n1', 'width', 120);
+    await store.setCardStyle(CANVAS, 'n1', 'height', 90);
+
+    await store.resizeOnCanvas(CANVAS, { recordId: 'n1', width: 300, height: 200, x: 60, y: 50 });
+    expect(rowOf('n1')).toMatchObject({ width: 300, height: 200, x: 60, y: 50 });
+    expect(store.canvasHistory().undoLabel).toBe('resize card');
+
+    await store.undoCanvas(CANVAS);
+
+    expect(rowOf('n1')).toMatchObject({ width: 120, height: 90, x: 10, y: 10 });
+  });
+
+  it('returns a card to having no shape of its own', async () => {
+    // "Back to nothing" has to be sayable: an empty string is what the ORM's update skips, so the
+    // way back is the sentinel the canvas seed drops.
+    const store = mount();
+    await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    await store.setCardStyle(CANVAS, 'n1', 'cardShape', 'note');
+
+    await store.undoCanvas(CANVAS);
+
+    expect(rowOf('n1')?.cardShape).toBe('we:unset');
   });
 });
 

@@ -214,9 +214,25 @@ const canvasCards: SchemaNode = {
           then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
         },
       },
+      /*
+        The colour, previewed as it is browsed and written once on Apply.
+
+        The picker confirms here (see `ColorControl`), so everything before the tick arrives as a
+        preview — which for a selection matters: without the guard, dragging the hue area would
+        write a record per selected card per frame.
+      */
       {
         $if: {
-          condition: { $: "event.action == 'color'" },
+          condition: { $: "event.action == 'color' && event.preview" },
+          then: {
+            $action: 'recordStore.previewCardStyle',
+            args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'color' && !event.preview" },
           then: {
             $action: 'recordStore.setCardStyle',
             args: [CANVAS, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],

@@ -331,6 +331,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "confirm",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         }
       ]
     },
