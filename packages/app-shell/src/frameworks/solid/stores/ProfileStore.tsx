@@ -10,7 +10,17 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/entities';
-import { Accessor, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createComputed,
+  createContext,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  useContext,
+} from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 
 import { useAccountStore } from './AccountStore';
 import { useSessionStore } from './SessionStore';
@@ -19,6 +29,19 @@ export interface ProfileStore {
   // State
   /** Cache of all fetched profiles (own + peers). */
   profiles: Accessor<AgentProfileSummary[]>;
+  /**
+   * One agent's profile, as a read that depends on **that agent only**.
+   *
+   * `profiles()` is an array memo, rebuilt whenever anything lands in the cache, so a caller who
+   * scans it for one DID depends on every other DID as well. That is correct for a list of people
+   * and wrong for a row about one: `$agent` runs an effect per row, and a transcript panel is
+   * hundreds of them, so one peer resolving re-ran every row in the app and rescanned the whole
+   * cache in each. Reading this instead tracks a single key, so a profile landing wakes the rows
+   * that are about that agent and nobody else.
+   *
+   * Carries the same assembled `name` as `profiles()` — one decoration point, as below.
+   */
+  profileFor: (did: string) => AgentProfileSummary | undefined;
   /** The current user's own profile, derived from the cache. */
   ownProfile: Accessor<AgentProfileSummary | undefined>;
   /**
@@ -128,6 +151,33 @@ export function ProfileStoreProvider(props: ParentProps) {
   const profiles = createMemo<AgentProfileSummary[]>(() =>
     rawProfiles().map((profile) => ({ ...profile, name: displayName(profile) })),
   );
+
+  /**
+   * The same cache keyed by DID, so one agent can be read without depending on the rest.
+   *
+   * A **store** rather than a memo returning a Map, and that is the whole point: a store proxy
+   * tracks each key separately, so `index[did]` is its own dependency. A Map behind a memo would be
+   * one signal again and every reader would wake on every change, which is the thing being fixed.
+   *
+   * `reconcile` is what keeps that true through an update. It writes only the paths that actually
+   * differ, so a peer arriving touches that peer's key and leaves the others untouched — where a
+   * plain `setIndex(next)` would replace the object and notify everybody holding any key.
+   *
+   * Reading a key that is **not there yet** registers a dependency on it too, which is the case
+   * that decides this is workable at all: a row renders before its profile has been fetched, and
+   * has to be woken when it lands.
+   *
+   * `createComputed` rather than `createEffect` so the index is up to date within the same reactive
+   * pass that changed `profiles()` — a row reading it in an effect would otherwise see the previous
+   * answer for a tick.
+   */
+  const [profileIndex, setProfileIndex] = createStore<Record<string, AgentProfileSummary>>({});
+  createComputed(() => {
+    const next: Record<string, AgentProfileSummary> = {};
+    for (const profile of profiles()) if (profile.did) next[profile.did] = profile;
+    setProfileIndex(reconcile(next));
+  });
+  const profileFor = (did: string): AgentProfileSummary | undefined => (did ? profileIndex[did] : undefined);
 
   // In-flight deduplication for fetchProfile — prevents concurrent fetches for the same DID
   const inflightFetches = new Map<string, Promise<void>>();
@@ -510,7 +560,9 @@ export function ProfileStoreProvider(props: ParentProps) {
       notify: (tone, message) => toastService[tone](message),
       identities: {
         get: (agentId) => {
-          const profile = profiles().find((entry) => entry.did === agentId);
+          // `profileFor` rather than a scan of `profiles()`: a module reading this in a derived
+          // value depends on the one agent it asked about, not on the whole cache.
+          const profile = profileFor(agentId);
           if (!profile) return undefined;
           // The rule this used to inline now lives in `displayName`, applied once when the cache is
           // decorated — so a module and a template can no longer disagree about someone's name. That
@@ -525,6 +577,7 @@ export function ProfileStoreProvider(props: ParentProps) {
 
   const store: ProfileStore = {
     profiles,
+    profileFor,
     ownProfile,
     ownProfileLoaded,
     needsName,

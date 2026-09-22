@@ -193,6 +193,7 @@ export function createAd4mBackendPorts(
         currentPerspective: () => (deps.currentDataset() as PerspectiveProxy | null) ?? null,
         currentPerspectiveEntities: deps.currentDatasetEntities,
         agents: deps.profiles,
+        ...(deps.profileFor ? { agentFor: deps.profileFor } : {}),
         fetchAgent: deps.fetchProfile,
         ephemeralPort: deps.ephemeral,
       }),

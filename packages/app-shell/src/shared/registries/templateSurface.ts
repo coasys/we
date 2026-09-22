@@ -397,6 +397,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
   profileStore: {
     profiles: state('identity'),
+    // Host plumbing, not template surface: the narrow read behind `$agent` and the module identity
+    // port. A template that wants one agent writes `$agent`, which fetches a profile it has not got
+    // — this only reads the cache, so exposing it would add a second spelling that silently answers
+    // nothing for anybody who has not been fetched yet.
+    profileFor: WIRING,
     ownProfile: state('identity'),
     ownProfileLoaded: state('identity'),
     fetchProfile: action('identity'),

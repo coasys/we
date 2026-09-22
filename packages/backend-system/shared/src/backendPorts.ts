@@ -159,6 +159,18 @@ export interface DataBindingDeps {
   currentDatasetEntities(): EntityManifestEntry[];
   /** Reactive profile cache read — must be read inside the accessor (see `$identities`). */
   profiles(): Array<{ did?: string }>;
+  /**
+   * One agent, as a read that depends on that agent alone. Preferred over scanning `profiles()`.
+   *
+   * `$identities.get` is called once per `$agent` row, and a transcript is hundreds of rows. Against
+   * `profiles()` — one array that is rebuilt whenever anybody lands — each of those reads depends on
+   * the whole cache, so a single peer resolving wakes every row in the app. A host that can answer
+   * per DID supplies this and the dependency narrows to the row's own agent.
+   *
+   * Optional because it is an optimisation, not a capability: a host without it keeps working
+   * through `profiles()`, which is what the in-memory backend and the tests do.
+   */
+  profileFor?(id: string): { did?: string } | undefined;
   fetchProfile(id: string): Promise<void> | void;
   ephemeral: EphemeralPort;
 }

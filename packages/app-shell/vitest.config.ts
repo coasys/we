@@ -15,6 +15,10 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/profileStore.test.tsx',
+  // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
+  // build, where `createEffect` never runs again — so every count would be 1 and the test would
+  // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.
+  'tests/profileIndex.test.tsx',
   'tests/routeStore.test.tsx',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',

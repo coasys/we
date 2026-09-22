@@ -440,6 +440,8 @@ export default function TemplateProvider() {
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetEntities: modelsForBindings,
       profiles: profileStore.profiles,
+      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+      profileFor: profileStore.profileFor,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
     }),

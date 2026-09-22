@@ -203,6 +203,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
       profiles: profileStore.profiles,
+      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+      profileFor: profileStore.profileFor,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
     }),

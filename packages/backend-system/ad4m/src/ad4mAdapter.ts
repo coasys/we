@@ -130,6 +130,15 @@ export interface Ad4mAdapterDeps {
    * rather than the host's concrete profile type, which keeps this module free of app-layer imports.
    */
   agents: () => Array<{ did?: string }>;
+  /**
+   * One agent, read so that it depends on that agent alone — see `DataBindingDeps.profileFor`.
+   *
+   * `$agent` runs an effect per row and every one of them asks here. Answered by scanning `agents()`
+   * the dependency is the entire cache, so one peer arriving re-runs every row on screen; answered
+   * by a host that can key its cache, it is the row's own agent and nothing else. Optional, and the
+   * scan below stays as the fallback for a host that cannot.
+   */
+  agentFor?: (did: string) => { did?: string } | undefined;
   /** Ask AD4M to fetch a profile this client hasn't cached. */
   fetchAgent: (did: string) => Promise<void> | void;
   /**
@@ -171,7 +180,9 @@ export function createAd4mDataBindings(
     $currentDataset: deps.currentPerspective,
     // Identity directory behind the `$agent` block, bound to AD4M's agent cache.
     $identities: {
-      get: (did) => deps.agents().find((a) => a.did === did) as Record<string, unknown> | undefined,
+      get: (did) =>
+        (deps.agentFor ? deps.agentFor(did) : deps.agents().find((a) => a.did === did)) as
+          Record<string, unknown> | undefined,
       fetch: (did) => void deps.fetchAgent(did),
     },
     $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveEntities),
