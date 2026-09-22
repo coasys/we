@@ -98,6 +98,9 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
+| `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
+| `@we/history` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
+| `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |

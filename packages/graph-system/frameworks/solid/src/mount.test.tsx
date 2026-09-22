@@ -814,6 +814,43 @@ describe('the carry grip', () => {
     expect(many.host.querySelectorAll('.we-graph__carry')).toHaveLength(1);
   });
 
+  it('carries the document and the picture together, not one instead of the other', async () => {
+    // A composed card with an image has both, and two spreads keyed `preview` would have dropped the
+    // document on exactly the cards with most to draw.
+    const host = mount({
+      seeds: {
+        literal: true as const,
+        nodes: [
+          {
+            id: entityAddress('ds', 'CollectionBlock', 'c1'),
+            kind: 'entity' as const,
+            type: 'CollectionBlock',
+            label: 'c1',
+            data: { x: 0, y: 0, editorState: '{"root":{}}', src: 'expression://pic' },
+          },
+        ],
+        edges: [],
+      },
+      layout: { type: 'manual' },
+      behaviours: [{ type: 'marquee-select', options: { armed: true } }, 'select', 'pan-zoom'],
+      carry: true,
+    });
+    await until(() => host.querySelectorAll('.we-graph__node').length > 0);
+    const surface = host.querySelector('.we-graph__surface') as HTMLElement;
+    await select(host, surface, 60);
+    const grip = host.querySelector('.we-graph__carry') as HTMLElement;
+    grip.setPointerCapture = () => undefined;
+
+    grip.dispatchEvent(pointer('pointerdown', 10, 10));
+    grip.dispatchEvent(pointer('pointermove', 60, 60));
+
+    expect(dragSession.active()?.items[0]?.preview).toEqual({
+      content: '{"root":{}}',
+      thumbnail: 'expression://pic',
+    });
+    dragSession.cancel();
+  });
+
   it('begins a session carrying one reference per selected card', async () => {
     const { host, surface } = await canvas();
     await select(host, surface, 260);

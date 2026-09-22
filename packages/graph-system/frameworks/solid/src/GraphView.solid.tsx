@@ -1142,12 +1142,20 @@ export function GraphView(props: GraphViewProps) {
       if (at?.kind !== 'entity' || !at.id) return [];
       const editorState = entry.node.data?.editorState;
       const thumbnail = entry.node.data?.src;
+      /*
+        One preview, assembled — not two spreads both keyed `preview`, where the second silently
+        replaces the first. An `ImageBlock` composed into a card has both a document and a `src`, so
+        that spelling would have dropped the document on exactly the cards with most to draw.
+      */
+      const preview = {
+        ...(typeof editorState === 'string' && editorState ? { content: editorState } : {}),
+        ...(typeof thumbnail === 'string' && thumbnail ? { thumbnail } : {}),
+      };
       return [
         {
           ref: { entity: at.type ?? '', id: at.id },
           label: entry.node.label ?? at.id,
-          ...(typeof editorState === 'string' && editorState ? { preview: { content: editorState } } : {}),
-          ...(typeof thumbnail === 'string' && thumbnail ? { preview: { thumbnail } } : {}),
+          ...(Object.keys(preview).length ? { preview } : {}),
         },
       ];
     }),
