@@ -209,6 +209,70 @@ describe('a transcript with nothing in it', () => {
     expect(linesJson).not.toContain('local.utterancesLoaded &&');
   });
 
+  /**
+   * The window, which is the whole reason any of this changed.
+   *
+   * The query had no limit: every utterance re-ran it over the entire transcript, hydrated every row
+   * into a model instance and stringified the lot to fingerprint it. Three passes over everything
+   * already said, for each new thing said — so the cost of speaking grew with the length of the
+   * conversation, which is exactly the shape of "it got slower the longer we were in the call".
+   */
+  it('bounds what it loads', () => {
+    expect(linesJson).toContain('"limit":{"$":"modules.transcribe.transcriptShown"}');
+  });
+
+  /**
+   * Two documents with opposite anchors, out of one query.
+   *
+   * Live, a transcript is a tail: the newest N, which only `desc` can ask for. Afterwards it is a
+   * document with a beginning, read forwards, which is `asc`. Anchored to the end there is no way to
+   * reach the start but to load everything between, so the anchor is the thing that moves.
+   */
+  it('flips the order with the anchor', () => {
+    expect(linesJson).toContain(
+      "modules.transcribe.transcriptFromStart ? { createdAt: 'asc' } : { createdAt: 'desc' }",
+    );
+  });
+
+  /**
+   * And turns the tail back the right way up.
+   *
+   * `reverse` rather than a `column-reverse` box, which would look identical and quietly break the
+   * speaker grouping: it asks whether a line is by the same person as the one before it, and in a
+   * reversed list `prev` is the line *after*.
+   */
+  it('renders the live window oldest-first', () => {
+    expect(linesJson).toContain('reverse(local.utterances)');
+  });
+
+  /**
+   * A finished transcript is settled, so following it costs the node a re-query per change in the
+   * space to be told nothing changed — and reading one back is the commonest thing anybody does to
+   * a long transcript.
+   */
+  it('subscribes only while the call is live', () => {
+    expect(linesJson).toContain('"subscribe":{"$":"modules.transcribe.callOnScreenLive"}');
+  });
+
+  /**
+   * Both ways back, and they answer different questions: one more page is "I missed something a
+   * moment ago", the start is "I want to read this properly" — a different query, not a longer
+   * scroll, and unreachable by pressing the first enough times.
+   */
+  it('offers one more page, and the beginning', () => {
+    expect(linesJson).toContain('modules.transcribe.showEarlierTranscript');
+    expect(linesJson).toContain('modules.transcribe.readTranscriptFromStart');
+    expect(linesJson).toContain('modules.transcribe.readTranscriptLive');
+  });
+
+  /**
+   * The offer is withdrawn once everything is loaded — a page that came back short is the exact
+   * answer to "is there more", even though a full one is only a probable yes.
+   */
+  it('offers more only while a page came back full', () => {
+    expect(linesJson).toContain('count(local.utterances) >= modules.transcribe.transcriptShown');
+  });
+
   it('shows the placeholder where there is no record to wait for, not only where one answered empty', () => {
     /*
       The two situations a newcomer is most likely to be in — no call, and a call nobody has spoken
@@ -548,15 +612,36 @@ describe('the feed', () => {
       other, and the first sentence written appears to leap the gap between them. Inside, it follows
       the last row whether there are two of them or two hundred.
     */
-    expect(feedJson).toContain('"pin":"end"');
+    expect(feedJson).toContain('pin');
     expect(feedJson).toContain('transcribe.transcriptLines');
     expect(feedJson.indexOf('transcribe.transcriptLines')).toBeLessThan(feedJson.indexOf('Not saved yet'));
   });
 
-  it('offers a way back to either end of a transcript somebody has scrolled through', () => {
-    // `pin` lets go of a reader who scrolls up and offers nothing to undo that; in a live transcript
-    // the bottom keeps moving, so scrolling back to it by hand is a chase.
-    expect(feedJson).toContain('"jump":"both"');
+  /**
+   * Following the end is conditional, because the transcript is not always a tail.
+   *
+   * Anchored to its beginning it is a document, and the rows on screen are the OLDEST in the
+   * conversation — a new line does not belong below them, so pinning would drag a reader away from
+   * what they asked to read every time somebody speaks.
+   */
+  it('follows the live end only while the transcript is anchored to it', () => {
+    expect(feedJson).toContain('"pin":{"$":"modules.transcribe.transcriptFromStart ? \'\' : \'end\'"}');
+  });
+
+  /**
+   * A way back to the end, and deliberately NOT one to the start.
+   *
+   * `pin` lets go of a reader who scrolls up and offers nothing to undo that; in a live transcript
+   * the bottom keeps moving, so scrolling back to it by hand is a chase — that half stands.
+   *
+   * The start half went when the window arrived. The scroll area can only reach the top of what is
+   * LOADED, which is no longer the beginning of the conversation, so the button would have said
+   * "start" and delivered "as far back as we happened to fetch". Reaching the real beginning is a
+   * different query, offered in `transcriptLines` where it can be answered honestly.
+   */
+  it('offers a way back to the live end, and leaves the start to the window', () => {
+    expect(feedJson).toContain('"jump":"end"');
+    expect(feedJson).not.toContain('"jump":"both"');
   });
 
   it('times a row by the clock once the call is over, and relatively while it is not', () => {

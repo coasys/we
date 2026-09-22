@@ -83,6 +83,22 @@ const VIEWING_LIVE = { $: VIEWING_LIVE_EXPR };
 const IN_A_CALL = 'modules.transcribe.inCall';
 const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
 
+/** Whether the transcript is anchored to its beginning rather than following the live end. */
+const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
+
+/**
+ * Whether the window may have more beyond it — a page came back full, so there is probably more
+ * behind it.
+ *
+ * Deliberately "may", and worked out here rather than in the store because only the schema holds the
+ * rows. There is no cheap total to compare against: the call's `children` carries the extracted
+ * cards as well as the utterances, so counting it answers a different question, and a count
+ * projection would be a round trip to save a button. A full page is the honest test — exact whenever
+ * the answer is "no", and wrong only for a transcript whose length is an exact multiple of the page,
+ * where one press reveals nothing and the offer then withdraws itself.
+ */
+const TRANSCRIPT_HAS_MORE = `count(local.utterances) >= ${'modules.transcribe.transcriptShown'}`;
+
 /**
  * Which call the *extraction* surface is about.
  *
@@ -2904,12 +2920,122 @@ export const transcriptLines: SchemaNode = {
         via: 'children',
         anchorId: { $: 'modules.transcribe.collectionId' },
       },
-      // Oldest first, because a transcript read backwards is not a transcript.
-      order: { createdAt: 'asc' },
+      /*
+        Which end the window is anchored to — see `transcriptShown` in the store.
+
+        Reading from the start is `asc` and needs nothing else. Following the live end is `desc`,
+        because "the newest N" is the only way to bound a list that grows at the bottom, and the
+        rows are turned back the right way up below. A transcript read backwards is not a
+        transcript.
+      */
+      order: { $: "modules.transcribe.transcriptFromStart ? { createdAt: 'asc' } : { createdAt: 'desc' }" },
+      /*
+        The bound, and the point of all of this.
+
+        There was none. Every utterance re-ran this query over the *whole* transcript, hydrated every
+        row into a model instance and stringified the lot to fingerprint it — three passes over
+        everything already said, for each new thing said. In a long call with several people talking
+        that is most of what the tab was doing.
+      */
+      limit: { $: 'modules.transcribe.transcriptShown' },
       when: { $: 'modules.transcribe.collectionId' },
+      /*
+        Live only while the call is.
+
+        A finished transcript is settled, so a subscription over it has the node re-running this
+        query on every change in the space to be told nothing changed. Reading one back is the
+        commonest thing anybody does to a long transcript, and it was the case paying most.
+      */
+      subscribe: { $: CALL_ON_SCREEN_LIVE },
     },
   },
   children: [
+    /*
+      The window's controls, above the rows because the window grows *backwards* from the live end —
+      what is missing is earlier, so the way to it belongs at the top.
+
+      Words rather than buttons, for the reason `commentThread`'s "N more in this thread" is: this is
+      the edge of a list, not an action beside it, and a filled control here reads as a block sitting
+      on the conversation.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: TRANSCRIPT_FROM_START },
+        /*
+          Reading the beginning. Say so — the rows below look exactly like the live tail otherwise,
+          and somebody who pressed this a minute ago has no way to tell which end they are at.
+        */
+        then: {
+          type: 'Row',
+          props: { ay: 'center', gap: '300', pb: '200' },
+          children: [
+            { type: 'we-icon', props: { name: 'clock-counter-clockwise', size: 'xs', color: 'text-faint' } },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint', flex: '1', minWidth: '0' },
+              children: ['The start of the transcript.'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'bare',
+                size: 'sm',
+                color: 'text-faint',
+                hoverProps: { color: 'text' },
+                onClick: { $action: 'modules.transcribe.readTranscriptLive' },
+              },
+              children: ['Latest'],
+            },
+          ],
+        },
+        /*
+          Following the live end, with more behind. Two offers, because they answer different
+          questions: one more page is "I missed something a moment ago", and the start is "I want to
+          read this properly" — which is a different query, not a longer scroll, and cannot be
+          reached by pressing the first one enough times in any reasonable number of presses.
+        */
+        else: {
+          type: '$if',
+          props: {
+            condition: { $: TRANSCRIPT_HAS_MORE },
+            then: {
+              type: 'Row',
+              props: { ay: 'center', gap: '300', pb: '200' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'bare',
+                    size: 'sm',
+                    color: 'text-faint',
+                    hoverProps: { color: 'text' },
+                    onClick: { $action: 'modules.transcribe.showEarlierTranscript' },
+                  },
+                  children: ['Show earlier'],
+                },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['·'],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'bare',
+                    size: 'sm',
+                    color: 'text-faint',
+                    hoverProps: { color: 'text' },
+                    onClick: { $action: 'modules.transcribe.readTranscriptFromStart' },
+                  },
+                  children: ['Jump to the start'],
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
     {
       type: '$if',
       props: {
@@ -2917,7 +3043,16 @@ export const transcriptLines: SchemaNode = {
         then: {
           type: '$each',
           props: {
-            items: { $: 'local.utterances' },
+            /*
+              Turned back the right way up.
+
+              Following the live end asks for the newest N, which arrives newest-first; a transcript
+              is read oldest-first. `reverse` rather than drawing the rows in a `column-reverse` box,
+              which would look identical and quietly break `prev`: the speaker grouping asks whether
+              this line is by the same person as the one before it, and in a reversed list `prev` is
+              the line *after*.
+            */
+            items: { $: 'modules.transcribe.transcriptFromStart ? local.utterances : reverse(local.utterances)' },
             as: 'utterance',
           },
           children: [
@@ -3967,11 +4102,26 @@ export const transcriptComposer: SchemaNode = {
  * one query in the codebase rather than two that have to agree.
  */
 export const transcriptFeed: SchemaNode = panelScroll({
-  // Follows the tail while somebody is at the tail, and holds still while they read further
-  // up. A live transcript is the case this exists for — and the case that most needs a way back
-  // down again, since holding still is otherwise a decision nothing offers to undo.
-  pin: 'end',
-  jump: 'both',
+  /*
+    Follows the tail while somebody is at the tail, and holds still while they read further up. A
+    live transcript is the case this exists for — and the case that most needs a way back down
+    again, since holding still is otherwise a decision nothing offers to undo.
+
+    Off while the transcript is anchored to its beginning: those rows are the oldest in the
+    conversation and new ones do not belong below them, so following the end would drag a reader
+    away from what they asked to read on every line somebody says.
+  */
+  pin: { $: `${'modules.transcribe.transcriptFromStart'} ? '' : 'end'` },
+  /*
+    `end` rather than `both`, now that the window is bounded.
+
+    The scroll area's start button goes to the top of what is *loaded*, which since the window
+    arrived is not the start of the conversation — it would say "start" and deliver "as far back as
+    we happened to fetch". Reaching the real beginning is a different query, so it is offered where
+    it can be answered honestly: `transcriptLines`' own "Jump to the start", which re-anchors the
+    window rather than scrolling within it.
+  */
+  jump: 'end',
   children: [
     {
       type: 'Column',

@@ -459,6 +459,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
     join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
+    reverse(items) — The entries of a list, back to front. A new list — the one given is untouched, so a store array or a query result can be reversed without disturbing anything else reading it.  e.g. reverse(local.utterances)
     split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
     sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.comments)))
   Text:
@@ -3321,6 +3322,8 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
   - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
   - transcribing — Speech has gone to the model and its text has not come back yet.
+  - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
+  - transcriptShown — How many transcript lines are loaded right now.
   - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
   - watchProblem — Why the standing extraction watch is not running here; empty when it is.
 - Actions (`{ "$action": "modules.transcribe.<name>" }`):
@@ -3339,9 +3342,12 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
   - openPanel — Opens the transcript panel.
+  - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
+  - readTranscriptLive — Goes back to following the end of the transcript.
   - refreshProposals — Re-reads what is staged on a call, or on the live one.
   - rejectProposal — Drops a suggestion.
   - setProposalField — Sets one field of the open draft, by property name.
+  - showEarlierTranscript — Loads one more page of the transcript, in whichever direction it is being read.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
   - toggleAutoExtract — Turns automatic extraction on or off for this call, for everyone in it.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.

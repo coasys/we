@@ -7830,6 +7830,16 @@
           "doc": "Suggestions staged on one conversation, by record id — read as proposalsFor[id]."
         },
         {
+          "name": "readTranscriptFromStart",
+          "kind": "action",
+          "doc": "Shows the beginning of the transcript, to be read forwards."
+        },
+        {
+          "name": "readTranscriptLive",
+          "kind": "action",
+          "doc": "Goes back to following the end of the transcript."
+        },
+        {
           "name": "reconnecting",
           "kind": "state",
           "doc": "The link to the speech model dropped and is being re-established; what is said meanwhile is held."
@@ -7848,6 +7858,11 @@
           "name": "setProposalField",
           "kind": "action",
           "doc": "Sets one field of the open draft, by property name."
+        },
+        {
+          "name": "showEarlierTranscript",
+          "kind": "action",
+          "doc": "Loads one more page of the transcript, in whichever direction it is being read."
         },
         {
           "name": "speaking",
@@ -7888,6 +7903,16 @@
           "name": "transcribing",
           "kind": "state",
           "doc": "Speech has gone to the model and its text has not come back yet."
+        },
+        {
+          "name": "transcriptFromStart",
+          "kind": "state",
+          "doc": "Whether the transcript is being read from its beginning rather than following the live end."
+        },
+        {
+          "name": "transcriptShown",
+          "kind": "state",
+          "doc": "How many transcript lines are loaded right now."
         },
         {
           "name": "unconfirmedIds",

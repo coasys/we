@@ -91,6 +91,16 @@ const MAX_CHARS = 1000;
 /** Silence after which whatever has accumulated is written, so a short remark is not held forever. */
 const FLUSH_AFTER_MS = 3_000;
 
+/**
+ * How many lines a transcript loads at a time.
+ *
+ * Big enough that the window is rarely reached in a short call and a reader scrolling back a little
+ * never meets a button; small enough that the per-utterance cost stays flat in a long one, which is
+ * the whole reason there is a window. Both ends grow by this, and pressing "earlier" adds one page
+ * rather than opening the lot.
+ */
+const TRANSCRIPT_PAGE = 200;
+
 /** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
 export const CHILDREN_PREDICATE = 'we://children';
 
@@ -427,6 +437,47 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * panel again with two titlebars.
    */
   const [extractionOpen, setExtractionOpen] = signal(false);
+
+  /*
+    How much of the transcript is loaded, and which end it is anchored to.
+
+    A transcript is two documents with opposite anchors. **Live**, it is a tail: what matters is the
+    last thing said, it grows at the bottom, and reading back a little is an excursion. **Afterwards**
+    it is a document: it has a beginning, and somebody reads it forwards. One window cannot serve both
+    — anchored to the end you cannot reach the start without loading everything in between, and
+    anchored to the start you are not following the call.
+
+    So the window names its anchor, and the two modes are the same query with the order flipped:
+    `desc` + reverse for the tail, `asc` for the document. Either way `shown` bounds it, which is the
+    whole point — before this the query had no limit at all and every utterance re-fetched, re-hydrated
+    and re-fingerprinted the entire transcript, so the cost of saying one more word grew with
+    everything already said.
+
+    In the store rather than `$localState` because `transcriptLines` is placed as a part on its own,
+    while `pin` lives on the scroll area *around* it — two nodes that have to agree, with no common
+    local scope. See `transcriptFeed`.
+  */
+  const [transcriptShown, setTranscriptShown] = signal(TRANSCRIPT_PAGE);
+  const [transcriptFromStart, setTranscriptFromStart] = signal(false);
+
+  /*
+    A different conversation is a different document, so the window starts again: one page, anchored
+    to the live end.
+
+    Without this it is a high-water mark across calls — read six hundred lines of one conversation
+    and the next opens by loading six hundred of its own, which is the cost the window exists to
+    bound, arriving one call late. Compared rather than written blind so this does not fight a reader
+    who has just pressed for more in the call they are already in.
+  */
+  let windowedCall: string | null = null;
+  effect?.(() => {
+    const record = deps.callOnScreen?.() ?? null;
+    if (record === windowedCall) return;
+    windowedCall = record;
+    setTranscriptShown(TRANSCRIPT_PAGE);
+    setTranscriptFromStart(false);
+  });
+
   const [error, setError] = signal<string>('');
   /** What has been heard but not yet written — shown live, so the user can see it working. */
   const [pending, setPending] = signal<string>('');
@@ -2504,6 +2555,38 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       collectionId,
       'The record this call’s transcript lives in, or null until something has been said.',
     ),
+
+    /*
+      The transcript's window — see the signals for why a transcript is two documents, not one.
+    */
+    transcriptShown: state(transcriptShown, 'How many transcript lines are loaded right now.'),
+    transcriptFromStart: state(
+      transcriptFromStart,
+      'Whether the transcript is being read from its beginning rather than following the live end.',
+    ),
+    showEarlierTranscript: action(
+      () => setTranscriptShown(transcriptShown() + TRANSCRIPT_PAGE),
+      'Loads one more page of the transcript, in whichever direction it is being read.',
+    ),
+    /**
+     * Read from the beginning — a different query, not a scroll.
+     *
+     * The window is anchored to the live end, so "the top of what is loaded" is not the start of the
+     * conversation and a scroll cannot reach one from the other. Asking for the oldest page instead
+     * is cheap, exact, and needs no cursor — which matters, because the backend has none.
+     *
+     * It arrives as a cut rather than a journey. That is the honest rendering: the content between
+     * the two ends was never on screen to travel through, and `we-scroll-area` already takes the
+     * same view of any move too long to sit through.
+     */
+    readTranscriptFromStart: action(() => {
+      setTranscriptFromStart(true);
+      setTranscriptShown(TRANSCRIPT_PAGE);
+    }, 'Shows the beginning of the transcript, to be read forwards.'),
+    readTranscriptLive: action(() => {
+      setTranscriptFromStart(false);
+      setTranscriptShown(TRANSCRIPT_PAGE);
+    }, 'Goes back to following the end of the transcript.'),
 
     /*
       Where a panel opens is no longer answered here.

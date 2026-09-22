@@ -209,8 +209,14 @@ export interface PanelScrollOptions {
    * `panelShell`'s default is `300`, which is what every panel in the repo uses.
    */
   inset?: string;
-  /** Follow the tail while the reader is at it — `we-scroll-area`'s `pin`. */
-  pin?: string;
+  /**
+   * Follow the tail while the reader is at it — `we-scroll-area`'s `pin`.
+   *
+   * An expression is allowed, for a list that is only sometimes a tail: a transcript follows the
+   * live end, and stops when the reader asks to read the same conversation from its beginning, where
+   * pinning would drag them back down on every new line.
+   */
+  pin?: string | ExpressionToken;
   /** Jump-to-end controls — `we-scroll-area`'s `jump`. */
   jump?: string;
 }
