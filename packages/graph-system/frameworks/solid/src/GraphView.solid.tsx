@@ -24,7 +24,7 @@
  */
 import { Column, Row } from '@we/components/solid';
 import { ROLE_NAMES } from '@we/design-utils';
-import { dragSession } from '@we/drag';
+import { type DragItem, dragSession } from '@we/drag';
 import type { EdgeWaypoint } from '@we/graph-core';
 import {
   bendPoints,
@@ -182,6 +182,16 @@ const ARROW_LENGTH = 6;
  * much so the line meets the head instead of running under it. See `backOff`.
  */
 const PENDING_WIDTH = 2;
+
+/**
+ * The frame round a multi-card selection, as a node id.
+ *
+ * It is not a node and never reaches the store, the index, a layout or a metric — it exists so the
+ * frame can be placed by `anchorStyle`, which takes a `NodeEntry`. Given an id at all so that
+ * anything reading one off the chrome layer during a debug session sees a name rather than an empty
+ * string it might mistake for a real node's.
+ */
+const SELECTION_FRAME_ID = 'we-graph://selection';
 
 /**
  * How near a node's centre an anchor drag counts as "no side at all", as a fraction of its half-size.
@@ -384,6 +394,7 @@ export function GraphView(props: GraphViewProps) {
   const [viewportVersion, setViewportVersion] = createSignal(0);
   const [statusVersion, setStatusVersion] = createSignal(0);
   const [connectionVersion, setConnectionVersion] = createSignal(0);
+  const [marqueeVersion, setMarqueeVersion] = createSignal(0);
   const [hovered, setHovered] = createSignal<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = createSignal<string | null>(null);
   /**
@@ -540,21 +551,43 @@ export function GraphView(props: GraphViewProps) {
           props.onSelectionChange?.(event.ids);
           break;
         case 'nodeDragEnd': {
-          const at = parseAddress(event.node.id);
           /*
-            A fold travels with its contents.
+            A drag that ended in somebody else's drop zone is not a move.
 
-            Without this, folding a cluster and carrying it into a corner scatters everything back
-            where it was the moment you unfold — which makes the fold a way of hiding things rather
-            than a way of tidying, and the difference is the whole reason to have one. The cards are
-            reported rather than written, like every other gesture here: where a position lives is
+            The cards have already been put back where they started (see `endCarry`), so reporting
+            this would write the position they were dropped *over* — which is inside a panel, and
+            would be the one place on the canvas nobody can see.
+          */
+          if (carriedAway) {
+            carriedAway = false;
+            break;
+          }
+          const at = parseAddress(event.node.id);
+          /** One card that moved with the drag, as a record, or nothing when it does not stand for one. */
+          const asRecord = (id: string, x: number, y: number) => {
+            const address = parseAddress(id);
+            if (address?.kind !== 'entity' || !address.id) return [];
+            return [{ recordId: address.id, recordType: address.type ?? '', x, y }];
+          };
+          /*
+            Everything the gesture moved besides the card under the pointer, in one list.
+
+            Two sources, and they compose rather than competing. The rest of the **selection** moved
+            because somebody dragged several cards at once; a fold's **contents** moved because the
+            card they are hidden under did. A folded card inside a multi-card drag is both at once,
+            which is why the fold is asked about every node that travelled and not only the grabbed
+            one — miss that and carrying a selection containing a fold scatters its contents the next
+            time anyone opens it.
+
+            Reported rather than written, like every other gesture here: where a position lives is
             the interface's business.
           */
-          const carried = engine.foldedUnder(event.node.id).flatMap((row) => {
-            const address = parseAddress(row.id);
-            if (address?.kind !== 'entity' || !address.id) return [];
-            return [{ recordId: address.id, recordType: address.type ?? '', x: row.x, y: row.y }];
-          });
+          const carried = [
+            ...(event.moved ?? []).flatMap((row) => asRecord(row.id, row.position.x, row.position.y)),
+            ...[event.node.id, ...(event.moved ?? []).map((row) => row.id)].flatMap((id) =>
+              engine.foldedUnder(id).flatMap((row) => asRecord(row.id, row.x, row.y)),
+            ),
+          ];
           props.onNodeDragEnd?.({
             id: event.node.id,
             x: event.position.x,
@@ -575,6 +608,9 @@ export function GraphView(props: GraphViewProps) {
       if (reason === 'viewport') setViewportVersion((n) => n + 1);
       else if (reason === 'status') setStatusVersion((n) => n + 1);
       else if (reason === 'connection') setConnectionVersion((n) => n + 1);
+      // Its own signal, not the general one: a sweep fires on every pointer move and moves one
+      // rectangle, where `version` re-derives every node and every edge.
+      else if (reason === 'marquee') setMarqueeVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
   });
@@ -896,8 +932,20 @@ export function GraphView(props: GraphViewProps) {
       }
       applied = recordId;
       if (target.kind === 'node') {
-        const selection = engine.getSelection();
-        if (selection.length !== 1 || selection[0] !== target.id) engine.select([target.id]);
+        /*
+          Already selected is enough — it does not have to be the *only* thing selected.
+
+          This used to demand a selection of exactly one, which quietly made multi-select impossible
+          on any canvas that binds `focus`. Shift-clicking a second card toggles it in, the click
+          writes the record into the address, the address comes back here, and a selection of two
+          was replaced by a selection of one — correct for a single frame, then collapsed by the
+          interface's own inspector wiring. The workshop does exactly that and the canvas view does
+          not, which is why the gesture worked in one and not the other.
+
+          Every case this effect exists for still holds: an inspector opening a record that is *not*
+          selected still replaces the selection with it.
+        */
+        if (!engine.getSelection().includes(target.id)) engine.select([target.id]);
       } else {
         // `selectEdge` returns early for the line already open, so no guard is needed here.
         engine.selectEdge(target.id);
@@ -1063,6 +1111,120 @@ export function GraphView(props: GraphViewProps) {
   const selectedRows = createMemo(() => nodeRows().filter((row) => row.entry.selected));
 
   /**
+   * Whether the selection is a *set* rather than a card.
+   *
+   * The line the whole chrome layer turns on. One card wears its own furniture — eight resize
+   * handles, four connect dots and a bar of controls about that record. Twelve cards wearing the
+   * same thing is not a busier version of that, it is a different and unusable screen: ninety-six
+   * grab targets over the content they exist to reveal, and twelve identical bars none of which is
+   * the one you meant. So above one, the per-card chrome goes away entirely and a single frame round
+   * the selection takes its place. The frame itself is built further down, where `boxOf` is.
+   */
+  const multiSelected = createMemo(() => selectedRows().length > 1);
+
+  /**
+   * Which selection-wide controls are offered.
+   *
+   * `when` has to hold for **every** selected node rather than for any of them: "accept" over a
+   * selection where two cards are suggestions and nine are settled would be a button that does
+   * something to a fifth of what is highlighted, which is the shape of mistake nobody notices until
+   * afterwards.
+   */
+  const selectionActions = createMemo(() => {
+    const rows = selectedRows();
+    if (rows.length < 2) return [];
+    return (props.selectionActions ?? []).filter((action) =>
+      rows.every(({ entry }) => matches(entry.node, action.when)),
+    );
+  });
+
+  /** Every selected node that stands for a record — what a selection-wide action is reported with. */
+  const selectedRecords = createMemo(() =>
+    selectedRows().flatMap(({ entry }) => {
+      const at = parseAddress(entry.node.id);
+      return at?.kind === 'entity' && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
+    }),
+  );
+
+  /**
+   * The selection as things the app's drag session can carry.
+   *
+   * References, never records — `{ entity, id }` — which is what makes a card droppable somewhere
+   * the canvas has never heard of. No dataset is named: a receiver stamps that from whichever one
+   * was current when the drop happened, and a graph reading a store to answer it would be the graph
+   * learning what a dataset is.
+   *
+   * Everything in `preview` is already on the node, so building this costs a property read per card
+   * rather than a query. `editorState` is the composed document a post card draws from, handed over
+   * as the string it arrived as, so a ghost can draw the real card rather than a chip with a name on
+   * it.
+   */
+  const itemsFor = (ids: readonly string[]): DragItem[] =>
+    ids.flatMap((id) => {
+      const entry = nodeRows().find((row) => row.entry.node.id === id)?.entry;
+      const at = parseAddress(id);
+      if (!entry || at?.kind !== 'entity' || !at.id) return [];
+      const editorState = entry.node.data?.editorState;
+      const thumbnail = entry.node.data?.src;
+      /*
+        One preview, assembled — not two spreads both keyed `preview`, where the second silently
+        replaces the first. An `ImageBlock` composed into a card has both a document and a `src`, so
+        that spelling would have dropped the document on exactly the cards with most to draw.
+      */
+      const preview = {
+        ...(typeof editorState === 'string' && editorState ? { content: editorState } : {}),
+        ...(typeof thumbnail === 'string' && thumbnail ? { thumbnail } : {}),
+      };
+      return [
+        {
+          ref: { entity: at.type ?? '', id: at.id },
+          label: entry.node.label ?? at.id,
+          ...(Object.keys(preview).length ? { preview } : {}),
+        },
+      ];
+    });
+
+  /**
+   * A card drag that might turn out to be a carry.
+   *
+   * ## The card is the ghost
+   *
+   * Dragging a card already means "move it here", and it is the most-used gesture on a canvas.
+   * Rather than adding a second grab area meaning "take it away", the same drag carries both
+   * readings and the **release** decides: over nothing it was a move and the new position is
+   * written; over a drop zone the cards go back where they started and the zone gets them.
+   *
+   * That works because the session already does the hard half. Zones light up as the pointer
+   * crosses them, spring-loading opens a collapsed one, and a release over nothing does nothing at
+   * all — so "was this a carry" is exactly what `drop` answers.
+   *
+   * The ghost is `none`: the card is already under the cursor in the canvas's own space, and a
+   * second copy of it beside the first would leave neither being the answer.
+   *
+   * ## `from` is the graph, which is what stops it eating its own drag
+   *
+   * The canvas registers itself as a drop zone, so without this a card dropped back on the canvas
+   * would land in the graph's own `onDrop` and be brought in a second time. `accepts` refuses a zone
+   * the drag began inside, which this is — the same containment rule that stops a sortable dropping
+   * a row into itself.
+   */
+  let carrying: { items: DragItem[]; home: { id: string; at: Point }[]; began: boolean } | null = null;
+  /** Set by the release when a zone took the cards, and read by `nodeDragEnd` — see `onPointerUp`. */
+  let carriedAway = false;
+
+  /**
+   * Which nodes a press is about to move, mirroring `drag-node`'s own rule.
+   *
+   * A press inside the selection moves the selection; a press outside it moves that card alone and
+   * leaves the selection where it is. Asked here as well because the carry has to know what it is
+   * carrying *before* the drag starts, and the behaviour keeps that to itself.
+   */
+  function draggedBy(id: string): string[] {
+    const selection = engine.getSelection();
+    return selection.length > 1 && selection.includes(id) ? selection : [id];
+  }
+
+  /**
    * The rows wearing a fold count — folded cards, less any that is selected.
    *
    * Less the selection because a selected card already has the count in its action bar, and the
@@ -1218,6 +1380,18 @@ export function GraphView(props: GraphViewProps) {
   const pending = createMemo(() => {
     connectionVersion();
     return engine.getPendingConnection();
+  });
+
+  /**
+   * The rectangle a selection sweep is drawing, in world units — see `getPendingMarquee`.
+   *
+   * World units, so it is drawn inside the same transformed group the nodes are and stays anchored
+   * to the canvas when the view moves under it. A screen-space rectangle would slide off whatever it
+   * had already caught the moment anything panned.
+   */
+  const marquee = createMemo(() => {
+    marqueeVersion();
+    return engine.getPendingMarquee();
   });
 
   /**
@@ -1562,6 +1736,10 @@ export function GraphView(props: GraphViewProps) {
       at: { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) },
       buttons: 'buttons' in event ? event.buttons : 0,
       shiftKey: event.shiftKey,
+      // The platform's multi-select modifier, folded into one flag: Control everywhere, and Command
+      // on a Mac, where Control-click is the context menu. `metaKey` stays separate below for
+      // anything that genuinely means that key rather than this intent.
+      ctrlKey: event.ctrlKey || event.metaKey,
       metaKey: event.metaKey,
       delta: 'deltaY' in event ? event.deltaY : undefined,
     };
@@ -2202,6 +2380,57 @@ export function GraphView(props: GraphViewProps) {
     };
   }
 
+  /**
+   * The box round everything selected, in world units — centre and size, as a node reports itself.
+   *
+   * Deliberately the same shape a node's own box has, so the frame and its bar are placed by
+   * `anchorStyle` and by exactly the stylesheet rules that place a card's. The bar then sits the
+   * same distance above a selection as it does above one card and scales with the camera the same
+   * way, with no second copy of that placement to drift out of step with the first.
+   *
+   * Measured through `boxOf`, so a card mid-resize contributes the size it is being dragged to
+   * rather than the one the data still holds.
+   *
+   * Declared here rather than beside `selectedRows` because `createMemo` runs its body eagerly, and
+   * `boxOf` reads the `resizing` signal declared above this line — see the note in `mount.test.tsx`
+   * about the last memo that reached backwards.
+   */
+  const selectionBox = createMemo(() => {
+    const rows = selectedRows();
+    if (rows.length < 2) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const { entry } of rows) {
+      const box = boxOf(entry);
+      const halfWidth = (box.width ?? entry.visual.size * 2) / 2;
+      const halfHeight = (box.height ?? entry.visual.size * 2) / 2;
+      minX = Math.min(minX, box.x - halfWidth);
+      minY = Math.min(minY, box.y - halfHeight);
+      maxX = Math.max(maxX, box.x + halfWidth);
+      maxY = Math.max(maxY, box.y + halfHeight);
+    }
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, width: maxX - minX, height: maxY - minY };
+  });
+
+  /**
+   * The selection frame, dressed as a node so `anchorStyle` can place it.
+   *
+   * A synthetic entry rather than a second placement path: everything downstream — the transform,
+   * `--node-width`, `--node-height`, the bar's lift — is written against a `NodeEntry`, and giving
+   * the frame its own arithmetic would mean maintaining the two in step forever.
+   */
+  const selectionEntry = createMemo(() => {
+    const box = selectionBox();
+    if (!box) return null;
+    return {
+      node: { id: SELECTION_FRAME_ID, kind: 'selection', type: '' },
+      at: { x: box.x, y: box.y },
+      visual: { shape: 'rect', size: 0, width: box.width, height: box.height },
+    } as unknown as NodeEntry;
+  });
+
   /** This graph's endpoint grips, at the camera's scale — see `edgeEndAt`. */
   const edgeEndUnder = (at: Point): string | null =>
     /*
@@ -2240,7 +2469,48 @@ export function GraphView(props: GraphViewProps) {
    *
    * The listener writes nothing. See `onDeleteSelection` for why the graph reports rather than acts.
    */
+  /**
+   * An element that owns its own text input — the same test `we-sortable` makes, for the same reason.
+   *
+   * The keys below are bound on the graph's **root**, which contains the chrome as well as the hit
+   * surface (see the note there), and some of that chrome types: a colour control's hex field is an
+   * `input` inside a popup inside the selected card's bar. Without this, backspacing a wrong digit
+   * would delete the card the colour is being chosen for.
+   *
+   * `composedPath` rather than `target`, because a field inside a primitive's shadow root reports
+   * the host element as the target and the field itself only in the path.
+   */
+  const typingIn = (event: KeyboardEvent): boolean =>
+    event.composedPath().some((node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      return (
+        node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT' || node.isContentEditable
+      );
+    });
+
   function onKeyDown(event: KeyboardEvent) {
+    if (typingIn(event)) return;
+    /*
+      Undo and redo, on the surface for exactly the reason delete is.
+
+      A document-level listener would revert a card move while somebody is typing a label into the
+      inspector beside the canvas — the keystroke belongs to whatever has focus, and focus is the
+      only thing that can answer which of the two the reader meant. The cost is real and worth
+      stating: undo works while the canvas has focus and not while the inspector does. The
+      alternative silently steals the key from every text field on the page.
+
+      Both spellings of redo, because both are in use: Ctrl+Shift+Z everywhere, and Ctrl+Y on
+      Windows, where a good many people will only ever try that one.
+    */
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z' || event.key === 'y')) {
+      const redoing = event.key === 'y' || event.shiftKey;
+      const report = redoing ? props.onRedo : props.onUndo;
+      if (!report) return;
+      event.preventDefault();
+      report();
+      return;
+    }
+
     if (event.key !== 'Delete' && event.key !== 'Backspace') return;
     const report = props.onDeleteSelection;
     if (!report) return;
@@ -2271,17 +2541,90 @@ export function GraphView(props: GraphViewProps) {
     const ids = engine.getSelection();
     if (!ids.length) return;
     // Only an entity node stands for a record. A property, a literal or a synthetic cluster has
-    // nothing to delete, so it reports as a selection with no id rather than as no press at all.
+    // nothing to delete, so it is left out of `records` rather than reported as an empty one.
+    const records = selectedRecords();
     const at = ids.length === 1 ? parseAddress(ids[0]) : null;
     event.preventDefault();
     report({
       count: ids.length,
-      ...(ids.length === 1 && { kind: 'node' as const }),
+      kind: 'node',
+      // Still filled for a selection of one, which is what every existing consumer reads.
       ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(records.length ? { records } : {}),
     });
   }
 
+  /**
+   * A press on a card, remembered in case the drag that follows turns out to be a carry.
+   *
+   * Nothing is begun here. Most presses are clicks and most drags are ordinary moves, so the session
+   * waits until the pointer has actually travelled — see `carryTo`.
+   */
+  function armCarry(event: PointerEvent): void {
+    carrying = null;
+    carriedAway = false;
+    if (!props.carry || engine.isLocked()) return;
+    const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
+    if (!hit) return;
+    const ids = draggedBy(hit);
+    const items = itemsFor(ids);
+    // Nothing a receiver could be given — a property node, a cluster, a literal — is not a carry.
+    if (!items.length) return;
+    const home = ids.flatMap((id) => {
+      const at = engine.getPositions().get(id);
+      return at ? [{ id, at: { x: at.x, y: at.y } }] : [];
+    });
+    carrying = { items, home, began: false };
+  }
+
+  /** Feed the session while a card drag is running, beginning one the first time it has moved. */
+  function carryTo(event: PointerEvent): void {
+    if (!carrying || !surface) return;
+    // No button held means no drag — the same guard the behaviours carry, for the same dropped
+    // pointer-up that leaves a gesture latched.
+    if (event.buttons === 0) {
+      dragSession.cancel();
+      carrying = null;
+      return;
+    }
+    const point = { x: event.clientX, y: event.clientY };
+    if (!carrying.began) {
+      carrying.began = true;
+      dragSession.begin({
+        payload: { items: carrying.items, effect: 'copy' },
+        pointer: point,
+        // Nothing drawn: the card itself is already following the cursor. See the note on `carrying`.
+        ghost: { kind: 'none' },
+        // The graph, so the graph's own drop zone refuses this drag — see the note on `carrying`.
+        from: surface,
+        release: () => {
+          carrying = null;
+        },
+      });
+      return;
+    }
+    dragSession.move(point);
+  }
+
+  /**
+   * The release: did a zone take the cards, or was this an ordinary move?
+   *
+   * `copy`, whichever it was. The cards go back where they started rather than off the canvas,
+   * because nothing here knows what the receiver did with what it was given — and taking a card off
+   * a canvas on the strength of a drop that may have been refused is the one outcome worth refusing
+   * to risk. A Pocket that gathered it now holds a reference; the canvas is unchanged.
+   */
+  function endCarry(event: PointerEvent): void {
+    const held = carrying;
+    carrying = null;
+    if (!held?.began) return;
+    carriedAway = dragSession.drop({ x: event.clientX, y: event.clientY });
+    if (!carriedAway) return;
+    for (const { id, at } of held.home) engine.pin(id, at);
+  }
+
   function onPointerMove(event: PointerEvent) {
+    carryTo(event);
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
@@ -2339,6 +2682,21 @@ export function GraphView(props: GraphViewProps) {
     <div
       class="we-graph"
       ref={surface}
+      /*
+        The keyboard, on the **root** rather than on the hit surface.
+
+        `.we-graph__surface` is a self-closing element: the node layer, every card's chrome and the
+        selection's own bar are *siblings* of it, not descendants. So a press on any of them — a bin
+        in a card's bar, a swatch, the selection's controls — moved focus outside the surface, and a
+        key pressed afterwards bubbled to this root and reached nothing. Delete had that from the
+        start; undo inherited it, and it reads as a key that is simply not wired up.
+
+        The root still answers the question the surface was chosen to answer — is the keyboard aimed
+        at this graph, or at the inspector beside it — and it now covers the graph's own furniture
+        as well, which was always part of the graph. `typingIn` guards the one thing that moves in
+        with it: chrome that takes text.
+      */
+      onKeyDown={onKeyDown}
       style={{
         width: props.width ?? '100%',
         height: props.height ?? '100%',
@@ -2374,15 +2732,14 @@ export function GraphView(props: GraphViewProps) {
         classList={{ 'we-graph__surface--pointer-focus': pointerFocused() }}
         onBlur={() => setPointerFocused(false)}
         /*
-          Focusable only where the delete key is bound — see `onDeleteSelection`.
+          Focusable only where a key is bound to something — see `onDeleteSelection` and `onUndo`.
 
-          A graph with no answer for the key has no reason to be a tab stop, and making every one of
-          them focusable would add a stop to every page holding a map, for a focus that does nothing.
-          `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can focus is
-          a canvas only a mouse can delete from.
+          A graph with no answer for any of them has no reason to be a tab stop, and making every one
+          of them focusable would add a stop to every page holding a map, for a focus that does
+          nothing. `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can
+          focus is a canvas only a mouse can delete from.
         */
-        tabIndex={props.onDeleteSelection ? 0 : undefined}
-        onKeyDown={onKeyDown}
+        tabIndex={props.onDeleteSelection || props.onUndo || props.onRedo ? 0 : undefined}
         onPointerDown={(event) => {
           (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
           /*
@@ -2395,13 +2752,29 @@ export function GraphView(props: GraphViewProps) {
           */
           setPointerFocused(true);
           (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
+          armCarry(event);
           dispatch('onPointerDown', event);
         }}
         onPointerMove={onPointerMove}
-        onPointerUp={(event) => dispatch('onPointerUp', event)}
+        onPointerUp={(event) => {
+          /*
+            The session is asked **before** the behaviours are.
+
+            `drag-node` emits `nodeDragEnd` on this dispatch, and whether that drop should be written
+            depends on whether a zone just took the cards. Asking first sets the flag the event
+            handler reads; asking after would report a position for a card that is about to go back
+            where it came from.
+          */
+          endCarry(event);
+          dispatch('onPointerUp', event);
+        }}
         // Without this a gesture interrupted by the browser leaves whichever behaviour was tracking it
         // latched onto a node.
-        onPointerCancel={(event) => dispatch('onPointerCancel', event)}
+        onPointerCancel={(event) => {
+          dragSession.cancel();
+          carrying = null;
+          dispatch('onPointerCancel', event);
+        }}
         onDblClick={(event) => dispatch('onDoubleClick', event)}
         onWheel={(event) => {
           event.preventDefault();
@@ -2611,6 +2984,30 @@ export function GraphView(props: GraphViewProps) {
                 stroke-dasharray="6 4"
                 vector-effect="non-scaling-stroke"
                 marker-end="url(#we-graph-arrow-pending)"
+              />
+            )}
+          </Show>
+          {/*
+            The rectangle a selection sweep is drawing.
+
+            In the transformed group with everything else, so it is anchored to the canvas rather than
+            to the window — pan mid-sweep and it keeps hold of what it has already caught.
+
+            `non-scaling-stroke` on the outline and a zoom-divided dash: the fill scales because it is
+            a region of the canvas, and the border does not because it is chrome. Without the divide
+            the dashes stretch into a solid line when you zoom in and vanish when you zoom out, which
+            is the one thing that would make it read as a drawn shape rather than a tool.
+          */}
+          <Show when={marquee()}>
+            {(bounds) => (
+              <rect
+                class="we-graph__marquee"
+                x={bounds().minX}
+                y={bounds().minY}
+                width={Math.max(0, bounds().maxX - bounds().minX)}
+                height={Math.max(0, bounds().maxY - bounds().minY)}
+                stroke-dasharray={`${4 / zoom()} ${3 / zoom()}`}
+                vector-effect="non-scaling-stroke"
               />
             )}
           </Show>
@@ -2900,8 +3297,12 @@ export function GraphView(props: GraphViewProps) {
 
           Same anchor and the same custom properties the node publishes, so the stylesheet places
           everything exactly as it did against the node.
+
+          **One card only.** Above that the selection wears a single frame instead — see the layer
+          after this one. Handles, dots and a bar are all statements about *this record*, and twelve
+          copies of them is ninety-six grab targets over the content they exist to reveal.
         */}
-        <For each={selectedRows()}>
+        <For each={multiSelected() ? [] : selectedRows()}>
           {({ entry }) => (
             <div
               class="we-graph__chrome"
@@ -2997,7 +3398,7 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show}>
+              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show || props.carry}>
                 {/*
                   `pointerdown` stopped, as well as the click — on the bar, once, for everything in
                   it. The canvas hit-tests in world space from a pointer press on the layer beneath,
@@ -3020,7 +3421,14 @@ export function GraphView(props: GraphViewProps) {
                   */}
                   <Row ay="center" gap="0" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
                     {/*
-                      The fold, first in the bar.
+                      The grip, before everything — including the fold, which is otherwise first.
+
+                      Left-most because it is the only thing in the bar that is not a button: it is a
+                      grab area, and a grab area between two buttons is one somebody presses by
+                      accident on the way to the second of them.
+                    */}
+                    {/*
+                      The fold, first among the buttons.
 
                       First because it is the one control here that is about the card's *place in the
                       arrangement* rather than about the record or how the card is painted — and
@@ -3139,6 +3547,115 @@ export function GraphView(props: GraphViewProps) {
             </div>
           )}
         </For>
+
+        {/*
+          The frame round a selection of several, and the one bar that acts on it.
+
+          It replaces the per-card chrome rather than joining it — see the `multiSelected` gate on
+          the layer above. What is drawn is deliberately little: an outline saying what is caught,
+          a count saying how much, and whatever the interface offers for a set.
+
+          Placed by `anchorStyle` off a synthetic entry, so the bar is lifted and counter-scaled by
+          the same stylesheet rules that place a single card's. The outline is a `div` sized from the
+          same two custom properties rather than an SVG rect, because it belongs to the chrome layer
+          — which is already the transformed, per-node coordinate space these vars are written in.
+        */}
+        <Show when={selectionEntry()}>
+          {(entry) => (
+            <div class="we-graph__chrome" style={anchorStyle(entry())}>
+              <div class="we-graph__selection" />
+              <div
+                class="we-graph__actions"
+                // The same two presses the per-card bar stops, and for the same reason: the canvas
+                // hit-tests in world space from a press on the layer beneath, so one that reached it
+                // would start dragging whichever card happens to be under the bar.
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Row ay="center" gap="100" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
+                  {/*
+                    How many, then — the one thing a frame cannot say for itself. A rectangle round
+                    a dense patch of canvas does not tell you whether it caught nine cards or
+                    eleven, and that is exactly what somebody about to press a bin wants to know.
+                  */}
+                  <we-text variant="label" color="text-muted" px="200">
+                    {`${selectedRows().length} selected`}
+                  </we-text>
+                  <For each={selectionActions()}>
+                    {(action) => {
+                      const report = (extra: { value?: unknown; preview?: boolean } = {}) =>
+                        props.onSelectionAction?.({
+                          action: action.id,
+                          records: selectedRecords(),
+                          count: selectedRecords().length,
+                          ...extra,
+                        });
+                      const control = () => (action.control ? props.host?.nodeControls?.[action.control] : undefined);
+                      return (
+                        <Show
+                          when={control()}
+                          fallback={
+                            <we-tooltip content={action.title ?? action.id}>
+                              <we-button
+                                variant="ghost"
+                                square
+                                size="md"
+                                label={action.title ?? action.id}
+                                color={
+                                  action.tone === 'positive'
+                                    ? 'success-text'
+                                    : action.tone === 'danger'
+                                      ? 'danger-text'
+                                      : 'text-muted'
+                                }
+                                prop:hoverProps={
+                                  action.tone === 'positive'
+                                    ? { color: 'success' }
+                                    : action.tone === 'danger'
+                                      ? { color: 'danger' }
+                                      : { color: 'text' }
+                                }
+                                onClick={() => report()}
+                              >
+                                <we-icon name={action.icon ?? 'dot'} />
+                              </we-button>
+                            </we-tooltip>
+                          }
+                        >
+                          {(component) => (
+                            <div class="we-graph__control">
+                              {/*
+                                A set has no single value, so the control opens on the first selected
+                                card that carries one. That is a starting point for what is about to
+                                be set, not a readout of what the set is — and saying nothing at all
+                                would leave a colour picker opening on black every time.
+                              */}
+                              <Dynamic
+                                component={component()}
+                                node={selectedRows()[0]?.entry.node}
+                                value={
+                                  action.value
+                                    ? selectedRows()
+                                        .map(({ entry: row }) => readField(row.node, action.value!.from))
+                                        .find((value) => value !== undefined && value !== '')
+                                    : undefined
+                                }
+                                fill={color(selectedRows()[0]?.entry.visual.color, 'primary-500')}
+                                title={action.title}
+                                onPreview={(value: unknown) => report({ value, preview: true })}
+                                onChange={(value: unknown) => report({ value })}
+                              />
+                            </div>
+                          )}
+                        </Show>
+                      );
+                    }}
+                  </For>
+                </Row>
+              </div>
+            </div>
+          )}
+        </Show>
 
         {/*
           What a folded card is holding, on the card, whether or not anybody has selected it.

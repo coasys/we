@@ -347,10 +347,25 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         'Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.',
     },
     {
+      id: 'marquee-select',
+      category: 'behaviour',
+      description:
+        'Drag a rectangle over empty canvas to select everything it touches, marking each card as the rectangle reaches it. Additive rather than a mode: it takes a background press only when Shift or Ctrl/Cmd is held, or when `armed` is set, so a plain drag still pans. List it BEFORE pan-zoom, which is the background fallback and would otherwise claim the press first. Selecting touches rather than encloses, so a card wider than the view can still be caught. Holding the modifier adds to whatever is already selected.',
+      options: [
+        {
+          name: 'armed',
+          type: 'boolean',
+          description:
+            'Whether a plain background drag sweeps rather than pans. Default false. Arm it from a control the user can see — a touchscreen has no modifier keys.',
+        },
+      ],
+      example: `"behaviours": [{ "type": "marquee-select", "options": { "armed": { "$": "local.selecting" } } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`,
+    },
+    {
       id: 'drag-node',
       category: 'behaviour',
       description:
-        'Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.',
+        'Drag a node to move it, and every other selected node with it — so a selection built by clicking or sweeping travels as one. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.',
       options: [{ name: 'pin', type: 'boolean', description: 'Leave the node pinned where it was dropped.' }],
       example: `{ "type": "drag-node", "options": { "pin": true } }`,
     },

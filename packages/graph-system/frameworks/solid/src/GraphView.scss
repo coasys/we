@@ -207,6 +207,23 @@
   pointer-events: none;
 }
 
+/*
+  The rectangle a selection sweep draws.
+
+  Accent rather than neutral, and deliberately the same colour a selected card's ring is: the sweep
+  and the rings it produces are one gesture, and two colours would read as two things happening.
+
+  The fill is barely there. A marquee is drawn *over* the cards it is selecting — that is how you see
+  which ones it has caught — so anything more opaque hides the answer to the question being asked.
+*/
+.we-graph__marquee {
+  fill: var(--we-color-primary-500);
+  fill-opacity: 0.08;
+  stroke: var(--we-color-primary-500);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 // A DOM label, positioned at the midpoint of its edge. See the note in `GraphView.solid.tsx` for why
 // this is not SVG text.
 .we-graph__edge-label {
@@ -300,6 +317,46 @@
     a bar resting on a dot.
   */
   --actions-lift: calc(var(--connect-reach) + var(--connect-hit) / 2 + 4px);
+}
+
+/*
+  The outline round a selection of several cards.
+
+  Dashed, where a single card's selection ring is solid, because the two say different things: a ring
+  is drawn on a thing, and this is drawn round a group that has no edges of its own. Dashes are the
+  ordinary way to spell "this boundary is the tool's, not the content's".
+
+  Sized from the same two custom properties a card's chrome is, and centred on the anchor the same
+  way — so the bar above it lands exactly where a card's bar lands. Every length is divided by the
+  camera, so the outline stays one screen pixel and its clearance stays eight at any zoom, which is
+  what the hover ring and the connect handles already do.
+*/
+.we-graph__selection {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: content-box;
+  width: var(--node-width);
+  height: var(--node-height);
+
+  // Centres the box on the anchor, which is the middle of the selection.
+  transform: translate(-50%, -50%);
+
+  /*
+    Room to read the outline as surrounding the cards rather than resting on them.
+
+    `content-box`, so the padding grows the border box symmetrically around the content — and then
+    `translate(-50%, -50%)` above, which measures the *border* box, puts that grown box's centre on
+    the anchor. There is deliberately no margin: a negative one looks like it should cancel the
+    padding, and instead shifts the whole element by that much, which showed up as clearance above
+    and to the left of the cards and none below or to the right.
+  */
+  padding: calc(8px / var(--graph-zoom));
+  border: calc(1px / var(--graph-zoom)) dashed var(--we-color-primary-500);
+  border-radius: calc(6px / var(--graph-zoom));
+
+  // Chrome, not content: it must never take a press meant for a card underneath it.
+  pointer-events: none;
 }
 
 .we-graph__dot {
@@ -880,6 +937,20 @@
 
   // The bar's own look — its padding, gap, surface and shadow — is the design-system row inside
   // this box, in the renderer. This box only places it and takes the presses.
+
+  /*
+    The bar is one row, whatever text is in it.
+
+    It is absolutely positioned inside `.we-graph__chrome`, which is a zero-width anchor — so
+    shrink-to-fit has no available width to work with and the box takes its *min-content* width.
+    Every typography component in the design system sets `overflow-wrap: anywhere`, which is right
+    everywhere else and means min-content here is about one character: the selection's "3 selected"
+    came out stacked one word per line, in a bar two characters wide.
+
+    On the container rather than on that one label, because the next thing anybody puts in a bar
+    will have the same problem and no reason to expect it.
+  */
+  white-space: nowrap;
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;

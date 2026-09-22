@@ -497,12 +497,18 @@ export interface GraphViewProps {
    * keystrokes from whatever is around it.
    *
    * Fires only when something is selected — a press with an empty selection means nothing and has
-   * nothing to report. `recordId`/`recordType` are filled **only when the selection is exactly one
-   * record**: one selected node, or the selected edge, which are alternatives rather than layers (see
-   * the engine's `selectEdge`). `count` says how many, so an interface can tell one from several
-   * rather than guessing from an absence. Several is left unhandled deliberately — the host's delete
-   * confirmation is modal and per record, so firing it N times would stack N dialogs, and a batch
-   * confirmation is a thing to design rather than to fall into.
+   * nothing to report. `recordId`/`recordType` are filled when the selection is exactly one record:
+   * one selected node, or the selected edge, which are alternatives rather than layers (see the
+   * engine's `selectEdge`). `count` says how many.
+   *
+   * `records` carries **every** selected node that stands for one, so a multi-card selection can be
+   * acted on as a set. It is the whole selection rather than the difference: a caller wanting the
+   * single case reads `recordId` as it always did, and one wanting the set reads this, which holds
+   * that one record too.
+   *
+   * Nothing here loops the host's confirmation. A delete of several is one question about a set —
+   * see `spaceStore.deleteRecords`, which asks it once — and firing a per-record confirmation N
+   * times would stack N dialogs.
    *
    * Backspace counts as delete. On a Mac it is *the* delete key, and a canvas that answered only to
    * the one the manual calls Delete would be inoperable on half the keyboards it runs on.
@@ -512,9 +518,94 @@ export interface GraphViewProps {
     recordType?: string;
     /** Which of the two selections this was, for an interface that treats them differently. */
     kind?: 'node' | 'edge';
-    /** How many things are selected. `1` is the case the ids above are filled for. */
+    /** How many things are selected. */
     count: number;
+    /** Every selected node that stands for a record. Empty for a selected edge, or for synthetic nodes. */
+    records?: { recordId: string; recordType: string }[];
   }) => void;
+  /**
+   * Controls offered above the selection when **several** cards are selected.
+   *
+   * Its own list rather than a flag on `nodeActions`, because the two answer different questions and
+   * mostly have different answers. A card's own bar is about *that* card — connect it, resize it,
+   * accept the suggestion it is making — and almost none of that means anything said about twelve
+   * cards at once. What does is a small set: recolour them, take them off the canvas, delete them.
+   *
+   * Drawn on a bounding box round the whole selection, and the per-card chrome is **not** drawn
+   * while it is up. Twelve selected cards used to mean twelve action bars, forty-eight connect dots
+   * and ninety-six resize handles over the canvas, which is not a busier version of the single-card
+   * case but a different and unusable one.
+   *
+   * Reported through {@link onSelectionAction}, once, with every record in the selection. A set has
+   * no single colour, so a `control`'s `value` opens on the first selected card that carries one —
+   * a starting point for what is about to be set rather than a readout of what the set is.
+   *
+   * `when` is asked of **every** selected node and must match all of them, which is what keeps an
+   * answer like "accept" off a selection where only some cards are asking a question.
+   */
+  /**
+   * Whether a card dragged off this graph can be carried somewhere else.
+   *
+   * Off by default, like every other gesture here. On, the **ordinary card drag** does both jobs and
+   * the release decides which: let go over the canvas and it is a move, let go over a drop zone —
+   * a Pocket panel, a folder, another space's feed — and the cards go back where they started and
+   * the zone gets them.
+   *
+   * ## No second grab area
+   *
+   * This was a grip in the action bar first, on the reasoning that a press should declare its
+   * meaning before the drag rather than at the end of it. In use that reads as ceremony: the drag
+   * people already know does the thing, the zones light up as the pointer crosses them so the
+   * option is visible while it is live, and the cards springing back is immediate feedback about
+   * which of the two just happened. One affordance fewer, and the gesture works under a finger.
+   *
+   * The cost is real and worth knowing: panels float over the canvas, so releasing a card in the
+   * region an open panel covers is a carry rather than a move. That region is already somewhere a
+   * card should not be parked — it is what `GraphHostBindings.obscured` exists for — so it is a
+   * fair trade, but an open Pocket does change what a drag means over its own footprint.
+   *
+   * ## What travels
+   *
+   * **References**, never records: `{ entity, id }` per card, with the label and the composed
+   * document already on the node for whatever draws them. No dataset is named, because the receiver
+   * stamps that — see `@we/drag`. A press inside the selection carries the selection; a press
+   * outside it carries that card alone, which is the rule `drag-node` already follows for moving.
+   *
+   * Always a `copy`. Nothing here can know whether the receiver kept what it was given, and taking
+   * a card off the canvas on the strength of a drop that may have been refused is the one outcome
+   * worth refusing to risk.
+   */
+  carry?: boolean;
+  selectionActions?: NodeAction[];
+  /**
+   * One of {@link selectionActions} was pressed, for every record selected.
+   *
+   * The counterpart of `onNodeAction` and deliberately not a repeat of it: a set is reported once
+   * with its members, rather than once per member, so an interface writes one confirmation and one
+   * commit instead of looping something that was designed to be asked about a single card.
+   */
+  onSelectionAction?: (payload: {
+    action: string;
+    records: { recordId: string; recordType: string }[];
+    count: number;
+    value?: unknown;
+    preview?: boolean;
+  }) => void;
+  /**
+   * Ctrl/Cmd+Z, while the graph has focus.
+   *
+   * Reported, never performed — the graph has no write path, so what undoing *means* is the
+   * interface's, exactly as deleting is. On a canvas it is `recordStore.undoCanvas`; on a map with
+   * nothing to write it should be left unbound, and the key stays inert rather than doing something
+   * nobody can see.
+   *
+   * On the surface rather than the document, which is the same trade `onDeleteSelection` makes and
+   * has the same consequence: it works while the canvas has focus and not while the inspector beside
+   * it does. The alternative is stealing the key from every text field on the page.
+   */
+  onUndo?: () => void;
+  /** Ctrl/Cmd+Shift+Z, and Ctrl+Y — both spellings, because both are in use. */
+  onRedo?: () => void;
   /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.

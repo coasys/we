@@ -23,10 +23,11 @@ export {
   dragNodeBehaviour,
   expandOnClickBehaviour,
   expandOnDoubleClickBehaviour,
+  marqueeSelectBehaviour,
   panZoomBehaviour,
   selectBehaviour,
 } from './behaviours';
-export type { PanZoomOptions, SelectOptions } from './behaviours';
+export type { MarqueeSelectOptions, PanZoomOptions, SelectOptions } from './behaviours';
 export {
   DEFAULT_CONTROLS,
   defaultControls,
@@ -81,5 +82,5 @@ export {
   resolveText,
 } from './style';
 export type { EdgeVisual, MetricValues } from './style';
-export { boundsOf, Viewport } from './viewport';
+export { boundsFromPoints, boundsOf, Viewport } from './viewport';
 export type { Bounds, ViewportState } from './viewport';

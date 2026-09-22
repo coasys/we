@@ -6,7 +6,7 @@
  * canvas renderer all need world coordinates, and if the only source of truth is a CSS string then
  * each of them re-derives it slightly differently. One matrix here, everything else reads it.
  */
-import type { Point } from '@we/graph-protocol';
+import type { Bounds, Point } from '@we/graph-protocol';
 
 export interface ViewportState {
   /** Screen-space translation. */
@@ -17,12 +17,15 @@ export interface ViewportState {
   height: number;
 }
 
-export interface Bounds {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
+/**
+ * Re-exported rather than declared here.
+ *
+ * It lived in this file until a behaviour needed to ask about a rectangle, and `BehaviourContext` is
+ * declared in `@we/graph-protocol` — which cannot import the core. So the type moved down beside
+ * `Point`, where the rest of the shared geometry already is, and this keeps `import { Bounds } from
+ * '@we/graph-core'` working for everything that already had it.
+ */
+export type { Bounds };
 
 const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 8;
@@ -150,6 +153,24 @@ export class Viewport {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * The rectangle two corners describe, in either order.
+ *
+ * Normalising is the whole of it, and it is the step a marquee cannot skip: a sweep up and to the
+ * left produces a corner pair whose "min" is larger than its "max", and every overlap test in the
+ * system reads `minX <= maxX` as a precondition rather than checking it. Without this, dragging in
+ * two of the four directions selects nothing at all — which looks like the gesture working in some
+ * places and not others.
+ */
+export function boundsFromPoints(a: Point, b: Point): Bounds {
+  return {
+    minX: Math.min(a.x, b.x),
+    minY: Math.min(a.y, b.y),
+    maxX: Math.max(a.x, b.x),
+    maxY: Math.max(a.y, b.y),
+  };
 }
 
 /** Bounds around a set of positioned points, or `null` when there are none. */

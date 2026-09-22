@@ -9,6 +9,7 @@
  */
 import type {
   BehaviourContext,
+  Bounds,
   CardShape,
   EdgeGeometry,
   ExpandDirection,
@@ -96,7 +97,16 @@ export type ChangeReason =
    * make dragging a connection across a settled graph re-derive the whole scene on every pointer
    * move, which is the most expensive way to draw a line anybody has thought of.
    */
-  | 'connection';
+  | 'connection'
+  /**
+   * The rectangle a marquee is sweeping out moved.
+   *
+   * Its own reason for exactly the argument above, and a sharper case of it: a selection sweep runs
+   * across a whole canvas, fires on every pointer move, and changes one rectangle while nothing else
+   * on the graph moves at all. It is kept apart from `connection` as well as from `positions` so a
+   * renderer can hold the marquee in a signal of its own and leave the connect preview alone.
+   */
+  | 'marquee';
 
 export interface EngineStatus {
   loading: boolean;
@@ -266,6 +276,8 @@ export class GraphEngine {
   private edgeBoxes = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
   /** The connect gesture in progress — see {@link getPendingConnection}. */
   private pendingConnection: { from: string; to: Point } | null = null;
+  /** The marquee being swept out, in world units — see {@link getPendingMarquee}. */
+  private pendingMarquee: Bounds | null = null;
   /** Cards the reader has folded, by node id — see {@link setFolded}. */
   private foldedIds = new Set<string>();
   /** What that fold works out to: what is hidden, how much under each, and the lines standing in. */
@@ -1278,7 +1290,19 @@ export class GraphEngine {
 
     const { width, height } = this.viewport.get();
     const result = this.layout.init({
-      nodes: [...this.store.nodes()],
+      /*
+        Overlaid, which is the layout being treated as downstream of an optimistic edit like
+        everything else is.
+
+        `overlaid` calls itself "a node as everything downstream should see it", and the layout was
+        the one consumer not getting it. That was invisible while the overlay only carried a card's
+        colour and shape — nothing about those moves a node — and load-bearing the moment it carries
+        a coordinate: `manual` reads `x`/`y` off node data, so a position written and drawn before
+        the round trip has no way to reach the screen without this. It also quietly fixes a smaller
+        case that was always wrong, since `manual` sizes its tray slots from `canvasWidth`: a card
+        optimistically resized was parked around by its old size until the write came back.
+      */
+      nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
       edges: [...this.store.edges()],
       previous: this.positions,
       containment: this.containment(),
@@ -1452,10 +1476,22 @@ export class GraphEngine {
    */
   setDataOverlay(overlay: ReadonlyMap<string, Record<string, GraphValue>>): void {
     this.overlay = overlay;
-    this.reindex();
-    this.routeEdges();
-    // `graph` rather than `positions`: nothing moved, but a node's size, colour and shape can all
-    // have changed, and those are read off the node projection rather than off the placements.
+    /*
+      Laid out again where position *is* the data, and only there.
+
+      `manual` reads a node's coordinate off its own fields, so an overlay carrying one has moved the
+      layout's input and nothing will draw it until the layout is asked again. Every other layout
+      derives positions from the graph's shape instead, and re-running one on an overlay change would
+      reheat a force simulation every frame somebody drags a colour slider — so `derivesPositions` is
+      the question, which is the same flag that already decides whether pinning means anything here.
+    */
+    if (this.layout?.derivesPositions === false) this.relayout();
+    else {
+      this.reindex();
+      this.routeEdges();
+    }
+    // `graph` rather than `positions`: a node's size, colour and shape can all have changed, and
+    // those are read off the node projection rather than off the placements.
     this.notify('graph');
   }
 
@@ -1894,17 +1930,47 @@ export class GraphEngine {
 
   // ─── Selection ───────────────────────────────────────────────────────────────
 
+  /**
+   * What is selected now.
+   *
+   * **Silent when nothing changed**, which stopped being a nicety the moment a marquee existed. A
+   * sweep recomputes the selection on every pointer move — that is what makes rings appear under the
+   * rectangle as it grows — so a hundred moves over empty canvas used to be a hundred
+   * `selectionChange` events carrying the same empty list. The workshop's canvas mirrors its
+   * selection into the address, so those were a hundred `replaceState` calls a frame apart for a
+   * selection that never moved.
+   *
+   * Compared by membership rather than by order: the set is unordered, and a comparison that read
+   * the two arrays positionally would call an unchanged selection changed whenever the same ids came
+   * back in a different sequence.
+   */
   select(ids: string[], mode: 'replace' | 'add' | 'toggle' = 'replace'): void {
-    // Selecting anything — including selecting *nothing*, which is what a background click does —
-    // closes an open route. See `selectEdge`.
-    this.selectedEdge = null;
-    if (mode === 'replace') this.selected = new Set(ids);
-    else {
+    const before = this.selected;
+    const next = mode === 'replace' ? new Set(ids) : new Set(before);
+    if (mode !== 'replace') {
       for (const id of ids) {
-        if (mode === 'toggle' && this.selected.has(id)) this.selected.delete(id);
-        else this.selected.add(id);
+        if (mode === 'toggle' && next.has(id)) next.delete(id);
+        else next.add(id);
       }
     }
+
+    /*
+      An open route closes whatever the selection does, so this is decided before the early return:
+      clicking a card that is already the only one selected still has to put a line's handles away.
+      See `selectEdge`.
+    */
+    const closedRoute = this.selectedEdge !== null;
+    this.selectedEdge = null;
+
+    const same = next.size === before.size && [...next].every((id) => before.has(id));
+    if (same) {
+      // The set is unchanged, so there is no `selectionChange` to report — but a route that just
+      // closed is a visible change and the renderer has to hear about it.
+      if (closedRoute) this.notify('selection');
+      return;
+    }
+
+    this.selected = next;
     this.emit({ type: 'selectionChange', ids: [...this.selected] });
     this.notify('selection');
   }
@@ -1937,6 +2003,13 @@ export class GraphEngine {
       toWorld: (at) => this.viewport.toWorld(at),
       toScreen: (at) => this.viewport.toScreen(at),
       drawConnection: (from, to) => this.drawConnection(from, to),
+      drawMarquee: (bounds) => this.drawMarquee(bounds),
+      /*
+        Folded cards are not in the index, so a sweep cannot catch what a fold is hiding — which is
+        the right answer and worth saying out loud: a card nobody can see must not end up in a
+        selection they are about to delete.
+      */
+      within: (bounds) => this.index.within(bounds),
       selectEdge: (id) => this.selectEdge(id),
       emit: (event) => this.emit(event),
     };
@@ -2003,6 +2076,26 @@ export class GraphEngine {
   private drawConnection(from: string | null, to?: Point): void {
     this.pendingConnection = from && to ? { from, to } : null;
     this.notify('connection');
+  }
+
+  /**
+   * The rectangle a marquee is currently sweeping out, in world units, or null.
+   *
+   * World rather than screen, like everything else a behaviour deals in, so the renderer converts it
+   * once with the camera it is already drawing from. Panning mid-sweep therefore keeps the rectangle
+   * anchored to the canvas rather than to the window, which is what a sweep over a graph larger than
+   * the viewport needs — the cards it has already swallowed stay swallowed as the view moves.
+   */
+  getPendingMarquee(): Bounds | null {
+    return this.pendingMarquee;
+  }
+
+  private drawMarquee(bounds: Bounds | null): void {
+    // Cleared twice over a gesture — once on release and once by the cancel path — and notifying for
+    // a marquee that was already null would redraw the scene for nothing.
+    if (!bounds && !this.pendingMarquee) return;
+    this.pendingMarquee = bounds;
+    this.notify('marquee');
   }
 
   emit(event: GraphEvent): void {

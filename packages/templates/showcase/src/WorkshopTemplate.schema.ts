@@ -804,6 +804,98 @@ const CHROME_BOTTOM = `calc(${CHROME_TOP} + ${PILL_HEIGHT})`;
  * *content*, computed from the sidebar and dock insets, so a neighbour that changes width — or
  * disappears — is nothing to it.
  */
+/**
+ * Undo and redo, as a pill of their own beside the call's.
+ *
+ * ## Why a pill rather than a control on the canvas
+ *
+ * The canvas has no toolbar — its chrome is the workshop's panels — so there was nowhere to put
+ * these, and the keys alone are not enough. They answer only while the *canvas* has focus, and
+ * clicking into the inspector to edit a label takes focus away, so the press that follows goes
+ * nowhere. Buttons work wherever focus is. They are also the only sign anywhere that the canvas
+ * remembers what you did to it, which a key by itself can never be.
+ *
+ * This bar is already a row of pills, each sized by its own contents and none disturbing the
+ * others, so a third one costs nothing and reads as what it is.
+ *
+ * ## Only where there is something to undo
+ *
+ * Gated on the canvas page: the kanban and the calendar have no history of their own yet, and a
+ * permanently disabled pill beside them would be furniture that never does anything. Within the
+ * canvas the buttons *are* disabled rather than hidden — a control that appears and disappears as
+ * you work is harder to aim at than one that greys — and each says what it would put back, which is
+ * the one thing a pair of arrows cannot.
+ */
+const historyPill: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${PAGE_EXPR} == '${ROUTE.canvas}'` },
+    then: {
+      type: 'Row',
+      props: {
+        gap: '100',
+        ay: 'center',
+        p: '200',
+        // The same family as the pills beside it — see the switcher for why the theme's control
+        // shape rather than a fixed radius.
+        r: 'control',
+        bg: 'surface-raised',
+        border: '1px solid border',
+        shadow: 'lg',
+        // Two square controls and nothing that can grow: it must not absorb room a truncating
+        // title next to it is giving up.
+        flexShrink: '0',
+      },
+      children: [
+        {
+          type: 'we-tooltip',
+          props: {
+            placement: 'bottom',
+            content: {
+              $: "recordStore.canvasHistory.undoLabel ? `Undo ${recordStore.canvasHistory.undoLabel}` : 'Nothing to undo'",
+            },
+          },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                square: true,
+                label: 'Undo',
+                disabled: { $: '!recordStore.canvasHistory.canUndo' },
+                onClick: { $action: 'recordStore.undoCanvas', args: [CALL] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-u-up-left' } }],
+            },
+          ],
+        },
+        {
+          type: 'we-tooltip',
+          props: {
+            placement: 'bottom',
+            content: {
+              $: "recordStore.canvasHistory.redoLabel ? `Redo ${recordStore.canvasHistory.redoLabel}` : 'Nothing to redo'",
+            },
+          },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                square: true,
+                label: 'Redo',
+                disabled: { $: '!recordStore.canvasHistory.canRedo' },
+                onClick: { $action: 'recordStore.redoCanvas', args: [CALL] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-u-up-right' } }],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const callChrome: SchemaNode = {
   type: 'Row',
   props: {
@@ -834,7 +926,7 @@ const callChrome: SchemaNode = {
     */
     minHeight: PILL_HEIGHT,
   },
-  children: [callPill],
+  children: [callPill, historyPill],
 };
 
 /** The model the selected card is of — the inspector's whole subject, named once. */
@@ -3038,6 +3130,16 @@ const canvas: SchemaNode = {
       // The two halves of a double-click: on a note it opens, on empty canvas it asks what to make.
       'node-double-click',
       'canvas-double-click',
+      /*
+        Sweep a rectangle to select several cards, before `pan-zoom` claims the background press.
+
+        Not armed here, unlike the canvas view's: this canvas has no toolbar of its own — its chrome
+        is the workshop's panels — so there is nowhere to put a mode toggle that would not be a new
+        control competing with the call for the top of the screen. Shift and Ctrl/Cmd reach it,
+        which is what every other canvas people use has taught them, and a plain drag goes on
+        panning.
+      */
+      'marquee-select',
       'select',
       { type: 'drag-node', options: { pin: true } },
       // Last, because it is the background fallback — listed earlier it claims the press `select`
@@ -3263,7 +3365,7 @@ const canvas: SchemaNode = {
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],
     /*
-      Delete, on whatever is selected — a card or a line, the same key for both.
+      Delete, on whatever is selected — a card, several cards, or a line.
 
       An accelerator, not the only path: a card's own bar carries a bin (see `nodeActions`), and the
       inspector carries one for whichever of the two is open. A key that was the sole way to remove
@@ -3271,21 +3373,100 @@ const canvas: SchemaNode = {
       of those is disproportionate — tidying up a canvas, where the answer to "this line is wrong" is
       wanted in the same beat as noticing it.
 
-      Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record.
-      That is the whole of the multi-select story here and it is deliberately small: `record.delete`
-      raises the host's own confirmation, so firing it per member of a selection would stack a dialog
-      per card. A batch confirmation is a thing to design rather than to arrive at by looping.
+      Cards go through `deleteRecords`, which raises the host's confirmation **once** for the whole
+      selection. Looping `record.delete` over a set stacks a dialog per card, which is what made
+      multi-select delete a thing to design rather than to fall into.
 
-      Through `record.delete` for `nodeActions`' reason — it is guarded by the host, so a keystroke
-      asks before it destroys anything. Which is also what makes the key safe to offer at all: there
-      is no undo behind it.
+      It was briefly the case that this took cards *off the canvas* instead, on the argument that the
+      reversible act is the better one to put behind a reflex key. That was wrong here, and worth
+      recording: almost every card on this canvas is extraction output owned by the call, and the
+      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
+      returned the card on the next read and parked it in the corner. The reversible act does not
+      exist on this canvas, so the guard in front of the key is the dialog.
+
+      A line goes through `record.delete`, which is the same guard by a different route: a connection
+      is a single record and there is no set to count.
     */
-    onDeleteSelection: {
-      $if: {
-        condition: { $: 'event.recordId' },
-        then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+    onDeleteSelection: [
+      {
+        $if: {
+          condition: { $: 'count(event.records)' },
+          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+        },
       },
-    },
+      {
+        $if: {
+          condition: { $: "event.kind == 'edge' && event.recordId" },
+          then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+        },
+      },
+    ],
+    /*
+      Undo, over this canvas's arrangement — a move, a resize, a colour, a card taken off.
+
+      Replayed as new forward writes rather than as a rollback, so a peer rearranging the same canvas
+      during a call does not lose what they did, and a card they have moved since is left alone
+      rather than dragged back out from under them. Deleting a record is outside it, which is the
+      other half of why the key above no longer deletes.
+
+      Scoped to the call this canvas is about, so walking to another call's canvas does not leave a
+      press that would move cards on a canvas nobody is looking at.
+    */
+    onUndo: { $action: 'recordStore.undoCanvas', args: [CALL] },
+    onRedo: { $action: 'recordStore.redoCanvas', args: [CALL] },
+    /*
+      Cards can be carried off this canvas — into the Pocket, and from there into any other space.
+
+      The canvas beside a live call is exactly where somebody finds a thing worth keeping, and until
+      now there was no gesture that could take it anywhere: the graph received drops and could not
+      be dragged from. It is the ordinary card drag, with the release deciding — over the canvas a
+      move, over a drop zone a carry, and the card goes back where it started.
+    */
+    carry: true,
+    /*
+      What a selection of several offers. Two, and they are the two that mean something said about a
+      set — recolour them, or end them.
+
+      A "take off the canvas" sat here and has gone; see `onDeleteSelection` for why it could not
+      work on this canvas.
+    */
+    selectionActions: [
+      { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
+      { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
+    ],
+    onSelectionAction: [
+      {
+        $if: {
+          condition: { $: "event.action == 'delete'" },
+          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+        },
+      },
+      /*
+        The colour, previewed as it is browsed and written once on Apply.
+
+        The picker confirms here (see `ColorControl`), so everything before the tick arrives as a
+        preview — which for a selection matters: without the guard, dragging the hue area would
+        write a record per selected card per frame.
+      */
+      {
+        $if: {
+          condition: { $: "event.action == 'color' && event.preview" },
+          then: {
+            $action: 'recordStore.previewCardStyle',
+            args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'color' && !event.preview" },
+          then: {
+            $action: 'recordStore.setCardStyle',
+            args: [CALL, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+    ],
     /*
       Clearing on a background click, and only then.
 

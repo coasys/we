@@ -24,7 +24,7 @@ import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shar
 import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { placementStyle } from '@we/graph-expanders';
+import { placementPosition, placementStyle } from '@we/graph-expanders';
 import type { GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import type { RenderProps } from '@we/schema-solid';
@@ -352,7 +352,11 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     pendingData: () => {
       const pending = recordStore.pendingCardStyle();
       const out: Record<string, Record<string, GraphValue>> = {};
-      for (const [nodeId, patch] of Object.entries(pending)) out[nodeId] = placementStyle(patch);
+      // Style and coordinate both: an undone move is a placement write like any other, and the
+      // `manual` layout reads a card's position off the same data bag its colour comes from.
+      for (const [nodeId, patch] of Object.entries(pending)) {
+        out[nodeId] = { ...placementStyle(patch), ...placementPosition(patch) };
+      }
       return out;
     },
 

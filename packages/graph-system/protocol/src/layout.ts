@@ -20,6 +20,25 @@ export interface Point {
   y: number;
 }
 
+/**
+ * An axis-aligned world rectangle.
+ *
+ * Here beside {@link Point} rather than in the core, because a behaviour asks about one — a marquee
+ * hands the engine a rectangle and gets back what is inside it — and {@link BehaviourContext} is
+ * declared in this package. The core re-exports it, so nothing downstream had to change when it
+ * moved.
+ *
+ * Min/max rather than x/y/width/height: every consumer of a rectangle here is testing overlap, which
+ * is four comparisons against these and four subtractions against the other spelling. A caller
+ * building one from a drag normalises as it goes — see `boundsFromPoints`.
+ */
+export interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 /** A node's placement. `fixed` means the user pinned it and the layout must not move it. */
 export interface Placement extends Point {
   fixed?: boolean;

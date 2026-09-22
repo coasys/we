@@ -724,18 +724,92 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    // Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record
-    // — the host's delete confirmation is modal and per record, so N of them would stack N dialogs.
     expect(json).toContain('"onDeleteSelection"');
-    expect(json).toContain('"condition":{"$":"event.recordId"}');
 
-    // Through `record.delete` in both places, so the host's own confirmation stands in front of a
-    // keystroke that has no undo behind it.
+    /*
+      A line has no placement, so taking it off the canvas and deleting it are the same act — and it
+      goes through `record.delete`, which the host guards, so the keystroke still asks before it
+      destroys anything.
+
+      Guarded on `kind == 'edge'` rather than on `recordId` alone, because a *card* now answers the
+      same key differently: see the test below.
+    */
+    expect(json).toContain('"condition":{"$":"event.kind == \'edge\' && event.recordId"}');
     expect(json).toContain('"$action":"record.delete"');
 
     // And the panel's own, which takes the id from the address rather than from a node payload —
     // the inspector is a panel, so the selection reaches it as parameters and nothing else.
     expect(json).toContain('"args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"}]');
+  });
+
+  it('asks once about a whole selection rather than once per card', () => {
+    /*
+      The host's delete confirmation is modal and phrased per record, so a template looping
+      `record.delete` over a selection stacks a dialog per card. `deleteRecords` raises one and
+      counts what is in the list, which is what made multi-select delete a thing to design.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"$action":"recordStore.deleteRecords"');
+    expect(json).toContain('"condition":{"$":"count(event.records)"}');
+    expect(json).toContain('"id":"delete"');
+  });
+
+  it('offers no "take off the canvas" beside the delete, because it could not work here', () => {
+    /*
+      Pinned as an absence, which is the only way a decision like this survives.
+
+      There was one, briefly, on the argument that a reflex key should do the reversible thing. It
+      is wrong on *this* canvas: almost every card is extraction output owned by the call, and the
+      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
+      returned the card on the next read and the `manual` layout parked it in the corner. The
+      control read as cards vanishing to somewhere nobody could find.
+
+      `recordStore.removeFromCanvas` is still right for a record merely *placed* here, which is a
+      distinction a bar over a mixed selection cannot draw.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).not.toContain('"eraser"');
+    expect(json).not.toContain('recordStore.removeFromCanvas');
+  });
+
+  it('can sweep a selection, carry it away, and put an arrangement back', () => {
+    const json = JSON.stringify(workshop);
+
+    /*
+      No armed toggle here, unlike the canvas view's: this canvas has no toolbar of its own — its
+      chrome is the workshop's panels — so Shift and Ctrl/Cmd are the whole gesture, which is what
+      every other canvas people use has taught them anyway.
+    */
+    expect(json).toContain('"marquee-select"');
+
+    // The canvas has always received drops and could never be dragged from, so nothing on it could
+    // reach the Pocket — which is the one thing that carries between spaces.
+    expect(json).toContain('"carry":true');
+
+    // Undo takes the canvas as an argument, which is the whole of the scoping: there is no separate
+    // "point the stack here" call for this template to have forgotten.
+    expect(json).toContain('"$action":"recordStore.undoCanvas"');
+    expect(json).toContain('"$action":"recordStore.redoCanvas"');
+  });
+
+  it('puts undo where it can be reached without the canvas having focus', () => {
+    /*
+      The keys answer only while the canvas has focus, and clicking into the inspector to edit a
+      label takes focus away — so the press that follows goes nowhere. This canvas has no toolbar of
+      its own, so the buttons live in the workshop's top chrome, which is already a row of pills.
+
+      Gated on the canvas page: the kanban and the calendar have no history of their own, and a
+      permanently disabled pill beside them would be furniture that never does anything.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"arrow-u-up-left"');
+    expect(json).toContain('"arrow-u-up-right"');
+    expect(json).toContain('!recordStore.canvasHistory.canUndo');
+    // Disabled rather than hidden, and each says what it would put back.
+    expect(json).toContain('recordStore.canvasHistory.undoLabel');
   });
 
   it('offers a connection’s kind where the line is read, not only where it was drawn', () => {

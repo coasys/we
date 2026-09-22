@@ -224,6 +224,25 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
   return style;
 }
 
+/**
+ * A placement's coordinate, named as a node's data bag names it.
+ *
+ * The sibling of {@link placementStyle} and exported for the same reason: a host drawing a move
+ * **before** the write comes back has to name the fields exactly as the seed does, and two copies of
+ * that naming is the sort of thing that drifts silently. Separate from `placementStyle` because the
+ * seed itself wants the coordinate as numbers for its positions map rather than as node data, so
+ * folding the two together would have it mapping x and y twice on every card it reads.
+ *
+ * Unlike the style fields, **zero is a real value here** — a card at the origin is an ordinary card
+ * — so only a non-finite coordinate is dropped. Both or neither: a patch carrying one axis would
+ * leave `manual` reading the other off stale data and send the card somewhere nobody put it.
+ */
+export function placementPosition(row: Record<string, unknown>): Record<string, GraphValue> {
+  const x = Number(row.x);
+  const y = Number(row.y);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {};
+}
+
 /** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
 function scalarsOf(row: Record<string, unknown>): Record<string, GraphValue> {
   const data: Record<string, GraphValue> = {};
