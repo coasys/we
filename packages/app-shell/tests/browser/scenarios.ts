@@ -676,7 +676,23 @@ const transcriptAt = (rows: number): Scenario => ({
   },
   stores: {
     profileStore: { profiles: SPEAKERS.map((did, i) => ({ did, name: `Peer ${i + 1}` })) },
-    modules: { transcribe: { collectionId: CALL, callOnScreenLive: true } },
+    /*
+      The window's own state, stubbed at the module's defaults.
+
+      Worth stating why these are here even where the fragment being measured does not read them: an
+      unresolved `limit` is DROPPED rather than refused — the same widening an unresolved `where`
+      gets — so a scenario that forgets them measures an unbounded query and reports the windowed
+      version as having changed nothing. Which is exactly what this scenario did until it was run
+      against the fix and reported no difference at all.
+    */
+    modules: {
+      transcribe: {
+        collectionId: CALL,
+        callOnScreenLive: true,
+        transcriptShown: 200,
+        transcriptFromStart: false,
+      },
+    },
   },
 });
 

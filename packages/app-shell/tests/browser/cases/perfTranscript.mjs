@@ -36,12 +36,18 @@ export const name = 'transcript cost by length';
 export const scenario = 'perf:transcript';
 export const widths = [420];
 /**
- * Ten to a thousand.
+ * A call that has just started, and two that are well past any sane window.
  *
- * Ten is a call that has just started, a thousand is an hour with several people talking. The two
- * ends are what the ratio is taken between; the middle is there so a curve can be told from a step.
+ * The comparison that matters is between the **last two**, not between the first and the last, and
+ * the difference is the whole point. A window caps what is drawn, so measuring 10 against 2000 sees
+ * the climb from ten rows up to the cap and reads a bounded surface as a growing one. Measuring 500
+ * against 2000 — both far above any window — asks the real question: past a certain amount of
+ * content, does adding four times more add anything at all?
+ *
+ * 10 stays because it is the honest floor, and because a case that only ever mounts large is a case
+ * nobody can read a small number out of.
  */
-export const scales = [10, 100, 1000];
+export const scales = [10, 500, 2000];
 
 /** Per-row growth beyond this counts as "proportional to the content" rather than "a bit more". */
 const GROWTH_TOLERANCE = 0.05;
@@ -88,10 +94,12 @@ export async function check(api, width, scale) {
   seen.set(scale, { append, resize, nodes: append.nodes });
 
   const problems = [];
-  const small = seen.get(scales[0]);
-  // Only the last scale can compare, and only once the first has actually run.
-  if (small && scale === scales[scales.length - 1]) {
-    const span = scale - scales[0];
+  // The two largest, both past any window — see `scales` for why not the first and the last.
+  const prior = seen.get(scales[scales.length - 2]);
+  if (prior && scale === scales[scales.length - 1]) {
+    const from = scales[scales.length - 2];
+    const span = scale - from;
+    const small = prior;
 
     /*
       The DOM first, because it is the least ambiguous of the three.
@@ -103,7 +111,7 @@ export async function check(api, width, scale) {
     api.note(`nodes ${small.nodes} → ${append.nodes} (${nodeGrowth.toFixed(2)}/row)`);
     if (nodeGrowth > 1) {
       problems.push(
-        `the transcript renders every row it has: ${small.nodes} nodes at ${scales[0]} rows and ` +
+        `the transcript renders every row it has: ${small.nodes} nodes at ${from} rows and ` +
           `${append.nodes} at ${scale}. A window would hold this flat.`,
       );
     }
@@ -120,7 +128,7 @@ export async function check(api, width, scale) {
           .map(([k, v]) => `${k}×${v}`)
           .join(', ');
         problems.push(
-          `${what} forces more layout the more has been said: ${a.layoutReads} reads at ${scales[0]} ` +
+          `${what} forces more layout the more has been said: ${a.layoutReads} reads at ${from} ` +
             `rows, ${b.layoutReads} at ${scale} (${growth.toFixed(2)}/row). Mostly ${worst}.`,
         );
       }
