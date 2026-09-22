@@ -767,7 +767,7 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       props: [
         { name: 'editorState', type: 'EditorStateInput', optional: true },
-        { name: 'perspective', type: 'unknown', optional: true },
+        { name: 'dataset', type: 'unknown', optional: true },
         { name: 'onSave', type: '((document: ContentDocument) => void)', optional: true },
         { name: 'onReady', type: '((api: { save: () => void; }) => void)', optional: true },
         { name: 'onDirtyChange', type: '((dirty: boolean) => void)', optional: true },
@@ -783,7 +783,7 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       props: [
         { name: 'editorState', type: 'EditorStateInput', optional: true },
-        { name: 'perspective', type: 'unknown', optional: true },
+        { name: 'dataset', type: 'unknown', optional: true },
         { name: 'blockDrag', type: 'BlockDragSource', optional: true },
         { name: 'rootClass', type: 'string', optional: true },
       ],

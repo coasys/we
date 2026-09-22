@@ -390,20 +390,21 @@ Record mutations via $action (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
 and acts on a record of it.
 
-record.create — creates a record in the current perspective (default) or a specified one:
-{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
-The third argument is an options object. Omit it to use the current space perspective.
+record.create — creates a record in the current dataset (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+The third argument is an options object. Omit it to write into the space on screen.
 
 record.update — updates one record:
 { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
-Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
+takes, and it names the same accessors.
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from
 the entity's own declaration, so a community's newest entity is creatable with no schema written for
@@ -515,27 +516,29 @@ values may be expressions (in an expression) or tokens (in a $query):
 so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
 fetched everything with its children and counted client-side. An empty clause means "any", so
 { comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
-contain a quantifier — and they are native on AD4M, where they compile to a SPARQL EXISTS group.
+contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
 A key is read as a quantifier because it carries "some" or "none", not because the model says it is
 a relation. So a scalar property can never be compared with those two words, and everything else on
 a relation-named key stays an ordinary field compare.
 
 A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
-{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
-clause. An empty list matches nothing, which is what "none of these" should mean.
+{ id: ['id1', 'id2', 'id3'] }. Native in a $query. An empty list matches nothing, which is what
+"none of these" should mean.
 
-An ABSENT property is the trap worth knowing, and "not" is where the two backends disagree.
+An ABSENT property is the trap worth knowing, and "not" is where a $query and filter() disagree.
 
-A record that never had a property written carries no value for it — on AD4M a property is a link,
-so it is simply not there. Three cases, and the middle one differs by backend:
+A record that never had a property written carries no value for it — a property is stored as a
+link, so an unwritten one is simply not there. Three cases, and the middle one differs by where it
+is evaluated:
 
   { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and on the in-memory
-                               backend (undefined !== 'x'), and does NOT match on AD4M, where
-                               != over an unbound variable excludes the row, exactly as SQL's
-                               three-valued logic excludes NULL. A $query where written with "not"
-                               can therefore pass every test and come back empty in production.
+  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and in the in-memory
+                               test backend (undefined !== 'x'), and does NOT match in a $query
+                               against the production backend, where != over an unbound value
+                               excludes the row, exactly as SQL's three-valued logic excludes
+                               NULL. A $query where written with "not" can therefore pass every
+                               test and come back empty in production.
   { field: { exists: false } } — means absent, unambiguously — but see the warning below about
                                where it can be used.
 
@@ -545,7 +548,7 @@ some records already existed reads as absent on every one of them, and the query
 consults the default when filtering.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The AD4M backend has no such operator, so a $query using one is refused rather than run. This is a
+The backend has no such operator, so a $query using one is refused rather than run. This is a
 change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
 — the clause reached a filter that rejected every row, so the query answered nothing at all, always,
 with no error anywhere. A refusal at least says so.
@@ -559,8 +562,8 @@ comparison; fetch the candidates and filter() client-side, where "exists" works;
 is a relation rather than a scalar, ask { relation: { none: {} } }, which IS native.
 
 startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
-a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend either, so
-a $query using one is refused — use contains there; inside filter() they are evaluated client-side.
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the backend either, so a
+$query using one is refused — use contains there; inside filter() they are evaluated client-side.
 
 lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
 what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
@@ -568,12 +571,12 @@ in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due i
 September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
 against a field holding the string '12' answers false, rather than guessing which you meant.
 
-On AD4M a NUMBER bound is native and a STRING bound is refused — the executor compares numbers only.
-So a date range in a $query does not run there yet; fetch the candidates and filter() client-side,
+In a $query a NUMBER bound is native and a STRING bound is refused — the backend compares numbers
+only. So a date range in a $query does not run yet; fetch the candidates and filter() client-side,
 where it works, or bound the query by something numeric. A numeric range (a price, a count, a
-rating) runs natively on both backends.
+rating) runs natively either way.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the executor decided pushability
+OR/AND/NOT no longer cost a query its sort pushdown. They used to: the backend decided pushability
 with a second function that disagreed with what it actually emitted, and an explicit combinator fell
 outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
 like any other.
@@ -663,10 +666,10 @@ To read the distinct kinds out of it, or merge them with kinds from another list
 { "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
-- currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- currentDataset — the currently active dataset. Use as a dataset value.
   A host store's dataset accessor (e.g. `dataset: 'datasetStore.marketplaceDataset'`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append `.handle` — component props take the
-  backend's own dataset handle: { "perspective": { "$": "datasetStore.currentDataset.handle" } }.
+  backend's own dataset handle: { "dataset": { "$": "datasetStore.currentDataset.handle" } }.
 - me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
@@ -1472,9 +1475,9 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
+  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, blockDrag?: BlockDragSource, rootClass?: string
+  Props: editorState?: EditorStateInput, dataset?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined
 - CodeDisplay
@@ -2579,7 +2582,7 @@ AppStore:
 
 DatasetStore:
 - State:
-  - datasets: array of dataset handles (all joined datasets; AD4M perspectives in this backend)
+  - datasets: array of dataset handles (all joined datasets)
   - orderedDatasets: datasets sorted by user-defined sidebar order, system datasets excluded
   - currentDataset: dataset handle | null (the dataset currently being viewed)
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
@@ -2752,7 +2755,7 @@ RecordStore:
   - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
   - removeFromCanvas(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to
-  - deleteRecords(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — an AD4M delete drops the links and a re-create earns a new id, so anything pointing at the old record breaks
+  - deleteRecords(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — a delete drops the record's links and a re-create earns a new id, so anything pointing at the old record breaks
   - undoCanvas(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo
   - redoCanvas(canvas: string): does again what undoCanvas put back, on the same terms and with the same argument
   - resizeOnCanvas(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected
@@ -2786,9 +2789,9 @@ RuntimeStore:
   - canManageApps: boolean — gate the authorized-apps section on this
   - canManageLanguages: boolean — gate the languages section on this
   - canManageAi: boolean — gate the AI section on this
-  - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
+  - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, which grants reading the models but refuses changing them. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
   - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
-  - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (an AD4M executor's RPC method), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
+  - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
   - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
@@ -2801,9 +2804,9 @@ RuntimeStore:
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
-  - networkMetrics: string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs
+  - networkMetrics: string — backend diagnostic blob, already formatted for reading (indented JSON, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs
   - peerInfos: string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable
-  - peerInfosReadable: string — the same records decoded for reading, as indented JSON (on AD4M: agent, space, dates, url, arc, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs
+  - peerInfosReadable: string — the same records decoded for reading, as indented JSON (agent, space, dates, url, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs
   - pending: string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: "'loadPeerInfos' in runtimeStore.pending" }
   - loading: boolean — true while any runtime call is in flight. Prefer pending, so a spinner does not light for an unrelated call
   - error: string — the last runtime error, for display
@@ -3021,7 +3024,7 @@ SpaceStore:
   - joinSlow: boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence
   - joinError: { spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
-  - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found
+  - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
   - taskStates: { id, name, slug, semantic, color, retired, defined }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug
   - offeredTaskStates: { id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
@@ -3114,7 +3117,7 @@ SpaceStore:
   - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it
   - upsertSignal(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right
   - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
-  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
+  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
@@ -3127,7 +3130,7 @@ SpaceStore:
 TemplateStore:
 - State:
   - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
-  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
+  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space
   - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
   - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
@@ -3162,8 +3165,8 @@ ThemeStore:
 - State:
   - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
   - automaticThemes: array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes
-  - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
-  - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
+  - installedThemes: array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")
+  - spaceThemes: array of ThemeData objects — themes stored in the current space (origin: "custom")
   - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
   - currentThemeId: string — id of the currently active theme
   - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
@@ -3211,9 +3214,9 @@ ThemeStore:
 Record:
 - State:
 - Actions:
-  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
-  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest
-  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible
+  - create(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
+  - update(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest
+  - delete(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible
 
 ---
 
@@ -4011,7 +4014,6 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$": "datasetStore.currentDataset.handle" },
         "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },

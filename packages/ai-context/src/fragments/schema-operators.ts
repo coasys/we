@@ -117,20 +117,21 @@ Record mutations via $action (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
 and acts on a record of it.
 
-record.create — creates a record in the current perspective (default) or a specified one:
-{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
-The third argument is an options object. Omit it to use the current space perspective.
+record.create — creates a record in the current dataset (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+The third argument is an options object. Omit it to write into the space on screen.
 
 record.update — updates one record:
 { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
-Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
+takes, and it names the same accessors.
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from
 the entity's own declaration, so a community's newest entity is creatable with no schema written for
@@ -200,27 +201,29 @@ values may be expressions (in an expression) or tokens (in a $query):
 so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
 fetched everything with its children and counted client-side. An empty clause means "any", so
 { comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
-contain a quantifier — and they are native on AD4M, where they compile to a SPARQL EXISTS group.
+contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
 A key is read as a quantifier because it carries "some" or "none", not because the model says it is
 a relation. So a scalar property can never be compared with those two words, and everything else on
 a relation-named key stays an ordinary field compare.
 
 A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
-{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
-clause. An empty list matches nothing, which is what "none of these" should mean.
+{ id: ['id1', 'id2', 'id3'] }. Native in a $query. An empty list matches nothing, which is what
+"none of these" should mean.
 
-An ABSENT property is the trap worth knowing, and "not" is where the two backends disagree.
+An ABSENT property is the trap worth knowing, and "not" is where a $query and filter() disagree.
 
-A record that never had a property written carries no value for it — on AD4M a property is a link,
-so it is simply not there. Three cases, and the middle one differs by backend:
+A record that never had a property written carries no value for it — a property is stored as a
+link, so an unwritten one is simply not there. Three cases, and the middle one differs by where it
+is evaluated:
 
   { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and on the in-memory
-                               backend (undefined !== 'x'), and does NOT match on AD4M, where
-                               != over an unbound variable excludes the row, exactly as SQL's
-                               three-valued logic excludes NULL. A $query where written with "not"
-                               can therefore pass every test and come back empty in production.
+  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and in the in-memory
+                               test backend (undefined !== 'x'), and does NOT match in a $query
+                               against the production backend, where != over an unbound value
+                               excludes the row, exactly as SQL's three-valued logic excludes
+                               NULL. A $query where written with "not" can therefore pass every
+                               test and come back empty in production.
   { field: { exists: false } } — means absent, unambiguously — but see the warning below about
                                where it can be used.
 
@@ -230,7 +233,7 @@ some records already existed reads as absent on every one of them, and the query
 consults the default when filtering.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The AD4M backend has no such operator, so a $query using one is refused rather than run. This is a
+The backend has no such operator, so a $query using one is refused rather than run. This is a
 change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
 — the clause reached a filter that rejected every row, so the query answered nothing at all, always,
 with no error anywhere. A refusal at least says so.
@@ -244,8 +247,8 @@ comparison; fetch the candidates and filter() client-side, where "exists" works;
 is a relation rather than a scalar, ask { relation: { none: {} } }, which IS native.
 
 startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
-a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend either, so
-a $query using one is refused — use contains there; inside filter() they are evaluated client-side.
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the backend either, so a
+$query using one is refused — use contains there; inside filter() they are evaluated client-side.
 
 lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
 what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
@@ -253,12 +256,12 @@ in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due i
 September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
 against a field holding the string '12' answers false, rather than guessing which you meant.
 
-On AD4M a NUMBER bound is native and a STRING bound is refused — the executor compares numbers only.
-So a date range in a $query does not run there yet; fetch the candidates and filter() client-side,
+In a $query a NUMBER bound is native and a STRING bound is refused — the backend compares numbers
+only. So a date range in a $query does not run yet; fetch the candidates and filter() client-side,
 where it works, or bound the query by something numeric. A numeric range (a price, a count, a
-rating) runs natively on both backends.
+rating) runs natively either way.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the executor decided pushability
+OR/AND/NOT no longer cost a query its sort pushdown. They used to: the backend decided pushability
 with a second function that disagreed with what it actually emitted, and an explicit combinator fell
 outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
 like any other.
@@ -348,10 +351,10 @@ To read the distinct kinds out of it, or merge them with kinds from another list
 { "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
-- currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- currentDataset — the currently active dataset. Use as a dataset value.
   A host store's dataset accessor (e.g. \`dataset: 'datasetStore.marketplaceDataset'\`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append \`.handle\` — component props take the
-  backend's own dataset handle: { "perspective": { "$": "datasetStore.currentDataset.handle" } }.
+  backend's own dataset handle: { "dataset": { "$": "datasetStore.currentDataset.handle" } }.
 - me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):

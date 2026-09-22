@@ -669,11 +669,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         canManageLanguages: 'boolean — gate the languages section on this',
         canManageAi: 'boolean — gate the AI section on this',
         canConfigureAi:
-          "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
+          "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, which grants reading the models but refuses changing them. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
         canConfigureExecutor:
           'boolean — this host starts the backend, so how it starts it can be changed. False on web',
         unsupportedCapabilities:
-          "{ name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (an AD4M executor's RPC method), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health",
+          "{ name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health",
         mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
         mcpPort: 'number — the port MCP is served on',
         executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
@@ -703,11 +703,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         authorizedApps:
           'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
         networkMetrics:
-          'string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
+          'string — backend diagnostic blob, already formatted for reading (indented JSON, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
         peerInfos:
           "string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable",
         peerInfosReadable:
-          'string — the same records decoded for reading, as indented JSON (on AD4M: agent, space, dates, url, arc, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs',
+          'string — the same records decoded for reading, as indented JSON (agent, space, dates, url, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs',
         pending:
           "string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: \"'loadPeerInfos' in runtimeStore.pending\" }",
         loading:
@@ -767,7 +767,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     },
     datasetStore: {
       state: {
-        datasets: 'array of dataset handles (all joined datasets; AD4M perspectives in this backend)',
+        datasets: 'array of dataset handles (all joined datasets)',
         orderedDatasets: 'datasets sorted by user-defined sidebar order, system datasets excluded',
         currentDataset: 'dataset handle | null (the dataset currently being viewed)',
         currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
@@ -860,8 +860,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         automaticThemes:
           'array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes',
         installedThemes:
-          'array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")',
-        spaceThemes: 'array of ThemeData objects — themes stored in the current space perspective (origin: "custom")',
+          'array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")',
+        spaceThemes: 'array of ThemeData objects — themes stored in the current space (origin: "custom")',
         allThemes:
           'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
         currentThemeId: 'string — id of the currently active theme',
@@ -945,7 +945,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         personalTemplates:
           "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
-        spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space perspective',
+        spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space',
         pendingInstall:
           'the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template',
         builtInTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
@@ -1054,7 +1054,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         currentSpace:
           'Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, plus id/author/createdAt)',
         foreignSpacePrefill:
-          '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found',
+          '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found',
         enabledModules:
           'string[] — ids of the feature modules THIS SPACE has turned on: the community\u2019s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
         installedModules:
@@ -1193,7 +1193,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         withdrawSignal:
           "(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears",
         navigateToSpace:
-          '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
+          '(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together',
         openRecordRef:
           "(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens",
         updateSpaceMeta:
@@ -1264,7 +1264,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeFromCanvas:
           "(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to",
         deleteRecords:
-          "(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — an AD4M delete drops the links and a re-create earns a new id, so anything pointing at the old record breaks",
+          "(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — a delete drops the record's links and a re-create earns a new id, so anything pointing at the old record breaks",
         undoCanvas:
           '(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo',
         redoCanvas:
@@ -1665,10 +1665,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {},
       actions: {
         create:
-          "(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
+          "(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
         update:
-          '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest',
-        delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible',
+          '(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest',
+        delete: '(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible',
       },
     },
     interpretationStore: {
