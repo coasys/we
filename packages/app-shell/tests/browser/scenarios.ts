@@ -402,6 +402,53 @@ const nestedInteractive = (): Scenario => ({
 });
 
 /**
+ * A corner-pinned control, pinned with a space token rather than a length.
+ *
+ * `position: absolute` with a `top`/`right`/`bottom`/`left` is how anything gets pinned to the
+ * corner of a picture — a badge over a thumbnail, a reconnect button over a video tile. The offset
+ * is typed `string` and documented as "space token or CSS length", so `bottom: '200'` is what an
+ * author writes, and it has to become `var(--we-space-200)` before it reaches CSS.
+ *
+ * The Lit primitives and the Solid components resolve that in two different places, and only one of
+ * them was doing it: a primitive emitted the unitless `bottom: 200`, which is invalid, so the
+ * browser dropped the declaration. That failure is much worse than a no-op, and that is the whole
+ * reason for measuring it here. `position: absolute` still applied, and an absolutely positioned box
+ * with no valid offsets renders at its *static* position — so inside a centring parent the control
+ * landed dead centre and read as somebody's deliberate choice rather than as a bug.
+ *
+ * Both are pinned to the same `bottom`, one primitive and one component, so the case is a
+ * comparison rather than a number: whatever `space-200` is worth, the two paths owe the same answer.
+ */
+const tokenOffsets = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { id: 'pin-box', position: 'relative', width: '400px', height: '300px', ax: 'center', ay: 'center' },
+    children: [
+      // The Lit path — the one that passed the offset through raw.
+      {
+        type: 'we-button',
+        props: {
+          id: 'pin-lit',
+          variant: 'secondary',
+          size: 'xs',
+          square: true,
+          position: 'absolute',
+          bottom: '200',
+          right: '200',
+        },
+        children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+      },
+      // The Solid path, mirrored into the other corner — the control, which already resolved tokens.
+      {
+        type: 'Row',
+        props: { id: 'pin-solid', position: 'absolute', bottom: '200', left: '200', width: '24px', height: '24px' },
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * Three folding section headings in a column — plain, with a count, and with a control beside it.
  *
  * The heading with a control is a different tree from the other two: a button around the whole row
@@ -456,5 +503,6 @@ export const scenarios: Record<string, () => Scenario> = {
   'signals:vocabulary': vocabulary,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
+  'ds:token-offsets': tokenOffsets,
   'panel:sections': panelSections,
 };
