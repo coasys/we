@@ -43,6 +43,7 @@ export type {
   WatchQuery,
 } from './expander';
 export type {
+  Bounds,
   EdgeAnchors,
   EdgeCurve,
   EdgeGeometry,

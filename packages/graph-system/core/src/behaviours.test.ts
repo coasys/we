@@ -6,6 +6,7 @@ import {
   connectNodesBehaviour,
   dispatchPointer,
   dragNodeBehaviour,
+  marqueeSelectBehaviour,
   nodeDoubleClickBehaviour,
   panZoomBehaviour,
   selectBehaviour,
@@ -45,6 +46,15 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
     collapse: vi.fn(),
     toScreen: (p) => p,
     drawConnection: vi.fn(),
+    drawMarquee: vi.fn(),
+    // The nodes are marks of radius 20, so "overlaps the rectangle" is the box around each centre.
+    within: (bounds) =>
+      [...positions]
+        .filter(
+          ([, p]) =>
+            p.x + 20 >= bounds.minX && p.x - 20 <= bounds.maxX && p.y + 20 >= bounds.minY && p.y - 20 <= bounds.maxY,
+        )
+        .map(([id]) => id),
     selectEdge: vi.fn(),
   };
   return Object.assign(base, overrides);
@@ -52,7 +62,7 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
 
 function input(x: number, y: number, extra: Partial<PointerInput> = {}): PointerInput {
   // `metaKey` was missing, which the cast hid: the fake did not satisfy the interface it claimed.
-  const base: PointerInput = { at: { x, y }, buttons: 1, shiftKey: false, metaKey: false };
+  const base: PointerInput = { at: { x, y }, buttons: 1, shiftKey: false, ctrlKey: false, metaKey: false };
   return Object.assign(base, extra);
 }
 
@@ -415,5 +425,148 @@ describe('pan-zoom and select, in both orders', () => {
     dispatchPointer(behaviours, 'onPointerMove', input(40, 30), ctx);
 
     expect(panned).toEqual([[30, 20]]);
+  });
+});
+
+describe('marqueeSelectBehaviour', () => {
+  /** Records what the sweep drew and selected, over the two-node world the fake context holds. */
+  function harness(overrides: Partial<BehaviourContext> = {}) {
+    const selections: string[][] = [];
+    const drawn: (unknown | null)[] = [];
+    const ctx = fakeContext({
+      hitTest: () => [],
+      select: (ids) => {
+        selections.push([...ids].sort());
+      },
+      drawMarquee: (bounds) => {
+        drawn.push(bounds);
+      },
+      ...overrides,
+    });
+    return { ctx, selections, drawn };
+  }
+
+  it('selects what the rectangle touches, and follows it as it shrinks', () => {
+    const { ctx, selections } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    // Out past the second node, then pulled back in — the case an additive sweep cannot express.
+    behaviour.onPointerMove!(input(400, 200), ctx);
+    behaviour.onPointerMove!(input(150, 200), ctx);
+
+    expect(selections).toEqual([['n1', 'n2'], ['n1']]);
+  });
+
+  it('normalises a sweep drawn up and to the left', () => {
+    // Without `boundsFromPoints` this rectangle has min > max and matches nothing at all, which
+    // reads as the gesture working in two directions out of four.
+    const { ctx, selections } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(200, 200), ctx);
+    behaviour.onPointerMove!(input(50, 50), ctx);
+
+    expect(selections).toEqual([['n1']]);
+  });
+
+  it('adds to the selection when the modifier is held, and replaces when it is not', () => {
+    const held = harness({ selection: () => ['n2'] });
+    const extending = marqueeSelectBehaviour();
+    extending.onPointerDown!(input(0, 0, { shiftKey: true }), held.ctx);
+    extending.onPointerMove!(input(150, 150, { shiftKey: true }), held.ctx);
+    expect(held.selections).toEqual([['n1', 'n2']]);
+
+    const plain = harness({ selection: () => ['n2'] });
+    const replacing = marqueeSelectBehaviour({ armed: true });
+    replacing.onPointerDown!(input(0, 0), plain.ctx);
+    replacing.onPointerMove!(input(150, 150), plain.ctx);
+    expect(plain.selections).toEqual([['n1']]);
+  });
+
+  it('ignores a plain background press unless it is armed', () => {
+    const { ctx } = harness();
+    expect(marqueeSelectBehaviour().onPointerDown!(input(0, 0), ctx)).toBeUndefined();
+    expect(marqueeSelectBehaviour({ armed: true }).onPointerDown!(input(0, 0), ctx)).toBe(true);
+    expect(marqueeSelectBehaviour().onPointerDown!(input(0, 0, { ctrlKey: true }), ctx)).toBe(true);
+  });
+
+  it('leaves a press on a node alone, so an armed canvas can still drag cards', () => {
+    const { ctx } = harness({ hitTest: () => ['n1'] });
+    expect(marqueeSelectBehaviour({ armed: true }).onPointerDown!(input(100, 100), ctx)).toBeUndefined();
+  });
+
+  it('draws nothing and selects nothing below the drag threshold', () => {
+    const { ctx, selections, drawn } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(2, 1), ctx);
+
+    expect(drawn).toEqual([]);
+    expect(selections).toEqual([]);
+  });
+
+  it('clears the selection on an armed press that went nowhere', () => {
+    // `select` never sees the press — this behaviour claimed the pointer-down — so the deselect has
+    // to come from here or a canvas with the tool armed cannot be deselected at all.
+    const { ctx, selections } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerUp!(input(0, 0), ctx);
+
+    expect(selections).toEqual([[]]);
+  });
+
+  it('keeps the selection when a modifier press goes nowhere', () => {
+    const { ctx, selections } = harness({ selection: () => ['n2'] });
+    const behaviour = marqueeSelectBehaviour();
+
+    behaviour.onPointerDown!(input(0, 0, { shiftKey: true }), ctx);
+    behaviour.onPointerUp!(input(0, 0, { shiftKey: true }), ctx);
+
+    expect(selections).toEqual([]);
+  });
+
+  it('takes the rectangle down on release and on cancel', () => {
+    const { ctx, drawn } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(150, 150), ctx);
+    behaviour.onPointerUp!(input(150, 150), ctx);
+    expect(drawn.at(-1)).toBeNull();
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(150, 150), ctx);
+    behaviour.onPointerCancel!(input(150, 150), ctx);
+    expect(drawn.at(-1)).toBeNull();
+  });
+
+  it('abandons the sweep when no button is held', () => {
+    // The same dropped-pointer-up guard `drag-node` carries: without it a released sweep follows the
+    // cursor around the canvas selecting as it goes.
+    const { ctx, drawn } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(150, 150, { buttons: 0 }), ctx);
+    expect(drawn).toEqual([null]);
+
+    expect(behaviour.onPointerMove!(input(300, 300), ctx)).toBeUndefined();
+  });
+
+  it('must be listed before pan-zoom to see the press at all', () => {
+    const { ctx, drawn } = harness();
+    const marquee = marqueeSelectBehaviour({ armed: true });
+
+    dispatchPointer([panZoomBehaviour(), marquee], 'onPointerDown', input(0, 0), ctx);
+    dispatchPointer([panZoomBehaviour(), marquee], 'onPointerMove', input(150, 150), ctx);
+    expect(drawn).toEqual([]);
+
+    dispatchPointer([marquee, panZoomBehaviour()], 'onPointerDown', input(0, 0), ctx);
+    dispatchPointer([marquee, panZoomBehaviour()], 'onPointerMove', input(150, 150), ctx);
+    expect(drawn).toHaveLength(1);
   });
 });

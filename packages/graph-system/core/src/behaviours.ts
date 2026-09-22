@@ -10,7 +10,9 @@
  * it. That is how dragging a node takes precedence over panning the canvas without either behaviour
  * knowing the other exists.
  */
-import type { Behaviour, BehaviourContext, PointerInput } from '@we/graph-protocol';
+import type { Behaviour, BehaviourContext, Point, PointerInput } from '@we/graph-protocol';
+
+import { boundsFromPoints } from './viewport';
 
 /** Pixels of movement before a press becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 3;
@@ -265,6 +267,131 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   };
 }
 
+export interface MarqueeSelectOptions {
+  /**
+   * Whether a *plain* background drag sweeps out a selection instead of panning. Defaults to false.
+   *
+   * Off, the gesture is still reachable by holding the multi-select modifier, which is what makes it
+   * discoverable-by-accident for anyone who has used another canvas. On, it takes the background
+   * outright and panning moves to the modifier — which is the mode a template arms from a visible
+   * toggle, for the reason `connect-nodes` does: a touchscreen has no modifiers, and a gesture with
+   * no control anywhere is a gesture nobody finds.
+   */
+  armed?: boolean;
+}
+
+/**
+ * Sweep a rectangle over the canvas to select what it touches.
+ *
+ * ## Why this claims the background rather than owning a mode
+ *
+ * The obvious alternative was to make a plain left-drag on empty canvas always sweep, the way Figma
+ * and Miro do, and move panning onto space-drag. That is a bigger change than it looks: panning is
+ * this canvas's most-used gesture, it is the only one that works identically under a finger, and a
+ * template cannot opt out of a decision made in the engine. So the sweep is *additive* — it takes
+ * the press only when the modifier is down or a template has armed it, and otherwise the press falls
+ * through to `pan-zoom` exactly as before.
+ *
+ * **List it before `pan-zoom`.** Both want a press on empty canvas and dispatch stops at the first
+ * behaviour that claims, so listed after it this never runs at all — the same trap `select`
+ * documents, and the same silent failure: the canvas pans, no rectangle appears, and nothing
+ * anywhere says why.
+ *
+ * ## It selects while you sweep, not on release
+ *
+ * Every move recomputes the whole selection from the rectangle rather than adding to it, which is
+ * what lets the sweep *shrink*: pull the corner back over a card and its ring goes away again. The
+ * additive spelling — select what is inside, every frame — can only ever grow, so overshooting by a
+ * card would leave it selected with no way back but starting over.
+ *
+ * The set the sweep starts from is captured at the press. With the modifier held that is whatever
+ * was already selected, so a sweep adds to a selection built by clicking; without it, nothing.
+ *
+ * ## A press that never travels is not a sweep, and this has to say so itself
+ *
+ * Below the drag threshold nothing is drawn and no rectangle is ever selected from. But clearing the
+ * selection on such a press is **this behaviour's job**, not `select`'s, and that is the one piece of
+ * plumbing here that is not obvious.
+ *
+ * `onPointerDown` is not a broadcast phase: claiming it stops `select` seeing the press at all, so
+ * `select` has nothing to compare the release against and its background-clear never runs. Armed,
+ * that made the canvas impossible to deselect on — every click on empty space left the previous
+ * selection ringed, with no gesture anywhere that would drop it.
+ *
+ * So a press that went nowhere clears, exactly as `select` would have. With the modifier held it
+ * does not: that press was reaching for "add to what I have", and answering it by throwing the
+ * selection away is the opposite of what was asked.
+ */
+export function marqueeSelectBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
+  const options = { armed: false, ...(rawOptions as MarqueeSelectOptions) };
+  /** Where the sweep began, in world units — see `drawMarquee` for why this is not screen space. */
+  let from: Point | null = null;
+  /** What was selected when it began, which an additive sweep adds to. */
+  let base: string[] = [];
+  /** Screen-space press point, for the threshold — a world-space one would change meaning with zoom. */
+  let pressedAt: Point | null = null;
+  let sweeping = false;
+  /** Whether the press was adding to a selection, remembered so the release can tell. */
+  let extending = false;
+
+  function reset(ctx: BehaviourContext): void {
+    from = null;
+    pressedAt = null;
+    sweeping = false;
+    extending = false;
+    base = [];
+    ctx.drawMarquee(null);
+  }
+
+  return {
+    id: 'marquee-select',
+    description: 'Drag a rectangle over empty canvas to select everything it touches.',
+    onPointerDown(input, ctx) {
+      const adding = input.shiftKey || input.ctrlKey;
+      if (!options.armed && !adding) return;
+      // A press on a card is that card's, whatever mode this is in: sweeping out from under a node
+      // would make it impossible to drag one while the tool is armed.
+      if (ctx.hitTest(ctx.toWorld(input.at)).length) return;
+      pressedAt = input.at;
+      from = ctx.toWorld(input.at);
+      extending = adding;
+      base = adding ? ctx.selection() : [];
+      sweeping = false;
+      return true;
+    },
+    onPointerMove(input, ctx) {
+      if (!from || !pressedAt) return;
+      // The same guard `drag-node` carries: no button held means no gesture, whatever this thinks.
+      if (input.buttons === 0) {
+        reset(ctx);
+        return;
+      }
+      if (!sweeping) {
+        if (Math.hypot(input.at.x - pressedAt.x, input.at.y - pressedAt.y) <= DRAG_THRESHOLD) return true;
+        sweeping = true;
+      }
+      const bounds = boundsFromPoints(from, ctx.toWorld(input.at));
+      ctx.drawMarquee(bounds);
+      // Recomputed from the base every frame rather than accumulated — see the note above.
+      ctx.select([...new Set([...base, ...ctx.within(bounds)])], 'replace');
+      return true;
+    },
+    onPointerCancel(_input, ctx) {
+      reset(ctx);
+    },
+    onPointerUp(_input, ctx) {
+      if (!from) return;
+      const swept = sweeping;
+      const wasExtending = extending;
+      reset(ctx);
+      // A press on empty canvas that went nowhere means "deselect" — and `select` never saw it, so
+      // saying so is this behaviour's job. See the note above.
+      if (!swept && !wasExtending) ctx.select([]);
+      return true;
+    },
+  };
+}
+
 /** Double-click a node to open or close it — the gesture that drives resolution. */
 export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = (rawOptions ?? {}) as { direction?: 'in' | 'out' | 'both' };
@@ -360,6 +487,7 @@ export function defaultBehaviours() {
     'connect-nodes': connectNodesBehaviour,
     'canvas-double-click': canvasDoubleClickBehaviour,
     'node-double-click': nodeDoubleClickBehaviour,
+    'marquee-select': marqueeSelectBehaviour,
     select: selectBehaviour,
     'expand-on-click': expandOnClickBehaviour,
     'expand-on-double-click': expandOnDoubleClickBehaviour,

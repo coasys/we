@@ -1541,6 +1541,71 @@ describe('selecting an edge', () => {
   });
 });
 
+describe('a selection that did not change', () => {
+  /** An engine over two seeded nodes, reporting every event it emits. */
+  async function reporting() {
+    const events: { type: string; ids?: string[] }[] = [];
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], expanders: [fanoutExpander(0)], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 0 } },
+      registry,
+      context,
+      onEvent: (event) => events.push(event as { type: string; ids?: string[] }),
+    });
+    await engine.start();
+    events.length = 0;
+    return { engine, events };
+  }
+
+  it('says nothing at all', async () => {
+    /*
+      A marquee recomputes the selection on every pointer move, so an unguarded `select` turned one
+      sweep across empty canvas into a hundred identical `selectionChange` events — and the workshop
+      canvas mirrors its selection into the address, so each of those was a `replaceState`.
+    */
+    const { engine, events } = await reporting();
+    engine.select(['seed-0']);
+    expect(events).toHaveLength(1);
+
+    engine.select(['seed-0']);
+    engine.select(['seed-0']);
+    expect(events).toHaveLength(1);
+  });
+
+  it('compares by membership rather than by order', async () => {
+    const { engine, events } = await reporting();
+    engine.select(['seed-0', 'seed-1']);
+    events.length = 0;
+
+    engine.select(['seed-1', 'seed-0']);
+
+    expect(events).toEqual([]);
+  });
+
+  it('still reports a real change', async () => {
+    const { engine, events } = await reporting();
+    engine.select(['seed-0']);
+    events.length = 0;
+
+    engine.select(['seed-0', 'seed-1']);
+    engine.select([]);
+
+    expect(events.map((event) => event.ids)).toEqual([['seed-0', 'seed-1'], []]);
+  });
+
+  it('still closes an open route when the node selection is unchanged', async () => {
+    // Clicking the card that is already selected has to put a line's grips away, and the early
+    // return for "nothing changed" is exactly where that would have been dropped.
+    const { engine } = await reporting();
+    engine.select(['seed-0']);
+    engine.selectEdge('some-edge');
+    engine.select(['seed-0']);
+
+    expect(engine.getSelectedEdge()).toBeNull();
+    expect(engine.getSelection()).toEqual(['seed-0']);
+  });
+});
+
 describe('restarting the same graph keeps the arrangement', () => {
   it('keeps positions, pins and the selection when the seeds return the nodes on screen', async () => {
     /*
