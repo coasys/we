@@ -19,7 +19,10 @@ export function resolveQueryProp(value: unknown): QueryDescriptor {
     // layer, which is the only place a row's bindings exist — see `QueryDescriptor.entity`.
     entity,
     params,
-    subscribe: sub !== false,
+    // Left as authored, like `entity` and `when`: a literal passes through, and an expression is
+    // resolved by the framework layer — the only place stores and a row's bindings exist. Absent
+    // still means live, which is what every query written before this could say.
+    subscribe: sub === undefined ? true : sub,
     dataset: dataset as string | undefined,
     ...(include !== undefined && { include: include as Record<string, boolean | Record<string, unknown>> }),
     // Not a param: the backend never sees it. The framework layer reads it before asking.

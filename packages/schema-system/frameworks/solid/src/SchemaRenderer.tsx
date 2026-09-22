@@ -221,6 +221,28 @@ function reportRoutingRefusal(stores: RendererStores, message: string): void {
  *
  * Returns `false` when nothing was started (already reported), so the caller can clear its rows.
  */
+/**
+ * Whether this query should follow its answer — resolving an expression if that is what was written.
+ *
+ * Must be called **inside** the querying effect, like every other resolved part of a query: that is
+ * what makes a surface stop subscribing the moment its subject settles, rather than at whatever the
+ * condition happened to be when the node mounted.
+ *
+ * An unresolved expression reads as **not live** rather than live. That is the safe direction: the
+ * worst case is a surface that fetches once and re-asks a moment later when the condition resolves,
+ * where the other way round opens a subscription nobody asked for — which is the cost this exists to
+ * avoid, and the more expensive mistake of the two.
+ */
+function resolveSubscribe(
+  authored: unknown,
+  stores: Record<string, unknown>,
+  context: Record<string, unknown>,
+): boolean {
+  if (authored === undefined) return true;
+  if (typeof authored === 'boolean') return authored;
+  return Boolean(deepResolveTokens(authored, stores, context));
+}
+
 function runQuery(request: {
   names: string[];
   union: boolean;
@@ -454,7 +476,10 @@ function createQuerySignal(
       ...entities,
       dataset: p,
       options: rawOptions,
-      subscribe: descriptor.subscribe,
+      // Read inside the effect, so a surface can stop following its subject the moment the subject
+      // stops changing — see `QueryToken.subscribe`. A change re-runs this effect, which disposes
+      // the old subscription on cleanup, so going live-to-static actually releases it.
+      subscribe: resolveSubscribe(descriptor.subscribe, stores, context),
       stores,
       onRows: (rows) => {
         setItems(reconcile(rows, { key: 'id', merge: true }));
@@ -982,7 +1007,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             ...entities,
             dataset: p,
             options: rawOptions,
-            subscribe: descriptor.subscribe,
+            subscribe: resolveSubscribe(descriptor.subscribe, stores, context),
             stores,
             onRows: (rows) => {
               if (rows.length === 0) {

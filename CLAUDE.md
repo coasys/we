@@ -603,6 +603,13 @@ Query (data retrieval):
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
+subscribe may also be an EXPRESSION, which is how a surface follows its subject only while the
+subject is still changing: { "subscribe": { "$": "modules.transcribe.callOnScreenLive" } } reads a
+finished call's transcript with no subscription at all, and follows a live one. Reach for it on
+anything whose record settles — a past call, an archived thread — where a live query would have the
+backend re-running it for an answer that cannot change. Turning falsy releases the subscription
+rather than merely ignoring it; an expression that has not resolved yet counts as not live, so the
+worst case is one fetch and a re-ask rather than a subscription nobody wanted.
 By default $query targets the current dataset. Use dataset to query a different dataset — required
 when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }

@@ -289,6 +289,92 @@ describe('$query token', () => {
     expect(JSON.parse(el?.textContent ?? '[]')).toEqual([{ id: 1 }]);
   });
 
+  // ---- subscribe as an expression ----
+
+  /**
+   * A surface that follows its subject only while the subject is still changing.
+   *
+   * The case this exists for is a call's transcript: live it must follow every utterance, and once
+   * the call is over the record is settled, so holding a subscription open over it costs the node a
+   * re-query per change for an answer that cannot change. Reading a finished transcript is the
+   * commonest thing anybody does to a long one.
+   */
+  it('fetches once when subscribe resolves falsy', async () => {
+    const MockEntity = { query: vi.fn(), findAll: vi.fn(() => Promise.resolve([{ id: 1 }])) };
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: () => MockEntity,
+      callStore: { live: false },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: 'Post', subscribe: { $: 'callStore.live' } } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(MockEntity.findAll).toHaveBeenCalledOnce();
+    expect(MockEntity.query).not.toHaveBeenCalled();
+  });
+
+  it('subscribes when subscribe resolves truthy', async () => {
+    const builder = createMockBuilder();
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: () => MockEntity,
+      callStore: { live: true },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: 'Post', subscribe: { $: 'callStore.live' } } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(MockEntity.query).toHaveBeenCalledOnce();
+    expect(MockEntity.findAll).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The half that makes it worth having: a call ending must actually RELEASE the subscription, not
+   * merely stop caring about it. A live-to-static flip that left the old one registered would keep
+   * the node re-running the query for the whole time somebody reads the transcript afterwards —
+   * which is the cost this is here to remove.
+   */
+  it('disposes the live subscription when subscribe turns falsy', async () => {
+    const builder = createMockBuilder();
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn(() => Promise.resolve([])) };
+    const [live, setLive] = createSignal(true);
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: () => MockEntity,
+      get callStore() {
+        return { live: live() };
+      },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: 'Post', subscribe: { $: 'callStore.live' } } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    expect(MockEntity.query).toHaveBeenCalledOnce();
+    expect(builder.dispose).not.toHaveBeenCalled();
+
+    setLive(false);
+    await tick();
+
+    expect(builder.dispose).toHaveBeenCalled();
+    expect(MockEntity.findAll).toHaveBeenCalled();
+  });
+
   // ---- AbortSignal threading + cleanup ----
 
   it('passes an AbortSignal to findAll and aborts it on unmount', async () => {
