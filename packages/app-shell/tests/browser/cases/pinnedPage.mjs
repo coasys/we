@@ -14,16 +14,17 @@
  * Asserted as "the last line is inside the viewport" rather than as a scroll offset, because that
  * is the reported symptom and the offset is what looked plausible while the line was still hidden.
  *
- * ## What this does NOT establish, which is worth stating
+ * ## What this length does and does not catch
  *
- * It passes with the settle pass reverted to a single frame, at 120 rows and at 600. One frame is
- * enough here because reading `scrollHeight` forces a synchronous layout, so the rAF measures a
- * settled tree whatever Lit was doing a microtask earlier — which means the multi-frame pass is
- * insurance against content that grows over a longer span (a profile arriving and adding a byline,
- * a font swapping, an image sizing) rather than against the case this scenario builds.
+ * A list this long has an opening journey past `SMOOTH_MAX_PX`, so it is instant whatever the rule
+ * underneath says — which is exactly why it went on passing while a short list was visibly sliding
+ * into place. `pinnedShort` is the case that discriminates; this one guards the long list against
+ * regressions of its own, and the two are the same scenario at two lengths for that reason.
  *
- * So this is a guard on the property a reader cares about, not a regression test for the settle
- * window. What pins the settle behaviour is the unit tests, which drive the frames by hand.
+ * It also passes with the settle pass reverted to a single frame. Reading `scrollHeight` forces a
+ * synchronous layout, so one rAF already measures a settled tree — the multi-frame pass is
+ * insurance against content that keeps moving for longer than that, which is real but is not what
+ * this builds. What pins the settle behaviour is the unit tests, which drive the frames by hand.
  */
 export const name = 'a pinned list opens at its newest line';
 export const scenario = 'ds:pinned-page';

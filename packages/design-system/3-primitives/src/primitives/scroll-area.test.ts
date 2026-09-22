@@ -66,9 +66,18 @@ async function mount(options: {
     await settle();
   };
 
-  /** The row that just landed turns out to be taller than it was when it was measured. */
+  /**
+   * The row that just landed turns out to be a different height from when it was measured.
+   *
+   * Clamps on the way down, which is what a browser does and what the stub otherwise would not: a
+   * scroller whose content shrinks below its current offset is moved up to the new maximum. Without
+   * that, a shrink leaves `scrollTop` past the end, `#toEnd` reads it as already there and returns,
+   * and the test concludes the element failed to follow something no browser would have shown it.
+   */
   const grow = (by: number) => {
     scrollHeight += by;
+    const max = Math.max(0, scrollHeight - clientHeight);
+    if (base.scrollTop > max) base.scrollTop = max;
   };
 
   /** The scroll event the browser queues for a write we made, delivered after the frame's layout. */
@@ -486,5 +495,85 @@ describe('we-scroll-area jump-start slot', () => {
     expect((await controls()).start).toBe(true);
     const slot = el.shadowRoot!.querySelector('[part="jump-start"] slot') as HTMLSlotElement;
     expect(slot.assignedElements()).toHaveLength(1);
+  });
+});
+
+/**
+ * Opening is instant; everything after it animates.
+ *
+ * The rule as a reader states it: a list opens already in the right place, and *moves* only in
+ * response to something happening. Both halves matter — a transcript that slides up from the top
+ * when a panel opens reads as broken, and one that teleports every time somebody speaks loses the
+ * only cue saying which way the content went.
+ *
+ * What made this hard is that an opening is not one scroll. The content mounts, is measured, is
+ * replaced and settles at a different height, with the scroller reset to zero in between — measured
+ * in a real browser as `instant 0→720`, `smooth 0→412`, `smooth 0→412`. So a flag set on the first
+ * scroll is set three scrolls too early, which is what left the last lines under the edge of the
+ * panel for a few hundred milliseconds.
+ *
+ * `scrollTo` is stubbed because that is the only thing separating the two paths: a smooth follow
+ * calls it, an instant one assigns `scrollTop`. jsdom has no `scrollTo` at all, so without the stub
+ * every follow here would take the instant branch and the distinction would be untestable.
+ */
+describe('we-scroll-area opens without animating', () => {
+  const frame = async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    await Promise.resolve();
+  };
+
+  /** Mount with `scrollTo` recorded, so a case can tell a smooth follow from an instant one. */
+  const mountAnimatable = async () => {
+    const harness = await mount({ pin: 'end' });
+    const smoothScrolls: number[] = [];
+    (harness.base as unknown as { scrollTo: (o: { top: number }) => void }).scrollTo = (o) => {
+      smoothScrolls.push(o.top);
+      harness.base.scrollTop = o.top;
+    };
+    return { ...harness, smoothScrolls };
+  };
+
+  it('does not animate any part of the opening, however many passes it takes', async () => {
+    const { base, addRow, grow, smoothScrolls, end } = await mountAnimatable();
+
+    // The opening, in the shape a real one has: content arrives, is followed, and then turns out to
+    // be a different height — more than once.
+    await addRow();
+    grow(300);
+    await frame();
+    grow(-500);
+    await frame();
+
+    expect(smoothScrolls).toEqual([]);
+    expect(base.scrollTop).toBe(end());
+  });
+
+  it('animates once the list has settled and something new arrives', async () => {
+    const { addRow, grow, smoothScrolls } = await mountAnimatable();
+
+    // Open, and let it settle — two frames at the same height is what says the opening is over.
+    await addRow();
+    await frame();
+    await frame();
+    expect(smoothScrolls).toEqual([]);
+
+    // Now a line arrives. This is the case the animation exists for, and it has to survive the fix.
+    grow(40);
+    await addRow();
+    expect(smoothScrolls).toHaveLength(1);
+  });
+
+  it('still jumps rather than animating when the catch-up is a whole backlog', async () => {
+    // The distance cap is untouched by any of this: a follow longer than SMOOTH_MAX_PX is a change
+    // of place rather than a movement, whether or not the list has opened.
+    const { addRow, grow, smoothScrolls } = await mountAnimatable();
+
+    await addRow();
+    await frame();
+    await frame();
+
+    grow(4000);
+    await addRow();
+    expect(smoothScrolls).toEqual([]);
   });
 });

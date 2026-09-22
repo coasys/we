@@ -236,7 +236,24 @@ export default class ScrollArea extends DesignSystemElement {
   #writtenTop = -1;
   /** A smooth follow we started is still animating; its frames are ours, not the reader's. */
   #following = false;
-  /** The opening jump has happened, so later follows may animate. */
+  /**
+   * The opening is **over** — the list has reached its end and stopped moving — so later follows may
+   * animate.
+   *
+   * It used to mean "we have scrolled at least once", set in `#toEnd` before its own early return,
+   * and that was wrong twice over. The contentless call from `firstUpdated` set it, and an opening
+   * is not one scroll anyway: the content mounts, is measured, is replaced, and settles at a
+   * different height, with the scroller reset to zero in between. Measured on a twenty-line
+   * transcript, opening was `instant 0→720`, then `smooth 0→412`, then `smooth 0→412` — so what the
+   * reader saw was the list sliding up from the top, arriving a few hundred milliseconds after the
+   * panel did, with the last lines under the edge until it got there.
+   *
+   * Set from the settle pass instead, which is the one place that knows the content has stopped
+   * changing. Everything up to that point is the opening and is instant however far it travels;
+   * everything after it animates however short it is. That is the rule as a reader states it — a
+   * list opens already in the right place, and *moves* only in response to something happening —
+   * and it is not expressible as a distance, which is what the earlier attempt at this got wrong.
+   */
   #opened = false;
   /** A pending follow, scheduled for after layout. */
   #frame = 0;
@@ -400,7 +417,6 @@ export default class ScrollArea extends DesignSystemElement {
     const base = this.#base;
     if (!base) return;
 
-    this.#opened = true;
     this.#atEnd = true;
 
     const target = Math.max(0, base.scrollHeight - base.clientHeight);
@@ -565,7 +581,12 @@ export default class ScrollArea extends DesignSystemElement {
     this.#settleHeight = height;
     // Keep going while it is still moving. A settled list costs exactly the two frames it takes to
     // prove it is settled.
-    if (settled) return;
+    if (settled) {
+      // And the list is now where it belongs, having stopped moving: whatever happens next is
+      // something arriving rather than the list opening, so it is worth animating. See `#opened`.
+      this.#opened = true;
+      return;
+    }
     this.#toEnd({ smooth: this.#opened });
     this.#frame = requestAnimationFrame(this.#settleFrame);
   };

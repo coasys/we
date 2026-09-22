@@ -489,14 +489,18 @@ const squareLoading = (): Scenario => ({
  *
  * The shape of a transcript opening: a bounded window, so the rows do not trickle in — the whole
  * page mounts in one pass, and each row is several custom elements that render their own shadow
- * content. Laying that out takes more than the single frame the follow used to allow, so the view
- * landed short of a bottom that was still moving and the last couple of lines stayed under the edge
- * of the panel.
+ * content, which mount at one height and settle at another.
  *
  * Rows of real text at a real width, because the thing being measured is layout taking time: a
  * scenario of fixed-height boxes settles in one frame and proves nothing.
+ *
+ * **Parameterised by length, and the short one is the case that bites.** An opening jump longer than
+ * `SMOOTH_MAX_PX` is instant whatever else is wrong, so a long list hides the bug: it is a list only
+ * a little taller than its panel whose whole opening fits under the cap and therefore used to
+ * animate — arriving a few hundred milliseconds after the panel, with its last lines under the edge
+ * until it got there.
  */
-const pinnedPage = (): Scenario => ({
+const pinnedPage = (rows: number) => (): Scenario => ({
   node: {
     type: 'Column',
     props: { height: '320px', width: '100%' },
@@ -512,10 +516,10 @@ const pinnedPage = (): Scenario => ({
               {
                 type: '$each',
                 props: {
-                  items: Array.from({ length: 120 }, (_, i) => ({
+                  items: Array.from({ length: rows }, (_, i) => ({
                     id: `row-${i}`,
                     text: `Line ${i} — something somebody said that runs on for long enough to wrap`,
-                    last: i === 119,
+                    last: i === rows - 1,
                   })),
                   as: 'row',
                 },
@@ -607,6 +611,7 @@ export const scenarios: Record<string, () => Scenario> = {
   'ds:nested-interactive': nestedInteractive,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
-  'ds:pinned-page': pinnedPage,
+  'ds:pinned-page': pinnedPage(120),
+  'ds:pinned-short': pinnedPage(20),
   'panel:sections': panelSections,
 };
