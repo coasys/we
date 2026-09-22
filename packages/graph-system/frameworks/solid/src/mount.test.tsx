@@ -747,15 +747,15 @@ describe('the chrome over a selection of several', () => {
 });
 
 /**
- * Carrying a selection off the canvas.
+ * Carrying cards off the canvas.
  *
- * The one gesture here that leaves the graph entirely: the canvas has always been a drop *zone* and
- * was never a drag *source*, so nothing on it could be taken to a Pocket, a folder or another
- * space — not even one card. What is tested is that the grip begins a real session carrying a
- * reference per selected card, because everything downstream of that is `@we/drag`'s and is tested
- * there.
+ * The canvas has always registered a drop *zone* and was never a drag *source*, so nothing on it
+ * could be taken to a Pocket, a folder or another space — not even one card. The gesture is the
+ * ordinary card drag: over nothing it is a move, over a drop zone the cards go back where they
+ * started and the zone gets them. What is tested here is that decision, because everything
+ * downstream of it belongs to `@we/drag` and is tested there.
  */
-describe('the carry grip', () => {
+describe('carrying a card off the canvas', () => {
   const task = (id: string, x: number, y: number) => ({
     id: entityAddress('ds', 'TaskBlock', id),
     kind: 'entity' as const,
@@ -773,51 +773,106 @@ describe('the carry grip', () => {
   const pointer = (type: string, x: number, y: number, extra: PointerEventInit = {}) =>
     new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, buttons: 1, ...extra });
 
+  /** A canvas of two cards, with a drop zone registered away to one side. */
   async function canvas(props: Parameters<typeof GraphView>[0] = {}) {
+    const dropped: unknown[] = [];
     const host = mount({
       seeds: literal,
       layout: { type: 'manual' },
       nodeStyle: [{ style: { shape: 'card', width: 60, height: 40 } }],
-      behaviours: [{ type: 'marquee-select', options: { armed: true } }, 'select', 'pan-zoom'],
+      behaviours: [
+        { type: 'marquee-select', options: { armed: true } },
+        'select',
+        { type: 'drag-node', options: { pin: true } },
+        'pan-zoom',
+      ],
       carry: true,
+      onNodeDragEnd: (payload) => dropped.push(payload),
       ...props,
     });
     await until(() => host.querySelectorAll('.we-graph__node').length > 1);
-    return { host, surface: host.querySelector('.we-graph__surface') as HTMLElement };
+
+    const pocket = document.createElement('div');
+    document.body.append(pocket);
+    pocket.getBoundingClientRect = () =>
+      ({ left: 500, top: 500, right: 700, bottom: 700, width: 200, height: 200 }) as DOMRect;
+    const gathered: unknown[] = [];
+    const unregister = dragSession.registerZone({ el: pocket, onDrop: ({ payload }) => gathered.push(payload) });
+
+    return {
+      host,
+      surface: host.querySelector('.we-graph__surface') as HTMLElement,
+      gathered,
+      dropped,
+      cleanup: () => {
+        unregister();
+        pocket.remove();
+      },
+    };
   }
 
-  /** Sweep a rectangle over however many cards `to` reaches, leaving them selected. */
-  async function select(host: HTMLElement, surface: HTMLElement, to: number) {
-    surface.dispatchEvent(pointer('pointerdown', -80, -60));
-    surface.dispatchEvent(pointer('pointermove', to, 60));
-    surface.dispatchEvent(pointer('pointerup', to, 60, { buttons: 0 }));
-    await until(() => host.querySelectorAll('.we-graph__node--selected').length > 0);
+  /** Press on the card at the origin, move to `(x, y)`, release. */
+  function drag(surface: HTMLElement, x: number, y: number) {
+    surface.setPointerCapture = () => undefined;
+    surface.dispatchEvent(pointer('pointerdown', 0, 0));
+    surface.dispatchEvent(pointer('pointermove', x, y));
+    surface.dispatchEvent(pointer('pointermove', x, y));
+    surface.dispatchEvent(pointer('pointerup', x, y, { buttons: 0 }));
   }
 
-  it('is not offered unless the graph opts in', async () => {
-    const { host, surface } = await canvas({ carry: false });
-    await select(host, surface, 60);
+  it('is an ordinary move when the release lands on the canvas', async () => {
+    const { surface, gathered, dropped, cleanup } = await canvas();
 
-    expect(host.querySelector('.we-graph__carry')).toBeNull();
+    drag(surface, 120, 90);
+
+    expect(gathered).toEqual([]);
+    expect(dropped).toHaveLength(1);
+    cleanup();
   });
 
-  it('appears on a single card and on a selection of several', async () => {
-    const one = await canvas();
-    await select(one.host, one.surface, 60);
-    expect(one.host.querySelectorAll('.we-graph__carry')).toHaveLength(1);
+  it('hands the cards to a zone the release lands in, and reports no move', async () => {
+    const { surface, gathered, dropped, cleanup } = await canvas();
 
-    dispose?.();
-    dispose = undefined;
+    drag(surface, 600, 600);
 
-    const many = await canvas();
-    await select(many.host, many.surface, 260);
-    expect(many.host.querySelectorAll('.we-graph__carry')).toHaveLength(1);
+    expect((gathered[0] as { items: { ref: unknown }[] })?.items.map((item) => item.ref)).toEqual([
+      { entity: 'TaskBlock', id: 't1' },
+    ]);
+    // The position it was dropped *over* is inside a panel — the one place on the canvas nobody can
+    // see — so writing it would be worse than writing nothing.
+    expect(dropped).toEqual([]);
+    cleanup();
+  });
+
+  it('puts the card back where it started', async () => {
+    const { host, surface, cleanup } = await canvas();
+    const before = host.querySelector('.we-graph__node')?.getAttribute('style');
+
+    drag(surface, 600, 600);
+
+    expect(host.querySelector('.we-graph__node')?.getAttribute('style')).toBe(before);
+    cleanup();
+  });
+
+  it('carries the whole selection when the press is inside one', async () => {
+    const { host, surface, gathered, cleanup } = await canvas();
+    // Sweep both cards, then drag one of them into the zone.
+    surface.setPointerCapture = () => undefined;
+    surface.dispatchEvent(pointer('pointerdown', -80, -60));
+    surface.dispatchEvent(pointer('pointermove', 260, 60));
+    surface.dispatchEvent(pointer('pointerup', 260, 60, { buttons: 0 }));
+    await until(() => host.querySelectorAll('.we-graph__node--selected').length === 2);
+
+    drag(surface, 600, 600);
+
+    expect((gathered[0] as { items: unknown[] })?.items).toHaveLength(2);
+    cleanup();
   });
 
   it('carries the document and the picture together, not one instead of the other', async () => {
     // A composed card with an image has both, and two spreads keyed `preview` would have dropped the
     // document on exactly the cards with most to draw.
-    const host = mount({
+    const { surface, gathered, cleanup } = await canvas({
       seeds: {
         literal: true as const,
         nodes: [
@@ -831,60 +886,41 @@ describe('the carry grip', () => {
         ],
         edges: [],
       },
-      layout: { type: 'manual' },
-      behaviours: [{ type: 'marquee-select', options: { armed: true } }, 'select', 'pan-zoom'],
-      carry: true,
     });
-    await until(() => host.querySelectorAll('.we-graph__node').length > 0);
-    const surface = host.querySelector('.we-graph__surface') as HTMLElement;
-    await select(host, surface, 60);
-    const grip = host.querySelector('.we-graph__carry') as HTMLElement;
-    grip.setPointerCapture = () => undefined;
 
-    grip.dispatchEvent(pointer('pointerdown', 10, 10));
-    grip.dispatchEvent(pointer('pointermove', 60, 60));
+    drag(surface, 600, 600);
 
-    expect(dragSession.active()?.items[0]?.preview).toEqual({
+    expect((gathered[0] as { items: { preview: unknown }[] })?.items[0]?.preview).toEqual({
       content: '{"root":{}}',
       thumbnail: 'expression://pic',
     });
-    dragSession.cancel();
+    cleanup();
   });
 
-  it('begins a session carrying one reference per selected card', async () => {
-    const { host, surface } = await canvas();
-    await select(host, surface, 260);
-    const grip = host.querySelector('.we-graph__carry') as HTMLElement;
-    grip.setPointerCapture = () => undefined;
-    grip.releasePointerCapture = () => undefined;
+  it('does nothing at all unless the graph opts in', async () => {
+    const { surface, gathered, dropped, cleanup } = await canvas({ carry: false });
 
-    grip.dispatchEvent(pointer('pointerdown', 10, 10));
-    // Past the drag threshold, which is what turns a press into a session.
-    grip.dispatchEvent(pointer('pointermove', 60, 60));
+    drag(surface, 600, 600);
 
-    expect(dragSession.active()?.items.map((item) => item.ref)).toEqual([
-      { entity: 'TaskBlock', id: 't1' },
-      { entity: 'TaskBlock', id: 't2' },
-    ]);
-    // `copy`: the cards stay on the canvas, because nothing here can know the drop was accepted.
-    expect(dragSession.active()?.effect).toBe('copy');
-    dragSession.cancel();
+    expect(gathered).toEqual([]);
+    // Still an ordinary move, which is what a canvas without `carry` has always done.
+    expect(dropped).toHaveLength(1);
+    cleanup();
   });
 
-  it('does not let the press reach the canvas underneath', async () => {
-    // The bar sits over the node layer, and the canvas hit-tests in world space from a press on it:
-    // a grip press that got through would start dragging the very card it belongs to.
-    const { host, surface } = await canvas();
-    await select(host, surface, 60);
-    const before = host.querySelector('.we-graph__node')?.getAttribute('style');
-    const grip = host.querySelector('.we-graph__carry') as HTMLElement;
-    grip.setPointerCapture = () => undefined;
+  it('refuses the graph’s own drop zone, so a card cannot be brought into the canvas it is on', async () => {
+    /*
+      The canvas registers itself as a target for things dragged in from elsewhere. Without `from`
+      naming the graph, a card dropped back on the canvas would land in that handler and be brought
+      in a second time.
+    */
+    const brought: unknown[] = [];
+    const { surface, cleanup } = await canvas({ onDrop: (payload) => brought.push(payload) });
 
-    grip.dispatchEvent(pointer('pointerdown', 10, 10));
-    surface.dispatchEvent(pointer('pointermove', 300, 300));
+    drag(surface, 120, 90);
 
-    expect(host.querySelector('.we-graph__node')?.getAttribute('style')).toBe(before);
-    dragSession.cancel();
+    expect(brought).toEqual([]);
+    cleanup();
   });
 });
 

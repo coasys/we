@@ -166,11 +166,11 @@ const canvasCards: SchemaNode = {
     height: '100%',
     revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
     /*
-      Cards can be picked up and taken elsewhere — a Pocket, a folder, another space's feed.
+      Cards can be taken elsewhere — a Pocket, a folder, another space's feed.
 
-      A grip in the card's own bar rather than the card itself: a press on a card already means
-      "move it on this canvas", which is the most-used gesture here, and a press whose meaning
-      depended on where the drag ended could not be shown while it was happening.
+      No new gesture: the drag that moves a card on the canvas carries it too, and the release
+      decides which it was. Drop zones light up as the pointer crosses them, so the option is
+      visible while the drag is live, and the card springing back says which of the two happened.
     */
     carry: true,
     /*

@@ -3419,7 +3419,8 @@ const canvas: SchemaNode = {
 
       The canvas beside a live call is exactly where somebody finds a thing worth keeping, and until
       now there was no gesture that could take it anywhere: the graph received drops and could not
-      be dragged from.
+      be dragged from. It is the ordinary card drag, with the release deciding — over the canvas a
+      move, over a drop zone a carry, and the card goes back where it started.
     */
     carry: true,
     /*

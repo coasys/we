@@ -24,7 +24,7 @@
  */
 import { Column, Row } from '@we/components/solid';
 import { ROLE_NAMES } from '@we/design-utils';
-import { type DragItem, dragSession, watchPointerDrag } from '@we/drag';
+import { type DragItem, dragSession } from '@we/drag';
 import type { EdgeWaypoint } from '@we/graph-core';
 import {
   bendPoints,
@@ -551,6 +551,17 @@ export function GraphView(props: GraphViewProps) {
           props.onSelectionChange?.(event.ids);
           break;
         case 'nodeDragEnd': {
+          /*
+            A drag that ended in somebody else's drop zone is not a move.
+
+            The cards have already been put back where they started (see `endCarry`), so reporting
+            this would write the position they were dropped *over* — which is inside a panel, and
+            would be the one place on the canvas nobody can see.
+          */
+          if (carriedAway) {
+            carriedAway = false;
+            break;
+          }
           const at = parseAddress(event.node.id);
           /** One card that moved with the drag, as a record, or nothing when it does not stand for one. */
           const asRecord = (id: string, x: number, y: number) => {
@@ -1148,10 +1159,11 @@ export function GraphView(props: GraphViewProps) {
    * as the string it arrived as, so a ghost can draw the real card rather than a chip with a name on
    * it.
    */
-  const carriedItems = createMemo((): DragItem[] =>
-    selectedRows().flatMap(({ entry }) => {
-      const at = parseAddress(entry.node.id);
-      if (at?.kind !== 'entity' || !at.id) return [];
+  const itemsFor = (ids: readonly string[]): DragItem[] =>
+    ids.flatMap((id) => {
+      const entry = nodeRows().find((row) => row.entry.node.id === id)?.entry;
+      const at = parseAddress(id);
+      if (!entry || at?.kind !== 'entity' || !at.id) return [];
       const editorState = entry.node.data?.editorState;
       const thumbnail = entry.node.data?.src;
       /*
@@ -1170,49 +1182,47 @@ export function GraphView(props: GraphViewProps) {
           ...(Object.keys(preview).length ? { preview } : {}),
         },
       ];
-    }),
-  );
+    });
 
   /**
-   * Pick the selection up.
+   * A card drag that might turn out to be a carry.
    *
-   * `copy`, which is what carrying a card off a canvas means: the thing stays where it is and a
-   * reference to it goes somewhere else. A `move` would be a claim this gesture cannot honour —
-   * nothing here knows whether the receiver kept what it was given, and taking the card off the
-   * canvas on the strength of a drop that might have been refused is the one outcome worth refusing
-   * to risk.
+   * ## The card is the ghost
    *
-   * The watcher's own abandon function is handed to the session, which is what keeps a second finger
-   * landing elsewhere from driving this drag's ghost — see `BeginOptions.release`.
+   * Dragging a card already means "move it here", and it is the most-used gesture on a canvas.
+   * Rather than adding a second grab area meaning "take it away", the same drag carries both
+   * readings and the **release** decides: over nothing it was a move and the new position is
+   * written; over a drop zone the cards go back where they started and the zone gets them.
+   *
+   * That works because the session already does the hard half. Zones light up as the pointer
+   * crosses them, spring-loading opens a collapsed one, and a release over nothing does nothing at
+   * all — so "was this a carry" is exactly what `drop` answers.
+   *
+   * The ghost is `none`: the card is already under the cursor in the canvas's own space, and a
+   * second copy of it beside the first would leave neither being the answer.
+   *
+   * ## `from` is the graph, which is what stops it eating its own drag
+   *
+   * The canvas registers itself as a drop zone, so without this a card dropped back on the canvas
+   * would land in the graph's own `onDrop` and be brought in a second time. `accepts` refuses a zone
+   * the drag began inside, which this is — the same containment rule that stops a sortable dropping
+   * a row into itself.
    */
-  function beginCarry(event: PointerEvent): void {
-    const items = carriedItems();
-    if (!items.length || !surface) return;
-    event.stopPropagation();
-    const capture = event.currentTarget as Element;
-    const release = watchPointerDrag(event, {
-      capture,
-      onStart: (e) =>
-        dragSession.begin({
-          payload: { items, effect: 'copy' },
-          pointer: { x: e.clientX, y: e.clientY },
-          from: capture,
-          release: () => release(),
-        }),
-      onMove: (e) => dragSession.move({ x: e.clientX, y: e.clientY }),
-      onEnd: (e) => dragSession.drop({ x: e.clientX, y: e.clientY }),
-      onCancel: () => dragSession.cancel(),
-    });
-  }
+  let carrying: { items: DragItem[]; home: { id: string; at: Point }[]; began: boolean } | null = null;
+  /** Set by the release when a zone took the cards, and read by `nodeDragEnd` — see `onPointerUp`. */
+  let carriedAway = false;
 
-  /** The grip that starts a carry, for a bar to put at its left. See `GraphViewProps.carry`. */
-  const carryGrip = () => (
-    <we-tooltip content={carriedItems().length > 1 ? 'Drag to carry these elsewhere' : 'Drag to carry this elsewhere'}>
-      <div class="we-graph__carry" onPointerDown={beginCarry}>
-        <we-icon name="dots-six-vertical" />
-      </div>
-    </we-tooltip>
-  );
+  /**
+   * Which nodes a press is about to move, mirroring `drag-node`'s own rule.
+   *
+   * A press inside the selection moves the selection; a press outside it moves that card alone and
+   * leaves the selection where it is. Asked here as well because the carry has to know what it is
+   * carrying *before* the drag starts, and the behaviour keeps that to itself.
+   */
+  function draggedBy(id: string): string[] {
+    const selection = engine.getSelection();
+    return selection.length > 1 && selection.includes(id) ? selection : [id];
+  }
 
   /**
    * The rows wearing a fold count — folded cards, less any that is selected.
@@ -2544,7 +2554,77 @@ export function GraphView(props: GraphViewProps) {
     });
   }
 
+  /**
+   * A press on a card, remembered in case the drag that follows turns out to be a carry.
+   *
+   * Nothing is begun here. Most presses are clicks and most drags are ordinary moves, so the session
+   * waits until the pointer has actually travelled — see `carryTo`.
+   */
+  function armCarry(event: PointerEvent): void {
+    carrying = null;
+    carriedAway = false;
+    if (!props.carry || engine.isLocked()) return;
+    const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
+    if (!hit) return;
+    const ids = draggedBy(hit);
+    const items = itemsFor(ids);
+    // Nothing a receiver could be given — a property node, a cluster, a literal — is not a carry.
+    if (!items.length) return;
+    const home = ids.flatMap((id) => {
+      const at = engine.getPositions().get(id);
+      return at ? [{ id, at: { x: at.x, y: at.y } }] : [];
+    });
+    carrying = { items, home, began: false };
+  }
+
+  /** Feed the session while a card drag is running, beginning one the first time it has moved. */
+  function carryTo(event: PointerEvent): void {
+    if (!carrying || !surface) return;
+    // No button held means no drag — the same guard the behaviours carry, for the same dropped
+    // pointer-up that leaves a gesture latched.
+    if (event.buttons === 0) {
+      dragSession.cancel();
+      carrying = null;
+      return;
+    }
+    const point = { x: event.clientX, y: event.clientY };
+    if (!carrying.began) {
+      carrying.began = true;
+      dragSession.begin({
+        payload: { items: carrying.items, effect: 'copy' },
+        pointer: point,
+        // Nothing drawn: the card itself is already following the cursor. See the note on `carrying`.
+        ghost: { kind: 'none' },
+        // The graph, so the graph's own drop zone refuses this drag — see the note on `carrying`.
+        from: surface,
+        release: () => {
+          carrying = null;
+        },
+      });
+      return;
+    }
+    dragSession.move(point);
+  }
+
+  /**
+   * The release: did a zone take the cards, or was this an ordinary move?
+   *
+   * `copy`, whichever it was. The cards go back where they started rather than off the canvas,
+   * because nothing here knows what the receiver did with what it was given — and taking a card off
+   * a canvas on the strength of a drop that may have been refused is the one outcome worth refusing
+   * to risk. A Pocket that gathered it now holds a reference; the canvas is unchanged.
+   */
+  function endCarry(event: PointerEvent): void {
+    const held = carrying;
+    carrying = null;
+    if (!held?.began) return;
+    carriedAway = dragSession.drop({ x: event.clientX, y: event.clientY });
+    if (!carriedAway) return;
+    for (const { id, at } of held.home) engine.pin(id, at);
+  }
+
   function onPointerMove(event: PointerEvent) {
+    carryTo(event);
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
@@ -2672,13 +2752,29 @@ export function GraphView(props: GraphViewProps) {
           */
           setPointerFocused(true);
           (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
+          armCarry(event);
           dispatch('onPointerDown', event);
         }}
         onPointerMove={onPointerMove}
-        onPointerUp={(event) => dispatch('onPointerUp', event)}
+        onPointerUp={(event) => {
+          /*
+            The session is asked **before** the behaviours are.
+
+            `drag-node` emits `nodeDragEnd` on this dispatch, and whether that drop should be written
+            depends on whether a zone just took the cards. Asking first sets the flag the event
+            handler reads; asking after would report a position for a card that is about to go back
+            where it came from.
+          */
+          endCarry(event);
+          dispatch('onPointerUp', event);
+        }}
         // Without this a gesture interrupted by the browser leaves whichever behaviour was tracking it
         // latched onto a node.
-        onPointerCancel={(event) => dispatch('onPointerCancel', event)}
+        onPointerCancel={(event) => {
+          dragSession.cancel();
+          carrying = null;
+          dispatch('onPointerCancel', event);
+        }}
         onDblClick={(event) => dispatch('onDoubleClick', event)}
         onWheel={(event) => {
           event.preventDefault();
@@ -3331,7 +3427,6 @@ export function GraphView(props: GraphViewProps) {
                       grab area, and a grab area between two buttons is one somebody presses by
                       accident on the way to the second of them.
                     */}
-                    <Show when={props.carry && carriedItems().length}>{carryGrip()}</Show>
                     {/*
                       The fold, first among the buttons.
 
@@ -3478,7 +3573,6 @@ export function GraphView(props: GraphViewProps) {
                 onClick={(event) => event.stopPropagation()}
               >
                 <Row ay="center" gap="100" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
-                  <Show when={props.carry && carriedItems().length}>{carryGrip()}</Show>
                   {/*
                     How many, then — the one thing a frame cannot say for itself. A rectangle round
                     a dense patch of canvas does not tell you whether it caught nine cards or

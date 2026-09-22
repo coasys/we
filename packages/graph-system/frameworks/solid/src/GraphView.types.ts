@@ -544,24 +544,36 @@ export interface GraphViewProps {
    * answer like "accept" off a selection where only some cards are asking a question.
    */
   /**
-   * Whether the cards on this graph can be picked up and carried somewhere else.
+   * Whether a card dragged off this graph can be carried somewhere else.
    *
-   * Off by default, like every other gesture here. On, a **grip** appears at the left of the action
-   * bar — a card's own, or the selection frame's — and dragging it begins the app's drag session
-   * carrying references to whatever is selected. Dropping is somebody else's business entirely: a
-   * Pocket panel, a folder, another space's feed.
+   * Off by default, like every other gesture here. On, the **ordinary card drag** does both jobs and
+   * the release decides which: let go over the canvas and it is a move, let go over a drop zone —
+   * a Pocket panel, a folder, another space's feed — and the cards go back where they started and
+   * the zone gets them.
    *
-   * ## Why a grip rather than dragging the card itself
+   * ## No second grab area
    *
-   * Pressing a card and moving it already means something on a canvas, and it is the most-used
-   * gesture there is. Overloading it — drag inside the canvas to move, outside to carry — makes the
-   * meaning of a press depend on where it ends, which cannot be shown while it is happening and
-   * cannot be undone once it has. A separate grab area says which of the two is about to happen
-   * before the drag starts, works under a finger, and leaves the card drag exactly as it was.
+   * This was a grip in the action bar first, on the reasoning that a press should declare its
+   * meaning before the drag rather than at the end of it. In use that reads as ceremony: the drag
+   * people already know does the thing, the zones light up as the pointer crosses them so the
+   * option is visible while it is live, and the cards springing back is immediate feedback about
+   * which of the two just happened. One affordance fewer, and the gesture works under a finger.
    *
-   * The graph carries **references**, never records: `{ entity, id }` per selected card, with the
-   * label and the composed document it already has on the node for whatever draws the ghost. No
-   * dataset is named, because the receiver stamps that — see `@we/drag`.
+   * The cost is real and worth knowing: panels float over the canvas, so releasing a card in the
+   * region an open panel covers is a carry rather than a move. That region is already somewhere a
+   * card should not be parked — it is what `GraphHostBindings.obscured` exists for — so it is a
+   * fair trade, but an open Pocket does change what a drag means over its own footprint.
+   *
+   * ## What travels
+   *
+   * **References**, never records: `{ entity, id }` per card, with the label and the composed
+   * document already on the node for whatever draws them. No dataset is named, because the receiver
+   * stamps that — see `@we/drag`. A press inside the selection carries the selection; a press
+   * outside it carries that card alone, which is the rule `drag-node` already follows for moving.
+   *
+   * Always a `copy`. Nothing here can know whether the receiver kept what it was given, and taking
+   * a card off the canvas on the strength of a drop that may have been refused is the one outcome
+   * worth refusing to risk.
    */
   carry?: boolean;
   selectionActions?: NodeAction[];
