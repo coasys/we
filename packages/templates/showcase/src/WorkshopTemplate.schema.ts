@@ -388,12 +388,82 @@ const callPill: SchemaNode = {
           name gets them with one line. It renders nothing where the call module is off.
         */
         { type: '$part', props: { id: 'call.continueCallButton' } },
+        /*
+          The name, truncated — and the whole of it on hover, with whatever was written about it.
+
+          ## Why a tooltip rather than a pill that opens
+
+          The obvious alternative is letting the pill grow, and it is the wrong one twice over. This
+          is fixed chrome over the content: `meta.chromeReserve` declares a band 80px tall, which is
+          a static number, so a pill that grew on hover would grow straight past its own reservation
+          and over whatever is underneath — including a floating panel, which is placed against that
+          reserve. And a box that changes size under the pointer moves the thing being read out from
+          under the cursor, which closes it again.
+
+          ## The trigger is the name, not the pill
+
+          Wrapping the whole row would fire this on the way to the pencil and on the way to the
+          faces, both of which have tooltips of their own that say something else. The name is a
+          narrow target somebody has to rest on, which is the right cost for the answer.
+
+          Both `we-tooltip` and its trigger are `display: contents`, so this wrapper is not a box:
+          the `we-text` is still the flex item, and its `minWidth: '0'` still does its job.
+
+          ## Always mounted, not gated on there being a description
+
+          A tooltip repeating a short, fully visible name is mild noise; a long name with no way to
+          read it is the complaint this is answering. The schema cannot tell those apart — knowing
+          whether the text actually overflowed needs a string length, and the expression library has
+          none (`count` is for lists, and `split` drops empty pieces, so neither stands in). Given
+          the choice, show it: the cost of the noisy case is a bubble nobody needed, and the cost of
+          the other is a name nobody can read.
+
+          `bottom`, because the pill is pinned to the top of the window and a tooltip above it would
+          have nowhere to go.
+        */
         {
-          type: 'we-text',
-          // The name of the thing every other surface is about, so it reads as a heading rather
-          // than as a caption on the chrome around it.
-          props: { variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
-          children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+          type: 'we-tooltip',
+          props: { placement: 'bottom' },
+          children: [
+            {
+              type: 'we-text',
+              // The name of the thing every other surface is about, so it reads as a heading rather
+              // than as a caption on the chrome around it.
+              props: { variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
+              children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+            },
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              slot: 'content',
+              children: [
+                {
+                  // The same fallback the truncated line uses, so the bubble never contradicts what
+                  // it is expanding.
+                  type: 'we-text',
+                  props: { variant: 'label' },
+                  children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+                },
+                {
+                  /*
+                    Only where there is one. `on-inverse` rather than `text-muted`: a tooltip sits on
+                    `surface-inverse`, which holds a fixed lightness and does not flip with the
+                    theme, so the page's own muted foreground is measured against the wrong thing
+                    and can vanish into the bubble entirely.
+                  */
+                  type: '$if',
+                  props: {
+                    condition: { $: 'first(local.callRecord).description' },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                      children: [{ $: 'first(local.callRecord).description' }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
         },
         {
           type: 'we-tooltip',
@@ -440,7 +510,16 @@ const callPill: SchemaNode = {
         */
         // No `noun`: the pill is chrome and a count beside three faces is a word doing no work. The
         // roster is on hover, which is where a name belongs when the faces are this small.
-        peopleRow({ items: { $: 'first(local.callRecord).participants' }, dids: true, max: 4, size: 'sm' }),
+        // `flexShrink: '0'` for the reason the two buttons carry it: a stack of faces compressed by
+        // a long title overlaps further and further until the roster is a smear, and the title is
+        // the thing with somewhere to go.
+        peopleRow({
+          items: { $: 'first(local.callRecord).participants' },
+          dids: true,
+          max: 4,
+          size: 'sm',
+          rowProps: { flexShrink: '0' },
+        }),
         formModal({
           open: { $: 'local.editOpen' },
           close: { $setLocal: 'editOpen', value: false },
@@ -2705,6 +2784,19 @@ const callsPanel: SchemaNode = {
                           props: {
                             variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
                             flex: '1',
+                            /*
+                              The half of `flex: '1'` that is easy to forget, and without which this
+                              row overflowed its panel.
+
+                              A button sets `white-space: nowrap` on its own host, so its
+                              min-content width is the whole untruncated title. A flex item's
+                              automatic minimum size is its min-content, so `flex: '1'` bought
+                              nothing: the button refused every request to narrow, and the deficit
+                              came out of the Join button and the trash, which were pushed off the
+                              edge. The Column inside already has `minWidth: '0'` and never got
+                              asked, because the floor was here.
+                            */
+                            minWidth: '0',
                             ax: 'start',
                             gap: '200',
                             /*
@@ -2772,10 +2864,80 @@ const callsPanel: SchemaNode = {
                               type: 'Column',
                               props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
                               children: [
+                                /*
+                                  The name, and the whole of it on hover along with whatever was
+                                  written about the call — the pill's arrangement, for its reasons;
+                                  see the note there.
+
+                                  The trigger is the text rather than the row: this list is read by
+                                  sweeping down it, and a bubble opening on every row the pointer
+                                  crosses is worse than no bubble. Resting on a name asks a question;
+                                  passing over one does not.
+                                */
                                 {
-                                  type: 'we-text',
-                                  props: { truncate: true, width: '100%', textAlign: 'left' },
-                                  children: [{ $: "call.title ? call.title : 'Call'" }],
+                                  type: 'we-tooltip',
+                                  props: { placement: 'right' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { truncate: true, width: '100%', textAlign: 'left' },
+                                      children: [{ $: "call.title ? call.title : 'Call'" }],
+                                    },
+                                    {
+                                      type: 'Column',
+                                      props: { gap: '100' },
+                                      slot: 'content',
+                                      children: [
+                                        {
+                                          type: 'we-text',
+                                          props: { variant: 'label' },
+                                          children: [{ $: "call.title ? call.title : 'Call'" }],
+                                        },
+                                        {
+                                          // `on-inverse`, not `text-muted` — see the pill's note.
+                                          type: '$if',
+                                          props: {
+                                            condition: { $: 'call.description' },
+                                            then: {
+                                              type: 'we-text',
+                                              props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                                              children: [{ $: 'call.description' }],
+                                            },
+                                          },
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                /*
+                                  A line of what the call was about, where there is one — the thing
+                                  the pill has no room for and this panel does. The panel is where
+                                  one call is chosen out of thirty, and a date is what you fall back
+                                  to when the names do not tell them apart.
+
+                                  ONE line, truncated, not a clamp of two. A button sets
+                                  `white-space: nowrap` on its own host and this sits inside one, so
+                                  a wrapping line would need that overridden here and would then set
+                                  a taller min-content for a row that has just been taught to
+                                  narrow. `truncate` is already nowrap, so it costs nothing and the
+                                  tooltip above carries the rest.
+                                */
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'call.description' },
+                                    then: {
+                                      type: 'we-text',
+                                      props: {
+                                        truncate: true,
+                                        width: '100%',
+                                        textAlign: 'left',
+                                        variant: 'footnote',
+                                        color: 'text-muted',
+                                      },
+                                      children: [{ $: 'call.description' }],
+                                    },
+                                  },
                                 },
                                 {
                                   type: 'we-timestamp',
