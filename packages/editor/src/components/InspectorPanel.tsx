@@ -522,7 +522,7 @@ export function InspectorPanel() {
           ay="center"
           gap="200"
           flex="none"
-          borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
+          borderBottom={`1px solid ${tokenVar('color', 'border')}`}
         >
           <we-icon name="list" size="xs" color="text-faint" />
           <we-text {...SECTION_LABEL_PROPS}>Layers</we-text>

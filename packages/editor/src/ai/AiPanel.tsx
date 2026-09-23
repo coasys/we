@@ -40,7 +40,7 @@ export function AiPanel() {
       */
       width="100%"
       height="100%"
-      borderLeft={`1px solid ${tokenVar('color', 'ui-200')}`}
+      borderLeft={`1px solid ${tokenVar('color', 'border')}`}
       data-testid="chat-panel"
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
@@ -71,7 +71,7 @@ export function AiPanel() {
         here; the model is the node's now, configured once in settings for every AI surface.
       */}
       <Show when={!session.assistantAvailable()}>
-        <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
+        <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'border')}`} flexShrink="0">
           <we-text fontSize="300" fontWeight="600" color="text">
             No language model
           </we-text>
@@ -88,7 +88,7 @@ export function AiPanel() {
           ay="center"
           gap="100"
           px="300"
-          borderBottom={`1px solid ${tokenVar('color', 'neutral-200')}`}
+          borderBottom={`1px solid ${tokenVar('color', 'border')}`}
           flexShrink="0"
           overflowX="auto"
         >
@@ -152,7 +152,7 @@ export function AiPanel() {
       </Column>
 
       {/* Input area */}
-      <Row ay="end" gap="200" p="400" borderTop={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
+      <Row ay="end" gap="200" p="400" borderTop={`1px solid ${tokenVar('color', 'border')}`} flexShrink="0">
         {/*
           `autoGrow` + `submitOnEnter` rather than a hand-rolled key handler and a guessed
           `maxHeight`. Both were written here first and are now the primitive's, which is also what

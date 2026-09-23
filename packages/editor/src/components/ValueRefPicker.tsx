@@ -178,7 +178,7 @@ export function ValueRefPicker(props: {
               </we-scroll-area>
 
               <Show when={props.allowCount}>
-                <Column borderTop={`1px solid ${tokenVar('color', 'neutral-100')}`} pt="100">
+                <Column borderTop={`1px solid ${tokenVar('color', 'border')}`} pt="100">
                   <we-menu-item on:select={() => choose({ kind: 'count', items: { kind: 'context', path: '' } })}>
                     <Row ay="center" gap="200">
                       <we-icon name="hash" size="xs" color="text-faint" />

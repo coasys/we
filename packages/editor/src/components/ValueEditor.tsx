@@ -95,7 +95,7 @@ export function ValueEditor(props: {
               </we-button>
             </we-tooltip>
           </Row>
-          <Column border={`1px solid ${tokenVar('color', 'neutral-100')}`} r="200" overflow="hidden" maxHeight="250px">
+          <Column border={`1px solid ${tokenVar('color', 'border')}`} r="200" overflow="hidden" maxHeight="250px">
             <CodeViewer json={JSON.stringify(props.value ?? null, null, 2)} onSave={(json) => emit(JSON.parse(json))} />
           </Column>
         </Column>

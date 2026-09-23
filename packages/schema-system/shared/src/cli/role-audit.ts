@@ -29,6 +29,8 @@ import { register } from 'node:module';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { ROLE_NAMES } from '@we/design-utils';
+
 register('./assetHooks.mjs', import.meta.url);
 
 interface Node {
@@ -76,8 +78,17 @@ const PALETTES = [/GraphView\/Palette\./, /GraphView\/Board\./, /\/fixtures\//];
  */
 const CODE_FILE = /\.(ts|tsx|scss|css)$/;
 
-/** A scale position named as the CSS custom property it compiles to. */
-const CODE_SCALE = /var\(--we-color-(neutral|primary|success|warning|danger)-(?:0|25|50|75|100|[2-9]00|1000)\)/g;
+/**
+ * A scale position, in either spelling code uses: the custom property it compiles to, or the
+ * `tokenVar('color', …)` call that builds one.
+ *
+ * The second alternative is not a nicety. `tokenVar` is what `dev-patterns` tells a component author
+ * to reach for, so it is the *recommended* way to name a colour in TypeScript — and a scale position
+ * passed to it is exactly as invisible to the contrast layer as the raw variable, while looking more
+ * correct at the call site than the thing it expands to.
+ */
+const CODE_SCALE =
+  /(?:var\(--we-color-|tokenVar\(\s*['"]color['"]\s*,\s*['"])(neutral|primary|success|warning|danger)-(?:0|25|50|75|100|[2-9]00|1000)/g;
 
 /**
  * A colour that is not even a token — a hex literal or an `rgb()`/`hsl()` call in a style position.
@@ -107,6 +118,39 @@ const CODE_PALETTES: { path: RegExp; why: string }[] = [
   { path: /AppFailure/, why: 'the screen shown when the app did not start, so it cannot assume a stylesheet loaded' },
   { path: /\/fixtures\//, why: 'fixtures' },
 ];
+
+/**
+ * A palette that is one line rather than one file, marked where it is.
+ *
+ * `ThemePanel` is the case that needed it: a hue swatch is a *preview of a hue the user is choosing*,
+ * so it has to be `hsl()` — and the rest of that file paints ordinary chrome that should be roles.
+ * Exempting the file would have exempted the chrome too, which is the failure mode a coarse
+ * exemption has and the reason `PALETTES` says a palette is a decision rather than a heuristic.
+ *
+ * The marker sits on the line or the one above it, with its reason, so the judgement is read where
+ * the colour is instead of in a list somebody has to go and find.
+ */
+const LINE_EXEMPTION = /role-audit:\s*palette\b/;
+
+/** Every `tokenVar('color', '…')` in a line, whatever it names. */
+const TOKEN_VAR = /tokenVar\(\s*['"]color['"]\s*,\s*['"]([^'"]+)['"]/g;
+
+/**
+ * A name handed to `tokenVar('color', …)` that is neither a role nor a step on a real ramp.
+ *
+ * This is a worse failure than either thing the audit was built for, and a silent one. `tokenVar`
+ * warns in development and then returns `var(--we-color-<name>)` regardless, so an unknown family
+ * compiles to a variable nothing declares, the declaration is dropped, and the element paints
+ * nothing — a border that is simply absent, which reads as a design decision rather than a bug.
+ *
+ * Four dividers in the editor were `ui-200`. There is no `ui` ramp; there never has been.
+ */
+const HUES = ['neutral', 'primary', 'success', 'warning', 'danger'];
+const isKnownColour = (name: string) =>
+  ROLE_NAMES.has(name) ||
+  name === 'white' ||
+  name === 'black' ||
+  HUES.some((hue) => SCALE.test(name) && name.startsWith(`${hue}-`));
 
 /** Every child position a node can hold — children, routes, slots, and nodes hiding inside props. */
 function descend(node: Node): Node[] {
@@ -217,25 +261,59 @@ for (const file of files) {
   for (const value of Object.values(mod)) if (isNode(value)) walk(value, file, []);
 }
 
-/** Declarations only — several of these files discuss the very colours being asserted about. */
+/**
+ * Declarations only — several of these files discuss the very colours being asserted about.
+ *
+ * Line count is preserved, which is not incidental: a block comment replaced by nothing shifts every
+ * line after it, so the numbers in the report point at the wrong place and the in-place exemption
+ * looks for its marker on a line that has moved. A multi-line comment becomes the same number of
+ * blank lines instead.
+ */
 const declarations = (text: string) =>
   text
-    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => '\n'.repeat((block.match(/\n/g) ?? []).length))
     .split('\n')
     .map((line) => (line.trim().startsWith('//') ? '' : line))
     .join('\n');
 
-const codeFindings: { file: string; line: number; kind: 'scale' | 'literal'; text: string }[] = [];
+const codeFindings: { file: string; line: number; kind: 'scale' | 'literal' | 'unknown'; text: string }[] = [];
+
+let lineExemptions = 0;
 
 for (const file of await filesUnder(codeRoots, CODE_FILE)) {
-  const lines = declarations(await readFile(file, 'utf-8')).split('\n');
+  const raw = (await readFile(file, 'utf-8')).split('\n');
+  // The marker lives in a comment, which `declarations` strips — so it is read from the raw text and
+  // the findings from the stripped text, by line number.
+  // On the line itself, or anywhere in the comment block immediately above it — a reason worth
+  // writing rarely fits on one line, and an exemption that only works when it does would be an
+  // exemption that rewards terseness.
+  const exempt = (i: number) => {
+    if (LINE_EXEMPTION.test(raw[i] ?? '')) return true;
+    for (let j = i - 1; j >= 0 && /^\s*(\/\/|\*|\/\*)/.test(raw[j] ?? ''); j -= 1) {
+      if (LINE_EXEMPTION.test(raw[j]!)) return true;
+    }
+    return false;
+  };
+  const lines = declarations(raw.join('\n')).split('\n');
   lines.forEach((line, i) => {
-    for (const [kind, re] of [
-      ['scale', CODE_SCALE],
-      ['literal', CODE_LITERAL],
-    ] as const) {
+    // `test` on a `/g` regex advances `lastIndex`, so each is reset before it is asked.
+    const matches = (re: RegExp) => {
       re.lastIndex = 0;
-      if (re.test(line)) codeFindings.push({ file, line: i + 1, kind, text: line.trim().slice(0, 110) });
+      return re.test(line);
+    };
+    const unknown = [...line.matchAll(TOKEN_VAR)].map((m) => m[1]!).filter((name) => !isKnownColour(name));
+
+    for (const [kind, hit] of [
+      ['scale', matches(CODE_SCALE)],
+      ['literal', matches(CODE_LITERAL)],
+      ['unknown', unknown.length > 0],
+    ] as const) {
+      if (!hit) continue;
+      if (exempt(i)) {
+        lineExemptions += 1;
+        continue;
+      }
+      codeFindings.push({ file, line: i + 1, kind, text: line.trim().slice(0, 110) });
     }
   });
 }
@@ -273,9 +351,14 @@ if (codeRoots.length) {
     for (const f of list) console.log(`   ${f.line}: ${f.text}`);
   }
 
-  const scale = codeDefects.filter((f) => f.kind === 'scale').length;
-  console.log(`\n${scale} scale positions and ${codeDefects.length - scale} raw colours in code.`);
-  console.log(`${codePalette.length} in code declared to be a palette, not counted:`);
+  const count = (kind: (typeof codeDefects)[number]['kind']) => codeDefects.filter((f) => f.kind === kind).length;
+  console.log(
+    `\n${count('scale')} scale positions, ${count('literal')} raw colours and ` +
+      `${count('unknown')} names that are not colours at all, in code.`,
+  );
+  console.log(
+    `${codePalette.length} in code declared to be a palette, and ${lineExemptions} marked in place, not counted:`,
+  );
   for (const p of CODE_PALETTES) console.log(`   ${p.path.source} — ${p.why}`);
 }
 
