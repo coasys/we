@@ -41,6 +41,55 @@ import { type CallMesh, createCallMesh, DEFAULT_ICE_SERVERS, type RecoveryRung }
 import { CALL_KIND, CALL_PREDICATE, CALL_PROTOCOL_VERSION, recordCallId } from './protocol';
 import { solveStrip } from './strip';
 
+// ── Session backend ──────────────────────────────────────────────────
+//
+// Structural interface satisfied by `Session` from `@coasys/ad4m`.
+// The call module carries no import-time dependency on that package —
+// the host constructs a Session and passes it through `CallStoreDeps`.
+
+/** Quality layer the backend can forward (SFU simulcast). */
+export type BackendQuality = 'high' | 'medium' | 'low';
+
+/** A remote participant as reported by the backend. */
+export interface BackendParticipant {
+  agentDid: string;
+  stream: MediaStream;
+  hasAudio: boolean;
+  hasVideo: boolean;
+  isActiveSpeaker: boolean;
+}
+
+/** A data channel message from another participant, relayed through the session. */
+export interface BackendDataMessage {
+  senderDid: string;
+  channelLabel: string;
+  data: string;
+  binary: boolean;
+}
+
+/**
+ * Structural interface for a WebRTC session backend — topology-agnostic.
+ *
+ * Satisfied by `Session` from `@coasys/ad4m/neighbourhood`. The host constructs the session (with
+ * neighbourhood proxy, room id, topology, etc.) and passes it here. This module never touches
+ * `NeighbourhoodProxy` or any AD4M type directly.
+ */
+export interface CallBackend {
+  join(localStream: MediaStream): Promise<void>;
+  leave(): Promise<void>;
+  destroy(): Promise<void>;
+  replaceTrack(kind: 'audio' | 'video', track: MediaStreamTrack | null): Promise<void>;
+  setQualityPreference(pref: BackendQuality): Promise<void>;
+  readonly participants: ReadonlyArray<BackendParticipant>;
+  getState(): string;
+  on(event: string, cb: (...args: unknown[]) => void): void;
+  off(event: string, cb?: (...args: unknown[]) => void): void;
+  /** Send data to all other participants via the session's relay (SFU or mesh signalling). */
+  sendData(label: string, data: string, binary?: boolean): Promise<void>;
+  /** Subscribe to data channel messages. Returns an unsubscribe function. */
+  onData(cb: (message: BackendDataMessage) => void): () => void;
+}
+
 /**
  * One participant, flattened for a template.
  *
@@ -160,13 +209,42 @@ export const CALL_BAR_RESERVE_PX = 74;
  */
 export const CALL_BAR_WIDTH_PX = 480;
 
-/*
-  No `CallStoreDeps` any more. The store used to extend the deps bag with a private
-  `createPeerConnection` because there was nowhere else to put a thing the host had and the module
-  needed — which `kernels.ts` names as the first sign a kernel was missing. It is `deps.kernels
-  .peerConnection` now: declared in the manifest, overridable in a test for the same reason it was
-  here, and available to the next module that wants one without inventing the same extension.
-*/
+/** Which edge a stage occupies while it takes room. The host decides; this names the vocabulary. */
+export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
+
+/** The call topology in use — mesh (peer-to-peer) or sfu (relay server). */
+export type CallTopology = 'mesh' | 'sfu';
+
+/** Topology modes a moderator can choose from. */
+export type CallConfigMode = 'mesh' | 'designated' | 'gateway' | 'cascaded';
+
+/** Per-neighbourhood call configuration — topology defaults stored on Social DNA. */
+export interface CallConfigState {
+  mode: CallConfigMode;
+  designatedPeer?: string;
+  fallback: CallConfigMode;
+  maxMeshParticipants: number;
+  sfuPeers: string[];
+  maxParticipantsPerNode?: number;
+  preferredSfuDid?: string;
+}
+
+/** An SFU-capable executor discovered via neighbourhood presence. */
+export interface CallSfuNodeState {
+  did: string;
+  bindAddress: string;
+}
+
+/** Summary of relay (SFU) availability for the current call. */
+export interface RelayInfo {
+  relayActive: boolean;
+  participantCount: number;
+  meshLimitReached: boolean;
+}
+
+const MESH_LIMIT = 6;
+const AUTO_QUALITY_MEDIUM = 5;
+const AUTO_QUALITY_LOW = 9;
 
 /**
  * Whether a stream is actually carrying a picture, rather than merely existing.
@@ -273,6 +351,35 @@ export function createCallStore(deps: ModuleStoreDeps) {
   });
   /** Surfaced rather than logged: "the call cannot start here" is something the user must see. */
   const [problem, setProblem] = signal<string | null>(null);
+  /** Whether this call runs through the SFU relay or the peer-to-peer mesh. */
+  const [topology, setTopology] = signal<CallTopology>('mesh');
+  /** Whether this call uses a Session backend (as opposed to pure-mesh fallback). */
+  const [hasSessionBackend, setHasSessionBackend] = signal(false);
+  /** The SFU quality layer this agent prefers. Only meaningful when `topology() === 'sfu'`. */
+  const [qualityPreference, setQualityPreferenceSignal] = signal<BackendQuality>('high');
+  /** Whether the user explicitly chose a quality preference, disabling auto. */
+  let qualityIsManual = false;
+
+  // ── Call configuration (SFU topology defaults) ──────────────────────
+  //
+  // Read from Social DNA via the host's `getCallConfig` port.  Loaded once
+  // when the dataset changes, refreshed after writes.  The settings UI
+  // binds to these signals; the adapter reads them at join time.
+
+  /** Per-neighbourhood SFU configuration — topology defaults set by a moderator.
+   *  Always non-null — defaults to pure mesh before the real config loads. */
+  const [callConfig, setCallConfig] = signal<CallConfigState>({
+    mode: 'mesh',
+    fallback: 'mesh',
+    maxMeshParticipants: 6,
+    sfuPeers: [],
+  });
+  /** Available SFU nodes discovered via presence scan. */
+  const [availableSfuNodes, setAvailableSfuNodes] = signal<CallSfuNodeState[]>([]);
+  /** Whether the backend supports call configuration at all. */
+  const [callConfigSupported, setCallConfigSupported] = signal(false);
+  /** Whether a config save operation runs right now. */
+  const [callConfigSaving, setCallConfigSaving] = signal(false);
 
   /**
    * Named, because it is the one problem that can resolve itself.
@@ -345,37 +452,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
   }
 
   let mesh: CallMesh | null = null;
+  let backend: CallBackend | null = null;
   let controller: MediaController | null = null;
   let remoteStreams = new Map<string, MediaStream>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
-  /**
-   * Which peers the mesh is currently repairing, and how many times it has tried.
-   *
-   * Held here rather than read off the mesh because it is *display* state with a life of its own: a
-   * repair is an event, and a tile has to keep saying "Reconnecting…" for a moment after it rather
-   * than flashing once per attempt. Cleared when the connection reaches `connected`, which is the
-   * only thing that makes the word untrue.
-   */
+  let dataUnsubscribe: (() => void) | null = null;
+  const dataListeners: Set<(msg: BackendDataMessage) => void> = new Set();
   const recovering = new Map<string, { rung: RecoveryRung; attempts: number }>();
-  /**
-   * How each peer's media is actually reaching us — `host`, `srflx`, `relay`.
-   *
-   * Refreshed when a connection settles rather than polled. The one fact that distinguishes "this
-   * pair needs a relay" from "this pair's handshake was lost", which are otherwise the same spinner.
-   */
   const transports = new Map<string, string>();
-
-  /** Signalling channels whose first-send cost has already been paid — see the note in `join`. */
   const warmed = new WeakSet<object>();
 
-  /**
-   * The ICE servers this call should use, resolved where the agent is standing.
-   *
-   * Read at join rather than held, because settings resolve per space and a call started in one
-   * community should use that community's relay. An unparseable value answers with the module's
-   * defaults, which is the behaviour of an empty field — see `iceServers.ts` for why a mistake here
-   * must never be able to stop a call.
-   */
   function iceServers(): RTCIceServer[] {
     const { servers, problems } = parseIceServers(settings?.().iceServers);
     if (problems.length) {
@@ -544,6 +630,22 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     setTiles(next);
     setTileStates(states.map((state) => ({ ...state, focused: state.id === focus })));
+
+    // ── Auto quality ──────────────────────────────────────────────────
+    //
+    // Adjusts the SFU simulcast layer based on participant count when
+    // the user has not explicitly chosen a preference.  More
+    // participants → lower quality → less bandwidth per stream.
+    if (topology() === 'sfu' && backend && !qualityIsManual) {
+      const count = next.length;
+      let target: BackendQuality = 'high';
+      if (count >= AUTO_QUALITY_LOW) target = 'low';
+      else if (count >= AUTO_QUALITY_MEDIUM) target = 'medium';
+      if (target !== qualityPreference()) {
+        setQualityPreferenceSignal(target);
+        void backend.setQualityPreference(target);
+      }
+    }
   }
 
   /**
@@ -649,6 +751,15 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
   function teardown() {
     const id = callId();
+    if (dataUnsubscribe) {
+      dataUnsubscribe();
+      dataUnsubscribe = null;
+    }
+    dataListeners.clear();
+    if (backend) {
+      backend.destroy().catch((err) => console.error('call: backend destroy', err));
+      backend = null;
+    }
     mesh?.close();
     mesh = null;
     controller?.stop();
@@ -662,6 +773,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
     transports.clear();
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
+    setTopology('mesh');
+    setHasSessionBackend(false);
+    qualityIsManual = false;
     anchor = undefined;
     setCallRecord(null);
     setVisible(false);
@@ -922,85 +1036,17 @@ export function createCallStore(deps: ModuleStoreDeps) {
     */
     setVisible(true);
 
-    // coalesce: false, emphatically. Presence heartbeats are last-write-wins so a dropped one costs
-    // nothing; an SDP offer dropped because the previous send was slow is simply lost, and that peer
-    // never connects.
-    const channel = scope.channel('rtc', { coalesce: false });
-
-    /*
-      Spend the transport's first-send cost on something that does not matter.
-
-      The AD4M adapter documents it: the *first* `sendBroadcastU` on a freshly joined neighbourhood
-      has been measured at eighteen seconds, and every send after it at tens of milliseconds — the
-      signature of two conductors discovering each other, paid once per channel. Until now the
-      message that paid it was the first SDP offer, so the opening handshake of a call could sit
-      unsent for the better part of twenty seconds while both peers waited on each other. That is the
-      single best explanation for why the *start* of a call is the frustrating part and why several
-      rounds of leaving and rejoining make it behave.
-
-      So a throwaway goes first. It parses to nothing on every peer — `parseCallMessage` rejects a
-      missing `kind` — which is the entire design: it has to be a real publish to be worth anything,
-      and it must mean nothing to anybody who receives it.
-
-      Once per channel, not once per join. The cost being dodged is paid by a channel's first send
-      and never again, and `scope.channel` returns the same object for a tag, so a second call in the
-      same space would be sending a message with nothing left to buy. A `WeakSet` rather than a flag
-      because the channels belong to scopes that come and go with the spaces they serve.
-    */
-    if (!warmed.has(channel)) {
-      warmed.add(channel);
-      channel.publish({ v: CALL_PROTOCOL_VERSION, call: id, warm: true });
-    }
-
-    mesh = createCallMesh({
-      callId: id,
-      selfId: me,
-      channel,
-      // The deployment's, a community's, or this agent's — and the module's own where nobody said.
-      // See the `iceServers` setting in `index.ts` for why this is reachable at all.
-      iceServers: iceServers(),
-      // The host lends the constructor; the ICE opinion stays the mesh's — see `DEFAULT_ICE_SERVERS`.
-      createPeerConnection: (configuration) => connections.create(configuration),
-      onRemoteStreamsChanged: (streams) => {
-        remoteStreams = streams;
-        rebuildTiles();
-      },
-      onPeerStateChanged: (peerId, state) => {
-        peerStates.set(peerId, state);
-        if (state === 'connected') {
-          recovering.delete(peerId);
-          // Asked once per settled connection rather than polled: the answer only changes when ICE
-          // re-selects a pair, which is exactly what reaching `connected` means.
-          void mesh?.transportOf(peerId).then((kind) => {
-            if (!kind) return;
-            transports.set(peerId, kind);
-            rebuildTiles();
-          });
-        }
-        if (state === 'closed') transports.delete(peerId);
-        rebuildTiles();
-      },
-      onPeerRecovery: (peerId, attempt) => {
-        recovering.set(peerId, attempt);
-        rebuildTiles();
-      },
-      onError: (context, error) => console.error(`call: ${context}`, error),
-    });
-
     controller = createMediaController({
-      /*
-        The camera and microphone go through the host's `media` kernel rather than `navigator`
-        directly, so a module's use of a device is something the host can see and the manifest's
-        `permissions` describe. The controller's own default — `navigator.mediaDevices` — remains
-        the fallback for a host that lends no kernel, which is what a test is.
-      */
       devices: mediaKernel
         ? {
             getUserMedia: (constraints) => mediaKernel.getUserMedia(constraints),
             getDisplayMedia: (constraints) => mediaKernel.getDisplayMedia(constraints),
           }
         : undefined,
-      onTrackChanged: (kind, track) => void mesh?.setOutboundTrack(kind, track),
+      onTrackChanged: (kind, track) => {
+        if (backend) void backend.replaceTrack(kind, track);
+        else void mesh?.setOutboundTrack(kind, track);
+      },
       onStateChanged: (state) => {
         setMedia({ ...state });
         // Devices arrived after all — most likely the user granted the permission and pressed the
@@ -1018,18 +1064,128 @@ export function createCallStore(deps: ModuleStoreDeps) {
       onError: (context, error) => console.error(`call: ${context}`, error),
     });
 
-    // Announce before acquiring devices: joining should be visible to peers immediately, and the
-    // permission prompt can take as long as the user takes.
-    publishActivity();
-    rebuildTiles();
-
+    // Snapshot the controller so a teardown that fires while the permission prompt is up does not
+    // leave a stale join running — `teardown` nulls `controller`, and the check after `start()`
+    // detects the mismatch.
     const started = controller;
-    await started.start();
 
-    // The call can end while the permission prompt is up — a hot reload, a second join, somebody
-    // pressing leave. `teardown` nulls the controller, so the check below has to be against the one
-    // this join created rather than against whatever is current.
-    if (controller !== started) return;
+    // ── Resolve backend ──────────────────────────────────────────────
+    //
+    // A factory takes precedence over a static instance — it builds a Session scoped to this
+    // specific call room, which is how the AD4M host wires topology, signalling and SFU config.
+    // A static `backend` serves tests and hosts that already hold a Session.
+    if (deps.createBackend) {
+      try {
+        backend = (await deps.createBackend(id)) as CallBackend;
+      } catch (err) {
+        console.error('call: createBackend failed', err);
+        scope.dispose();
+        setProblem('Could not connect to the call server.');
+        return;
+      }
+    } else if (deps.backend) {
+      backend = deps.backend as CallBackend;
+    }
+
+    if (backend) {
+      setHasSessionBackend(true);
+      // ── Session backend path ────────────────────────────────────────
+      //
+      // The backend (Session from @coasys/ad4m) manages topology, signalling, roster polling,
+      // and peer connections internally. The store only drives lifecycle and reads participants.
+
+      backend.on('participant-joined', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('participant-left', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('stream-added', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('stream-removed', () => {
+        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      });
+      backend.on('topology-changed', (topo: unknown) => {
+        if (topo === 'mesh' || topo === 'sfu') setTopology(topo);
+      });
+      backend.on('error', (err: unknown) => console.error('call: backend error', err));
+
+      // Subscribe to data channel messages from other participants.
+      dataUnsubscribe = backend.onData((msg) => {
+        for (const cb of dataListeners) {
+          try {
+            cb(msg);
+          } catch (e) {
+            console.error('call: data listener error', e);
+          }
+        }
+      });
+
+      // Announce before acquiring devices, same as the mesh path.
+      publishActivity();
+      rebuildTiles();
+
+      // Acquire media, then join the backend with the local stream.
+      await started.start();
+      if (controller !== started) return;
+      const localStream = started.displayStream() ?? started.localStream() ?? new MediaStream();
+      await backend.join(localStream);
+
+      // Seed remote streams from anyone already in the room.
+      remoteStreams = new Map(backend.participants.map((p) => [p.agentDid, p.stream]));
+      rebuildTiles();
+    } else {
+      // ── Mesh path (default — WE's built-in peer-to-peer mesh) ───────
+      setTopology('mesh');
+
+      const channel = scope.channel('rtc', { coalesce: false });
+
+      if (!warmed.has(channel)) {
+        warmed.add(channel);
+        channel.publish({ v: CALL_PROTOCOL_VERSION, call: id, warm: true });
+      }
+
+      mesh = createCallMesh({
+        callId: id,
+        selfId: me,
+        channel,
+        iceServers: iceServers(),
+        createPeerConnection: (configuration) => connections.create(configuration),
+        onRemoteStreamsChanged: (streams) => {
+          remoteStreams = streams;
+          rebuildTiles();
+        },
+        onPeerStateChanged: (peerId, state) => {
+          peerStates.set(peerId, state);
+          if (state === 'connected') {
+            recovering.delete(peerId);
+            void mesh?.transportOf(peerId).then((kind) => {
+              if (!kind) return;
+              transports.set(peerId, kind);
+              rebuildTiles();
+            });
+          }
+          if (state === 'closed') transports.delete(peerId);
+          rebuildTiles();
+        },
+        onPeerRecovery: (peerId, attempt) => {
+          recovering.set(peerId, attempt);
+          rebuildTiles();
+        },
+        onError: (context, error) => console.error(`call: ${context}`, error),
+      });
+
+      publishActivity();
+      rebuildTiles();
+
+      await started.start();
+      if (controller !== started) return;
+    }
 
     /*
       Say why there is no picture, rather than showing an avatar and leaving them to guess.
@@ -1044,9 +1200,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
   }
 
   // Reconcile the mesh against the roster. This is the whole membership mechanism — see mesh.ts.
+  // When a Session backend handles the call, it manages roster polling internally — skip this.
   effect?.(() => {
     const peers = roster();
-    if (!mesh) return;
+    if (backend || !mesh) return;
     mesh.setRoster(peers.map((peer) => peer.agentId));
     rebuildTiles();
   });
@@ -1090,6 +1247,42 @@ export function createCallStore(deps: ModuleStoreDeps) {
       return;
     }
     if (hadIdentity && callId()) teardown();
+  });
+
+  // ── Load call config when the dataset changes ─────────────────────────
+  //
+  // Fires on every navigation.  The read itself is cheap (one RPC round trip),
+  // and the result is used by the settings UI and by `join` to pick the right
+  // topology.  Absence of the port means "no SFU support" — the signals stay
+  // at their defaults and the settings section hides.
+  effect?.(() => {
+    // Touch the reactive accessor so the effect re-fires on navigation.
+    const ds = dataset?.();
+    const uri = datasetUri?.();
+
+    // Probe synchronously — avoids a wasted async round trip on personal spaces.
+    const supported = !!ds && !!uri && !!deps.callConfigSupported?.();
+    setCallConfigSupported(supported);
+
+    const meshDefault: CallConfigState = { mode: 'mesh', fallback: 'mesh', maxMeshParticipants: 6, sfuPeers: [] };
+    if (!supported) {
+      setCallConfig(meshDefault);
+      setAvailableSfuNodes([]);
+      return;
+    }
+
+    // Fire-and-forget the async reads.  Signal writes happen on completion;
+    // stale responses from a previous dataset are safe because the signals
+    // are overwritten next time this effect fires.
+    void deps
+      .getCallConfig?.()
+      .then((raw) => setCallConfig((raw as CallConfigState) ?? meshDefault))
+      .catch(() => setCallConfig(meshDefault));
+
+    void deps
+      .getAvailableSfuNodes?.()
+      .then((nodes) => setAvailableSfuNodes((nodes as CallSfuNodeState[]) ?? []))
+      .catch(() => setAvailableSfuNodes([]));
   });
 
   /*
@@ -1305,31 +1498,24 @@ export function createCallStore(deps: ModuleStoreDeps) {
     // ── State ────────────────────────────────────────────────────────────────
     callId: state(callId, 'The id of the call this agent is in, or null between calls.'),
     /** The call record this agent's call writes into — what transcribe and the panels read. */
-    callRecordId: state(
-      () => callRecord() ?? '',
-      "The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.",
+    callRecordId: state(() => callRecord() ?? '', "The id of the call record this agent's call writes into."),
+    liveCalls: state(liveCalls, 'Every call running in the space on screen.'),
+    tiles: state(tiles, 'One entry per participant in the call.'),
+    tileStates: state(tileStates, "Each participant's volatile flags by id."),
+    focusedId: state(focusedId, 'Whose tile the stage gives most room to, or null for an even grid.'),
+    media: state(media, "This agent's own { audioEnabled, videoEnabled, screenShareEnabled }."),
+    problem: state(problem, 'Why the call could not start or a device could not be reached, or null.'),
+    topology: state(
+      topology,
+      "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').",
     ),
-    liveCalls: state(
-      liveCalls,
-      'Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.',
-    ),
-    tiles: state(
-      tiles,
-      'One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.',
-    ),
-    tileStates: state(
-      tileStates,
-      "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.",
-    ),
-    focusedId: state(focusedId, 'Whose tile the stage is giving most of its room to, or null for an even grid.'),
-    media: state(
-      media,
-      "This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.",
-    ),
-    problem: state(
-      problem,
-      'Why the call could not start or a device could not be reached, as a sentence to show, or null.',
-    ),
+    hasSessionBackend: state(hasSessionBackend, 'Whether this call uses a Session backend.'),
+    qualityPreference: state(qualityPreference, 'The SFU quality layer this agent prefers.'),
+    relayInfo: (): RelayInfo => ({
+      relayActive: topology() === 'sfu',
+      participantCount: tiles().length,
+      meshLimitReached: topology() === 'mesh' && tiles().length > MESH_LIMIT,
+    }),
 
     // ── What the host reads to place the stage ────────────────────────────────
     /**
@@ -1868,30 +2054,91 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     dismissProblem: action(() => setProblem(null), 'Dismiss the problem message.'),
 
-    /**
-     * Build this one peer's connection again, and tell them to do the same.
-     *
-     * The manual rung of the mesh's recovery ladder, for a button on the tile that is broken.
-     *
-     * Its existence is an admission as much as a feature: everything above it is the app repairing
-     * itself, and this is what is left when that has not worked. The alternative people were left
-     * with was leaving the call and rejoining, which takes everyone's picture down to fix one
-     * pair — and, because a call's roster is presence, briefly tells the whole room you left.
-     *
-     * Deliberately not gated on the pair looking broken. Whether a connection is "bad enough" is a
-     * judgement the person watching it makes better than `connectionState` does: a pair can be
-     * `connected` and useless, and refusing them the button in that state would be the app insisting
-     * that what they are looking at is fine.
-     */
     reconnectPeer: action((id: string) => {
       if (!id || !mesh) return;
-      // Your own tile is not a connection, and a synthetic one is not a peer. Both would be no-ops
-      // in the mesh; refusing here keeps `retrying` from lighting up on a tile nothing will repair.
       if (id === (selfId?.() ?? null)) return;
       recovering.set(id, { rung: 'rebuild', attempts: 0 });
       transports.delete(id);
       mesh.reconnect(id);
       rebuildTiles();
     }, "Build one peer's connection again from scratch, without leaving the call."),
+
+    setQualityPreference: action(async (quality: BackendQuality) => {
+      qualityIsManual = true;
+      setQualityPreferenceSignal(quality);
+      if (backend) await backend.setQualityPreference(quality);
+    }, 'Set the SFU quality layer preference.'),
+
+    cycleQuality: action(async () => {
+      const order: BackendQuality[] = ['high', 'medium', 'low'];
+      const next = order[(order.indexOf(qualityPreference()) + 1) % order.length];
+      qualityIsManual = true;
+      setQualityPreferenceSignal(next);
+      if (backend) await backend.setQualityPreference(next);
+    }, 'Cycle through quality presets: high, medium, low.'),
+
+    sendData: async (label: string, data: string, binary?: boolean) => {
+      if (backend) await backend.sendData(label, data, binary);
+    },
+
+    onData: (cb: (msg: BackendDataMessage) => void) => {
+      dataListeners.add(cb);
+      return () => {
+        dataListeners.delete(cb);
+      };
+    },
+
+    // ── Call config (space-level topology defaults) ──────────────────────
+
+    callConfig,
+    availableSfuNodes,
+    callConfigSupported,
+    callConfigSaving,
+
+    setCallConfigField: action(async (field: string, value: unknown) => {
+      const current = callConfig();
+      if (!deps.setCallConfig) return;
+      const next = { ...current, [field]: value } as CallConfigState;
+      setCallConfigSaving(true);
+      try {
+        const ok = await deps.setCallConfig(next);
+        if (ok) setCallConfig(next);
+      } catch (error) {
+        console.error('call config: could not save', error);
+      } finally {
+        setCallConfigSaving(false);
+      }
+    }, 'Write one field of the call config.'),
+
+    saveCallConfig: action(async (config: CallConfigState) => {
+      if (!deps.setCallConfig) return;
+      setCallConfigSaving(true);
+      try {
+        const ok = await deps.setCallConfig(config);
+        if (ok) setCallConfig(config);
+      } catch (error) {
+        console.error('call config: could not save', error);
+      } finally {
+        setCallConfigSaving(false);
+      }
+    }, 'Replace the entire call config.'),
+
+    refreshSfuNodes: action(async () => {
+      if (!deps.getAvailableSfuNodes) return;
+      try {
+        const nodes = await deps.getAvailableSfuNodes();
+        setAvailableSfuNodes((nodes as CallSfuNodeState[]) ?? []);
+      } catch {
+        setAvailableSfuNodes([]);
+      }
+    }, 'Re-scan the neighbourhood for SFU-capable executor nodes.'),
+
+    connectionInfo: () => ({
+      topology: topology(),
+      hasBackend: hasSessionBackend(),
+      participantCount: tiles().length,
+      meshLimitReached: topology() === 'mesh' && tiles().length > MESH_LIMIT,
+      configMode: callConfig().mode,
+    }),
   };
 }

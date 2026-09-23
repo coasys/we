@@ -617,6 +617,20 @@ export interface ModuleStoreDeps {
 
   /** The kernels this module declared, and no others. See `kernels.ts`. */
   kernels: Partial<ModuleKernels>;
+
+  // ── SFU / call backend ports ──────────────────────────────────────────
+  /** Factory that creates a call backend for a specific call room. */
+  createBackend?: (callId: string) => Promise<unknown>;
+  /** Read the neighbourhood's call configuration (SFU topology defaults). */
+  getCallConfig?: () => Promise<unknown>;
+  /** Write the neighbourhood's call configuration. */
+  setCallConfig?: (config: unknown) => Promise<boolean>;
+  /** Discover SFU-capable executor nodes in this neighbourhood. */
+  getAvailableSfuNodes?: () => Promise<unknown[]>;
+  /** Whether the current backend supports call configuration. */
+  callConfigSupported?: () => boolean;
+  /** A pre-existing call backend instance (tests / hosts that already hold a Session). */
+  backend?: unknown;
 }
 
 // ── Derived facts about a definition ────────────────────────────────────────

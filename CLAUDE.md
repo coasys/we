@@ -98,9 +98,6 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
-| `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
-| `@we/history` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
-| `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
@@ -460,7 +457,6 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
     split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
-    sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.comments)))
   Text:
     contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
     endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
@@ -488,10 +484,6 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
     involvement(options) — Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).  e.g. involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible
     involvementMenu(options) — The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).  e.g. involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })
-    signalTally(options) — What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).  e.g. signalTally({ signals: row.signals, type: sig })
-    reactions(options) — A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).  e.g. reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })
-    reactors(options) — Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.  e.g. reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })
-    signalTypesByUse(options) — Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).  e.g. signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
@@ -743,45 +735,6 @@ from a $each context variable or a route segment). The adapter resolves the rela
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
 For external-app datasets, always add dataset: { "$": "currentDataset" }.
-
-Reading a TREE rather than one record's children — the same scope, with one more key:
-
-  anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
-  whole level of a tree rather than one per parent, which also means one subscription instead of
-  one per parent.
-  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
-
-  "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
-  three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
-  knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
-  where asking level by level from the template costs a round trip each and draws the tree a layer
-  at a time.
-  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
-
-  "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
-  count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
-  to draw part of one.
-
-  "limitPerAnchor": 5 caps results per anchor for a single level. Note it is NOT a substitute for
-  "levels": a walk from one anchor has one group, so it would cap the total instead of the breadth
-  at each depth.
-
-  "direction": "in" searches among the records that point AT the anchor, rather than the ones it
-  points at.
-
-A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
-the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
-inReplyTo, the reverse of comments, so a row names its own parent.
-  "include": { "inReplyTo": true }
-Then each level is a filter over the one result:
-  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
-PARENTHESISE the anchor when it is anything but a plain path — `==` binds tighter than `?:`, so a
-ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
-
-A count over a whole subtree is the same idea in a projection:
-  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
-It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
-— where count(row.comments) is the direct children only and would say 3.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -1170,13 +1123,13 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement) — A colour, chosen from the theme's tokens or picked by hand.
-  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false, confirm: boolean = false
+  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
@@ -1356,7 +1309,7 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false, ticks: 'auto' | 'on' | 'off' = 'auto'
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
 - we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
 #### One element, not two
@@ -1464,7 +1417,7 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
+  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
 - BlockRenderer (DesignSystemElement)
   Props: editorState?: EditorStateInput, perspective?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
@@ -1503,8 +1456,6 @@ when `relative` is enabled.
 - Column (DesignSystemElement)
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
-- CountMark
-  Props: icon: string, count?: number, mine?: boolean, size?: "xs" | "sm" | "md", countTone?: "text" | "glyph", countFirst?: boolean, onPress?: (() => void), label?: string, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
@@ -1521,7 +1472,7 @@ when `relative` is enabled.
 - Select (DesignSystemElement)
   Props: options: SelectOption[], value?: string, placeholder?: string, searchable?: boolean, label?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - SignalControl
-  Props: signalType: SignalTypeData, size?: "xs" | "sm" | "md", signals?: SignalData[], myDid?: string, onSignal?: ((value: number | null) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
+  Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - ToastContainer
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
@@ -1539,7 +1490,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1574,7 +1525,6 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - changed: string[] — Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.
   - hidden: string[] — Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.
-  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
@@ -1672,10 +1622,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.
   - Example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`
 - `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.
-- `marquee-select` — Drag a rectangle over empty canvas to select everything it touches, marking each card as the rectangle reaches it. Additive rather than a mode: it takes a background press only when Shift or Ctrl/Cmd is held, or when `armed` is set, so a plain drag still pans. List it BEFORE pan-zoom, which is the background fallback and would otherwise claim the press first. Selecting touches rather than encloses, so a card wider than the view can still be caught. Holding the modifier adds to whatever is already selected.
-  - armed: boolean — Whether a plain background drag sweeps rather than pans. Default false. Arm it from a control the user can see — a touchscreen has no modifier keys.
-  - Example: `"behaviours": [{ "type": "marquee-select", "options": { "armed": { "$": "local.selecting" } } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`
-- `drag-node` — Drag a node to move it, and every other selected node with it — so a selection built by clicking or sweeping travels as one. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.
+- `drag-node` — Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.
   - pin: boolean — Leave the node pinned where it was dropped.
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
 - `connect-nodes` — Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.
@@ -2391,7 +2338,6 @@ Space extends WeNode:
   - enabledViews: string [we://enabled_views]
   - extractionTargets: string [we://extraction_targets]
   - autoInterpret: boolean = true [we://auto_interpret]
-  - threadMode: string = 'fractal' [we://thread_mode]
   - moduleSettings: string [we://module_settings]
   Relations:
   - location: HasOne → LocationBlock [we://location]
@@ -2523,7 +2469,6 @@ VideoBlock extends WeNode:
 WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://comment]
-  - inReplyTo: HasOne [we://comment]
   - signals: HasMany → Signal [we://signal]
   - participants: HasMany [we://participants]
   - calls: HasMany [we://call]
@@ -2718,7 +2663,6 @@ RecordStore:
   - relationDraft: the record being made inline for a relation field — an image for a sighting — as a draft of the same shape, or null. Its non-nullness mounts the nested form over the outer one. It is not written until the outer form saves
   - relationErrors: string[] — why the nested form's last Add was refused
   - relationshipKind: string — which named RelationshipType the pending connection is, or empty for one carrying only a label. Held beside the draft because the kinds are a list to pick from, which a generated form cannot render
-  - canvasHistory: { canUndo, canRedo, undoLabel, redoLabel } — whether the canvas on screen has anything to undo or redo, and what each press would put back. Gate a control on canUndo rather than hiding it: a disabled key with a tooltip naming the act says more than an absence does
 - Actions:
   - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
   - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
@@ -2743,15 +2687,12 @@ RecordStore:
   - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space
   - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
-  - removeFromCanvas(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to
-  - deleteRecords(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — an AD4M delete drops the links and a re-create earns a new id, so anything pointing at the old record breaks
-  - undoCanvas(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo
-  - redoCanvas(canvas: string): does again what undoCanvas put back, on the same terms and with the same argument
+  - removeFromCanvas(canvas: string, nodeId: string): takes a record off a canvas, leaving the record itself alone. A card the canvas owns survives as an unplaced one in the tray
   - resizeOnCanvas(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected
   - anchorOnCanvas(canvas: string, payload): pins which SIDE of a card a connection leaves or arrives on, for this canvas. Takes the graph's onEdgeAnchor payload as it arrives; an empty side clears that end, and a route with neither end pinned and no bends is deleted. Bends survive a clear — one record holds both, and letting go of a side says nothing about the shape somebody drew. Per canvas, like a placement — the same connection on somebody else's canvas is unaffected
   - rerouteOnCanvas(canvas: string, payload): writes the shape of one connection's route on this canvas — the points it is bent through. Takes the graph's onEdgeReroute payload as it arrives; the whole list, in the edge's own frame, so a bend keeps its proportions when either card moves. An empty list straightens it, and a route with no points and no anchors is deleted
   - retargetOnCanvas(canvas: string, payload): moves one end of a connection onto a different record. Takes the graph's onEdgeRetarget payload as it arrives. Unlike anchorOnCanvas and rerouteOnCanvas this changes the CLAIM rather than how one canvas draws it — the relationship now says something different everywhere it is shown. That end's anchor is cleared; its waypoints stay
-  - setCardStyle(canvas: string, node: string | string[], field: string, value): sets one presentation property of one card — or of a whole selection — on one canvas: 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider, and one id or a list so a selection is not a special case. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undoable, each card keeping its own baseline — putting back a colour applied to nine cards restores nine different colours
+  - setCardStyle(canvas: string, nodeId: string, field: string, value): sets one presentation property of one card on one canvas — 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undone by taking the card off the canvas
   - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
   - setTypeColor(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it
   - setSpaceTypeColor(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it
@@ -3080,7 +3021,6 @@ SpaceStore:
   - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
   - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
   - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
-  - setThreadMode(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen
   - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
@@ -3104,8 +3044,7 @@ SpaceStore:
   - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it
   - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it
   - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it
-  - upsertSignal(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right
-  - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
+  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
@@ -3225,21 +3164,25 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - active — Whether this agent is in a call right now.
   - arrangement — The { columns, rows } the stage is currently laid out in.
   - callId — The id of the call this agent is in, or null between calls.
-  - callRecordId — The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.
+  - callRecordId — The id of the call record this agent's call writes into.
   - callSpace — The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.
   - canCall — Whether a call could be started here — false in a personal space, which has nobody to call.
   - elsewhere — Whether the call this agent is in belongs to a space other than the one on screen.
-  - focusedId — Whose tile the stage is giving most of its room to, or null for an even grid.
-  - liveCalls — Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.
-  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.
+  - focusedId — Whose tile the stage gives most room to, or null for an even grid.
+  - hasSessionBackend — Whether this call uses a Session backend.
+  - liveCalls — Every call running in the space on screen.
+  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled }.
   - ongoing — Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.
-  - problem — Why the call could not start or a device could not be reached, as a sentence to show, or null.
+  - problem — Why the call could not start or a device could not be reached, or null.
+  - qualityPreference — The SFU quality layer this agent prefers.
   - solo — Whether the spotlight has the stage to itself, with everyone else hidden.
-  - tiles — One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.
-  - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.
+  - tiles — One entry per participant in the call.
+  - tileStates — Each participant's volatile flags by id.
+  - topology — Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').
 - Actions (`{ "$action": "modules.call.<name>" }`):
   - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
   - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
+  - cycleQuality — Cycle through quality presets: high, medium, low.
   - dismissProblem — Dismiss the problem message.
   - focusTile — Give the participant with this id the spotlight, or take it back if they already have it.
   - goToCall — Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.
@@ -3247,8 +3190,12 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - joinCall — Join a running call by its id, as liveCalls lists it, leaving any call this agent is in.
   - leave — Leave the call, releasing the camera, the microphone and every connection.
   - reconnectPeer — Build one peer's connection again from scratch, without leaving the call.
+  - refreshSfuNodes — Re-scan the neighbourhood for SFU-capable executor nodes.
   - returnToCall — Go back to the space the call is in; does nothing outside a call.
+  - saveCallConfig — Replace the entire call config.
   - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.
+  - setCallConfigField — Write one field of the call config.
+  - setQualityPreference — Set the SFU quality layer preference.
   - startCall — Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.
   - toggleAudio — Mute or unmute this agent’s microphone.
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
@@ -3383,7 +3330,6 @@ Ask the space a question and watch the answer arrive.
 Needs: kernels records.
 - State (read in an expression as `modules.polls.<name>`):
   - lastError — Why the last vote could not be recorded, or empty.
-  - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
   - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
   - voting — The id of the poll a vote is being written for, or empty.
 - Actions (`{ "$action": "modules.polls.<name>" }`):
@@ -3391,7 +3337,7 @@ Needs: kernels records.
 - Parts: `polls.pollCard`, `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
 - Functions:
-  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
+  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).  e.g. tally({ votes: local.votes, options: block.options })
 - Views (sections a space enables): `polls` "Polls" at /polls
 - Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
 - Entities (queryable with $query):

@@ -74,6 +74,42 @@ export interface ModuleHostServices {
     clearActivity: (type: string, id?: string) => void;
   };
   transcription?: TranscriptionPort;
+  /**
+   * Factory that creates a call backend (Session) for a specific call room.
+   *
+   * Bound by the store that owns the AD4M client, dataset, and agent identity — then forwarded
+   * through `createModuleStoreDeps` as `createBackend`. Absent on a backend without session
+   * support; the call module falls back to its own peer-to-peer mesh.
+   */
+  createCallBackend?: (callId: string) => Promise<unknown>;
+  /**
+   * Read the neighbourhood's call configuration (SFU topology defaults).
+   *
+   * Returns the `SfuConfig` stored on Social DNA — the space moderator's topology decisions.
+   * Absent when the backend has no SFU support; the call module uses mesh defaults.
+   */
+  getCallConfig?: () => Promise<unknown>;
+  /**
+   * Write the neighbourhood's call configuration.
+   *
+   * Persists to Social DNA so the config travels with the neighbourhood.
+   * Admin-gated in the UI; the adapter itself does not enforce permissions.
+   */
+  setCallConfig?: (config: unknown) => Promise<boolean>;
+  /**
+   * Discover SFU-capable executor nodes in this neighbourhood.
+   *
+   * Scans online agents' presence for the `ad4m://sfu/available` predicate.
+   * Returns DIDs and bind addresses of nodes that can act as relay servers.
+   */
+  getAvailableSfuNodes?: () => Promise<unknown[]>;
+  /**
+   * Synchronous probe: does the current backend support call configuration?
+   *
+   * Returns `false` when the executor lacks SFU types (pre-feat/embedded-sfu builds).
+   * The settings UI hides the Call section entirely when this returns false.
+   */
+  callConfigSupported?: () => boolean;
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
   /** Where a module's `notify` lands — a toast, in this host. */
@@ -143,6 +179,20 @@ export interface ModuleHostServices {
 
 const services: ModuleHostServices = {};
 
+/*
+  Service revision — a reactive signal that deps closures read so Solid effects re-fire when
+  `provideModuleHostServices` binds a new slice.
+
+  Without it, a deps closure like `() => services.dataset?.() ?? null` reads nothing reactive when
+  `services.dataset` is still `undefined` (module stores mount before the host stores do). The
+  first run of any effect that reads such a closure establishes zero dependencies, so the effect
+  never re-fires once services arrive. Reading the revision inside every service-forwarding closure
+  guarantees the closure always touches a signal, and bumping the revision after `Object.assign`
+  re-runs every effect that depends on the new slice.
+*/
+let readServicesRevision: (() => void) | null = null;
+let bumpServicesRevision: (() => void) | null = null;
+
 /**
  * Publish a slice of host services to registered modules.
  *
@@ -152,6 +202,7 @@ const services: ModuleHostServices = {};
  */
 export function provideModuleHostServices(slice: ModuleHostServices): () => void {
   Object.assign(services, slice);
+  bumpServicesRevision?.();
   const mine = Object.entries(slice) as [keyof ModuleHostServices, unknown][];
   return () => {
     for (const [key, value] of mine) {
@@ -163,6 +214,8 @@ export function provideModuleHostServices(slice: ModuleHostServices): () => void
 /** Test seam: drop everything between cases so one test's bindings cannot leak into the next. */
 export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
+  readServicesRevision = null;
+  bumpServicesRevision = null;
   publishedMedia = null;
   mediaListeners.clear();
   copiedInListeners.clear();
@@ -258,6 +311,15 @@ export function createModuleStoreDeps(framework: {
   signal: <T>(initial: T) => [() => T, (next: T) => void];
   effect: (fn: () => void) => void;
 }): ModuleStoreDeps {
+  // Initialise the revision signal on first call — uses the host framework's signal so it
+  // participates in the same reactive graph as the effects that will read the closures below.
+  if (!readServicesRevision) {
+    let counter = 0;
+    const [rev, setRev] = framework.signal(0);
+    readServicesRevision = rev;
+    bumpServicesRevision = () => setRev(++counter);
+  }
+
   // A signal for the published stream, so a consumer reading `input()` inside a derived value re-runs
   // when the publisher changes it.
   const [mediaInput, setMediaInput] = framework.signal<MediaStream | null>(null);
@@ -460,6 +522,23 @@ export function createModuleStoreDeps(framework: {
     },
 
     kernels,
+
+    // Late-bound call session factory, forwarded to the call module as `CallStoreDeps.createBackend`.
+    get createBackend() {
+      return services.createCallBackend;
+    },
+    get getCallConfig() {
+      return services.getCallConfig;
+    },
+    get setCallConfig() {
+      return services.setCallConfig;
+    },
+    get getAvailableSfuNodes() {
+      return services.getAvailableSfuNodes;
+    },
+    get callConfigSupported() {
+      return services.callConfigSupported;
+    },
   };
 }
 

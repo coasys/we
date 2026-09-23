@@ -83,7 +83,6 @@ export const contextData: ContextData = {
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'text', type: 'string | undefined', optional: true },
         { name: 'label', type: 'string', optional: false, default: "''" },
-        { name: 'expanded', type: 'boolean | undefined', optional: true },
         { name: 'href', type: 'string | undefined', optional: true },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'loading', type: 'boolean', optional: false, default: 'false' },
@@ -129,7 +128,6 @@ export const contextData: ContextData = {
         { name: 'tokens', type: 'boolean', optional: false, default: 'false' },
         { name: 'alpha', type: 'boolean', optional: false, default: 'false' },
         { name: 'clearable', type: 'boolean', optional: false, default: 'false' },
-        { name: 'confirm', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {
@@ -558,7 +556,6 @@ export const contextData: ContextData = {
         { name: 'label', type: 'string', optional: false, default: "''" },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'showValue', type: 'boolean', optional: false, default: 'false' },
-        { name: 'ticks', type: "'auto' | 'on' | 'off'", optional: false, default: "'auto'" },
       ],
     },
     {
@@ -772,8 +769,6 @@ export const contextData: ContextData = {
         { name: 'onDirtyChange', type: '((dirty: boolean) => void)', optional: true },
         { name: 'mentions', type: 'MentionCandidate[]', optional: true },
         { name: 'collaborate', type: 'string', optional: true },
-        { name: 'autoFocus', type: 'boolean', optional: true },
-        { name: 'handles', type: 'boolean', optional: true },
       ],
       source: 'components',
     },
@@ -985,23 +980,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'CountMark',
-      props: [
-        { name: 'icon', type: 'string', optional: false },
-        { name: 'count', type: 'number', optional: true },
-        { name: 'mine', type: 'boolean', optional: true },
-        { name: 'size', type: '"xs" | "sm" | "md"', optional: true },
-        { name: 'countTone', type: '"text" | "glyph"', optional: true },
-        { name: 'countFirst', type: 'boolean', optional: true },
-        { name: 'onPress', type: '(() => void)', optional: true },
-        { name: 'label', type: 'string', optional: true },
-        { name: 'disabled', type: 'boolean', optional: true },
-        { name: 'class', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
       name: 'DropdownMenu',
       description:
         'Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.',
@@ -1114,10 +1092,9 @@ export const contextData: ContextData = {
       name: 'SignalControl',
       props: [
         { name: 'signalType', type: 'SignalTypeData', optional: false },
-        { name: 'size', type: '"xs" | "sm" | "md"', optional: true },
         { name: 'signals', type: 'SignalData[]', optional: true },
         { name: 'myDid', type: 'string', optional: true },
-        { name: 'onSignal', type: '((value: number | null) => void)', optional: true },
+        { name: 'onSignal', type: '((value: number) => void)', optional: true },
         { name: 'disabled', type: 'boolean', optional: true },
         { name: 'preview', type: 'boolean', optional: true },
         { name: 'class', type: 'string', optional: true },
@@ -1237,18 +1214,9 @@ export const contextData: ContextData = {
         },
         {
           name: 'onDeleteSelection',
-          type: '((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void)',
+          type: '((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void)',
           optional: true,
         },
-        { name: 'carry', type: 'boolean', optional: true },
-        { name: 'selectionActions', type: 'NodeAction[]', optional: true },
-        {
-          name: 'onSelectionAction',
-          type: '((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void)',
-          optional: true,
-        },
-        { name: 'onUndo', type: '(() => void)', optional: true },
-        { name: 'onRedo', type: '(() => void)', optional: true },
         { name: 'host', type: 'GraphHostBindings', optional: true },
       ],
       source: 'widgets',
@@ -1724,7 +1692,6 @@ export const contextData: ContextData = {
         { name: 'enabledViews', type: 'string', predicate: 'we://enabled_views', required: false },
         { name: 'extractionTargets', type: 'string', predicate: 'we://extraction_targets', required: false },
         { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'true' },
-        { name: 'threadMode', type: 'string', predicate: 'we://thread_mode', required: false, default: "'fractal'" },
         { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
       ],
       relations: [
@@ -1921,7 +1888,6 @@ export const contextData: ContextData = {
       fields: [],
       relations: [
         { name: 'comments', kind: 'HasMany', predicate: 'we://comment' },
-        { name: 'inReplyTo', kind: 'HasOne', predicate: 'we://comment' },
         { name: 'signals', kind: 'HasMany', predicate: 'we://signal', target: 'Signal' },
         { name: 'participants', kind: 'HasMany', predicate: 'we://participants' },
         { name: 'calls', kind: 'HasMany', predicate: 'we://call' },
@@ -2341,7 +2307,6 @@ export const contextData: ContextData = {
         relationDraft: { type: 'object' },
         relationErrors: { type: 'array' },
         relationshipKind: { type: 'string' },
-        canvasHistory: { type: 'object' },
       },
       actions: [
         'openRecordForm',
@@ -2368,9 +2333,6 @@ export const contextData: ContextData = {
         'bringIn',
         'updateRecordField',
         'removeFromCanvas',
-        'deleteRecords',
-        'undoCanvas',
-        'redoCanvas',
         'resizeOnCanvas',
         'anchorOnCanvas',
         'rerouteOnCanvas',
@@ -2823,7 +2785,6 @@ export const contextData: ContextData = {
         'autoInterpretForCall',
         'setAutoInterpretForCall',
         'setAutoInterpret',
-        'setThreadMode',
         'setExtractionTarget',
         'setModuleInstalled',
         'setModuleVisible',
@@ -2848,7 +2809,6 @@ export const contextData: ContextData = {
         'updateInvolvementType',
         'setInvolvementTypeRetired',
         'upsertSignal',
-        'withdrawSignal',
         'navigateToSpace',
         'openRecordRef',
         'canAdministerSpace',
@@ -3016,33 +2976,6 @@ export const contextData: ContextData = {
         "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })",
     },
     {
-      name: 'signalTally',
-      params: ['options'],
-      doc: "What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).",
-      example: 'signalTally({ signals: row.signals, type: sig })',
-    },
-    {
-      name: 'reactions',
-      params: ['options'],
-      doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
-      example:
-        'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })',
-    },
-    {
-      name: 'reactors',
-      params: ['options'],
-      doc: 'Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal\'s author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type\'s signals, hydrated), profiles (profileStore.profiles), me (me.did), search.',
-      example:
-        'reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })',
-    },
-    {
-      name: 'signalTypesByUse',
-      params: ['options'],
-      doc: "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).",
-      example:
-        'signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })',
-    },
-    {
       name: 'formatJson',
       params: ['options'],
       doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.',
@@ -3081,11 +3014,7 @@ export const contextData: ContextData = {
           doc: 'Make the running call about the record whose id is given, without rejoining it.',
         },
         { name: 'callId', kind: 'state', doc: 'The id of the call this agent is in, or null between calls.' },
-        {
-          name: 'callRecordId',
-          kind: 'state',
-          doc: "The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.",
-        },
+        { name: 'callRecordId', kind: 'state', doc: "The id of the call record this agent's call writes into." },
         {
           name: 'callSpace',
           kind: 'state',
@@ -3101,17 +3030,14 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Pick a past call back up by its record id, joining anyone already in it and writing no new record.',
         },
+        { name: 'cycleQuality', kind: 'action', doc: 'Cycle through quality presets: high, medium, low.' },
         { name: 'dismissProblem', kind: 'action', doc: 'Dismiss the problem message.' },
         {
           name: 'elsewhere',
           kind: 'state',
           doc: 'Whether the call this agent is in belongs to a space other than the one on screen.',
         },
-        {
-          name: 'focusedId',
-          kind: 'state',
-          doc: 'Whose tile the stage is giving most of its room to, or null for an even grid.',
-        },
+        { name: 'focusedId', kind: 'state', doc: 'Whose tile the stage gives most room to, or null for an even grid.' },
         {
           name: 'focusTile',
           kind: 'action',
@@ -3122,6 +3048,7 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.',
         },
+        { name: 'hasSessionBackend', kind: 'state', doc: 'Whether this call uses a Session backend.' },
         {
           name: 'joinAnchoredCall',
           kind: 'action',
@@ -3137,16 +3064,8 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Leave the call, releasing the camera, the microphone and every connection.',
         },
-        {
-          name: 'liveCalls',
-          kind: 'state',
-          doc: 'Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.',
-        },
-        {
-          name: 'media',
-          kind: 'state',
-          doc: "This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.",
-        },
+        { name: 'liveCalls', kind: 'state', doc: 'Every call running in the space on screen.' },
+        { name: 'media', kind: 'state', doc: "This agent's own { audioEnabled, videoEnabled, screenShareEnabled }." },
         {
           name: 'ongoing',
           kind: 'state',
@@ -3155,23 +3074,28 @@ export const contextData: ContextData = {
         {
           name: 'problem',
           kind: 'state',
-          doc: 'Why the call could not start or a device could not be reached, as a sentence to show, or null.',
+          doc: 'Why the call could not start or a device could not be reached, or null.',
         },
+        { name: 'qualityPreference', kind: 'state', doc: 'The SFU quality layer this agent prefers.' },
         {
           name: 'reconnectPeer',
           kind: 'action',
           doc: "Build one peer's connection again from scratch, without leaving the call.",
         },
+        { name: 'refreshSfuNodes', kind: 'action', doc: 'Re-scan the neighbourhood for SFU-capable executor nodes.' },
         {
           name: 'returnToCall',
           kind: 'action',
           doc: 'Go back to the space the call is in; does nothing outside a call.',
         },
+        { name: 'saveCallConfig', kind: 'action', doc: 'Replace the entire call config.' },
         {
           name: 'setArrangement',
           kind: 'action',
           doc: 'Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.',
         },
+        { name: 'setCallConfigField', kind: 'action', doc: 'Write one field of the call config.' },
+        { name: 'setQualityPreference', kind: 'action', doc: 'Set the SFU quality layer preference.' },
         {
           name: 'solo',
           kind: 'state',
@@ -3182,16 +3106,8 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.',
         },
-        {
-          name: 'tiles',
-          kind: 'state',
-          doc: 'One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.',
-        },
-        {
-          name: 'tileStates',
-          kind: 'state',
-          doc: "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.",
-        },
+        { name: 'tiles', kind: 'state', doc: 'One entry per participant in the call.' },
+        { name: 'tileStates', kind: 'state', doc: "Each participant's volatile flags by id." },
         { name: 'toggleAudio', kind: 'action', doc: 'Mute or unmute this agent’s microphone.' },
         {
           name: 'toggleScreenShare',
@@ -3207,6 +3123,11 @@ export const contextData: ContextData = {
           name: 'toggleVideo',
           kind: 'action',
           doc: 'Turn this agent’s camera on or off, reporting through problem when it is refused.',
+        },
+        {
+          name: 'topology',
+          kind: 'state',
+          doc: "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').",
         },
       ],
       parts: [
@@ -3662,11 +3583,6 @@ export const contextData: ContextData = {
       members: [
         { name: 'lastError', kind: 'state', doc: 'Why the last vote could not be recorded, or empty.' },
         {
-          name: 'pendingVote',
-          kind: 'state',
-          doc: 'This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.',
-        },
-        {
           name: 'revealBeforeVoting',
           kind: 'state',
           doc: 'Whether a poll shows its counts before this agent has voted — the community’s setting here.',
@@ -3696,9 +3612,8 @@ export const contextData: ContextData = {
         {
           name: 'tally',
           params: ['options'],
-          doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).',
-          example:
-            'tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })',
+          doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).',
+          example: 'tally({ votes: local.votes, options: block.options })',
         },
       ],
       views: [{ id: 'polls', name: 'Polls', segment: 'polls' }],

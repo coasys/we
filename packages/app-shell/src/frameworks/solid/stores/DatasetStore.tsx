@@ -22,6 +22,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
+import { createCallConfigAccessors, createCallSessionFactory } from '@we/backend-ad4m';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, ExtractionPass, getEntitiesForPerspective } from '@we/entities';
@@ -350,6 +351,25 @@ export function DatasetStoreProvider(props: ParentProps) {
       },
       selfId: () => session.me()?.did ?? null,
       ephemeral: session.ephemeralPort,
+      // Late-bound call session factory — the call module reads it as `createBackend`. All three
+      // accessors dereference at join time, so the factory is safe to construct before the backend
+      // connects or the user navigates to a space.
+      createCallBackend: createCallSessionFactory(
+        () => session.client(),
+        () => currentDataset()?.handle ?? null,
+        () => session.me()?.did ?? null,
+      ),
+      // Call config accessors — topology defaults stored on Social DNA.
+      // Same late-binding pattern: every accessor reads the current dataset at call time.
+      ...(() => {
+        const accessors = createCallConfigAccessors(() => currentDataset()?.handle ?? null);
+        return {
+          getCallConfig: accessors.getCallConfig,
+          setCallConfig: accessors.setCallConfig,
+          getAvailableSfuNodes: accessors.getAvailableSfuNodes,
+          callConfigSupported: accessors.callConfigSupported,
+        };
+      })(),
       // Read through `backendPorts()` on every call rather than captured: the backend connects after
       // this store is constructed, and a backend that cannot transcribe simply never sets it.
       transcription: {

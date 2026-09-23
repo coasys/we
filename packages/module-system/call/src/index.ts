@@ -20,7 +20,9 @@
  *
  * - **No TURN server.** Peers behind symmetric NAT will not connect. TURN is infrastructure someone
  *   has to run, so it is a deployment decision rather than a module one.
- * - **No SFU.** Mesh only, so roughly four to six participants — see `mesh.ts`.
+ * - **Session backend.** When the host provides a {@link CallBackend} (satisfied by `Session` from
+ *   `@coasys/ad4m`), the call delegates topology, signalling, and roster management to the SDK.
+ *   The store exposes `topology` and `qualityPreference` for the template to surface the mode.
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
 import { defineModule, type ModuleHost } from '@we/module-shared';
@@ -49,7 +51,17 @@ export {
   parseCallMessage,
   recordCallId,
 } from './protocol';
-export { type CallTile, type CallTileState, createCallStore } from './store';
+export {
+  type BackendDataMessage,
+  type BackendQuality,
+  type BackendParticipant,
+  type CallBackend,
+  type CallDockEdge,
+  type CallTile,
+  type CallTileState,
+  type CallTopology,
+  createCallStore,
+} from './store';
 
 /**
  * How far the call's chrome sits off the bottom edge.
@@ -1274,6 +1286,296 @@ const moreMenu: SchemaNode = {
 };
 
 /**
+ * Which topology this call runs on — peer-to-peer mesh or SFU relay.
+ *
+ * A non-interactive indicator between the divider and the participant count: one icon, coloured by
+ * the variant, with a tooltip that names the mode. Mesh calls show a network glyph; SFU calls show
+ * a broadcast glyph. Hidden when no backend manages the call (mesh-only without a Session).
+ *
+ * Placed on the "call" side of the divider — it describes the call rather than the user's device —
+ * and before the participant count, which it explains (a count of six on a mesh means six direct
+ * connections; on an SFU it means six streams through a relay).
+ */
+const topologyIndicator: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.call.hasSessionBackend' },
+    then: {
+      type: '$if',
+      props: {
+        condition: { $: "modules.call.topology == 'sfu'" },
+        then: {
+          type: 'we-tooltip',
+          props: { title: 'Routed through relay server (SFU)', placement: 'bottom' },
+          children: [
+            {
+              type: 'we-icon',
+              props: { name: 'broadcast', size: 'sm', color: 'var(--we-color-text-secondary)' },
+            },
+          ],
+        },
+        else: {
+          type: 'we-tooltip',
+          props: { title: 'Peer-to-peer mesh', placement: 'bottom' },
+          children: [
+            {
+              type: 'we-icon',
+              props: { name: 'graph', size: 'sm', color: 'var(--we-color-text-tertiary)' },
+            },
+          ],
+        },
+      },
+    },
+  },
+};
+
+/**
+ * SFU quality preference — a cycling button that walks through high → medium → low.
+ *
+ * Only shown when the call runs through the SFU relay, because the quality preference controls
+ * which simulcast layer the relay forwards — a mesh call has no simulcast layers to select.
+ *
+ * The icon changes with the preference: a full signal for high, two bars for medium, one for low.
+ * The variant flips to `secondary` on non-high settings so the user sees that quality has been
+ * reduced, same visual language as the other toggles.
+ */
+const qualitySelector: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "modules.call.topology == 'sfu'" },
+    then: {
+      type: 'we-tooltip',
+      props: {
+        title: expr`"Quality: " + ${{ $: 'modules.call.qualityPreference' }}`,
+        placement: 'bottom',
+      },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            square: true,
+            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "ghost" : "secondary"`,
+            onClick: { $action: 'modules.call.cycleQuality' },
+          },
+          children: [
+            {
+              type: 'we-icon',
+              props: {
+                name: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "cell-signal-full" : ${{ $: 'modules.call.qualityPreference' }} == "medium" ? "cell-signal-medium" : "cell-signal-low"`,
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * In-call settings popover — topology info and quality selection.
+ *
+ * Triggered by a gear icon in the call bar.  Shows the current topology as read-only info and
+ * offers a proper three-option quality selector (replacing the cycling button with a deliberate
+ * choice).  Participants and connection summary fill the rest.
+ *
+ * Uses `$localState` for open/close, same pattern as `moreMenu`.  The popover anchors to its
+ * trigger button, so it floats above the call bar without taking layout space.
+ */
+const callSettingsPopover: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.call.active' },
+    then: {
+      type: 'Column',
+      $localState: { open: { type: 'boolean', initial: false } },
+      children: [
+        // Trigger button — gear icon
+        {
+          type: 'we-tooltip',
+          props: { title: 'Call settings', placement: 'bottom' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                square: true,
+                variant: 'ghost',
+                onClick: { $setLocal: 'open', value: { $: '!local.open' } },
+              },
+              children: [{ type: 'we-icon', props: { name: 'settings', size: 'sm' } }],
+            },
+          ],
+        },
+        // Popover body
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.open' },
+            then: {
+              type: 'Column',
+              props: {
+                position: 'absolute',
+                bottom: '60px',
+                right: '0',
+                width: '280px',
+                p: '400',
+                gap: '300',
+                bg: 'surface-raised',
+                r: '300',
+                border: '1px solid border',
+                boxShadow: 'var(--we-shadow-lg)',
+                zIndex: '100',
+              },
+              children: [
+                // ── Header ──
+                {
+                  type: 'Row',
+                  props: { width: '100%', ax: 'between', ay: 'center' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'label' }, children: ['Call settings'] },
+                    {
+                      type: 'we-button',
+                      props: {
+                        square: true,
+                        size: 'xs',
+                        variant: 'ghost',
+                        onClick: { $setLocal: 'open', value: false },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'x', size: 'sm' } }],
+                    },
+                  ],
+                },
+
+                // ── Topology info ──
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: ['Topology'] },
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center' },
+                      children: [
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: "modules.call.topology == 'sfu'" },
+                            then: {
+                              type: 'we-icon',
+                              props: { name: 'broadcast', size: 'sm', color: 'var(--we-color-text-secondary)' },
+                            },
+                            else: {
+                              type: 'we-icon',
+                              props: { name: 'graph', size: 'sm', color: 'var(--we-color-text-tertiary)' },
+                            },
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'body' },
+                          children: [
+                            {
+                              $: "modules.call.topology == 'sfu' ? 'SFU relay' : 'Peer-to-peer mesh'",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+
+                { type: 'we-divider' },
+
+                // ── Quality preference ──
+                {
+                  type: 'Column',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: ['Quality preference'],
+                    },
+                    {
+                      type: 'Row',
+                      props: { gap: '200', width: '100%' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            flex: '1',
+                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "primary" : "ghost"`,
+                            onClick: { $action: 'modules.call.setQualityPreference', args: ['high'] },
+                          },
+                          children: ['High'],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            flex: '1',
+                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "medium" ? "primary" : "ghost"`,
+                            onClick: { $action: 'modules.call.setQualityPreference', args: ['medium'] },
+                          },
+                          children: ['Medium'],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            flex: '1',
+                            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "low" ? "primary" : "ghost"`,
+                            onClick: { $action: 'modules.call.setQualityPreference', args: ['low'] },
+                          },
+                          children: ['Low'],
+                        },
+                      ],
+                    },
+                  ],
+                },
+
+                { type: 'we-divider' },
+
+                // ── Connection summary ──
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: ['Connection'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'body' },
+                      children: [
+                        expr`${{ $: 'modules.call.tiles.length' }} + " participant" + (${{ $: 'modules.call.tiles.length' }} == 1 ? "" : "s")`,
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'modules.call.connectionInfo.meshLimitReached' },
+                        then: {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'warning' },
+                          children: ['Mesh participant limit reached — call quality may degrade.'],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/**
  * The way back to a call happening somewhere else.
  *
  * Only mounted once you have navigated out of the call's space, which is the whole of when it means
@@ -1563,6 +1865,9 @@ const bar: SchemaNode = {
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
             // that already, and left alone against `md` it would have been half.
             { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+            topologyIndicator,
+            qualitySelector,
+            callSettingsPopover,
             participants,
             {
               type: 'we-tooltip',

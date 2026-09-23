@@ -844,8 +844,13 @@ app.whenReady().then(async () => {
     startAppServer();
   }
 
-  // Start the executor
-  await startExecutor();
+  if (process.env.WE_EXTERNAL_AD4M_PORT && process.env.WE_EXTERNAL_AD4M_TOKEN) {
+    ad4mPort = Number(process.env.WE_EXTERNAL_AD4M_PORT);
+    ad4mToken = process.env.WE_EXTERNAL_AD4M_TOKEN;
+    console.log('[main] External executor mode — port:', ad4mPort);
+  } else {
+    await startExecutor();
+  }
 
   // Then create the window
   createWindow();
@@ -875,10 +880,12 @@ function killExecutor() {
 }
 
 // Kill before Electron quits (covers Cmd+Q, app.quit(), etc.)
-app.on('before-quit', () => killExecutor());
+app.on('before-quit', () => {
+  if (!process.env.WE_EXTERNAL_AD4M_PORT) killExecutor();
+});
 
 app.on('window-all-closed', () => {
-  killExecutor();
+  if (!process.env.WE_EXTERNAL_AD4M_PORT) killExecutor();
 
   if (process.platform !== 'darwin') {
     app.quit();

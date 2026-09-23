@@ -915,6 +915,210 @@ const moduleSettingsSection: SchemaNode = {
   },
 };
 
+// ── Mode options for the call topology selector ────────────────────────────
+
+const CALL_MODE_OPTIONS = [
+  { label: 'Mesh (peer-to-peer)', value: 'mesh' },
+  { label: 'Designated SFU', value: 'designated' },
+  { label: 'Gateway SFU', value: 'gateway' },
+  { label: 'Cascaded SFU', value: 'cascaded' },
+];
+
+const CALL_FALLBACK_OPTIONS = [
+  { label: 'Mesh (peer-to-peer)', value: 'mesh' },
+  { label: 'Designated SFU', value: 'designated' },
+  { label: 'Gateway SFU', value: 'gateway' },
+];
+
+/**
+ * Call topology defaults — how new calls in this space connect participants.
+ *
+ * Stored on Social DNA (not WE module settings), so the configuration travels with the
+ * neighbourhood. Only shown when the call module runs here AND the executor supports SFU
+ * configuration (feat/embedded-sfu builds).
+ *
+ * Admin-gated: a moderator decides whether calls go through a relay server. Members see the
+ * result (the topology indicator in the call bar) but cannot change it.
+ */
+const callSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.call.callConfigSupported && space.canAdminister' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      children: [
+        { type: 'we-text', props: { variant: 'label' }, children: ['Call topology'] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: [
+            'How new calls in this space connect participants. Mesh connects everyone directly. SFU routes media through a relay server, which handles more participants but requires an SFU-capable executor.',
+          ],
+        },
+
+        // ── Topology mode ──────────────────────────────────────────────
+        {
+          type: 'we-form-field',
+          props: { label: 'Topology mode' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                value: { $: 'modules.call.callConfig.mode' },
+                options: CALL_MODE_OPTIONS,
+                onChange: {
+                  $action: 'modules.call.setCallConfigField',
+                  args: ['mode', { $: 'event.detail' }],
+                },
+              },
+            },
+          ],
+        },
+
+        // ── Designated peer — only when mode = "designated" ─────────────
+        {
+          type: '$if',
+          props: {
+            condition: { $: "modules.call.callConfig.mode == 'designated'" },
+            then: {
+              type: 'we-form-field',
+              props: { label: 'Designated SFU peer (DID)' },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    size: 'sm',
+                    placeholder: 'did:key:...',
+                    value: { $: "modules.call.callConfig.designatedPeer ?? ''" },
+                    onBlur: {
+                      $action: 'modules.call.setCallConfigField',
+                      args: ['designatedPeer', { $: 'event.target.value' }],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+
+        // ── Cascaded mode fields ──────────────────────────────────────
+        {
+          type: '$if',
+          props: {
+            condition: { $: "modules.call.callConfig.mode == 'cascaded'" },
+            then: {
+              type: 'Column',
+              props: { gap: '300', width: '100%' },
+              children: [
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Max participants per SFU node' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        size: 'sm',
+                        type: 'number',
+                        value: { $: 'modules.call.callConfig.maxParticipantsPerNode' },
+                        onBlur: {
+                          $action: 'modules.call.setCallConfigField',
+                          args: ['maxParticipantsPerNode', { $: 'Number(event.target.value)' }],
+                        },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Preferred SFU node (DID)' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        size: 'sm',
+                        placeholder: 'did:key:...',
+                        value: { $: "modules.call.callConfig.preferredSfuDid ?? ''" },
+                        onBlur: {
+                          $action: 'modules.call.setCallConfigField',
+                          args: ['preferredSfuDid', { $: 'event.target.value' }],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+
+        // ── Fallback mode ──────────────────────────────────────────────
+        {
+          type: 'we-form-field',
+          props: { label: 'Fallback when SFU unavailable' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                value: { $: 'modules.call.callConfig.fallback' },
+                options: CALL_FALLBACK_OPTIONS,
+                onChange: {
+                  $action: 'modules.call.setCallConfigField',
+                  args: ['fallback', { $: 'event.detail' }],
+                },
+              },
+            },
+          ],
+        },
+
+        // ── Max mesh participants ──────────────────────────────────────
+        {
+          type: 'we-form-field',
+          props: { label: 'Max mesh participants before SFU escalation' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                size: 'sm',
+                type: 'number',
+                value: { $: 'modules.call.callConfig.maxMeshParticipants' },
+                onBlur: {
+                  $action: 'modules.call.setCallConfigField',
+                  args: ['maxMeshParticipants', { $: 'Number(event.target.value)' }],
+                },
+              },
+            },
+          ],
+        },
+
+        // ── Available SFU nodes (scan result) ──────────────────────────
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint', flex: '1' },
+              children: [expr`"Available SFU nodes: " + ${{ $: 'modules.call.availableSfuNodes.length' }}`],
+            },
+            {
+              type: 'we-button',
+              props: {
+                size: 'xs',
+                variant: 'ghost',
+                onClick: { $action: 'modules.call.refreshSfuNodes' },
+              },
+              children: ['Scan'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /**
  * Automatic extraction — a community decision, and priced like one.
  *
@@ -1370,6 +1574,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                             $: 'space.canAdminister',
                           }),
                           moduleSettingsSection,
+                          callSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
                           threadModeSection,
