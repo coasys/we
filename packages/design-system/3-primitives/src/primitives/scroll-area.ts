@@ -5,7 +5,6 @@ import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
-import { DEV_BUILD } from '../shared/boxless';
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
@@ -155,9 +154,6 @@ interface EdgeWatch {
   /** Whether this edge has been reported for their current stay within reach of it. */
   told: boolean;
 }
-
-/** Instance counter for the temporary diagnostic below. Module-level so it stays out of the CEM. */
-let probeSeq = 0;
 
 /** Whether the reader has asked for less movement. Absent in a non-browser environment. */
 function prefersReducedMotion(): boolean {
@@ -341,72 +337,12 @@ export default class ScrollArea extends DesignSystemElement {
     // No opening scroll. A pinned list is `column-reverse`, so its resting position IS the newest
     // content — there is nothing to move it to, from the first frame, and nothing to get wrong.
     this.#syncControls();
-    this.#startProbe();
   }
 
   /** `jump` arrives as a DOM property and its controls cannot be measured before there is a scroller. */
   updated(changed: PropertyValues): void {
     super.updated(changed);
     if (changed.has('pin') || changed.has('jump')) this.#syncControls();
-  }
-
-  /*
-    ── TEMPORARY DIAGNOSTIC ─────────────────────────────────────────────────────────────────────
-
-    Kept only until the column-reverse change is confirmed against a real transcript, then deleted.
-    It is what found the fault: chasing the end could not be reasoned about from a synthetic harness,
-    and the log from the app is what showed the browser's scroll anchoring moving the scroller 2006px
-    and the element reading that as the reader.
-
-    `localStorage.setItem('we:scroll-probe', '1')` and reload, on any build.
-  */
-  #probeStart = 0;
-  #probeTag = '';
-  #probeHeight = -1;
-  #probeTimers: ReturnType<typeof setTimeout>[] = [];
-
-  #probeOn(): boolean {
-    if (DEV_BUILD) return true;
-    try {
-      return globalThis.localStorage?.getItem('we:scroll-probe') === '1';
-    } catch {
-      return false;
-    }
-  }
-
-  #startProbe(): void {
-    if (!this.#probeOn() || this.pin !== 'end' || this.#probeTag) return;
-    this.#probeTag = `sa${++probeSeq}`;
-    this.#probeWatch('mounted');
-  }
-
-  /** Restart the clock and a round of samples whenever the content is replaced wholesale. */
-  #probeWatch(what: string): void {
-    const base = this.#base;
-    if (!this.#probeTag || !base) return;
-    const height = base.scrollHeight;
-    const replaced = this.#probeHeight < 0 || Math.abs(height - this.#probeHeight) >= base.clientHeight;
-    this.#probeHeight = height;
-
-    if (replaced) {
-      this.#probeStart = Date.now();
-      for (const timer of this.#probeTimers) clearTimeout(timer);
-      this.#probeTimers = [100, 300, 600, 1000, 2000, 4000].map((at) =>
-        setTimeout(() => this.#probe(`sample${at}`), at),
-      );
-    }
-    this.#probe(replaced ? `${what}*RESET` : what);
-  }
-
-  #probe(what: string): void {
-    const base = this.#base;
-    if (!this.#probeTag || !base) return;
-    const text = (this.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 28);
-    console.log(
-      `[scroll-probe ${this.#probeTag}] +${String(Date.now() - this.#probeStart).padStart(5)}ms ${what.padEnd(10)}` +
-        ` h=${base.scrollHeight} c=${base.clientHeight} top=${Math.round(base.scrollTop)}` +
-        ` fromEnd=${Math.round(this.#fromEnd())} fromStart=${Math.round(this.#fromStart())} | ${text}`,
-    );
   }
 
   /*
@@ -538,7 +474,6 @@ export default class ScrollArea extends DesignSystemElement {
   };
 
   #contentChanged(): void {
-    this.#probeWatch('content');
     this.#checkEdges(false);
     this.#syncControls();
   }
