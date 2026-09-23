@@ -187,7 +187,7 @@ export const trustedAgents: SchemaNode = {
                         gap: '300',
                         ay: 'center',
                         ax: 'between',
-                        bg: 'surface-sunken',
+                        bg: 'surface',
                         r: '300',
                         px: '300',
                         py: '200',
@@ -321,7 +321,7 @@ export const mcpServer: SchemaNode = {
             condition: { $: 'runtimeStore.executorRestartPending' },
             then: {
               type: 'Row',
-              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface', r: '300', px: '300', py: '200' },
               children: [
                 {
                   type: 'we-text',
@@ -467,7 +467,7 @@ export const logging: SchemaNode = {
                   children: [
                     {
                       type: 'Row',
-                      props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+                      props: { gap: '200', ay: 'center', bg: 'surface', r: '300', px: '300', py: '200' },
                       children: [
                         { type: 'we-code', props: { flex: '1' }, children: [{ $: 'entry.crate' }] },
                         {
@@ -878,7 +878,7 @@ export const executorSupport: SchemaNode = {
                 ay: 'center',
                 ax: 'between',
                 wrap: true,
-                bg: 'surface-sunken',
+                bg: 'surface',
                 r: '300',
                 px: '300',
                 py: '200',

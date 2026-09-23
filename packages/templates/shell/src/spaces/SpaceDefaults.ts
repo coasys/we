@@ -99,7 +99,7 @@ const themeRow = defaultPickerRow({
 
 const sectionBox = (title: string, description: string, children: SchemaNode[]): SchemaNode => ({
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',

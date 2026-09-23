@@ -1,36 +1,34 @@
 #!/usr/bin/env node
 /**
- * What is each `surface-sunken` actually sitting on?
+ * Is each `surface-sunken` box actually visible against what it is sitting on?
  *
- * `surface-sunken` means a well recessed *into* a surface — an input trough, an inset box. It is
- * not what a card sitting on the page is, and the two were indistinguishable in the source WE
- * migrated from: the pre-role templates wrote one grey (`neutral-100`) for both, because against a
- * `neutral-50` page that grey happened to look right either way. Migrating by value therefore
- * preserved every appearance and got a chunk of the *meanings* wrong — which shows up the first
- * time somebody drags the "Sunken" slider and watches the page header move.
+ * A well is a well only by contrast with its ground, and the roles are a lightness stack, so whether
+ * one reads at all is decided by which plane is behind it. Four grounds occur in this repo and two of
+ * them leave the box invisible — see `VERDICTS`, which holds the measurements and the reasoning.
  *
- * The discriminator is the nearest painted ancestor, so this imports each schema and walks the real
- * composed tree — the one a `sectionCard()` or a `cardShell()` from another package contributes to.
- * A node whose nearest painted ancestor is `page` is a surface, whatever colour it happens to be.
+ * The ground is the nearest painted ancestor, so this imports each schema and walks the real composed
+ * tree — the one a `sectionCard()` or a `cardShell()` from another package contributes to. No grep
+ * over source can attribute a node a fragment in another package put there.
  *
- * ## Three things it used to get wrong, all of them inflating the count
+ * ## Why the count used to be five times larger
  *
- * It reported 280 "misclassified", and a reader who checked a handful and found them all spurious
- * would stop reading the rest — which is the failure mode an audit cannot afford. The three causes:
+ * It reported 280 misclassified, and a reader who checked a handful and found them all spurious would
+ * stop reading the rest — which is the failure mode an audit cannot afford. Besides the rule itself
+ * being wrong (again, `VERDICTS`), three things inflated the count:
  *
  * 1. **A package's `index.ts` re-exports its schemas**, so every node in `WorkshopTemplate.schema.ts`
  *    was walked twice and counted twice: 28 of the showcase findings were 28 duplicates of the other
- *    28. Nodes are deduplicated by identity now — the same object reached twice is one node.
+ *    28. Nodes are now collected by identity, so the same object reached twice is one node.
  * 2. **Some primitives paint a background without a `bg` prop.** `we-modal` and `we-drawer` declare
- *    `bg: var(--we-role-surface)` in their own `DEFAULT_PROPS`, so a sunken box inside a modal is
- *    correctly sunken and was being reported as sitting on the page.
- * 3. **A fragment exported on its own has no ground**, and assuming `page` asserts something the
- *    file cannot know. A panel schema is mounted on a dock frame, a settings section inside a
- *    `chrome` overlay. Those are now reported separately as unknown rather than as findings: the
- *    honest answer to "what is this on?" is sometimes "this file does not say".
+ *    `bg: var(--we-role-surface)` in their own `DEFAULT_PROPS`, so a well inside a modal is correctly
+ *    sunken and was being read as sitting on the page.
+ * 3. **The schema-test fixtures paint every role in every arrangement on purpose**, which made them
+ *    the single largest source of findings and none of them a defect.
  *
- * A root counts as knowing its ground when it paints one itself, or when it is a template root
- * (it carries `meta`), which is mounted on the page by definition.
+ * A fragment nothing in these trees mounts has no knowable ground, and saying so is better than
+ * assuming: a panel schema is mounted on a dock frame and a settings section inside a `chrome`
+ * overlay, neither of which the file itself states. A root knows its ground when it paints one, or
+ * when it is a template root (it carries `meta`), which is mounted on the page by definition.
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { register } from 'node:module';
@@ -105,6 +103,17 @@ const isTemplateRoot = (node: Node) => !!node.meta && typeof node.meta === 'obje
  * are already segregated into a `tests/` directory and a `SchemaTests` entry point.
  */
 const FIXTURES = [/\/schemas\/shell\/tests\//, /SchemaTests\.schema\.ts$/];
+
+/**
+ * A module's panel body, which the host mounts inside a dock frame painted `chrome`.
+ *
+ * Not a guess: `dockRegistry.ts` states it, and records that the frame used to be `surface-sunken`
+ * and was changed because "every docked panel came out darker than the page it sits beside, and read
+ * as a hole cut in the window". A panel's contents are therefore judged against the same ground as
+ * the app's own screens, which is what catches a sunken box inside one — the identical defect, one
+ * level in.
+ */
+const MODULE_PANEL = /\/module-system\/[^/]+\/src\/.*Panel\.schema\.ts$/;
 
 /**
  * What a sunken box on each ground actually looks like, and therefore which grounds are defects.
@@ -260,8 +269,16 @@ for (const file of files) {
   }
   for (const value of Object.values(mod)) {
     if (!isNode(value)) continue;
-    // A template root is on the page. A fragment that paints nothing cannot know, and says so.
-    walk(value, file, isTemplateRoot(value) ? 'page' : bgOf(value), []);
+    /*
+      A template root is on the page. A fragment is on whatever mounts it, which this file does not
+      say — `null`, and another walk may supply it.
+
+      Not `bgOf(value)`: that is the root's *own* fill, and seeding the walk with it made a fragment
+      that paints `surface-sunken` report itself as a well inside itself. Its children already
+      inherit it, because `walk` passes `bg ?? ancestorBg` down.
+    */
+    const ground = isTemplateRoot(value) ? 'page' : MODULE_PANEL.test(file) ? 'chrome' : null;
+    walk(value, file, ground, []);
   }
 }
 

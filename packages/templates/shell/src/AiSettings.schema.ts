@@ -353,7 +353,7 @@ const modelForm: SchemaNode = {
 
 const modelCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', bg: 'surface-sunken', r: '300', px: '300', py: '300' },
+  props: { gap: '200', bg: 'surface', r: '300', px: '300', py: '300' },
   children: [
     {
       type: 'Row',
@@ -465,7 +465,7 @@ const modelCard: SchemaNode = {
 
 const taskCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+  props: { gap: '100', bg: 'surface', r: '300', px: '300', py: '200' },
   children: [
     {
       type: 'Row',

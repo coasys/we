@@ -27,7 +27,7 @@ const isPersonal = { $: 'dataset.id == datasetStore.personalDataset.id' };
 
 const datasetCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '300', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border' },
   $localState: {
     sdnaCleanupResult: { type: 'string', initial: '' },
     confirmDeleteOpen: { type: 'boolean', initial: false },
