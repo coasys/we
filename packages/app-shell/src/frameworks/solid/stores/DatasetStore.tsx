@@ -829,13 +829,20 @@ export function DatasetStoreProvider(props: ParentProps) {
     trace('dataset', 'root:create');
     const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
     await schemas.installRoot(created.handle);
-    const settings = await AgentSettings.create(created.handle, {
+    await AgentSettings.create(created.handle, {
       currentTemplateId: 'default',
       currentThemeId: 'dark',
       defaultThemeId: 'dark',
     });
     setRootDataset(created);
-    setAgentSettings(settings);
+    // Read back rather than holding what the create answered with, which is the same thing the
+    // `existing` branch above does one screen up. This signal lives for the life of the app and its
+    // relations *are* read — `installedTemplates` and `installedThemes` decide which custom
+    // templates and themes the pickers show — and a create's answer carries none (see `NewRecord`).
+    // Held, the very first session after an account is made would install a template and go on
+    // reading an empty list, so the thing it had just installed never showed as installed.
+    const settings = await AgentSettings.findOne(created.handle);
+    if (settings) setAgentSettings(settings);
     trace('dataset', 'root:created', { id: created.id });
   }
 

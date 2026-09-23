@@ -262,6 +262,29 @@ export type WriteProperties<T extends RecordInstance> = { [K in RecordDataKeys<T
 };
 
 /**
+ * A record as a **write** hands it back: its own fields, and none of its relations.
+ *
+ * A create answers with the thing it just wrote. The scalars are all there — a backend that stamps
+ * `author` and `createdAt` from the write has them without being asked — but a relation is not a
+ * field on the row, it is a separate read, and nothing asked for one. So a relation key on a create
+ * return is whatever it held at the instant of the write, which for a record that did not exist a
+ * moment ago is *empty by construction*, and it is never refreshed as the relation fills.
+ *
+ * Typed away rather than documented, because the failure is silent and reads as data loss. A
+ * conversation's messages read back off the record the conversation was created from came back
+ * empty, so returning to a chat showed nothing in it, and deleting one walked an empty list and left
+ * every message behind with nothing pointing at it. Both cleared on reload, which is what kept it.
+ *
+ * It is also the right type for a **cache of records nobody reads relations off** — a list of
+ * sessions, spaces or themes held only to name and address them. `T` is assignable to it, so a
+ * loaded record and a created one are the same shape there, and the one thing the two genuinely
+ * disagree about is the one thing it refuses.
+ *
+ * To get the relations, read the record: `findOne(dataset, { where: { id }, include: { … } })`.
+ */
+export type NewRecord<T extends RecordInstance> = Omit<T, RelationKeysOf<T>>;
+
+/**
  * The static surface every entity presents — what the entity proxies in `@we/entities` are typed
  * as, and what a backend's registered implementations must answer to. Dataset handles are
  * `unknown`: which kind of handle "a dataset" is, is the backend's business (a live proxy, an
@@ -289,7 +312,14 @@ export type WriteProperties<T extends RecordInstance> = { [K in RecordDataKeys<T
  * for stores, which are code that ships with the app.
  */
 export interface EntityStatic<T extends RecordInstance> {
-  create(dataset: unknown, properties: WriteProperties<T>, options?: Record<string, unknown>): Promise<T>;
+  /**
+   * Write one record, and answer with it — see {@link NewRecord} for why that is less than a `T`.
+   *
+   * A backend is free to return more than this (the AD4M lane re-reads the row it just wrote, so its
+   * instances carry relation keys holding whatever the relation held at that instant). The narrower
+   * type is the promise every backend can keep, and the wider one was read as a guarantee.
+   */
+  create(dataset: unknown, properties: WriteProperties<T>, options?: Record<string, unknown>): Promise<NewRecord<T>>;
   findAll<Q extends TypedEntityQuery<T>>(dataset: unknown, query?: Q): Promise<(T & IncludeExtras<T, IncludeOf<Q>>)[]>;
   findOne<Q extends TypedEntityQuery<T>>(
     dataset: unknown,

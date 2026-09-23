@@ -118,7 +118,7 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   addArranges(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeArranges(value: string | { id: string }, batch?: string): Promise<unknown>;
   setArranges(values: (string | { id: string })[], batch?: string): Promise<unknown>;
-  setBoard(value: CollectionBlockRecord): Promise<unknown>;
+  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface DividerBlockRecord extends WeNodeRecord {
@@ -154,7 +154,7 @@ export interface EventBlockRecord extends WeNodeRecord {
   allDay: boolean;
   version: number;
   location?: LocationBlockRecord;
-  setLocation(value: LocationBlockRecord): Promise<unknown>;
+  setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface FileBlockRecord extends WeNodeRecord {
@@ -313,8 +313,8 @@ export interface SpaceRecord extends WeNodeRecord {
   board?: CollectionBlockRecord;
   taskStates: string[];
   typeStyles: string[];
-  setLocation(value: LocationBlockRecord): Promise<unknown>;
-  setBoard(value: CollectionBlockRecord): Promise<unknown>;
+  setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
+  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   setTaskStates(values: (string | { id: string })[], batch?: string): Promise<unknown>;

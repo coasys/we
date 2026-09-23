@@ -21,7 +21,7 @@ import {
   useTemplateStore,
   useThemeStore,
 } from '@solid/stores';
-import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
+import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -93,7 +93,8 @@ export interface EditorStore {
   pickerShowDestination: Accessor<boolean>;
 
   // --- Session management ---
-  sessions: Accessor<ChatSessionRecord[]>;
+  /** The saved sessions, to name and address — never to read messages off. See the signal's note. */
+  sessions: Accessor<NewRecord<ChatSessionRecord>[]>;
   activeSessionId: Accessor<string | null>;
   newChat: () => void;
   switchSession: (sessionId: string) => void;
@@ -307,11 +308,23 @@ export function EditorStoreProvider(props: ParentProps) {
     if (isOpen() || !assistantStatus()) void refreshAssistant();
   });
 
-  // --- Session management ---
-  const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
+  /*
+    --- Session management ---
+
+    `NewRecord`, and that is the whole of the fix below: these rows are here to be named, addressed
+    and deleted, never to be read for their messages. A session's `messages` is a relation, so it
+    holds whatever it held at the moment the record was read — nothing for one this run created, and
+    the state at load for one it loaded — and `persistMessage` appends without touching it.
+
+    Reading it back off a held row was why leaving a conversation and returning to it showed an empty
+    one, and why deleting a chat walked an empty list and left every message behind with nothing
+    pointing at it. Both cleared on reload, which is what kept them. Messages now come from
+    `messagesFor`, which asks.
+  */
+  const [sessions, setSessions] = createSignal<NewRecord<ChatSessionRecord>[]>([]);
   const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
   // Track the AD4M ChatSession model instance for the active session
-  let activeSessionRecord: ChatSessionRecord | null = null;
+  let activeSessionRecord: NewRecord<ChatSessionRecord> | null = null;
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
@@ -454,6 +467,31 @@ export function EditorStoreProvider(props: ParentProps) {
   // Session management — load, create, switch, delete
   // ----------------------------------------------------------------
 
+  /**
+   * One session's messages, asked for rather than read off a held record.
+   *
+   * The session row is re-read with its `messages` included — the same query `loadSessionsForTemplate`
+   * makes for all of them — because a relation on a held instance is a snapshot of when that instance
+   * was read, and every message written since is missing from it. See the note on `sessions`.
+   *
+   * Answers `[]` for a session that has gone, which is what a caller wants: an empty conversation,
+   * not a thrown one.
+   */
+  async function messagesFor(sessionId: string): Promise<ChatMessage[]> {
+    const perspective = datasetStore.rootDataset()?.handle;
+    if (!perspective) return [];
+    try {
+      const fresh = await ChatSessionRecord.findOne(perspective, {
+        where: { id: sessionId },
+        include: { messages: { order: { createdAt: 'ASC' } } },
+      });
+      return ((fresh?.messages ?? []) as ChatMessage[]) ?? [];
+    } catch (err) {
+      console.error('Failed to read messages for session', sessionId, err);
+      return [];
+    }
+  }
+
   /** Load sessions for a given template and activate the most recent one */
   async function loadSessionsForTemplate(templateId: string) {
     // Core (read-only) templates use ephemeral in-memory sessions
@@ -551,7 +589,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
     activeSessionRecord = target;
     setActiveSessionId(sessionId);
-    setMessages((target.messages as ChatMessage[]) || []);
+    setMessages(await messagesFor(sessionId));
   }
 
   /** Delete a session and its messages */
@@ -567,8 +605,10 @@ export function EditorStoreProvider(props: ParentProps) {
       const target = sessions().find((s) => s.id === sessionId);
       if (!target) return;
 
-      // Delete all hydrated messages in the session
-      for (const msg of target.messages || []) {
+      // Asked for, not read off `target`: its `messages` is a snapshot from whenever that row was
+      // read, so a chat created or added to this run walked an empty list here and left every
+      // message behind in the root dataset with nothing left pointing at it.
+      for (const msg of await messagesFor(sessionId)) {
         await (msg as ChatMessageRecord).delete();
       }
 
@@ -583,7 +623,7 @@ export function EditorStoreProvider(props: ParentProps) {
           const next = remaining[0];
           activeSessionRecord = next;
           setActiveSessionId(next.id);
-          setMessages((next.messages as ChatMessage[]) || []);
+          setMessages(await messagesFor(next.id));
         } else {
           setActiveSessionId(null);
           activeSessionRecord = null;
@@ -1308,14 +1348,17 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   async function clearHistory() {
     // If persisted session, delete messages from AD4M
-    if (activeSessionRecord) {
+    const record = activeSessionRecord;
+    if (record) {
       try {
-        // Messages are already hydrated on the session model
-        for (const msg of activeSessionRecord.messages || []) {
-          await activeSessionRecord.removeMessages(msg as ChatMessageRecord);
+        // Asked for, not read off the held record — its `messages` is a snapshot of whenever that
+        // row was read, and every message written since is missing from it. The comment here used to
+        // say they were "already hydrated on the session model", which is what made Clear History a
+        // no-op on any conversation this run had started.
+        for (const msg of await messagesFor(record.id)) {
+          await record.removeMessages(msg as ChatMessageRecord);
           await (msg as ChatMessageRecord).delete();
         }
-        activeSessionRecord.messages = [];
       } catch (err) {
         console.error('Failed to clear persisted messages', err);
       }

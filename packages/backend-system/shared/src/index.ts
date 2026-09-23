@@ -179,6 +179,7 @@ export type {
 export type {
   IncludeExtras,
   IncludeOf,
+  NewRecord,
   RecordDataKeys,
   RecordInstance,
   EntityStatic,

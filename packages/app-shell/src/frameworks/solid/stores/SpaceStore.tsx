@@ -67,7 +67,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, NewRecord } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -1563,7 +1563,23 @@ export function SpaceStoreProvider(props: ParentProps) {
       const locationRecord = await LocationBlock.create(dataset, location);
       await spaceRecord.setLocation(locationRecord);
     }
-    return spaceRecord;
+    /*
+      Read back, with the one relation this record's readers read.
+
+      A create answers with the row it wrote and none of its relations (see `NewRecord`) — and the
+      location is linked *after* the create, so what the create returned could not carry one even in
+      principle. Both callers put the result straight into `mySpaces`, and `spaceList` reads
+      `space.location` off those rows: a space made with a place on it showed none until the next
+      launch, because nothing re-reads `mySpaces` after boot.
+
+      `loadSpaces` asks for exactly this include, which is the other half of the same answer — the
+      two paths into `mySpaces` now agree about what a row carries.
+    */
+    const readBack = await Space.findOne(dataset, { where: { id: spaceRecord.id }, include: { location: true } });
+    // Nothing to do if the read-back fails after a create that did not: the space exists, and what
+    // the create answered with is what this function used to return. Degrades to the old behaviour —
+    // a location that appears on the next launch — rather than failing a space that was written.
+    return readBack ?? (spaceRecord as Space);
   }
 
   async function createSpace(
@@ -3101,7 +3117,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    * state, and never a side effect of naming a different one. Answers null for a slug that is
    * neither a record nor a default.
    */
-  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<TaskState | null> {
+  // `NewRecord`, because a caller wants a record to *act on* — rename it, withdraw it, put it in an
+  // order — and one of the two ways this answers is a create, which carries no relations. Nothing
+  // here reads one; `save` and `delete` survive, being the record's own and not a relation's.
+  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<NewRecord<TaskState> | null> {
     const existing = await TaskState.findAll(p, { where: { slug } }).catch(() => [] as TaskState[]);
     if (existing.length) return dedupeBySlug(existing)[0] ?? null;
     const fallback = DEFAULT_TASK_STATES.find((d) => d.slug === slug);
