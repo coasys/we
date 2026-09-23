@@ -15,7 +15,13 @@ import { callsList } from './CallsList';
 
 const json = JSON.stringify(callsList);
 
-/** Every `$query` in the list, as objects, so each can be judged on its own. */
+/**
+ * Every query in the list, as objects, so each can be judged on its own.
+ *
+ * Both spellings: `$query` inline on an `$each`, and every entry of a `$queries` block. The hoisted
+ * ones are the expensive ones — a `$queries` on a card inside a list runs once per row — so a helper
+ * that read only the inline form would have inspected the cheap half and reported it clean.
+ */
 function queries(node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] {
   if (!node || typeof node !== 'object') return found;
   if (Array.isArray(node)) {
@@ -24,6 +30,11 @@ function queries(node: unknown, found: Record<string, unknown>[] = []): Record<s
   }
   for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
     if (key === '$query' && value && typeof value === 'object') found.push(value as Record<string, unknown>);
+    if (key === '$queries' && value && typeof value === 'object') {
+      for (const entry of Object.values(value as Record<string, unknown>)) {
+        if (entry && typeof entry === 'object') found.push(entry as Record<string, unknown>);
+      }
+    }
     queries(value, found);
   }
   return found;
@@ -52,6 +63,20 @@ describe('the calls list', () => {
     for (const q of transcripts) {
       expect(q.subscribe).toEqual({ $: 'call.id in modules.call.liveCalls.map(c, c.recordId)' });
     }
+  });
+
+  /**
+   * And every OTHER query it holds is bounded too.
+   *
+   * The findings groups are one query per extractable model per card, so they outnumber the
+   * transcripts they sit beside: eight models and twenty calls is a hundred and sixty
+   * subscriptions. Asserted over every query rather than over a named one, so a group added later
+   * cannot reintroduce the shape by another route — which is exactly how the transcript got here.
+   */
+  it('bounds every query on a card', () => {
+    const all = queries(callsList);
+    expect(all.length).toBeGreaterThan(2);
+    for (const q of all) expect(q.limit).toBeDefined();
   });
 
   /**

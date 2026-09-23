@@ -213,18 +213,29 @@ This validates every \`.schema.ts\` under \`packages/app-shell/src/shared/schema
 section files that are not named \`.schema.ts\` are still covered, because the template that composes
 them is — the walk descends into whatever a validated schema imports.
 
-Two further audits run over the same trees and are easy to miss. Both **import and walk the composed
+Further audits run over the same trees and are easy to miss. They all **import and walk the composed
 tree** rather than grepping source, which is the only way to attribute a node that a fragment from
 another package contributed:
 
 \`\`\`sh
 pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
 pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via \`title\`
+pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
 \`\`\`
 
 Run them after any template, view or fragment change. A \`neutral-600\` label is invisible to the
 whole contrast layer — never measured against what is behind it — so \`role-audit\` is the only thing
 that will report it.
+
+\`query-audit\` is the one whose findings are invisible in development and expensive in a real space.
+A \`$query\` with no \`limit\` re-reads, re-hydrates and re-fingerprints every row of its entity on
+every change to that entity, so a list that grows costs O(n²) over a session — fine at twenty rows
+and unusable at two thousand, which is a transcript after forty minutes. It reports only what
+nothing else bounds: \`where.id\`, a \`scope\` with \`levels\` or \`limitPerAnchor\`, and a curated
+vocabulary all count as bounded. A list that really is read whole on purpose is declared in
+\`DELIBERATE\` in the script, **with the reason**, and the reasons are printed on every run so they
+get reviewed rather than accumulated.
 
 Two things it now catches that it used to miss, both worth knowing when adding a schema:
 

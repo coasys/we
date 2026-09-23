@@ -98,10 +98,20 @@ const callQueries = { utterances: utterancesQuery };
  * would return every child of the call and leave the filtering to the template, which is the same
  * work moved somewhere it reads worse.
  */
+const FINDING_CAP = 25;
+
 const findingsQuery = {
   entity: { $: 'target' },
   scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
   order: { createdAt: 'asc' },
+  /*
+    Bounded for the same reason the transcript above is, and more so: this is one query per
+    extractable model PER CARD, so a space with eight models and twenty recorded calls holds a
+    hundred and sixty live subscriptions to draw a list of titles. An hour of six people talking
+    produced thirty-five records in the conversation that prompted this; the card is a sign that a
+    conversation produced something, and the whole of it is a press away on the call's own page.
+  */
+  limit: FINDING_CAP,
 };
 
 /**
@@ -174,6 +184,19 @@ const findings: SchemaNode = {
                       ],
                     },
                   ],
+                },
+                // A full page means there is more than this card is showing, and a list that simply
+                // stopped would read as the whole of what the conversation produced.
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: `count(local.found) >= ${FINDING_CAP}` },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: ['…and more — open the call to read them all.'],
+                    },
+                  },
                 },
               ],
             },
