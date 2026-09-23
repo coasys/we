@@ -2127,4 +2127,55 @@ describe('a superseded load', () => {
     await engine.start();
     expect(seen[0]?.aborted, 'starting again did not abort the load it replaced').toBe(true);
   });
+
+  /*
+    Dropping a replaced load also drops the framing it owed, and nothing else was going to do it.
+
+    `start` is the only caller that asks for a fit, and it gives up before asking when its load has
+    been replaced. `resize` re-frames on a first measurement, which on a cold boot happens seconds
+    before any row arrives and so finds no positions to frame. So a refresh landing while the first
+    load was in flight left a whole canvas at the origin — which reads as cards missing rather than
+    as a camera that was never moved.
+  */
+  it('frames the graph the load it replaced was going to frame', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // The renderer measures itself on mount, before the seeds have answered.
+    engine.resize(800, 600);
+    expect(engine.viewport.get(), 'nothing to frame yet').toMatchObject({ x: 0, y: 0, zoom: 1 });
+
+    // A marker arriving from elsewhere refreshes while the first load is still out.
+    const start = engine.start();
+    await Promise.resolve();
+    const refresh = engine.refresh();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    gate.release('second');
+    await refresh;
+    gate.release('first');
+    await start;
+
+    const camera = engine.viewport.get();
+    expect(camera.x === 0 && camera.y === 0, 'the graph was left at the origin').toBe(false);
+  });
+
+  it('still leaves the camera alone when it merges into a graph already on screen', async () => {
+    // The other half of the rule, and the reason it is written as "the screen was empty" rather
+    // than "this is a refresh": a viewport that jumped whenever a peer wrote something would make
+    // a shared graph unusable.
+    const registry = new PluginRegistry({ seeds: [seedOf(4)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.behaviourContext().pan(120, 90);
+    const panned = { ...engine.viewport.get() };
+
+    await engine.refresh();
+
+    expect(engine.viewport.get().x).toBe(panned.x);
+    expect(engine.viewport.get().y).toBe(panned.y);
+  });
 });

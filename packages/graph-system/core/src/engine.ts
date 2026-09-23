@@ -590,6 +590,26 @@ export class GraphEngine {
    * it. The body of a refresh, and of a restart that turned out to be the same graph — see `start`.
    */
   private async reconcile(fragment: { nodes: GraphNode[]; edges: GraphEdge[] }): Promise<void> {
+    /*
+      A graph arriving on an empty screen is framed, whichever path brought it.
+
+      `start` frames what it loads and `refresh` deliberately does not — a viewport that jumped
+      whenever a peer wrote something would make a shared graph unusable. That reads as a rule about
+      the two methods, and it is really a rule about the graph: there is nothing to disturb when
+      nothing is on screen, and nothing else will ever frame it either. `resize` only re-frames on
+      the FIRST measurement, which on a cold boot happens seconds before any row arrives, with no
+      positions to find bounds in.
+
+      Which matters because `start` can end up doing nothing at all. A load that has been replaced
+      returns null and `start` gives up before its fit — so a refresh landing while the first load
+      was still in flight left the whole canvas at the origin, the reader seeing whichever cards
+      happened to be placed near it and no sign of the rest. On the workshop's canvas that is the
+      ordinary case on a reload mid-call: the transcriber's `pending` list arrives a moment after
+      mount, and a marker moving goes down `refresh`.
+
+      Measured before the merge, so this is "the screen was empty", not "the seeds found nothing".
+    */
+    const wasEmpty = this.store.nodeCount === 0;
     const nodes = this.trimToBudget(fragment.nodes);
     const seedNodes = new Set(nodes.map((n) => n.id));
     const seedEdges = new Set(fragment.edges.map((e) => e.id));
@@ -625,7 +645,7 @@ export class GraphEngine {
     }
 
     this.recomputeMetrics();
-    this.relayout();
+    this.relayout({ fit: wasEmpty });
     this.notify('graph');
   }
 
