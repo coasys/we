@@ -553,8 +553,9 @@ export const storeEntries: StoreEntry[] = [
     state: {
       activeShellView: { type: 'string' },
       createSpaceOpen: { type: 'boolean' },
+      joinSpaceOpen: { type: 'boolean' },
     },
-    actions: ['openShellView', 'closeShellView', 'setCreateSpaceOpen', 'scrollToId'],
+    actions: ['openShellView', 'closeShellView', 'setCreateSpaceOpen', 'setJoinSpaceOpen', 'scrollToId'],
   },
   {
     name: 'appStore',
@@ -1508,6 +1509,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing',
         createSpaceOpen:
           'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
+        joinSpaceOpen:
+          'boolean — the join-a-space dialog is open, where somebody pastes an address they were sent. Shell state for createSpaceOpen’s reason, opened from the same two places. It exists because a share link only opens itself on the web: a desktop build has no address bar and registers no protocol handler, so an address arriving by any other route needs somewhere to go',
         dockGeometry:
           "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
@@ -1605,6 +1608,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL',
         setCreateSpaceOpen:
           '(open: boolean): opens or closes the create-space modal. Shell state rather than a page\u2019s $localState because more than one place opens it — the settings page and the sidebar\u2019s spaces group — and a page-scoped flag could only be set from inside that page',
+        setJoinSpaceOpen:
+          '(open: boolean): opens or closes the join-a-space dialog, where somebody pastes an address they were sent. Asking for the dialog is not joining anything — spaceStore.joinSpace is where that decision is taken and keeps its own grant. Shell state for setCreateSpaceOpen’s reason, and offered beside it: the sidebar’s spaces group offers the pair behind one +',
         closeShellView: '(): closes the currently open shell overlay',
         toggleSpaceSettings:
           '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',

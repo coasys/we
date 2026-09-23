@@ -779,65 +779,38 @@ const modulesSection: SchemaNode = {
   ],
 };
 
-const createSpaceButton: SchemaNode = {
-  type: 'we-button',
-  props: {
-    text: 'Create New Space',
-    variant: 'primary',
-    height: '40px',
-    onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
-  },
-};
-
 /**
- * Join a space someone sent you.
+ * The two ways a space gets into the list above, as a pair.
  *
- * On the web a share link is a URL the browser can open, and the space gate takes it from there.
- * Nothing else has an address bar, so a desktop build needs somewhere to put the thing you were
- * sent — this is that place. `joinSpace` accepts a full URL, a `neighbourhood://` URI or a bare
- * id, so whichever form the link arrived in is the form that works.
+ * They were a primary button and, under it, a labelled input with a Join beside it — two different
+ * shapes for two halves of one question, and the second of them a second copy of a form the sidebar
+ * now also needs. Both are dialogs held by the shell, so both are buttons here and there is one
+ * join form in the app rather than two that can drift.
+ *
+ * Joining is `secondary`: creating is the thing somebody arrives at this page to do, and an address
+ * you were sent is more often pasted from the sidebar, which is where it is now offered.
  */
-const joinSpaceByLink: SchemaNode = {
-  type: 'Column',
-  props: { gap: '200' },
-  $localState: { joinLink: { type: 'string', initial: '' }, joining: { type: 'boolean', initial: false } },
+const spaceActions: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', ay: 'center', wrap: true },
   children: [
-    { type: 'we-text', props: { variant: 'label' }, children: ['Join with a link'] },
     {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', wrap: true },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            flex: '1',
-            value: { $: 'local.joinLink' },
-            placeholder: 'Paste a space link or neighbourhood:// address',
-            disabled: { $: 'local.joining' },
-            onInput: { $setLocal: 'joinLink', value: { $: 'event.detail' } },
-          },
-        },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'secondary',
-            // Gated on having typed something rather than on validation: whether an address
-            // resolves is only knowable by trying it, so the button asks rather than predicts.
-            disabled: { $: '!local.joinLink || local.joining' },
-            loading: { $: 'local.joining' },
-            onClick: [
-              { $setLocal: 'joining', value: true },
-              {
-                $action: 'spaceStore.joinSpace',
-                args: [{ $: 'local.joinLink' }],
-                onSuccess: [{ $setLocal: 'joinLink', value: '' }],
-                onFinally: [{ $setLocal: 'joining', value: false }],
-              },
-            ],
-          },
-          children: ['Join'],
-        },
-      ],
+      type: 'we-button',
+      props: {
+        text: 'Create New Space',
+        variant: 'primary',
+        height: '40px',
+        onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+      },
+    },
+    {
+      type: 'we-button',
+      props: {
+        text: 'Join a Space',
+        variant: 'secondary',
+        height: '40px',
+        onClick: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+      },
     },
   ],
 };
@@ -963,8 +936,7 @@ export const settingsTemplate: TemplateSchema = {
       path: '/spaces',
       ...page([
         spacesListSection,
-        createSpaceButton,
-        joinSpaceByLink,
+        spaceActions,
         // Below the spaces themselves: it is about all of this data at once, and it is the one
         // control here that writes a file rather than changing what is on screen.
         backup,

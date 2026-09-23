@@ -6631,6 +6631,9 @@
         "createSpaceOpen": {
           "type": "boolean"
         },
+        "joinSpaceOpen": {
+          "type": "boolean"
+        },
         "pendingDestructive": {
           "type": "object"
         },
@@ -6702,6 +6705,7 @@
         "openShellView",
         "closeShellView",
         "setCreateSpaceOpen",
+        "setJoinSpaceOpen",
         "confirmDestructive",
         "cancelDestructive",
         "toggleSpaceSettings",

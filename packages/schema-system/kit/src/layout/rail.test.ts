@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { railButton } from './rail.ts';
+import { railButton, railGroup } from './rail.ts';
 
 type Node = { type: string; props?: Record<string, unknown>; children?: Node[] };
 
@@ -32,5 +32,53 @@ describe('a rail button', () => {
     expect(swap.props?.condition).toBe(busy);
     expect((swap.props?.then as Node).type).toBe('we-spinner');
     expect(swap.props?.else).toEqual({ type: 'we-icon', props: { name: 'sparkle' } });
+  });
+});
+
+/**
+ * A group heading's action, in both the forms it can be given.
+ *
+ * The object form is the one every caller used while there was only one; the node form arrived when
+ * the spaces group needed `+` to offer two things — create a space, or join one — which is a menu,
+ * and there is no honest way to write a menu as `{ icon, label, onClick }`.
+ */
+describe('a rail group’s heading action', () => {
+  /** The action sits inside an `$if` on the rail being expanded — there is no room for it collapsed. */
+  const actionOf = (group: Node) => {
+    const json = JSON.stringify(group);
+    return { json, group };
+  };
+
+  it('expands the short form into a labelled icon button', () => {
+    // A store-free handler, because this package is the portable tier and names no store — the
+    // real caller passes one in. `portable.test.ts` checks the tests too, which is how it should be.
+    const onClick = { $setLocal: 'addOpen', value: true };
+    const { json } = actionOf(
+      railGroup({
+        id: 'spaces',
+        label: 'Spaces',
+        action: { icon: 'plus', label: 'Add', onClick },
+        children: [],
+      }) as Node,
+    );
+
+    expect(json).toContain('"we-tooltip"');
+    expect(json).toContain('"name":"plus"');
+    // The accessible name too, not only the tooltip: an icon-only button has no visible word to
+    // serve as one, and a tooltip is not a label.
+    expect(json).toContain('"label":"Add"');
+  });
+
+  it('places a node as it was given, so a heading can offer more than one thing', () => {
+    const menu = {
+      type: 'DropdownMenu',
+      props: { triggerIcon: 'plus', items: [{ id: 'join', label: 'Join a space' }] },
+    };
+    const { json } = actionOf(railGroup({ id: 'spaces', label: 'Spaces', action: menu, children: [] }) as Node);
+
+    expect(json).toContain('"DropdownMenu"');
+    expect(json).toContain('"Join a space"');
+    // And it is not wrapped in the icon-button treatment, which would put a button inside a button.
+    expect(json).not.toContain('"we-tooltip"');
   });
 });

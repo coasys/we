@@ -187,13 +187,56 @@ const rail: SchemaNode = railShell({
       // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
       // Solid reaches from `onReorder` by lowercasing — a listener named `we-reorder` never fires.
       onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
-      // Creating a space used to mean going to Settings first, which is a long way round for the
-      // thing this group is a list of. The modal is shell chrome, so opening it from here and from
-      // Settings reaches the same one.
+      /*
+        The two ways a space gets into this list, behind one `+`.
+
+        Creating one used to mean going to Settings first, which is a long way round for the thing
+        this group is a list of. Joining one was worse: on the web a share link is self-executing —
+        the URL *is* the invitation — but a desktop build has no address bar and registers no
+        protocol handler, so an address somebody was sent could only be used by knowing to look in
+        Settings → Spaces & data. Both dialogs are shell chrome, so opening them from here and from
+        Settings reaches the same one.
+
+        A menu rather than two icons: this heading is narrow, a second glyph crowds the label, and
+        "add something to this group" is one idea with two answers. It costs creating a space a
+        second click, which is the right trade for making joining discoverable at all — both are
+        rare, and one of them was previously unreachable from here.
+      */
       action: {
-        icon: 'plus',
-        label: 'Create a space',
-        onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+        type: 'DropdownMenu',
+        props: {
+          triggerIcon: 'plus',
+          triggerVariant: 'ghost',
+          triggerTitle: 'Add a space',
+          // Matching what the object form of `action` draws, so this heading stays the same height
+          // as every other group's — see `railGroup`.
+          size: 'sm',
+          itemSize: 'sm',
+          placement: 'right-start',
+          items: [
+            { id: 'create', label: 'Create a space', icon: 'plus' },
+            { id: 'join', label: 'Join a space', icon: 'link' },
+          ],
+          /*
+            One handler over `arg.id`, rather than a handler per item: `DropdownMenu` reports which
+            entry was chosen, and two `$if`s reading that is the shape every other menu in the app
+            uses. Flat, so each condition is one sentence.
+          */
+          onSelect: [
+            {
+              $if: {
+                condition: { $: "arg.id == 'create'" },
+                then: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+              },
+            },
+            {
+              $if: {
+                condition: { $: "arg.id == 'join'" },
+                then: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+              },
+            },
+          ],
+        },
       },
       children: [
         {

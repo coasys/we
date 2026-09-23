@@ -983,6 +983,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       user's behalf.
     */
     setCreateSpaceOpen: action('navigation'),
+    joinSpaceOpen: state('space-admin'),
+    /*
+      And the same for the join dialog, by exactly the same argument: asking for chrome's own dialog
+      is not joining anything. `spaceStore.joinSpace` is where that decision is actually taken, and
+      it keeps its own grant — a template that could join a space on the user's behalf could add
+      them to a stranger's neighbourhood without a word.
+    */
+    setJoinSpaceOpen: action('navigation'),
     /*
       The host's delete confirmation.
 

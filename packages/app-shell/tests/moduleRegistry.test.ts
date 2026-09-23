@@ -73,6 +73,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:consentSecret',
       'core:removeAccount',
       'core:createSpace',
+      'core:joinSpace',
       'core:namePrompt',
       'core:installPrompt',
       'core:destructivePrompt',

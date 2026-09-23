@@ -2613,6 +2613,7 @@ export const contextData: ContextData = {
       state: {
         activeShellView: { type: 'string' },
         createSpaceOpen: { type: 'boolean' },
+        joinSpaceOpen: { type: 'boolean' },
         pendingDestructive: { type: 'object' },
         spaceSettingsOpen: { type: 'boolean' },
         spaceSettingsTab: { type: 'string' },
@@ -2640,6 +2641,7 @@ export const contextData: ContextData = {
         'openShellView',
         'closeShellView',
         'setCreateSpaceOpen',
+        'setJoinSpaceOpen',
         'confirmDestructive',
         'cancelDestructive',
         'toggleSpaceSettings',

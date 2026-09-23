@@ -199,6 +199,19 @@ export interface ShellStore {
   createSpaceOpen: Accessor<boolean>;
   setCreateSpaceOpen: (open: boolean) => void;
   /**
+   * Whether the join-a-space dialog is open.
+   *
+   * Shell state for exactly `createSpaceOpen`'s reason, and opened from the same two places — the
+   * settings page and the `+` on the sidebar's spaces group, which offers the pair.
+   *
+   * It exists at all because a share link is only self-executing on the web. In a browser the URL
+   * *is* the invitation: it opens, and the space gate takes over. A desktop build has no address
+   * bar and registers no protocol handler, so an address somebody was sent has nowhere to go —
+   * which left joining a space something you could only do by finding it in settings.
+   */
+  joinSpaceOpen: Accessor<boolean>;
+  setJoinSpaceOpen: (open: boolean) => void;
+  /**
    * The destructive action a template just asked for, waiting on a person's answer — or null.
    *
    * ## Why the host owns this rather than each template
@@ -908,6 +921,7 @@ export function ShellStoreProvider(props: ParentProps) {
    */
   const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
+  const [joinSpaceOpen, setJoinSpaceOpen] = createSignal(false);
   const [spaceSettingsOpen, setSpaceSettingsOpen] = createSignal(false);
   // Where the panel starts, for a caller that knows which setting it is sending somebody to. Not a
   // controlled value — see `spaceSettingsTab`.
@@ -2664,6 +2678,8 @@ export function ShellStoreProvider(props: ParentProps) {
     closeShellView: () => setActiveShellView(null),
     createSpaceOpen,
     setCreateSpaceOpen,
+    joinSpaceOpen,
+    setJoinSpaceOpen,
     pendingDestructive,
     confirmDestructive: () => settleDestructive(true),
     cancelDestructive: () => settleDestructive(false),
