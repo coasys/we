@@ -67,7 +67,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, NewRecord } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -90,7 +90,7 @@ import {
   DEFAULT_TASK_STATES,
   type FileData,
   FOLLOW_SPACE,
-  getEntitiesForPerspective,
+  getEntityForDataset,
   type InvolvementSemantic,
   InvolvementType,
   LocationBlock,
@@ -1563,7 +1563,23 @@ export function SpaceStoreProvider(props: ParentProps) {
       const locationRecord = await LocationBlock.create(dataset, location);
       await spaceRecord.setLocation(locationRecord);
     }
-    return spaceRecord;
+    /*
+      Read back, with the one relation this record's readers read.
+
+      A create answers with the row it wrote and none of its relations (see `NewRecord`) — and the
+      location is linked *after* the create, so what the create returned could not carry one even in
+      principle. Both callers put the result straight into `mySpaces`, and `spaceList` reads
+      `space.location` off those rows: a space made with a place on it showed none until the next
+      launch, because nothing re-reads `mySpaces` after boot.
+
+      `loadSpaces` asks for exactly this include, which is the other half of the same answer — the
+      two paths into `mySpaces` now agree about what a row carries.
+    */
+    const readBack = await Space.findOne(dataset, { where: { id: spaceRecord.id }, include: { location: true } });
+    // Nothing to do if the read-back fails after a create that did not: the space exists, and what
+    // the create answered with is what this function used to return. Degrades to the old behaviour —
+    // a location that appears on the next launch — rather than failing a space that was written.
+    return readBack ?? (spaceRecord as Space);
   }
 
   async function createSpace(
@@ -2645,7 +2661,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * decision, and an export that answered it differently would disagree with what the model was shown.
    */
   async function callTranscript(p: DatasetProxy, callId: string) {
-    const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+    const modelFor = (entity: string) => getEntityForDataset(entity, p);
     const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
     const turns = predicate
       ? await gatherTranscriptTurns(
@@ -3101,7 +3117,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    * state, and never a side effect of naming a different one. Answers null for a slug that is
    * neither a record nor a default.
    */
-  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<TaskState | null> {
+  // `NewRecord`, because a caller wants a record to *act on* — rename it, withdraw it, put it in an
+  // order — and one of the two ways this answers is a create, which carries no relations. Nothing
+  // here reads one; `save` and `delete` survive, being the record's own and not a relation's.
+  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<NewRecord<TaskState> | null> {
     const existing = await TaskState.findAll(p, { where: { slug } }).catch(() => [] as TaskState[]);
     if (existing.length) return dedupeBySlug(existing)[0] ?? null;
     const fallback = DEFAULT_TASK_STATES.find((d) => d.slug === slug);
@@ -4981,9 +5000,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     const current = untrack(datasetStore.currentDataset);
     if (current?.id === ds.id) return;
+    /*
+      A switch the address asked for publishes only if the address still asks for it.
+
+      `navigateToSpace` switches the dataset first and navigates second, so for a moment the stores
+      describe the new space while the URL still names the old one. A template that redirects its own
+      unknown addresses — Workshop's catch-all sends `/space/<old>/about` to `./canvas` — rewrites the
+      *old* space's address in that moment, and this effect read the rewrite as the reader asking for
+      the old space back. The switch it started was several round trips long; by the time it landed
+      the navigate had put the URL on the new space, and it published anyway: the previous space's
+      data and template under the current space's URL, with nothing left to match the route and
+      nothing to move it — the section guard rightly refuses to correct an address about a space it
+      is not reading from.
+
+      So the switch is told how to check, at the last moment, that the URL it was started from is
+      still the URL. Untracked, because the check runs inside the switch and not in this effect.
+    */
+    const stillAddressed = () => {
+      const now = untrack(routeStore.segments);
+      return now[0] === 'space' && datasetAddressedBy(ds, now[1] ?? '');
+    };
     void (async () => {
       await templateStore.preloadSpaceTemplates(ds);
-      await datasetStore.switchDataset(ds.id);
+      await datasetStore.switchDataset(ds.id, { stillWanted: stillAddressed });
     })();
   });
 
@@ -5009,7 +5048,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getEntitiesForPerspective('Community', ds.handle) as any;
+    const CommunityClass = getEntityForDataset('Community', ds.handle) as any;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;

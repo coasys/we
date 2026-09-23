@@ -147,6 +147,17 @@ defineFunction({
 });
 
 defineFunction({
+  name: 'reverse',
+  category: 'list',
+  params: ['items'],
+  doc:
+    'The entries of a list, back to front. A new list — the one given is untouched, so a store array ' +
+    'or a query result can be reversed without disturbing anything else reading it.',
+  example: 'reverse(local.utterances)',
+  impl: ([items]) => [...asList(items)].reverse(),
+});
+
+defineFunction({
   name: 'filter',
   category: 'list',
   params: ['items', 'where', 'limit?'],

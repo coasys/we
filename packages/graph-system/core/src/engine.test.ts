@@ -2041,3 +2041,141 @@ describe('GraphEngine folding', () => {
     }
   });
 });
+
+/**
+ * A load that has been replaced has nothing to say about what is on screen now.
+ *
+ * `refresh` serialises itself, but nothing serialised a `refresh` against a `start` — so switching
+ * canvases while a refresh was in flight left the older load to finish afterwards and reconcile its
+ * rows into the graph that had replaced it. Rare, silent, and indistinguishable from the backend
+ * having answered about the wrong canvas.
+ */
+describe('a superseded load', () => {
+  /** A seed that answers when told to, so two loads can be held open at once. */
+  function gatedSeed(): { source: SeedSource; release: (label: string) => void; waiting: () => number } {
+    const gates: { label: string; go: () => void }[] = [];
+    let current = 'first';
+    return {
+      waiting: () => gates.length,
+      release: (label: string) => {
+        const gate = gates.find((g) => g.label === label);
+        gate?.go();
+      },
+      source: {
+        id: 'test',
+        async seed() {
+          const label = current;
+          current = 'second';
+          await new Promise<void>((resolve) => gates.push({ label, go: resolve }));
+          return {
+            nodes: [{ id: `${label}-node`, kind: 'entity' as const, type: 'Thing', label }],
+            edges: [],
+          };
+        },
+      },
+    };
+  }
+
+  it('does not reconcile its rows into the graph that replaced it', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // Two loads open at once: the first still waiting when the second begins.
+    const first = engine.start();
+    await Promise.resolve();
+    const second = engine.start();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    // The replacement answers first and lands; the one it replaced answers afterwards.
+    gate.release('second');
+    await second;
+    gate.release('first');
+    await first;
+
+    const ids = [...engine.store.nodes()].map((n) => n.id);
+    expect(ids, 'the older load overwrote the newer one').toEqual(['second-node']);
+  });
+
+  it('hands the seed a signal, so its reads can stop when it is replaced', async () => {
+    /*
+      Every seed here takes an `AbortSignal` and threads it through each of its reads — the canvas
+      seed has done so since it was written — and nothing ever passed one, so the whole of that
+      plumbing was dead and a superseded load's queries all ran to completion. On a canvas that is
+      eleven reads nobody is waiting for.
+    */
+    const seen: (AbortSignal | undefined)[] = [];
+    const registry = new PluginRegistry({
+      seeds: [
+        {
+          id: 'test',
+          async seed(_options, _context, signal) {
+            seen.push(signal);
+            return { nodes: [], edges: [] };
+          },
+        },
+      ],
+      layouts,
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    await engine.start();
+    expect(seen[0], 'the seed was called without a signal').toBeInstanceOf(AbortSignal);
+    expect(seen[0]?.aborted, 'the load that is running is not aborted').toBe(false);
+
+    await engine.start();
+    expect(seen[0]?.aborted, 'starting again did not abort the load it replaced').toBe(true);
+  });
+
+  /*
+    Dropping a replaced load also drops the framing it owed, and nothing else was going to do it.
+
+    `start` is the only caller that asks for a fit, and it gives up before asking when its load has
+    been replaced. `resize` re-frames on a first measurement, which on a cold boot happens seconds
+    before any row arrives and so finds no positions to frame. So a refresh landing while the first
+    load was in flight left a whole canvas at the origin — which reads as cards missing rather than
+    as a camera that was never moved.
+  */
+  it('frames the graph the load it replaced was going to frame', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // The renderer measures itself on mount, before the seeds have answered.
+    engine.resize(800, 600);
+    expect(engine.viewport.get(), 'nothing to frame yet').toMatchObject({ x: 0, y: 0, zoom: 1 });
+
+    // A marker arriving from elsewhere refreshes while the first load is still out.
+    const start = engine.start();
+    await Promise.resolve();
+    const refresh = engine.refresh();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    gate.release('second');
+    await refresh;
+    gate.release('first');
+    await start;
+
+    const camera = engine.viewport.get();
+    expect(camera.x === 0 && camera.y === 0, 'the graph was left at the origin').toBe(false);
+  });
+
+  it('still leaves the camera alone when it merges into a graph already on screen', async () => {
+    // The other half of the rule, and the reason it is written as "the screen was empty" rather
+    // than "this is a refresh": a viewport that jumped whenever a peer wrote something would make
+    // a shared graph unusable.
+    const registry = new PluginRegistry({ seeds: [seedOf(4)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.behaviourContext().pan(120, 90);
+    const panned = { ...engine.viewport.get() };
+
+    await engine.refresh();
+
+    expect(engine.viewport.get().x).toBe(panned.x);
+    expect(engine.viewport.get().y).toBe(panned.y);
+  });
+});

@@ -40,7 +40,9 @@ function makeStore() {
  * flips `enabled` and stops them, and the tile logic asks a video track whether it is live.
  */
 function fakeMicStream() {
-  const tracks = [{ kind: 'audio', enabled: true, readyState: 'live', stop() {} }];
+  // `addEventListener` because a real track has one and the controller now watches for a device
+  // being unplugged mid-call — see `watchForLoss` in media.ts. A fake without it threw on join.
+  const tracks = [{ kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} }];
   return {
     getTracks: () => [...tracks],
     getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
@@ -268,7 +270,15 @@ describe('transport and device lifetime', () => {
    * unregistering during a call — which a hot reload does — dropped the only reference to the live
    * peer connections and the media stream, leaving the camera on with nothing able to close it.
    */
-  function callable(options: { unicast?: string; personal?: boolean; settings?: Record<string, string> } = {}) {
+  function callable(
+    options: {
+      unicast?: string;
+      personal?: boolean;
+      settings?: Record<string, string>;
+      /** What the machine has to capture with, for a test about choosing between them. */
+      devices?: { deviceId: string; kind: 'audioinput' | 'videoinput'; label: string; groupId: string }[];
+    } = {},
+  ) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -290,6 +300,11 @@ describe('transport and device lifetime', () => {
 
     /** The `RTCConfiguration` each peer connection was built with — where the ICE settings land. */
     const configs: RTCConfiguration[] = [];
+    /** Every fake connection the mesh built, so a test can drive one's state. */
+    const connections: {
+      connectionState: RTCPeerConnectionState;
+      onconnectionstatechange: (() => void) | null;
+    }[] = [];
 
     /**
      * Who presence says is in the call.
@@ -299,7 +314,7 @@ describe('transport and device lifetime', () => {
      * build a connection for. `joinedBy` below fills this in and re-runs the reconcile effect, which
      * is what a heartbeat would have done.
      */
-    let roster: { agentId: string; activities: { type: string; id: string }[] }[] = [];
+    let roster: { agentId: string; liveness?: string; activities: { type: string; id: string }[] }[] = [];
 
     const disposers: Array<() => void> = [];
     let created = 0;
@@ -361,11 +376,22 @@ describe('transport and device lifetime', () => {
               with errors about a connection the test never meant to exercise. Negotiation itself is
               `mesh.test.ts`'s subject, against a fake that models the state machine.
             */
-            return {
+            /*
+              Held, and its state settable, so a test can say "this pair dropped".
+
+              The mesh assigns `onconnectionstatechange` and reads `connectionState` off the object,
+              exactly as a browser would drive it — so firing the handler by hand is the whole of
+              modelling a connection that came up and went away, without this file growing a second
+              copy of `mesh.test.ts`'s state machine.
+            */
+            const pc = {
               addTransceiver: () => ({ sender: { replaceTrack: async () => {} } }),
               close: () => {},
-              connectionState: 'new',
-            } as unknown as RTCPeerConnection;
+              connectionState: 'new' as RTCPeerConnectionState,
+              onconnectionstatechange: null as (() => void) | null,
+            };
+            connections.push(pc);
+            return pc as unknown as RTCPeerConnection;
           },
         },
         media: {
@@ -375,6 +401,10 @@ describe('transport and device lifetime', () => {
           },
           publish: (stream: MediaStream | null) => void publishedMedia.push(stream),
           input: () => publishedMedia.at(-1) ?? null,
+          // A machine with nothing to choose between, which is one of the ordinary states the
+          // kernel promises to answer rather than fail for. Tests that care supply their own.
+          enumerateDevices: async () => options.devices ?? [],
+          onDevicesChanged: () => () => {},
         },
       },
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
@@ -393,6 +423,25 @@ describe('transport and device lifetime', () => {
       joinedBy: (agentId: string) => {
         roster = [...roster, { agentId, activities: [{ type: 'call', id: store.callId() ?? '' }] }];
         for (const run of effects) run();
+      },
+      /**
+       * Somebody stops heartbeating, without ever saying they left.
+       *
+       * The shape a closed tab, a crash or a tunnel takes: the presence driver keeps their last
+       * state — activities and all — and only decays its `liveness`, so their entry goes on
+       * asserting "I am in this call" long after they stopped saying so. A clean Leave is the other
+       * path and clears the activity outright.
+       */
+      fadedTo: (agentId: string, liveness: string) => {
+        roster = roster.map((peer) => (peer.agentId === agentId ? { ...peer, liveness } : peer));
+        for (const run of effects) run();
+      },
+      /** The pair that was built last reaches a connection state, as the browser would report it. */
+      connectionBecomes: (state: RTCPeerConnectionState) => {
+        const pc = connections[connections.length - 1];
+        if (!pc) throw new Error('no connection was built — put somebody else in the call first');
+        pc.connectionState = state;
+        pc.onconnectionstatechange?.();
       },
       signOut: () => {
         me = null;
@@ -682,6 +731,119 @@ describe('transport and device lifetime', () => {
 
     expect(() => store.reconnectPeer('did:test:me')).not.toThrow();
     expect(store.tileStates().every((tile: { retrying: boolean }) => !tile.retrying)).toBe(true);
+  });
+
+  /*
+    A peer who stopped heartbeating is not in the call, and used to be for five minutes.
+
+    The presence kernel lends the RAW peer list — everyone seen within `evictAfter` — and carries
+    each one's last-published activities unchanged while only their `liveness` decays. The roster
+    asked which call an activity named and never how long ago it was said, so a closed tab left a
+    tile behind: a frozen last frame under a `disconnected` badge, until eviction five minutes on.
+  */
+  it('drops a peer whose presence has gone offline', async () => {
+    const { store, joinedBy, fadedTo } = callable();
+    await store.startCall();
+    await Promise.resolve();
+
+    joinedBy('did:someone');
+    expect(store.tiles().map((tile: { id: string }) => tile.id)).toContain('did:someone');
+
+    fadedTo('did:someone', 'offline');
+    expect(
+      store.tiles().map((tile: { id: string }) => tile.id),
+      'a peer who stopped heartbeating an hour ago is not on the stage',
+    ).not.toContain('did:someone');
+  });
+
+  /*
+    But not sooner than that, because this roster also drives `mesh.setRoster`.
+
+    Dropping somebody here closes their peer connection, so cutting at `stale` would tear down a pair
+    after thirty seconds of missed heartbeats that the mesh's own repair ladder is still working on —
+    and a flaky network would be evicted and renegotiated rather than repaired. `offline` is also the
+    cut the host already makes for `presenceStore.calls`, so the stage and the calls panel agree.
+  */
+
+  /**
+   * The device list is populated without anybody joining a call.
+   *
+   * It was filled only by `join` and by the call bar's sheet, so the settings page — which draws the
+   * same chooser inline and calls neither — rendered against an empty list and reported that the
+   * machine had no microphone, on a machine with several. The two surfaces disagreed about the
+   * hardware, which is a thing neither of them decides.
+   */
+  describe('what the module knows about devices before a call', () => {
+    it('asks the host at construction, so a chooser opened cold has something in it', async () => {
+      const { store } = callable({
+        devices: [
+          { deviceId: 'mic-1', kind: 'audioinput', label: 'Headset', groupId: 'g1' },
+          { deviceId: 'cam-1', kind: 'videoinput', label: 'Webcam', groupId: 'g2' },
+        ],
+      });
+      // The enumeration is a promise the constructor does not await — a store cannot be async — so the
+      // first answer lands a microtask later, which is exactly what a reader waits for too.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(store.microphones().map((device: { deviceId: string }) => device.deviceId)).toEqual(['mic-1']);
+      expect(store.cameras().map((device: { deviceId: string }) => device.deviceId)).toEqual(['cam-1']);
+    });
+
+    it('has not probed until something asks, so an empty list is not read as an empty machine', async () => {
+      const { store } = callable();
+      await Promise.resolve();
+
+      expect(store.devicesProbed(), 'enumerating is not the same as being allowed to').toBe(false);
+    });
+
+    it('counts joining a call as having asked', async () => {
+      // A call acquires devices, so whatever the list says afterwards is a fact about the machine
+      // rather than about permission.
+      const { store } = callable();
+      await store.startCall();
+      await Promise.resolve();
+
+      expect(store.devicesProbed()).toBe(true);
+    });
+  });
+
+  it('keeps a peer who is merely stale, whose connection the mesh is still repairing', async () => {
+    const { store, joinedBy, fadedTo } = callable();
+    await store.startCall();
+    await Promise.resolve();
+
+    joinedBy('did:someone');
+    fadedTo('did:someone', 'stale');
+
+    expect(store.tiles().map((tile: { id: string }) => tile.id)).toContain('did:someone');
+  });
+
+  /*
+    A connection that dropped is not a connection still arriving.
+
+    `connecting` covers the window between somebody joining and their picture landing, and it used to
+    exclude only `failed`. That was survivable while a picture that stopped arriving went on counting
+    as a picture — a departed peer sat there frozen rather than claiming to be on their way. Now that
+    a muted track reads as no picture, the same expression would put "Connecting…" under somebody who
+    has just left, which is a worse answer than the frozen frame was.
+  */
+  it('stops calling a peer "connecting" once their connection has dropped', async () => {
+    const { store, joinedBy, connectionBecomes } = callable();
+    await store.startCall();
+    await Promise.resolve();
+
+    joinedBy('did:someone');
+    const stateOf = () =>
+      store.tileStates().find((tile: { id: string }) => tile.id === 'did:someone') as
+        { connecting: boolean } | undefined;
+
+    // Nothing has negotiated yet, and their roster entry says they want to be seen: this is exactly
+    // the window the flag exists for.
+    expect(stateOf()?.connecting, 'a peer with no connection yet is still arriving').toBe(true);
+
+    connectionBecomes('disconnected');
+    expect(stateOf()?.connecting, 'a pair that dropped is not a pair on its way').toBe(false);
   });
 });
 

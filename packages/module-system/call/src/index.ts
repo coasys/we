@@ -36,6 +36,7 @@ import { defineModule, type ModuleHost } from '@we/module-shared';
 import { peopleTooltip } from '@we/schema-kit';
 import { expr, type SchemaNode } from '@we/schema-shared';
 
+import { deviceSettings, deviceSettingsModal } from './DeviceSettings.schema';
 import { devPeersAvailable } from './devPeers';
 import { createCallStore } from './store';
 
@@ -559,24 +560,126 @@ const tile: SchemaNode = {
               },
             },
             /**
-             * Click anyone to give them the stage; click them again to go back to an even grid.
+             * The tile's own controls, and the hover state that reveals them.
              *
-             * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
-             * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
-             * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
-             * order so those stay readable, and above the video so the whole picture is the target.
+             * One box over the whole picture holding both the click target and the reconnect button, so
+             * that pointing anywhere at the video brings the button up — see the note on the button
+             * itself for why that could not be done with the button alone.
+             *
+             * `opacity` on a parent composites its whole subtree, and the click target inside is the
+             * `bare` variant, which paints nothing — so fading this box fades exactly one visible thing.
+             * The badges are deliberately *outside* it: a name and "Reconnecting…" are not controls and
+             * must not dim, and a child cannot exceed its parent's opacity, so keeping them legible means
+             * keeping them out rather than setting `opacity: 1` on them.
+             *
+             * `focusProps` is what keeps the keyboard path open: the shared focus selector matches
+             * `:has(:focus-visible)`, so tabbing onto either button inside brings the box to full opacity
+             * rather than leaving a focus ring at 35%.
              */
             {
-              type: 'we-button',
+              type: 'Column',
               props: {
-                variant: 'bare',
                 position: 'absolute',
                 top: '0',
+                right: '0',
+                bottom: '0',
                 left: '0',
-                width: '100%',
-                height: '100%',
-                onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
+                opacity: expr`${stateOf('failed')} || ${stateOf('retrying')} ? 1 : 0.35`,
+                hoverProps: { opacity: 1 },
+                focusProps: { opacity: 1 },
               },
+              children: [
+                /**
+                 * Click anyone to give them the stage; click them again to go back to an even grid.
+                 *
+                 * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
+                 * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
+                 * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
+                 * order so those stay readable, and above the video so the whole picture is the target.
+                 */
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'bare',
+                    position: 'absolute',
+                    top: '0',
+                    left: '0',
+                    width: '100%',
+                    height: '100%',
+                    onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
+                  },
+                },
+                /**
+                 * Build this one connection again, without leaving the call.
+                 *
+                 * The honest bottom of the recovery ladder. Everything above it is the mesh repairing
+                 * itself and most of the time that is enough; this is what is left when it is not, and
+                 * the alternative people were using is leaving the call and rejoining — which takes
+                 * everyone's picture down to fix one pair, and briefly tells the whole room you left.
+                 *
+                 * ## Why it is not gated on the connection looking broken
+                 *
+                 * A pair can be `connected` and useless: one-way audio, a picture that froze a minute
+                 * ago, a stream that never recovered from a laptop lid. Offering the button only in the
+                 * states WebRTC admits to would be the app insisting that what somebody is plainly
+                 * looking at is fine. It is faint on state instead — always reachable, never in the way.
+                 *
+                 * ## Why it sits in the bottom corner rather than the middle of the picture
+                 *
+                 * It used to be pinned to the top right, which put it over the one part of a tile that
+                 * is reliably somebody's face. The bottom strip is already chrome — the name and the
+                 * status badges live there — so the button lands in the row that is *for* this, at the
+                 * far end of it from the name. Both are `size: 'xs'` and so exactly one
+                 * `--we-component-height-xs` tall, which is why a shared `bottom` lines them up with no
+                 * arithmetic.
+                 *
+                 * ## Why the fade is on the box above and not here
+                 *
+                 * Zero opacity was never available: a control at zero has to be revealed by hovering
+                 * something *else*, and hovering the button itself cannot reveal it, because you cannot
+                 * point at what you cannot see. The earlier fix was to keep it faint and reveal it on its
+                 * own hover — which works, and asks somebody to find a 35%-opacity glyph before they know
+                 * it is there.
+                 *
+                 * Hovering the *tile* is the discoverable version, and a schema can express it after all:
+                 * not as an `$if` on a hover state (a tile has none to read, and remounting a node over
+                 * the video on every pointer move would be worse than the problem), but as `opacity` on a
+                 * box that covers the picture. `--we-ds-*` custom properties are declared
+                 * `inherits: false`, so a parent's `hoverProps` cannot reach in and restyle a child — but
+                 * it does not need to, because opacity composites the subtree on its own.
+                 *
+                 * Deliberately *not* on your own tile: there is no connection to yourself, and a control
+                 * that did nothing would be worse than no control.
+                 */
+                {
+                  type: '$if',
+                  props: {
+                    condition: expr`!tile.isSelf`,
+                    then: {
+                      type: 'we-tooltip',
+                      props: { content: 'Reconnect to this person', placement: 'top' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'secondary',
+                            size: 'xs',
+                            square: true,
+                            position: 'absolute',
+                            bottom: '200',
+                            right: '200',
+                            // A repair already running is not a reason to hide it, but it is a reason to
+                            // say something is happening rather than inviting a second press.
+                            loading: stateOf('retrying'),
+                            onClick: { $action: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
             },
             {
               type: 'Row',
@@ -718,72 +821,6 @@ const tile: SchemaNode = {
                   },
                 },
               ],
-            },
-            /**
-             * Build this one connection again, without leaving the call.
-             *
-             * The honest bottom of the recovery ladder. Everything above it is the mesh repairing
-             * itself and most of the time that is enough; this is what is left when it is not, and
-             * the alternative people were using is leaving the call and rejoining — which takes
-             * everyone's picture down to fix one pair, and briefly tells the whole room you left.
-             *
-             * ## Why it is not gated on the connection looking broken
-             *
-             * A pair can be `connected` and useless: one-way audio, a picture that froze a minute
-             * ago, a stream that never recovered from a laptop lid. Offering the button only in the
-             * states WebRTC admits to would be the app insisting that what somebody is plainly
-             * looking at is fine. It is hidden on hover instead of on state — always reachable,
-             * never in the way.
-             *
-             * Deliberately *not* on your own tile: there is no connection to yourself, and a control
-             * that did nothing would be worse than no control.
-             */
-            {
-              type: '$if',
-              props: {
-                condition: expr`!tile.isSelf`,
-                then: {
-                  type: 'we-tooltip',
-                  props: { content: 'Reconnect to this person', placement: 'left' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'secondary',
-                        size: 'xs',
-                        square: true,
-                        position: 'absolute',
-                        top: '200',
-                        right: '200',
-                        /*
-                          Faint until it is wanted, and never invisible.
-
-                          Zero opacity was the obvious choice and is the wrong one here. A control at
-                          zero has to be revealed by hovering something *else* — the picture — which
-                          a schema cannot express: a tile has no hover state to read, and `$if` on
-                          one would remount a node over the video on every pointer move. Hovering the
-                          button itself cannot reveal it either, because you cannot point at what you
-                          cannot see.
-
-                          Faint solves the mechanics and is the better design anyway. This is the
-                          control for the moment everything else has failed, and a control nobody
-                          knows exists is one nobody reaches for then — so it sits quietly in the
-                          corner until it is pointed at, and stops being quiet the moment the
-                          connection is in trouble.
-                        */
-                        opacity: expr`${stateOf('failed')} || ${stateOf('retrying')} ? 1 : 0.35`,
-                        hoverProps: { opacity: 1 },
-                        focusProps: { opacity: 1 },
-                        // A repair already running is not a reason to hide it, but it is a reason to
-                        // say something is happening rather than inviting a second press.
-                        loading: stateOf('retrying'),
-                        onClick: { $action: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
-                    },
-                  ],
-                },
-              },
             },
           ],
         },
@@ -1250,6 +1287,24 @@ const moreMenu: SchemaNode = {
       // Solo is only offered while something is focused. On the entry rather than around it: an
       // entry carries a handler, which no value expression can hold — see `hidden` on the menu.
       { ...menuToggle(SOLO), hidden: { $: "surface.tier != 'base' || !modules.call.focusedId" } },
+      {
+        /*
+          Which microphone and camera this agent is sending.
+
+          In the menu rather than beside the mute button, and the distinction the bar's own docblock
+          draws is why: mute and camera never fold, because "a menu between a person and their
+          microphone is a step too many". Choosing a *device* is not that — it is a thing done once
+          and then forgotten, usually before anybody notices it was wrong, and it costs a press to
+          reach rather than a press to use.
+
+          Never hidden. The two entries above fold away when the row is roomy because the row is
+          showing them itself; this one has no counterpart in the bar at any width.
+        */
+        id: 'devices',
+        label: 'Camera and microphone…',
+        icon: 'sliders-horizontal',
+        onAction: { $action: 'modules.call.openDeviceSettings' },
+      },
       {
         /*
           Start a second call from inside one — a breakout, a different subject.
@@ -1878,7 +1933,7 @@ export const callModule = defineModule({
   // ── What it puts in front of a person ────────────────────────────────────
   contributes: {
     // Named fragments an interface places. Public API — see the note on `ModuleContributions.parts`.
-    parts: { anchoredCallButton, continueCallButton, startCallButton, tile },
+    parts: { anchoredCallButton, continueCallButton, deviceSettings, startCallButton, tile },
 
     // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
     // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
@@ -1944,6 +1999,12 @@ export const callModule = defineModule({
         the shell is, which is the property the sound needs and the panel deliberately does not have.
       */
       { anchor: 'dock-bottom', node: audioSink, order: 60 },
+      /*
+        The device chooser, as chrome for the same reason the sound is: it is opened from the call
+        bar and from a settings page, and neither of those can own a dialog the other also opens.
+        Order above the bar so a sheet is never drawn behind the row that raised it.
+      */
+      { anchor: 'overlay', node: deviceSettingsModal, order: 120 },
     ],
 
     /**

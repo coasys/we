@@ -21,13 +21,7 @@
  * the community's states are, and how a failure reaches a person — arrive as `BoardDeps` rather than
  * as imports.
  */
-import {
-  CollectionBlock,
-  type DatasetProxy,
-  getEntitiesForPerspective,
-  runEntityTransaction,
-  Space,
-} from '@we/entities';
+import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
 
@@ -316,7 +310,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       // A bare list of ids is native on this backend — it pushes down to a VALUES clause — so this
       // asks "are any of these children tasks?" in one round trip rather than hydrating them all.
       if (!held.length) return '';
-      const Task = getEntitiesForPerspective('TaskBlock', p);
+      const Task = getEntityForDataset('TaskBlock', p);
       const tasks = await Task?.findAll(p, { where: { id: held }, limit: 1 });
       if (!tasks?.length) return '';
 
@@ -653,9 +647,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         release(toColumnId, 'arranges');
         return;
       }
-      const task = to.slug
-        ? await getEntitiesForPerspective('TaskBlock', p)?.findOne(p, { where: { id: cardId } })
-        : null;
+      const task = to.slug ? await getEntityForDataset('TaskBlock', p)?.findOne(p, { where: { id: cardId } }) : null;
       // The drag decides the state; a staged suggestion for it, if there is one, is superseded rather
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
       // cannot race.
@@ -754,7 +746,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     try {
       const column = await CollectionBlock.findOne(p, { where: { id: columnId } });
       if (!column) return;
-      const Task = getEntitiesForPerspective('TaskBlock', p);
+      const Task = getEntityForDataset('TaskBlock', p);
       if (!Task) return;
       await runEntityTransaction(p, async (tx) => {
         const task = await Task.create(p, { title: title.trim(), ...(column.slug ? { status: column.slug } : {}) }, {

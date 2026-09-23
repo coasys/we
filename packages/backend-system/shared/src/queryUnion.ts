@@ -2,7 +2,7 @@
  * A query over several entities at once — the part of it that is not any backend's business.
  *
  * `entity: ['TaskBlock', 'EventBlock']` asks one question of records of more than one kind: "what did
- * this call produce", "what is on this canvas". A backend answers one entity at a time (AD4M's model
+ * this call produce", "what is on this canvas". A backend answers one entity at a time (model
  * statics are per class; the in-memory engine reads one table), so the renderer asks each and this
  * puts the answers back together as the single list the template asked for.
  *
@@ -50,8 +50,8 @@ export interface EntityRows {
  *   each of N entities always contain the first `limit` of their union. `null` and `undefined` sort
  *   last, which is where the in-memory engine puts them.
  *
- * `id` is read explicitly before spreading, because an AD4M instance exposes it as a prototype
- * getter that a spread does not copy.
+ * `id` is read explicitly before spreading, because a backend's instance may expose it as a
+ * prototype getter that a spread does not copy.
  */
 export function combineEntityRows(
   parts: readonly EntityRows[],

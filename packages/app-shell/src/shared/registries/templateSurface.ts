@@ -397,6 +397,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
   profileStore: {
     profiles: state('identity'),
+    // Host plumbing, not template surface: the narrow read behind `$agent` and the module identity
+    // port. A template that wants one agent writes `$agent`, which fetches a profile it has not got
+    // — this only reads the cache, so exposing it would add a second spelling that silently answers
+    // nothing for anybody who has not been fetched yet.
+    profileFor: WIRING,
     ownProfile: state('identity'),
     ownProfileLoaded: state('identity'),
     fetchProfile: action('identity'),
@@ -978,6 +983,23 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       user's behalf.
     */
     setCreateSpaceOpen: action('navigation'),
+    joinSpaceOpen: state('space-admin'),
+    /*
+      And the same for the join dialog, by exactly the same argument: asking for chrome's own dialog
+      is not joining anything. `spaceStore.joinSpace` is where that decision is actually taken, and
+      it keeps its own grant — a template that could join a space on the user's behalf could add
+      them to a stranger's neighbourhood without a word.
+    */
+    setJoinSpaceOpen: action('navigation'),
+    /*
+      `host-layout`, like the destructive prompt beside it and for the same reason: the *chrome*
+      draws this, and chrome renders at a tier that sees everything, so the classification is about
+      what a space template could reach rather than about where it is used. A template naming these
+      would be drawing its own dialog over a `getDisplayMedia` the host is holding — answering a
+      question about which of somebody's screens to share, on their behalf.
+    */
+    pendingScreenSources: state('host-layout'),
+    chooseScreenSource: action('host-layout'),
     /*
       The host's delete confirmation.
 
@@ -1267,7 +1289,7 @@ const ALWAYS_PRESENT = new Set([
   '$me',
   '$currentDataset',
   '$getEntity',
-  '$getEntitiesForPerspective',
+  '$getEntityForDataset',
   '$queryAdapter',
   '$identities',
   '$ephemeral',

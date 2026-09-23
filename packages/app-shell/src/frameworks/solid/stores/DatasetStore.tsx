@@ -24,7 +24,7 @@ import { getSeed } from '@shared/seedRegistry';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, type DatasetProxy, ExtractionPass, getEntitiesForPerspective } from '@we/entities';
+import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
@@ -116,7 +116,12 @@ export interface DatasetStore {
   marketplaceJoined: Accessor<boolean>;
 
   // Actions
-  switchDataset: (uuid: string) => Promise<void>;
+  /**
+   * Switch to a dataset. `stillWanted` is asked once more, after the round trips and just before the
+   * switch is published; answering false abandons it. For a switch made on behalf of something that
+   * can move on without asking again — the address bar — see the URL effect in SpaceStore.
+   */
+  switchDataset: (uuid: string, options?: { stillWanted?: () => boolean }) => Promise<void>;
   reorderDatasets: (newOrder: string[]) => Promise<void>;
   /** Remove the dataset from the backend and local state. Space-level concerns (e.g. global
    * discovery cleanup) belong to SpaceStore.removeSpace, which calls this. */
@@ -429,7 +434,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate)
           throw new Error('interpretation: this space has no collection schema to read a transcript from');
@@ -505,7 +510,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       proposalsForCollection: async (dataset, collectionId) => {
         const port = session.backendPorts()?.interpretation;
         if (!port) return [];
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         // Unscoped rather than empty when containment cannot be named here: too many suggestions is
         // a nuisance, none is a review surface that looks broken.
@@ -547,7 +552,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate)
           throw new Error('interpretation: this space has no collection schema to read a transcript from');
@@ -577,7 +582,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!port?.reconcile || !dataset) return 0;
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate) return 0;
 
@@ -829,13 +834,20 @@ export function DatasetStoreProvider(props: ParentProps) {
     trace('dataset', 'root:create');
     const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
     await schemas.installRoot(created.handle);
-    const settings = await AgentSettings.create(created.handle, {
+    await AgentSettings.create(created.handle, {
       currentTemplateId: 'default',
       currentThemeId: 'dark',
       defaultThemeId: 'dark',
     });
     setRootDataset(created);
-    setAgentSettings(settings);
+    // Read back rather than holding what the create answered with, which is the same thing the
+    // `existing` branch above does one screen up. This signal lives for the life of the app and its
+    // relations *are* read — `installedTemplates` and `installedThemes` decide which custom
+    // templates and themes the pickers show — and a create's answer carries none (see `NewRecord`).
+    // Held, the very first session after an account is made would install a template and go on
+    // reading an empty list, so the thing it had just installed never showed as installed.
+    const settings = await AgentSettings.findOne(created.handle);
+    if (settings) setAgentSettings(settings);
     trace('dataset', 'root:created', { id: created.id });
   }
 
@@ -963,7 +975,7 @@ export function DatasetStoreProvider(props: ParentProps) {
    */
   let requestedDataset: string | null = null;
 
-  async function switchDataset(uuid: string): Promise<void> {
+  async function switchDataset(uuid: string, options?: { stillWanted?: () => boolean }): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     requestedDataset = uuid;
@@ -1018,6 +1030,15 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Everything above is a round trip, and the reader may have asked for somewhere else while
       // they ran. Publishing now would overwrite a newer switch with an older answer.
       if (requestedDataset !== uuid) return;
+      /*
+        The other way a switch goes stale: not superseded by a later switch, but by a later
+        *navigation*. `requestedDataset` only knows about switches, so a switch the address bar asked
+        for could not tell that the address had since moved on — and it published anyway, landing the
+        previous space's data under the current space's URL. The caller that can answer "is this
+        still what the address says" is the one that read the address, so it is asked here rather
+        than guessed at.
+      */
+      if (options?.stillWanted && !options.stillWanted()) return;
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed

@@ -196,7 +196,7 @@ export function BlockComposer(props: Props) {
     baseHash = input === undefined ? undefined : contentHash(blocks);
     // Resolve stored file-storage addresses (an image's CID) to renderable data URIs first —
     // without this, an existing post's image src is still its address when loaded into the editor.
-    const dataset = props.perspective ?? host.dataset() ?? null;
+    const dataset = props.dataset ?? host.dataset() ?? null;
     if (dataset) {
       try {
         blocks = await resolveExpressionAddresses(dataset, blocks);

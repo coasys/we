@@ -83,6 +83,22 @@ const VIEWING_LIVE = { $: VIEWING_LIVE_EXPR };
 const IN_A_CALL = 'modules.transcribe.inCall';
 const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
 
+/** Whether the transcript is anchored to its beginning rather than following the live end. */
+const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
+
+/**
+ * Whether the window may have more beyond it — a page came back full, so there is probably more
+ * behind it.
+ *
+ * Deliberately "may", and worked out here rather than in the store because only the schema holds the
+ * rows. There is no cheap total to compare against: the call's `children` carries the extracted
+ * cards as well as the utterances, so counting it answers a different question, and a count
+ * projection would be a round trip to save a button. A full page is the honest test — exact whenever
+ * the answer is "no", and wrong only for a transcript whose length is an exact multiple of the page,
+ * where one press reveals nothing and the offer then withdraws itself.
+ */
+const TRANSCRIPT_HAS_MORE = `count(local.utterances) >= ${'modules.transcribe.transcriptShown'}`;
+
 /**
  * Which call the *extraction* surface is about.
  *
@@ -1994,8 +2010,19 @@ const extractionHistory: SchemaNode = {
 
       `local.passes` comes from the panel body, not from here — a section that unmounts itself
       cannot own the query that decides whether it should. See the `$queries` there.
+
+      ## Or a pass running, which is the case the count alone got wrong
+
+      A pass in flight is a reading of this call that has not been written down yet, and now that the
+      live readout is inside this section, the count is no longer the whole question. A call's FIRST
+      pass is the exact state where `count(local.passes)` is zero and somebody most wants to see
+      something happening — so gated on the count alone, the section would be absent for the whole
+      of that pass and appear, already finished, a second after it ended.
+
+      The same test the readout itself carries, so the two cannot disagree about whether there is
+      anything to show: this decides the heading exists, and its own `$if` decides it draws.
     */
-    condition: { $: 'count(local.passes)' },
+    condition: { $: `count(local.passes) || (interpretationStore.runningCount && (${VIEWING_LIVE_EXPR}))` },
     then: {
       type: 'Column',
       props: { gap: '200', width: '100%' },
@@ -2033,26 +2060,73 @@ const extractionHistory: SchemaNode = {
           tone: 'neutral',
           open: { field: 'logsOpen' },
           /*
-            Every pass on this call, as one file — the prompts and responses in full, the transcript
-            they read, what they wrote and what is still waiting — for handing to somebody, or a
-            model, working out why a call extracted what it did. Every member's passes, as this list
-            shows them, and all of them rather than the fifty drawn here.
+            Two controls about the whole section, in the gap the heading leaves between its name and
+            its count.
           */
           action: {
-            type: 'we-tooltip',
-            props: { content: 'Export the extraction log' },
+            type: 'Row',
+            props: { ay: 'center', gap: '200', flexShrink: '0' },
             children: [
               {
-                type: 'we-button',
+                /*
+                  That something is being read, while this section is folded over it.
+
+                  The readout below is the answer to "what is happening", and it is inside a fold
+                  that starts closed — which is the point of moving it here, since a log is worth
+                  hiding when it is distracting. What that costs is the one thing a fold cannot say
+                  about its own contents: that they are changing. A spinner in the heading is the
+                  smallest thing that says it, and it sits beside the count, which is the other
+                  number about what is underneath.
+
+                  Not a substitute for the rail, which spins on the same fact for everybody with no
+                  panel open (`busyWhen: 'passRunning'` on the Extraction launcher). This is for
+                  somebody looking straight at the panel, where the rail is out of the corner of the
+                  eye and a folded heading is the thing they are reading.
+
+                  `xs`, and no words. A heading is a row of small type; a spinner at the size of the
+                  export button beside it would be the loudest thing in a panel whose whole subject
+                  is somewhere else on the screen.
+                */
+                type: '$if',
                 props: {
-                  // The transcript panel's export, the same size: one act, two panels.
-                  variant: 'ghost',
-                  size: 'sm',
-                  square: true,
-                  label: 'Export the extraction log',
-                  onClick: { $action: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
+                  condition: { $: `interpretationStore.runningCount && (${VIEWING_LIVE_EXPR})` },
+                  then: {
+                    type: 'we-tooltip',
+                    props: {
+                      content: {
+                        $:
+                          'interpretationStore.runningCount > 1 ' +
+                          '? `${interpretationStore.runningCount} readings running` ' +
+                          ': `Reading this call`',
+                      },
+                    },
+                    children: [{ type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } }],
+                  },
                 },
-                children: [{ type: 'we-icon', props: { name: 'download' } }],
+              },
+              {
+                /*
+                  Every pass on this call, as one file — the prompts and responses in full, the
+                  transcript they read, what they wrote and what is still waiting — for handing to
+                  somebody, or a model, working out why a call extracted what it did. Every member's
+                  passes, as this list shows them, and all of them rather than the fifty drawn here.
+                */
+                type: 'we-tooltip',
+                props: { content: 'Export the extraction log' },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      // The transcript panel's export, the same size: one act, two panels.
+                      variant: 'ghost',
+                      size: 'sm',
+                      square: true,
+                      label: 'Export the extraction log',
+                      onClick: { $action: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'download' } }],
+                  },
+                ],
               },
             ],
           },
@@ -2064,6 +2138,27 @@ const extractionHistory: SchemaNode = {
               type: 'Column',
               props: { gap: '200', width: '100%' },
               children: [
+                /*
+                  What is being read right now, over what has been read already.
+
+                  It used to sit outside this section, between the chips and this heading, where it
+                  read as part of "Things to extract" — a live status under the controls that
+                  configure it, rather than under the log it is the newest entry of. The two lists
+                  are the same log split by durability: this one is a pass while it runs, that one is
+                  the record written when it ends, and a row crosses from the first to the second a
+                  second after it finishes.
+
+                  Above the `$each` for that reason and not by preference: the query is
+                  `createdAt: 'desc'`, so the rows below are newest-first, and a running pass is the
+                  newest thing there is. Underneath them it would be the one item out of order — and
+                  on a call read every few minutes for an hour, sixty rows below the heading before
+                  the thing that is happening now.
+
+                  It carries its own `$if` on the same test the section's gate uses, so on a call with
+                  readings and nothing running this contributes no node and the gap above the first
+                  row closes with it.
+                */
+                extractionActivity,
                 {
                   type: '$each',
                   props: { items: { $: 'local.passes' }, as: 'pass' },
@@ -2881,6 +2976,27 @@ const noUtterances: SchemaNode = {
   },
 };
 
+/**
+ * "More is coming", for the edge a window grows from.
+ *
+ * One definition used at both ends, because the two are the same sentence about opposite directions
+ * and a copy each is how they come to disagree about their own spinner.
+ */
+const moreComing = (end: 'start' | 'end', words: string): SchemaNode => ({
+  type: 'Row',
+  /*
+    The marker is the same fact the line is: there is more beyond this end that is not loaded. The
+    scroller reads it to decide whether its jump button should scroll or ask — see `data-we-more` on
+    `we-scroll-area` — which is why it lives here rather than being restated as a prop somewhere that
+    cannot see the rows.
+  */
+  props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
+  children: [
+    { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
+    { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [words] },
+  ],
+});
+
 export const transcriptLines: SchemaNode = {
   type: 'Column',
   // The gap is the only thing separating one utterance from the next now that a row carries no
@@ -2904,12 +3020,61 @@ export const transcriptLines: SchemaNode = {
         via: 'children',
         anchorId: { $: 'modules.transcribe.collectionId' },
       },
-      // Oldest first, because a transcript read backwards is not a transcript.
-      order: { createdAt: 'asc' },
+      /*
+        Which end the window is anchored to — see `transcriptShown` in the store.
+
+        Reading from the start is `asc` and needs nothing else. Following the live end is `desc`,
+        because "the newest N" is the only way to bound a list that grows at the bottom, and the
+        rows are turned back the right way up below. A transcript read backwards is not a
+        transcript.
+      */
+      order: { $: "modules.transcribe.transcriptFromStart ? { createdAt: 'asc' } : { createdAt: 'desc' }" },
+      /*
+        The bound, and the point of all of this.
+
+        There was none. Every utterance re-ran this query over the *whole* transcript, hydrated every
+        row into a model instance and stringified the lot to fingerprint it — three passes over
+        everything already said, for each new thing said. In a long call with several people talking
+        that is most of what the tab was doing.
+      */
+      limit: { $: 'modules.transcribe.transcriptShown' },
       when: { $: 'modules.transcribe.collectionId' },
+      /*
+        Live only while the call is.
+
+        A finished transcript is settled, so a subscription over it has the node re-running this
+        query on every change in the space to be told nothing changed. Reading one back is the
+        commonest thing anybody does to a long transcript, and it was the case paying most.
+      */
+      subscribe: { $: CALL_ON_SCREEN_LIVE },
     },
   },
   children: [
+    /*
+      "More is coming", at the edge the window grows from.
+
+      Above the rows while the window grows backwards from the live end, and below them while it
+      grows forwards from the beginning — each at the boundary of what is loaded, which is the only
+      place the message means anything. A list that silently stops has no way to say it is not
+      finished, and the pages are fetched a panel's height ahead of the reader, so the only way to
+      see this is to outrun the prefetch: drag the scrollbar, or wait on a slow node. Both are real,
+      and both are exactly when somebody needs telling.
+
+      Words rather than a button, for the reason `commentThread`'s "N more in this thread" is: this
+      is the edge of a list, not an action beside it. There is nothing to press — reaching the edge
+      IS the request.
+
+      What used to be here in the from-start case was a header naming the end you were at, with a
+      "Latest" button beside it. Both went: the jump controls in the scroller's corner say which end
+      you are at by which of them is offered, and the down one IS "latest" now.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${TRANSCRIPT_HAS_MORE} && !${TRANSCRIPT_FROM_START}` },
+        then: moreComing('start', 'Earlier in the conversation…'),
+      },
+    },
     {
       type: '$if',
       props: {
@@ -2917,7 +3082,16 @@ export const transcriptLines: SchemaNode = {
         then: {
           type: '$each',
           props: {
-            items: { $: 'local.utterances' },
+            /*
+              Turned back the right way up.
+
+              Following the live end asks for the newest N, which arrives newest-first; a transcript
+              is read oldest-first. `reverse` rather than drawing the rows in a `column-reverse` box,
+              which would look identical and quietly break `prev`: the speaker grouping asks whether
+              this line is by the same person as the one before it, and in a reversed list `prev` is
+              the line *after*.
+            */
+            items: { $: 'modules.transcribe.transcriptFromStart ? local.utterances : reverse(local.utterances)' },
             as: 'utterance',
           },
           children: [
@@ -3453,15 +3627,42 @@ export const transcriptLines: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'modules.transcribe.collectionId' },
+                /*
+                  Answered empty, or not answered yet — and the difference is worth drawing.
+
+                  Not answered yet is now a real state rather than a blank: re-anchoring to the other
+                  end of a transcript throws the rows away and asks a different question, and on a
+                  remote node that is a second or two of nothing at all. A spinner in the middle of
+                  the panel says the press registered and something is on its way.
+                */
                 then: {
                   type: '$if',
-                  props: { condition: { $: 'local.utterancesLoaded' }, then: noUtterances },
+                  props: {
+                    condition: { $: 'local.utterancesLoaded' },
+                    then: noUtterances,
+                    else: {
+                      type: 'Column',
+                      props: { ax: 'center', ay: 'center', py: '800', width: '100%' },
+                      children: [{ type: 'we-spinner', props: { size: 'md', color: 'text-faint' } }],
+                    },
+                  },
                 },
                 else: noUtterances,
               },
             },
           },
         },
+      },
+    },
+    /*
+      The same, at the other edge — see the note above. Below the rows, because read from its
+      beginning the window grows forwards and what is missing is later.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${TRANSCRIPT_HAS_MORE} && ${TRANSCRIPT_FROM_START}` },
+        then: moreComing('end', 'Later in the conversation…'),
       },
     },
   ],
@@ -3710,12 +3911,18 @@ export const pendingUtterance: SchemaNode = {
       that obligatory, and nothing would have said so if it had been forgotten.
     */
     /*
-      `heard` rather than `pending`: speech still with the model counts as well as words buffered.
+      Only once there are words. Speech still with the model shows nothing.
 
-      Between somebody stopping and their words coming back there used to be nothing here at all —
-      a second or several on a CPU in which the panel looked exactly as it would had nobody spoken.
+      This used to be `heard`, which includes the gap between somebody stopping and their text coming
+      back, and it filled that gap with an empty box saying "Transcribing…". The intent was to say
+      the panel had not missed anything — but it is a box that appears, holds a word, and is replaced
+      a moment later by the words it was standing in for, on every utterance, for the length of a
+      call. It got in the way of the thing it was introducing.
+
+      The preview arriving a beat late is the better rendering. It says the same thing by existing,
+      and says it with content.
     */
-    condition: { $: `modules.transcribe.heard && (${VIEWING_LIVE_EXPR})` },
+    condition: { $: `modules.transcribe.pending && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
       props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
@@ -3731,10 +3938,15 @@ export const pendingUtterance: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted', uppercase: true },
-                  children: [{ $: "modules.transcribe.pending ? 'Not saved yet' : 'Transcribing…'" }],
+                  children: ['Not saved yet'],
                 },
-                // Beside the label rather than instead of it, so a line waiting to save and the next
-                // sentence still with the model can both be said at once.
+                /*
+                  The spinner stays, and it now means one thing rather than two.
+
+                  It says the NEXT sentence is still with the model while this one waits to be
+                  written — which is worth knowing, and is why it sits beside the label rather than
+                  instead of it. What it no longer does is appear on its own over an empty box.
+                */
                 {
                   type: '$if',
                   props: {
@@ -3794,6 +4006,31 @@ export const pendingUtterance: SchemaNode = {
  * Named as a part, for `captureMeter`'s reason: an interface arranging the module's pieces itself
  * would otherwise have the transcript and no way to write into it.
  */
+/**
+ * Write what is in the box, once.
+ *
+ * Shared by the button and by Enter rather than written out at each, so the two cannot drift: they
+ * are the same act, and the guard against sending twice only works if both paths raise the same
+ * flag. They used to hold a copy each of a shorter version of this, which is how the flag would
+ * have ended up on one of them.
+ *
+ * `sending` goes up before the action and comes down in `onFinally`, so it is cleared on a failed
+ * write as well as a successful one — a box that could never be sent again because one write failed
+ * would be worse than the double-send this prevents.
+ *
+ * `message` is still cleared on success only. A failed write keeps what was typed rather than
+ * swallowing it and leaving an empty box as the only report.
+ */
+const sendMessage = [
+  { $setLocal: 'sending', value: true },
+  {
+    $action: 'modules.transcribe.addMessage',
+    args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
+    onSuccess: [{ $setLocal: 'message', value: '' }],
+    onFinally: [{ $setLocal: 'sending', value: false }],
+  },
+];
+
 export const transcriptComposer: SchemaNode = {
   type: '$if',
   /*
@@ -3825,7 +4062,14 @@ export const transcriptComposer: SchemaNode = {
         a panel with nothing to write into.
       */
       props: { gap: '200', ay: 'end', width: '100%', mt: '100' },
-      $localState: { message: { type: 'string', initial: '' } },
+      /*
+        `sending` is plain, not persisted and not in the URL: it is an in-flight flag, and the one
+        thing a reload must never restore is a box that thinks it is still writing.
+      */
+      $localState: {
+        message: { type: 'string', initial: '' },
+        sending: { type: 'boolean', initial: false },
+      },
       children: [
         {
           type: 'we-textarea',
@@ -3859,10 +4103,21 @@ export const transcriptComposer: SchemaNode = {
             onInput: { $setLocal: 'message', value: { $: 'event.detail' } },
             // Enter commits, and the primitive suppresses the newline that would otherwise follow —
             // a schema can read a key event but has nothing that calls `preventDefault`.
+            /*
+              Guarded here rather than by disabling the field, which is how the button does it.
+
+              A write takes a round trip — a second against a local node, longer against a shared
+              remote one — and Enter is the fast path, so pressing it twice is the easy mistake and
+              the one that was reported. The button can simply go `disabled`; the textarea cannot,
+              because disabling the thing somebody is typing into takes the focus away mid-sentence
+              and is a worse interruption than the bug.
+
+              So the condition carries both halves of what `disabled` says on the button — there are
+              words, and no write is already going — and the two paths stay honest about being the
+              same act by running the same handler.
+            */
             'on:submit': {
-              $action: 'modules.transcribe.addMessage',
-              args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
-              onSuccess: [{ $setLocal: 'message', value: '' }],
+              $if: { condition: { $: 'trim(local.message) && !local.sending' }, then: sendMessage },
             },
           },
         },
@@ -3879,14 +4134,20 @@ export const transcriptComposer: SchemaNode = {
                 // square rather than a rounded rectangle with an icon adrift in it.
                 square: true,
                 variant: 'secondary',
-                disabled: { $: '!trim(local.message)' },
-                onClick: {
-                  $action: 'modules.transcribe.addMessage',
-                  args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
-                  // Cleared on success only — a failed write keeps what was typed rather than
-                  // swallowing it and leaving an empty box as the only report.
-                  onSuccess: [{ $setLocal: 'message', value: '' }],
-                },
+                /*
+                  Two reasons to be unpressable, and they are not the same reason.
+
+                  Empty is a precondition: there is nothing to send. In flight is a guard: there is
+                  something to send and it is already going. Both spell `disabled`, but only the
+                  second wants a spinner — which is the whole of what was missing. A write against a
+                  shared remote executor takes long enough that a composer saying nothing at all
+                  reads as a press that did not register, so the next thing somebody does is press
+                  it again, and the transcript gets the line twice. Nothing in this panel can delete
+                  a line once it is written, so the duplicate is there for good.
+                */
+                disabled: { $: '!trim(local.message) || local.sending' },
+                loading: { $: 'local.sending' },
+                onClick: sendMessage,
               },
               children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
             },
@@ -3918,19 +4179,119 @@ export const transcriptComposer: SchemaNode = {
  * one query in the codebase rather than two that have to agree.
  */
 export const transcriptFeed: SchemaNode = panelScroll({
-  // Follows the tail while somebody is at the tail, and holds still while they read further
-  // up. A live transcript is the case this exists for — and the case that most needs a way back
-  // down again, since holding still is otherwise a decision nothing offers to undo.
-  pin: 'end',
+  /*
+    Follows the tail while somebody is at the tail, and holds still while they read further up. A
+    live transcript is the case this exists for — and the case that most needs a way back down
+    again, since holding still is otherwise a decision nothing offers to undo.
+
+    Off while the transcript is anchored to its beginning: those rows are the oldest in the
+    conversation and new ones do not belong below them, so following the end would drag a reader
+    away from what they asked to read on every line somebody says.
+  */
+  pin: { $: `${'modules.transcribe.transcriptFromStart'} ? '' : 'end'` },
+  /*
+    Both ends, and the start one does something the scroller could not do for itself.
+
+    It was `end` alone, because the scroller's own start button goes to the top of what is *loaded*
+    — which, since the window arrived, is not the beginning of the conversation. It would have said
+    "start" and delivered "as far back as we happened to fetch".
+
+    That was the right call about the *action* and it cost the affordance. So the visibility stays
+    the scroller's — it is the one that knows whether there is anywhere above to go — and the action
+    comes from here, through the `jump-start` slot below. The button is the scroller's own, in its
+    own corner, and it means what it says.
+  */
   jump: 'both',
+  /*
+    A jump is a scroll at the end you are anchored to, and a different query at the other one.
+
+    Anchored to the newest end, pressing "down" is a trip back through lines you have already loaded
+    — worth animating, because the movement is what says which way the content went. Pressing "up"
+    is not a longer version of that: the top of what is loaded is not the beginning of anything, and
+    reaching the real beginning means asking a different question. Read from the beginning, the two
+    swap over exactly.
+
+    Which end is which is not stated here. The scroller reads it from the `data-we-more` marker on
+    the "more is coming" line, which `transcriptLines` already renders under exactly that test — so
+    the two cannot disagree, and a transcript that has loaded whole simply scrolls at both ends
+    rather than re-asking for what it already has.
+
+    The re-anchoring case needs no scrolling of its own: a mode change resets the window and flips
+    `pin`, and `scrollTop: 0` is the anchored end in both coordinate systems — the newest under
+    column-reverse, the oldest without it — so the new query lands where it should.
+  */
+  onJumpStart: { $action: 'modules.transcribe.readTranscriptFromStart' },
+  onJumpEnd: { $action: 'modules.transcribe.readTranscriptLive' },
+  /*
+    More of the conversation loads as the reader reaches the edge of what is loaded, in whichever
+    direction they are going, rather than on a button.
+
+    Both ends, because the window has two. Following the live end it grows backwards, so the edge
+    worth watching is the top. Reading the same conversation from its beginning it grows forwards,
+    and the edge is the bottom — without that pair, choosing "read from the start" walked you to the
+    end of the first page and stopped, with the rest of the conversation unreachable.
+
+    The distance is about a panel's height of runway, so a page is asked for before the reader
+    arrives at the edge rather than when they hit it. Nothing has to hold their place: the scroller
+    is anchored to its newest end, so content arriving above them does not move them.
+
+    Guarded on which end is anchored, and NOT on there being more — which is a real imprecision and
+    a deliberate one.
+
+    "May have more" is `count(local.utterances) >= transcriptShown`, and those rows are a local of
+    `transcriptLines`, which is placed as a part *inside* this scroller. An event dispatched on the
+    scroller reaches its ancestors, never its descendants, so the node that could answer is the one
+    node that cannot be asked. The alternatives were each worse than the cost: a count projection is
+    a round trip to avoid a re-run, and a count reported back from a render is a write from drawing.
+
+    What it costs: reaching the far edge of a fully-loaded transcript raises the window by a page and
+    re-runs the query, which comes back with the same rows. The list is unchanged, the "earlier" line
+    correctly disappears, and nothing is drawn wrongly — one wasted read per trip to that edge, and
+    the read is bounded by what exists rather than by the window.
+  */
+  nearStart: 400,
+  onNearStart: {
+    $if: {
+      condition: { $: `!${TRANSCRIPT_FROM_START}` },
+      then: { $action: 'modules.transcribe.showMoreTranscript' },
+    },
+  },
+  nearEnd: 400,
+  onNearEnd: {
+    $if: {
+      condition: { $: TRANSCRIPT_FROM_START },
+      then: { $action: 'modules.transcribe.showMoreTranscript' },
+    },
+  },
   children: [
     {
       type: 'Column',
       props: { gap: '300' },
       children: [
+        /*
+          Rebuilt when the anchor changes, which is the only way to stop the old rows being drawn
+          under the new arrangement.
+
+          Re-anchoring asks a different question, but `pin` flips the moment it is pressed while the
+          answer takes a round trip — so for that second the previous window was laid out from the
+          wrong end, and a reader saw the last thing said appear at the top before the real content
+          replaced it. A hoisted query keeps its rows and keeps reporting itself loaded when its
+          parameters change, deliberately, because for an ordinary filter that is stale-while-
+          revalidate and the right behaviour. It is the wrong behaviour when the content is being
+          replaced wholesale.
+
+          Two branches holding the same node is what a key would be if the schema had one: `$if`
+          unmounts the outgoing branch, so the part is rebuilt, its `$queries` start again, and
+          `local.utterancesLoaded` is false until the new answer lands — which is what draws the
+          spinner above instead of somebody else's rows.
+        */
         {
-          type: '$part',
-          props: { id: 'transcribe.transcriptLines', subject: SUBJECT },
+          type: '$if',
+          props: {
+            condition: { $: TRANSCRIPT_FROM_START },
+            then: { type: '$part', props: { id: 'transcribe.transcriptLines', subject: SUBJECT } },
+            else: { type: '$part', props: { id: 'transcribe.transcriptLines', subject: SUBJECT } },
+          },
         },
         pendingUtterance,
       ],
@@ -4112,23 +4473,24 @@ export const extractionPanel: SchemaNode = {
             */
                   { type: '$if', props: { condition: EXTRACTION_SUBJECT, then: extract } },
                   /*
-              What the passes did, in full.
+              What the passes did, in full — and the one running, which is now inside it.
 
-              This used to be the whole of the call bar's readout, and it moved the call's furniture
-              every time somebody opened a row — see `extractionActivity`. It belongs here: this
-              panel is already the surface about extraction, opening something in it costs the call
-              nothing, and there is room for a prompt pane without a floating strip growing to 520px
-              over the controls somebody is reaching for.
+              `extractionActivity` was a sibling here, between the chips and the log. Two things were
+              wrong with that. It read as part of "Things to extract": a live status sitting directly
+              under the controls that configure it looks like their output, when what it actually is
+              is the newest entry of the log below. And it could not be put away — the whole panel
+              folds section by section, and this was the one region with no heading over it, so a
+              readout somebody found distracting had nowhere to go.
 
-              A one-line signal stays in the call chrome so the four people in five who did not start
-              a pass can still see one is running without opening anything.
+              Both are answered by it being the first child of the Logs fold rather than a section of
+              its own: it is with the rows it becomes, it folds with them, and the heading grew a
+              spinner so folding it does not hide the fact that something is happening. See
+              `extractionHistory`.
 
-              A sibling of `extract` rather than a child of it, which is where it and `proposals`
-              both were. Nested, they inherited `extractable` — a fact about the *node* — so a
-              running pass and a decision waiting on somebody were both invisible on a node that
-              could not start one, which is precisely the node whose passes came from a peer.
+              A one-line signal stays in the call chrome, and the module rail spins on the same fact,
+              so the four people in five who did not start a pass can still see one is running
+              without opening anything.
             */
-                  extractionActivity,
                   /*
               Nothing to ask about until there is a call to ask about.
 

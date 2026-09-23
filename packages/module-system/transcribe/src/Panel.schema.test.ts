@@ -27,6 +27,7 @@ import {
   panel,
   pendingUtterance,
   SUBJECT_EXPR,
+  transcriptComposer,
   transcriptFeed,
   transcriptLines,
 } from './Panel.schema';
@@ -206,6 +207,86 @@ describe('a transcript with nothing in it', () => {
     */
     expect(linesJson).toContain('"condition":{"$":"local.utterancesLoaded"}');
     expect(linesJson).not.toContain('local.utterancesLoaded &&');
+  });
+
+  /**
+   * The window, which is the whole reason any of this changed.
+   *
+   * The query had no limit: every utterance re-ran it over the entire transcript, hydrated every row
+   * into a model instance and stringified the lot to fingerprint it. Three passes over everything
+   * already said, for each new thing said — so the cost of speaking grew with the length of the
+   * conversation, which is exactly the shape of "it got slower the longer we were in the call".
+   */
+  it('bounds what it loads', () => {
+    expect(linesJson).toContain('"limit":{"$":"modules.transcribe.transcriptShown"}');
+  });
+
+  /**
+   * Two documents with opposite anchors, out of one query.
+   *
+   * Live, a transcript is a tail: the newest N, which only `desc` can ask for. Afterwards it is a
+   * document with a beginning, read forwards, which is `asc`. Anchored to the end there is no way to
+   * reach the start but to load everything between, so the anchor is the thing that moves.
+   */
+  it('flips the order with the anchor', () => {
+    expect(linesJson).toContain(
+      "modules.transcribe.transcriptFromStart ? { createdAt: 'asc' } : { createdAt: 'desc' }",
+    );
+  });
+
+  /**
+   * And turns the tail back the right way up.
+   *
+   * `reverse` rather than a `column-reverse` box, which would look identical and quietly break the
+   * speaker grouping: it asks whether a line is by the same person as the one before it, and in a
+   * reversed list `prev` is the line *after*.
+   */
+  it('renders the live window oldest-first', () => {
+    expect(linesJson).toContain('reverse(local.utterances)');
+  });
+
+  /**
+   * A finished transcript is settled, so following it costs the node a re-query per change in the
+   * space to be told nothing changed — and reading one back is the commonest thing anybody does to
+   * a long transcript.
+   */
+  it('subscribes only while the call is live', () => {
+    expect(linesJson).toContain('"subscribe":{"$":"modules.transcribe.callOnScreenLive"}');
+  });
+
+  /**
+   * Neither way back is a button in the rows any more.
+   *
+   * Earlier lines load as the reader reaches them — reaching the edge of a list IS the request, and
+   * a button asking them to confirm the scroll they just made is a step nobody wanted. The
+   * beginning went the other way, up into the scroller's own corner beside "jump to the end", where
+   * it reads as that control's opposite rather than as a word in the margin. Both are asserted from
+   * the feed below; what is left here is the reassurance, which is the part a silently-stopping list
+   * cannot give.
+   */
+  it('says more is coming at whichever edge the window grows from, and asks for nothing', () => {
+    /*
+      No buttons in the rows at all now. Loading is on approach, and both ways back are the jump
+      controls in the scroller's corner — including "latest", which used to be a word in a header
+      here beside the name of the end you were at. The header went with it: which end you are at is
+      said by which control is offered.
+    */
+    expect(linesJson).not.toContain('modules.transcribe.showMoreTranscript');
+    expect(linesJson).not.toContain('modules.transcribe.readTranscriptFromStart');
+    expect(linesJson).not.toContain('modules.transcribe.readTranscriptLive');
+    expect(linesJson).not.toContain('The start of the transcript');
+
+    // One sentence per direction, each gated on the anchor it belongs to.
+    expect(linesJson).toContain('Earlier in the conversation');
+    expect(linesJson).toContain('Later in the conversation');
+  });
+
+  /**
+   * The reassurance is withdrawn once everything is loaded — a page that came back short is the
+   * exact answer to "is there more", even though a full one is only a probable yes.
+   */
+  it('says it only while a page came back full', () => {
+    expect(linesJson).toContain('count(local.utterances) >= modules.transcribe.transcriptShown');
   });
 
   it('shows the placeholder where there is no record to wait for, not only where one answered empty', () => {
@@ -465,8 +546,26 @@ describe('what belongs to the live microphone only', () => {
       it by hand, and nothing would have said so if it had been forgotten.
     */
     expect(JSON.stringify(pendingUtterance)).toContain(
-      'modules.transcribe.heard && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
+      'modules.transcribe.pending && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
     );
+  });
+
+  it('shows nothing at all until there are words, rather than a box saying it is listening', () => {
+    /*
+      It was gated on `heard`, which includes the gap between somebody stopping and their text coming
+      back, and filled that gap with an empty box reading "Transcribing…". The intent was to say the
+      panel had not missed anything; the effect was a box that appears, holds one word, and is
+      replaced a moment later by the words it was standing in for — on every utterance, for the
+      length of a call.
+
+      The preview arriving a beat late says the same thing by existing, and says it with content.
+    */
+    const json = JSON.stringify(pendingUtterance);
+    expect(json).not.toContain('Transcribing');
+    expect(json).not.toContain('modules.transcribe.heard');
+    // The spinner stays, and now means one thing: the NEXT sentence is still with the model while
+    // this one waits to be written.
+    expect(json).toContain('modules.transcribe.transcribing');
   });
 
   it('leaves the record button out where it could not work, rather than showing a dead one', () => {
@@ -547,15 +646,72 @@ describe('the feed', () => {
       other, and the first sentence written appears to leap the gap between them. Inside, it follows
       the last row whether there are two of them or two hundred.
     */
-    expect(feedJson).toContain('"pin":"end"');
+    expect(feedJson).toContain('pin');
     expect(feedJson).toContain('transcribe.transcriptLines');
     expect(feedJson.indexOf('transcribe.transcriptLines')).toBeLessThan(feedJson.indexOf('Not saved yet'));
   });
 
-  it('offers a way back to either end of a transcript somebody has scrolled through', () => {
-    // `pin` lets go of a reader who scrolls up and offers nothing to undo that; in a live transcript
-    // the bottom keeps moving, so scrolling back to it by hand is a chase.
+  /**
+   * Following the end is conditional, because the transcript is not always a tail.
+   *
+   * Anchored to its beginning it is a document, and the rows on screen are the OLDEST in the
+   * conversation — a new line does not belong below them, so pinning would drag a reader away from
+   * what they asked to read every time somebody speaks.
+   */
+  it('follows the live end only while the transcript is anchored to it', () => {
+    expect(feedJson).toContain('"pin":{"$":"modules.transcribe.transcriptFromStart ? \'\' : \'end\'"}');
+  });
+
+  /**
+   * A way back to each end, with the start one meaning something the scroller could not mean alone.
+   *
+   * `pin` lets go of a reader who scrolls up and offers nothing to undo that; in a live transcript
+   * the bottom keeps moving, so scrolling back to it by hand is a chase — that half always stood.
+   *
+   * The start half was dropped when the window arrived, because the scroll area can only reach the
+   * top of what is LOADED, which is not the beginning of the conversation: the button would have
+   * said "start" and delivered "as far back as we happened to fetch". That was right about the
+   * action and it cost the affordance, so the split is now explicit — the scroller keeps deciding
+   * WHETHER there is anywhere above to go, and the slot supplies what pressing it does.
+   */
+  it('offers both ends, and answers a jump that cannot be a scroll', () => {
+    /*
+      A jump is a scroll to an end that is loaded and a different query to one that is not. Which is
+      which is NOT stated here: the scroller reads it from the `data-we-more` marker on the "more is
+      coming" line, which `transcriptLines` renders under exactly that test. So a transcript that
+      has loaded whole scrolls at both ends rather than re-asking for what it already holds, and the
+      two cannot disagree about when there is more.
+    */
     expect(feedJson).toContain('"jump":"both"');
+    expect(feedJson).not.toContain('jumpAsks');
+    expect(feedJson).toContain('modules.transcribe.readTranscriptFromStart');
+    expect(feedJson).toContain('modules.transcribe.readTranscriptLive');
+    expect(linesJson).toContain('"data-we-more":"start"');
+    expect(linesJson).toContain('"data-we-more":"end"');
+  });
+
+  /**
+   * Earlier lines load as the reader reaches them, and their place is kept across what arrives.
+   *
+   * The guard is on the anchor rather than on there being more: the rows that could answer "is
+   * there more" are a local of `transcriptLines`, which is placed INSIDE this scroller, and an
+   * event reaches its ancestors rather than its descendants. Anchored to the start there is nothing
+   * above at all, and that case is refused outright.
+   */
+  it('loads more of the conversation on approach, at whichever end the window grows from', () => {
+    /*
+      Both, because the window has two directions and a list that paginates one way stops dead at
+      the other. Following the live end it grows backwards, so the edge worth watching is the top;
+      read from the beginning it grows forwards and the edge is the bottom. With only the first,
+      choosing "read from the start" walked you to the end of the first page and stopped, with the
+      rest of the conversation unreachable.
+    */
+    expect(feedJson).toContain('"nearStart":400');
+    expect(feedJson).toContain('"nearEnd":400');
+    expect(feedJson).toContain('modules.transcribe.showMoreTranscript');
+    // Each guarded on the anchor it belongs to, so only one of them can answer at a time.
+    expect(feedJson).toContain('!modules.transcribe.transcriptFromStart');
+    expect(feedJson).toContain('"condition":{"$":"modules.transcribe.transcriptFromStart"}');
   });
 
   it('times a row by the clock once the call is over, and relatively while it is not', () => {
@@ -1199,13 +1355,25 @@ describe('the extraction panel', () => {
       a section that unmounts itself cannot own the query that decides whether it should, or it
       would stop asking and never come back.
 
+      ## The count is not the whole gate any more
+
+      The live readout moved inside this section, so "is there anything to show" gained a second
+      answer: a pass in flight is a reading of this call that has not been written down yet. A call's
+      FIRST pass is exactly the state where the count is zero and somebody most wants to see
+      something happening, so gated on the count alone the section was absent for the whole of that
+      pass and appeared, already finished, a second after it ended.
+
+      Asserted as "the count is still part of it" plus "a running pass is too", rather than against
+      the whole expression: the point is which two facts decide it, not their spelling.
+
       The results could not be gated the same way. Each kind is its own subscription and a schema
       cannot sum a list of queries whose length it does not know, so nothing above the groups can
       ask whether any of them found anything — which is why the heading moved into the group, where
       the question is answerable about one kind at a time.
     */
-    const historyGate = json.indexOf('"condition":{"$":"count(local.passes)"}');
+    const historyGate = json.indexOf('"condition":{"$":"count(local.passes) ||');
     expect(historyGate).toBeGreaterThan(-1);
+    expect(json.slice(historyGate, historyGate + 200)).toContain('interpretationStore.runningCount');
     expect(json.indexOf('"Logs"')).toBeGreaterThan(historyGate);
 
     /*
@@ -1769,6 +1937,62 @@ describe('the things to extract fold like every other section', () => {
   });
 });
 
+describe('a pass that is running is part of the log', () => {
+  const json = JSON.stringify(extractionPanel);
+  /** Where the Logs heading is, which is where its section begins. */
+  const logs = json.indexOf('"Logs"');
+  /** Where the stored passes are drawn — the `$each` over the query, inside the same fold. */
+  const storedRows = json.indexOf('"items":{"$":"local.passes"}');
+
+  /*
+    It used to sit between the chips and this section, where it read as the output of "Things to
+    extract" rather than as the newest entry of the log it becomes one of a second later. It was
+    also the one region in a panel that folds section by section with no heading over it, so a
+    readout somebody found distracting had nowhere to go.
+  */
+  it('is drawn inside the Logs section rather than above it', () => {
+    expect(logs, 'the Logs heading is in the panel at all').toBeGreaterThan(-1);
+    /*
+      Found by its own state rather than by its condition. The heading's spinner is gated on exactly
+      the same expression, so a search for that string matches whichever of the two comes first and
+      would go on passing with the readout deleted — `openPasses` is the live rows' set of open
+      disclosures and belongs to nothing else.
+    */
+    const activity = json.indexOf('"openPasses"');
+    expect(activity, 'the live readout is in the panel at all').toBeGreaterThan(-1);
+    expect(activity, 'the live readout is under the Logs heading, not before it').toBeGreaterThan(logs);
+  });
+
+  /*
+    The stored rows are `createdAt: 'desc'`, so they read newest-first and a pass in flight is the
+    newest thing there is. Under them it would be the one item out of order — and on a call read
+    every few minutes for an hour, sixty rows below the heading before the thing happening now.
+  */
+  it('is drawn above the passes already written down', () => {
+    expect(storedRows, 'the stored passes are drawn at all').toBeGreaterThan(-1);
+    const activity = json.indexOf('"openPasses"');
+    // Both bounds, so this cannot pass by the readout having escaped the section entirely — which
+    // is where it used to be, and is also before the stored rows.
+    expect(activity, 'a live row is drawn inside the section').toBeGreaterThan(logs);
+    expect(activity, 'a live row is drawn before the stored ones').toBeLessThan(storedRows);
+  });
+
+  /*
+    The fold starts closed — that is the point of moving it here, a log being worth hiding when it
+    is distracting — so the heading has to say the one thing a fold cannot say about its contents:
+    that they are changing.
+  */
+  it('spins in the heading while the section is folded over it', () => {
+    // From the heading rather than from the top: the panel has a spinner of its own further up —
+    // searching the whole document finds that one and says nothing about this section.
+    const spinner = json.indexOf('"we-spinner"', logs);
+    const exportButton = json.indexOf('"Export the extraction log"', logs);
+    expect(spinner, 'the Logs heading has a spinner').toBeGreaterThan(-1);
+    expect(spinner, 'the spinner comes before the export button, not after it').toBeLessThan(exportButton);
+    expect(spinner, 'the heading spins before the rows are reached — it is in the header').toBeLessThan(storedRows);
+  });
+});
+
 describe('the extraction chips say what they are', () => {
   /*
     They read as a row of small buttons: the same radius as every other control in the panel, with
@@ -1791,5 +2015,73 @@ describe('the extraction chips say what they are', () => {
     // A row of pills is already a group; the box drew a second boundary round it and took the room
     // the chips wrap in. It is also where a colour with no role to name it was being reached for.
     expect(JSON.stringify(extractionPanel)).not.toContain('surface-sunken');
+  });
+});
+
+/**
+ * Sending a typed line, and not sending it twice.
+ *
+ * A write is a round trip — about a second against a local node and longer against a shared remote
+ * one — and the composer said nothing at all while it ran: the box was cleared on success only, so
+ * the words were still there, and the button stayed enabled because its only guard was emptiness.
+ * The obvious reading is that the press did not register, so the next thing somebody does is press
+ * again, and the transcript gets the line twice. Nothing in this panel deletes a line, so the
+ * duplicate is permanent.
+ *
+ * These pin the three parts of the answer that are each individually easy to drop: that both ways
+ * of sending raise the flag, that the flag comes down however the write ends, and that the button
+ * admits a write is happening rather than merely refusing the click.
+ */
+describe('the composer', () => {
+  const button = findNode(transcriptComposer, (n) => n.type === 'we-button') as
+    { props: Record<string, unknown> } | undefined;
+  const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
+    { props: Record<string, unknown> } | undefined;
+
+  it('declares the in-flight flag beside the draft, and keeps it out of the URL', () => {
+    /*
+      A plain field on purpose. `syncParam` would put "a write is happening" in a link, and `persist`
+      would restore, on the next launch, a composer that believes it is still writing — with no
+      write to finish and so nothing to ever bring it back down.
+    */
+    const holder = findNode(transcriptComposer, (n) => Boolean((n.$localState as Record<string, unknown>)?.sending));
+    const declared = (holder?.$localState as Record<string, Record<string, unknown>> | undefined)?.sending;
+    expect(declared).toEqual({ type: 'boolean', initial: false });
+    expect((holder?.$localState as Record<string, unknown>)?.message).toBeDefined();
+  });
+
+  it('runs the very same handler from the button and from Enter, so the guard cannot cover one only', () => {
+    // Identity, not equality: two copies that happen to match today are two copies, and the next
+    // edit changes one of them. This is what stops the flag being raised on one path and not the other.
+    const enter = textarea?.props['on:submit'] as { $if?: { then?: unknown } } | undefined;
+    expect(enter?.$if?.then).toBe(button?.props.onClick);
+  });
+
+  it('refuses a second send while one is going, on both paths', () => {
+    expect(button?.props.disabled).toEqual({ $: '!trim(local.message) || local.sending' });
+    /*
+      The field is guarded by a condition rather than by `disabled`, and that asymmetry is
+      deliberate: disabling what somebody is typing into takes the focus away mid-sentence, which is
+      a worse interruption than the bug. So the condition has to restate both halves of what
+      `disabled` says on the button — there are words, and nothing is already in flight.
+    */
+    const enter = textarea?.props['on:submit'] as { $if?: { condition?: unknown } } | undefined;
+    expect(enter?.$if?.condition).toEqual({ $: 'trim(local.message) && !local.sending' });
+  });
+
+  it('says a write is happening rather than only refusing the click', () => {
+    // The half that answers the actual report. `disabled` alone stops the duplicate and still leaves
+    // a composer that looks broken for a second, which is what produced the second press.
+    expect(button?.props.loading).toEqual({ $: 'local.sending' });
+  });
+
+  it('lowers the flag however the write ends, and keeps the words unless it succeeded', () => {
+    const send = button?.props.onClick as Record<string, unknown>[];
+    const write = send.find((step) => '$action' in step) as Record<string, unknown>;
+    // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
+    // would be a worse bug than the one this fixes.
+    expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
+    expect(write.onSuccess).toEqual([{ $setLocal: 'message', value: '' }]);
+    expect(send[0]).toEqual({ $setLocal: 'sending', value: true });
   });
 });

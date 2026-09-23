@@ -49,7 +49,7 @@ import type {
   Scope,
 } from '@we/backend-shared';
 import { irToFlatQuery, planQuery } from '@we/backend-shared';
-import { type EntityClass as Ad4mEntityClass, getEntitiesForPerspective, getEntity } from '@we/entities';
+import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } from '@we/entities';
 
 import type { EntityManifestEntry } from './manifestTypes';
 
@@ -130,6 +130,15 @@ export interface Ad4mAdapterDeps {
    * rather than the host's concrete profile type, which keeps this module free of app-layer imports.
    */
   agents: () => Array<{ did?: string }>;
+  /**
+   * One agent, read so that it depends on that agent alone — see `DataBindingDeps.profileFor`.
+   *
+   * `$agent` runs an effect per row and every one of them asks here. Answered by scanning `agents()`
+   * the dependency is the entire cache, so one peer arriving re-runs every row on screen; answered
+   * by a host that can key its cache, it is the row's own agent and nothing else. Optional, and the
+   * scan below stays as the fallback for a host that cannot.
+   */
+  agentFor?: (did: string) => { did?: string } | undefined;
   /** Ask AD4M to fetch a profile this client hasn't cached. */
   fetchAgent: (did: string) => Promise<void> | void;
   /**
@@ -156,14 +165,14 @@ export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getEntity' | '$getEntitiesForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
+  '$getEntity' | '$getEntityForDataset' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
     // so `toRendererEntity` maps them onto the neutral `query`/`findAll` the renderer depends on.
     $getEntity: (name) => toRendererEntity(getEntity(name)),
-    $getEntitiesForPerspective: (name, dataset) => {
-      const model = getEntitiesForPerspective(name, dataset);
+    $getEntityForDataset: (name, dataset) => {
+      const model = getEntityForDataset(name, dataset);
       return model ? toRendererEntity(model) : undefined;
     },
     // The renderer treats this as opaque and hands it straight back, so the proxy passes through
@@ -171,7 +180,9 @@ export function createAd4mDataBindings(
     $currentDataset: deps.currentPerspective,
     // Identity directory behind the `$agent` block, bound to AD4M's agent cache.
     $identities: {
-      get: (did) => deps.agents().find((a) => a.did === did) as Record<string, unknown> | undefined,
+      get: (did) =>
+        (deps.agentFor ? deps.agentFor(did) : deps.agents().find((a) => a.did === did)) as
+          Record<string, unknown> | undefined,
       fetch: (did) => void deps.fetchAgent(did),
     },
     $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveEntities),

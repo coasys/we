@@ -499,6 +499,13 @@ export function railItem(opts: RailItemOptions): SchemaNode {
     : withTooltip;
 }
 
+/** The short way to describe a heading's action: one icon button with an accessible name. */
+export interface RailGroupIconAction {
+  icon: string;
+  label: string;
+  onClick: SchemaProp;
+}
+
 export interface RailGroupOptions {
   /**
    * Identifies the group in the shell's `collapsedGroups` set. Unique within one rail, and free to
@@ -509,8 +516,23 @@ export interface RailGroupOptions {
   children: SchemaNode[];
   /** A count beside the heading. */
   badge?: Content;
-  /** An action offered beside the heading — a `+` that adds to the group, typically. */
-  action?: { icon: string; label: string; onClick: SchemaProp };
+  /**
+   * An action offered beside the heading — a `+` that adds to the group, typically.
+   *
+   * The object form is the common one and stays the short way to say it: an icon, its accessible
+   * name, and what pressing it does, drawn as a ghost square with a tooltip.
+   *
+   * A **node** is taken instead where the heading's action is not one button. The case that asked
+   * for it is the spaces group, where `+` now offers creating a space *or* joining one, which is a
+   * `DropdownMenu` — and there is no honest way to express a menu as `{ icon, label, onClick }`.
+   * Two icons side by side was the alternative and reads worse: the heading is narrow, and a second
+   * glyph crowds the label it is meant to be beside rather than the group it acts on.
+   *
+   * A node is placed as-is, so it owns its own size and variant. Match the object form — `ghost`,
+   * `sm`, square — unless there is a reason not to; the heading reserves the height of a small
+   * control and a bigger one makes this group taller than every other.
+   */
+  action?: RailGroupIconAction | SchemaNode;
   /**
    * Enable drag-to-reorder. Every child must then carry an `id` (see `railItem`), because that is
    * what the reorder event reports.
@@ -518,6 +540,34 @@ export interface RailGroupOptions {
   reorderable?: boolean;
   /** Receives the reordered ids. Pass `$arg.detail`, which is where `we-sortable` puts them. */
   onReorder?: SchemaProp;
+}
+
+/**
+ * A heading's action, however it was described.
+ *
+ * A node is placed as it was given; the object form is expanded into the ghost square with a
+ * tooltip that every rail heading wore before there was a second form.
+ *
+ * Told apart by `icon` rather than by `type`, which reads as the more obvious test and does not
+ * narrow: `SchemaNode` is loose enough that `'type' in action` leaves the negative branch holding
+ * the whole union. `icon` belongs to exactly one of the two.
+ */
+const isIconAction = (action: NonNullable<RailGroupOptions['action']>): action is RailGroupIconAction =>
+  'icon' in action && typeof (action as RailGroupIconAction).icon === 'string';
+
+function actionNode(action: NonNullable<RailGroupOptions['action']>): SchemaNode {
+  if (!isIconAction(action)) return action;
+  return {
+    type: 'we-tooltip',
+    props: { content: action.label, placement: 'right' },
+    children: [
+      {
+        type: 'we-button',
+        props: { variant: 'ghost', size: 'sm', square: true, label: action.label, onClick: action.onClick },
+        children: [{ type: 'we-icon', props: { name: action.icon, size: 'xs' } }],
+      },
+    ],
+  };
 }
 
 export function railGroup(opts: RailGroupOptions): SchemaNode {
@@ -610,20 +660,7 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
             ? [
                 {
                   type: '$if',
-                  props: {
-                    condition: isExpanded,
-                    then: {
-                      type: 'we-tooltip',
-                      props: { content: opts.action.label, placement: 'right' },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: { variant: 'ghost', size: 'sm', square: true, onClick: opts.action.onClick },
-                          children: [{ type: 'we-icon', props: { name: opts.action.icon, size: 'xs' } }],
-                        },
-                      ],
-                    },
-                  },
+                  props: { condition: isExpanded, then: actionNode(opts.action) },
                 },
               ]
             : []),

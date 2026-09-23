@@ -388,12 +388,82 @@ const callPill: SchemaNode = {
           name gets them with one line. It renders nothing where the call module is off.
         */
         { type: '$part', props: { id: 'call.continueCallButton' } },
+        /*
+          The name, truncated — and the whole of it on hover, with whatever was written about it.
+
+          ## Why a tooltip rather than a pill that opens
+
+          The obvious alternative is letting the pill grow, and it is the wrong one twice over. This
+          is fixed chrome over the content: `meta.chromeReserve` declares a band 80px tall, which is
+          a static number, so a pill that grew on hover would grow straight past its own reservation
+          and over whatever is underneath — including a floating panel, which is placed against that
+          reserve. And a box that changes size under the pointer moves the thing being read out from
+          under the cursor, which closes it again.
+
+          ## The trigger is the name, not the pill
+
+          Wrapping the whole row would fire this on the way to the pencil and on the way to the
+          faces, both of which have tooltips of their own that say something else. The name is a
+          narrow target somebody has to rest on, which is the right cost for the answer.
+
+          Both `we-tooltip` and its trigger are `display: contents`, so this wrapper is not a box:
+          the `we-text` is still the flex item, and its `minWidth: '0'` still does its job.
+
+          ## Always mounted, not gated on there being a description
+
+          A tooltip repeating a short, fully visible name is mild noise; a long name with no way to
+          read it is the complaint this is answering. The schema cannot tell those apart — knowing
+          whether the text actually overflowed needs a string length, and the expression library has
+          none (`count` is for lists, and `split` drops empty pieces, so neither stands in). Given
+          the choice, show it: the cost of the noisy case is a bubble nobody needed, and the cost of
+          the other is a name nobody can read.
+
+          `bottom`, because the pill is pinned to the top of the window and a tooltip above it would
+          have nowhere to go.
+        */
         {
-          type: 'we-text',
-          // The name of the thing every other surface is about, so it reads as a heading rather
-          // than as a caption on the chrome around it.
-          props: { variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
-          children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+          type: 'we-tooltip',
+          props: { placement: 'bottom' },
+          children: [
+            {
+              type: 'we-text',
+              // The name of the thing every other surface is about, so it reads as a heading rather
+              // than as a caption on the chrome around it.
+              props: { variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
+              children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+            },
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              slot: 'content',
+              children: [
+                {
+                  // The same fallback the truncated line uses, so the bubble never contradicts what
+                  // it is expanding.
+                  type: 'we-text',
+                  props: { variant: 'label' },
+                  children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+                },
+                {
+                  /*
+                    Only where there is one. `on-inverse` rather than `text-muted`: a tooltip sits on
+                    `surface-inverse`, which holds a fixed lightness and does not flip with the
+                    theme, so the page's own muted foreground is measured against the wrong thing
+                    and can vanish into the bubble entirely.
+                  */
+                  type: '$if',
+                  props: {
+                    condition: { $: 'first(local.callRecord).description' },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                      children: [{ $: 'first(local.callRecord).description' }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
         },
         {
           type: 'we-tooltip',
@@ -440,7 +510,16 @@ const callPill: SchemaNode = {
         */
         // No `noun`: the pill is chrome and a count beside three faces is a word doing no work. The
         // roster is on hover, which is where a name belongs when the faces are this small.
-        peopleRow({ items: { $: 'first(local.callRecord).participants' }, dids: true, max: 4, size: 'sm' }),
+        // `flexShrink: '0'` for the reason the two buttons carry it: a stack of faces compressed by
+        // a long title overlaps further and further until the roster is a smear, and the title is
+        // the thing with somewhere to go.
+        peopleRow({
+          items: { $: 'first(local.callRecord).participants' },
+          dids: true,
+          max: 4,
+          size: 'sm',
+          rowProps: { flexShrink: '0' },
+        }),
         formModal({
           open: { $: 'local.editOpen' },
           close: { $setLocal: 'editOpen', value: false },
@@ -625,11 +704,17 @@ const newCallButton = (size: 'sm' | 'md'): SchemaNode => ({
  * The way into a call: go to yours, join the one running here, or start one — and, beside it, always
  * a way to start a *new* one.
  *
- * Takes its size because it is placed at two scales. `md` on a page with no call to be about —
- * under the sentence each of the three routes shows there, which is the template's main way in and
- * wants the default control height. `sm` in the calls panel header, where `panelShell` reserves the
- * height of a small control and a default one would make that header taller than every other
- * panel's.
+ * Takes its size because it is placed at two scales, and the two no longer offer quite the same
+ * thing. `md` on a page with no call to be about — under the sentence each of the three routes shows
+ * there, which is the template's main way in and wants the default control height. `sm` in the calls
+ * panel header, where `panelShell` reserves the height of a small control and a default one would
+ * make that header taller than every other panel's.
+ *
+ * **The `sm` placement drops the "go to yours" state entirely**, so in the calls panel this is a
+ * join-or-start button and nothing else. A list of calls with the live one marked in red, a row
+ * click that already loads it, and a button above them all saying "Go to the call" is the same offer
+ * three times over — and that button's action is a no-op whenever the stage is up, which joining
+ * already made it. The gate is on the node; the reasoning is there.
  *
  * It used to sit in the corner beside the pill as well. That placement showed on the same condition
  * the page gates do and did the same thing, so it was the same door drawn twice — see `callChrome`.
@@ -685,66 +770,92 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
       },
       children: [
         {
-          type: 'we-button',
+          /*
+            In the calls panel, no button for the call you are already in.
+
+            Its third state was "Go to the call", and `goToCall` for a call you are in and in this
+            space is one line: show the stage. Joining already raised it and leaving lowers it, so
+            pressing this normally set a flag that was already set — and it sat directly above a list
+            whose live row is marked in red and already loads the call on a click. Three controls
+            call `goToCall`; the two named after it (the module rail's launcher, the pill's phone
+            button) are the ones to keep.
+
+            Only here. The `md` placement is a route's gate — a page with no call on it, where the
+            button is the whole invitation and there is no list under it saying the same thing.
+
+            Wrapped rather than given a condition of its own, so the two halves of the pair stay
+            independent: with this away and a call running, the header is the `+` alone, which is
+            what a list panel's header aside should be.
+          */
+          type: '$if',
           props: {
-            size,
-            gap: '200',
-            variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
-            /*
-              Three branches, flat, and read at the press.
+            condition: { $: size === 'sm' ? `!(${IN_A_CALL_HERE})` : 'true' },
+            then: {
+              type: 'we-button',
+              props: {
+                size,
+                gap: '200',
+                variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
+                /*
+                  Three branches, flat, and read at the press.
 
-              `goToCall` used to be the whole of this button, and it has a branch that continues the
-              call *in the address* when nothing is running — right for the module rail, where it is
-              how you pick up the meeting you are reading, and wrong here: with a call selected in
-              the list below, pressing "New call" reopened the selected one.
+                  `goToCall` used to be the whole of this button, and it has a branch that continues
+                  the call *in the address* when nothing is running — right for the module rail,
+                  where it is how you pick up the meeting you are reading, and wrong here: with a
+                  call selected in the list below, pressing "New call" reopened the selected one.
 
-              `joinCall` rather than `goToCall` for the middle branch, because `goToCall` answers
-              "bring me to my call" and this button is asking about *this space*. In a call elsewhere
-              with one running here, `goToCall` navigates you away — while the button plainly says
-              "Join the call". `joinCall` names the call it means and leaves whatever you were in,
-              which is what the word promises.
+                  `joinCall` rather than `goToCall` for the middle branch, because `goToCall` answers
+                  "bring me to my call" and this button is asking about *this space*. In a call
+                  elsewhere with one running here, `goToCall` navigates you away — while the button
+                  plainly says "Join the call". `joinCall` names the call it means and leaves
+                  whatever you were in, which is what the word promises.
 
-              Flat `$if` entries rather than nesting, so each condition is one sentence and the
-              handler array resolves them lazily — the state at the press, not at the paint that
-              happened to be current when the panel opened.
-            */
-            onClick: [
-              { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
-              {
-                $if: {
-                  condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
-                  // The first of them, which is the whole of what a singular button can mean. Which
-                  // call, where there are several, is the list's question — see `callsPanel`.
-                  then: {
-                    $action: 'modules.call.joinCall',
-                    args: [{ $: 'first(modules.call.liveCalls).id' }],
+                  The first branch is unreachable at `sm`, where the gate above has already taken the
+                  button away — kept because the same node serves the `md` route gates, and because a
+                  handler array resolves lazily: these read the state at the press, not at the paint
+                  that happened to be current when the panel opened.
+                */
+                onClick: [
+                  { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
+                  {
+                    $if: {
+                      condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
+                      // The first of them, which is the whole of what a singular button can mean.
+                      // Which call, where there are several, is the list's question — see
+                      // `callsPanel`.
+                      then: {
+                        $action: 'modules.call.joinCall',
+                        args: [{ $: 'first(modules.call.liveCalls).id' }],
+                      },
+                    },
                   },
-                },
+                  {
+                    $if: {
+                      condition: { $: `!(${IN_A_CALL_HERE}) && !(${CALL_RUNNING_HERE})` },
+                      then: NEW_CALL_ACTION,
+                    },
+                  },
+                  openLiveCall,
+                ],
               },
-              {
-                $if: {
-                  condition: { $: `!(${IN_A_CALL_HERE}) && !(${CALL_RUNNING_HERE})` },
-                  then: NEW_CALL_ACTION,
-                },
-              },
-              openLiveCall,
-            ],
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'phone-call' } },
-            {
-              type: 'we-text',
-              /*
-                Three words for three acts, because the middle one used to be missing: with a call
-                running that this agent had not joined, the button said "New call" and joined it.
-              */
               children: [
+                { type: 'we-icon', props: { name: 'phone-call' } },
                 {
-                  $: `${IN_A_CALL_HERE} ? 'Go to the call' : ${CALL_RUNNING_HERE} ? 'Join the call' : 'New call'`,
+                  type: 'we-text',
+                  /*
+                    Three words for three acts, because the middle one used to be missing: with a
+                    call running that this agent had not joined, the button said "New call" and
+                    joined it. The first is only ever drawn at `md` now — see the gate above.
+                  */
+                  children: [
+                    {
+                      $: `${IN_A_CALL_HERE} ? 'Go to the call' : ${CALL_RUNNING_HERE} ? 'Join the call' : 'New call'`,
+                    },
+                  ],
                 },
               ],
             },
-          ],
+          },
         },
         newCallButton(size),
       ],
@@ -2705,6 +2816,19 @@ const callsPanel: SchemaNode = {
                           props: {
                             variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
                             flex: '1',
+                            /*
+                              The half of `flex: '1'` that is easy to forget, and without which this
+                              row overflowed its panel.
+
+                              A button sets `white-space: nowrap` on its own host, so its
+                              min-content width is the whole untruncated title. A flex item's
+                              automatic minimum size is its min-content, so `flex: '1'` bought
+                              nothing: the button refused every request to narrow, and the deficit
+                              came out of the Join button and the trash, which were pushed off the
+                              edge. The Column inside already has `minWidth: '0'` and never got
+                              asked, because the floor was here.
+                            */
+                            minWidth: '0',
                             ax: 'start',
                             gap: '200',
                             /*
@@ -2772,10 +2896,80 @@ const callsPanel: SchemaNode = {
                               type: 'Column',
                               props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
                               children: [
+                                /*
+                                  The name, and the whole of it on hover along with whatever was
+                                  written about the call — the pill's arrangement, for its reasons;
+                                  see the note there.
+
+                                  The trigger is the text rather than the row: this list is read by
+                                  sweeping down it, and a bubble opening on every row the pointer
+                                  crosses is worse than no bubble. Resting on a name asks a question;
+                                  passing over one does not.
+                                */
                                 {
-                                  type: 'we-text',
-                                  props: { truncate: true, width: '100%', textAlign: 'left' },
-                                  children: [{ $: "call.title ? call.title : 'Call'" }],
+                                  type: 'we-tooltip',
+                                  props: { placement: 'right' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { truncate: true, width: '100%', textAlign: 'left' },
+                                      children: [{ $: "call.title ? call.title : 'Call'" }],
+                                    },
+                                    {
+                                      type: 'Column',
+                                      props: { gap: '100' },
+                                      slot: 'content',
+                                      children: [
+                                        {
+                                          type: 'we-text',
+                                          props: { variant: 'label' },
+                                          children: [{ $: "call.title ? call.title : 'Call'" }],
+                                        },
+                                        {
+                                          // `on-inverse`, not `text-muted` — see the pill's note.
+                                          type: '$if',
+                                          props: {
+                                            condition: { $: 'call.description' },
+                                            then: {
+                                              type: 'we-text',
+                                              props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                                              children: [{ $: 'call.description' }],
+                                            },
+                                          },
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                /*
+                                  A line of what the call was about, where there is one — the thing
+                                  the pill has no room for and this panel does. The panel is where
+                                  one call is chosen out of thirty, and a date is what you fall back
+                                  to when the names do not tell them apart.
+
+                                  ONE line, truncated, not a clamp of two. A button sets
+                                  `white-space: nowrap` on its own host and this sits inside one, so
+                                  a wrapping line would need that overridden here and would then set
+                                  a taller min-content for a row that has just been taught to
+                                  narrow. `truncate` is already nowrap, so it costs nothing and the
+                                  tooltip above carries the rest.
+                                */
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'call.description' },
+                                    then: {
+                                      type: 'we-text',
+                                      props: {
+                                        truncate: true,
+                                        width: '100%',
+                                        textAlign: 'left',
+                                        variant: 'footnote',
+                                        color: 'text-muted',
+                                      },
+                                      children: [{ $: 'call.description' }],
+                                    },
+                                  },
                                 },
                                 {
                                   type: 'we-timestamp',
@@ -2796,14 +2990,35 @@ const callsPanel: SchemaNode = {
                         },
                         {
                           /*
-                            Who is in this call, and the way in — on the rows where there is one.
+                            Who is in this call, and — on somebody else's — the way into it.
 
                             The panel's whole job is choosing which call every other surface is
-                            about, and until now choosing was all it could do: a live meeting was
-                            selectable and not joinable, so the only way in was the header's button,
-                            which is singular and therefore a guess the moment two calls are running.
-                            A row names the call it means, which is what makes this the right place
-                            for the choice rather than a second copy of the header.
+                            about, and until this row had a button choosing was all it could do: a
+                            live meeting was selectable and not joinable, so the only way in was the
+                            header's button, which is singular and therefore a guess the moment two
+                            calls are running. A row names the call it means, which is what makes
+                            this the right place for the choice rather than a second copy of the
+                            header.
+
+                            ## Nothing on the row for the call you are already in
+
+                            It carried a "Go to" there, and that button was `goToCall` — which, for a
+                            call you are in and in this space, is one line: show the stage. Joining
+                            already raised it and leaving lowers it, so unless you had deliberately
+                            closed the stage and stayed in the call, it set a flag that was already
+                            set. Beside a row whose red glyph says "this is the one you are in", next
+                            to a click that already points every surface at it, the button read as a
+                            second way to do what the row does and was in practice a no-op.
+
+                            Reopening a stage somebody closed is a real thing to want and keeps two
+                            controls that are named after it — the module rail's call launcher and
+                            the pill's phone button, both `goToCall`. What it does not need is a
+                            third, on the one surface where it is indistinguishable from navigation.
+
+                            The row click is left as pure navigation rather than inheriting the verb.
+                            Giving it `goToCall` would force the stage open on a row press, which is
+                            exactly the behaviour somebody who just closed the stage is asking not to
+                            have.
 
                             Absent rather than disabled on a finished call: there is nothing to join,
                             and picking one back up is what the pill's `call.continueCallButton` is
@@ -2820,60 +3035,60 @@ const callsPanel: SchemaNode = {
                                   // Faces rather than a count: three avatars say "a meeting is
                                   // happening and these are the people in it" in the width a number
                                   // and a noun would take. The stack carries its own "+N" past `max`.
+                                  // On your own row too: who is in it is worth saying whether or not
+                                  // there is anything to press beside it.
                                   type: 'AvatarStack',
                                   props: { avatars: { $: `${ROW_LIVE_CALL}.faces` }, size: 'xs', max: 3 },
                                 },
                                 {
-                                  type: 'we-tooltip',
+                                  /*
+                                    Joining is not navigation, which is the whole reason this button
+                                    outlived the one beside it. Clicking the row looks at a call;
+                                    this leaves whichever call you are in and enters another one, and
+                                    a heavier act than the row's own click deserves to be asked for
+                                    separately. The tooltip says what it costs.
+                                  */
+                                  type: '$if',
                                   props: {
-                                    content: {
-                                      $:
-                                        `${ROW_IS_MINE} ? 'Go to this call' : ` +
-                                        `modules.call.active ? 'Leave your call and join this one' : 'Join this call'`,
-                                    },
-                                    placement: 'top',
-                                  },
-                                  children: [
-                                    {
-                                      type: 'we-button',
+                                    condition: { $: `!(${ROW_IS_MINE})` },
+                                    then: {
+                                      type: 'we-tooltip',
                                       props: {
-                                        size: 'sm',
-                                        variant: { $: `${ROW_IS_MINE} ? 'secondary' : 'primary'` },
-                                        /*
-                                          Branched at the press, and `joinCall` rather than
-                                          `goToCall` for the row that is not yours.
-
-                                          `goToCall` means "bring me to my call", so pressed on
-                                          somebody else's row while in a call of your own it would
-                                          take you to *yours* — a button beside one conversation
-                                          doing something about another. `joinCall` names the id the
-                                          row carries and leaves whatever you were in, which is what
-                                          the word on it promises.
-                                        */
-                                        onClick: [
-                                          {
-                                            $if: {
-                                              condition: { $: ROW_IS_MINE },
-                                              then: { $action: 'modules.call.goToCall' },
-                                            },
-                                          },
-                                          {
-                                            $if: {
-                                              condition: { $: `!(${ROW_IS_MINE})` },
-                                              then: {
+                                        content: {
+                                          $: "modules.call.active ? 'Leave your call and join this one' : 'Join this call'",
+                                        },
+                                        placement: 'top',
+                                      },
+                                      children: [
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            size: 'sm',
+                                            variant: 'primary',
+                                            /*
+                                              `joinCall` rather than `goToCall`: the latter means
+                                              "bring me to my call", so pressed on somebody else's row
+                                              while in a call of your own it would take you to
+                                              *yours* — a button beside one conversation doing
+                                              something about another. `joinCall` names the id the row
+                                              carries and leaves whatever you were in, which is what
+                                              the word on it promises.
+                                            */
+                                            onClick: [
+                                              {
                                                 $action: 'modules.call.joinCall',
                                                 args: [{ $: `${ROW_LIVE_CALL}.id` }],
                                               },
-                                            },
+                                              // And point every other surface at it, which is what
+                                              // clicking the row itself would have done.
+                                              openCall('call.id'),
+                                            ],
                                           },
-                                          // And point every other surface at it, which is what
-                                          // clicking the row itself would have done.
-                                          openCall('call.id'),
-                                        ],
-                                      },
-                                      children: [{ $: `${ROW_IS_MINE} ? 'Go to' : 'Join'` }],
+                                          children: ['Join'],
+                                        },
+                                      ],
                                     },
-                                  ],
+                                  },
                                 },
                               ],
                             },
@@ -3686,8 +3901,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     A flex-grown item has a definite used height, so the percentage inside it resolves. This is the
     chain the graph view in `templates/views` uses, and the one the panels above already use.
   */
-  // `relative` so the hidden-suggestions chip can sit over the canvas's corner.
-  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden', position: 'relative' },
+  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden' },
   /*
     `syncParam`, so the inspector panel can read what the canvas selected — see `onNodeClick`.
 
@@ -3723,56 +3937,19 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     loads nothing until it is given a canvas, so mounting it with no call costs a read of nothing and
     keeps the surface constant from the first frame.
   */
+  /*
+    Nothing over the canvas's corner saying what is hidden.
+
+    There was a chip there while drafts were put away, on the reasoning that the switch lives in the
+    key and the key is a panel that can be closed. Three things take cards off this canvas, though —
+    drafts put away, a kind hidden, a card folded — and the key carries all three, where the chip
+    carried one and never asked whether the key was closed. So it sat beside an open panel saying
+    what that panel already said, and its absence read as "nothing is hidden" while two of the three
+    were. A reader who has put drafts away has the switch in the key, on the board's header and on
+    the calendar's, and the address they are at says so.
+  */
   children: [
     canvas,
-    /*
-      That drafts are hidden, said on the canvas itself.
-
-      The switch lives in the key, which is a panel and can be closed — and cards missing with nothing
-      on screen to say why is how a person comes to think extraction lost them. So while they are
-      hidden, a chip in the corner says so and brings them back. No count: the store's list spans every
-      call asked about, and a number that is not this canvas's would be worse than none.
-    */
-    {
-      type: '$if',
-      props: {
-        condition: { $: `(${CALL_EXPR}) && ${SUGGESTIONS_HIDDEN}` },
-        then: {
-          type: 'Row',
-          props: {
-            position: 'absolute',
-            left: '400',
-            bottom: '400',
-            gap: '200',
-            ay: 'center',
-            pl: '300',
-            pr: '100',
-            py: '100',
-            r: 'pill',
-            bg: 'surface-raised',
-            border: '1px solid border',
-            shadow: 'sm',
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'eye-slash', size: 'xs', color: 'text-muted' } },
-            {
-              type: 'we-text',
-              props: { fontSize: '200', color: 'text-muted' },
-              children: ['Pending acceptance hidden'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'ghost',
-                onClick: { $action: 'routeStore.setParam', args: ['suggestions', null] },
-              },
-              children: ['Show'],
-            },
-          ],
-        },
-      },
-    },
     /*
       Where a connection is actually written down.
 

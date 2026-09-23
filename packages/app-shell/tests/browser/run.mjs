@@ -25,9 +25,38 @@ const CHROME = process.env.WE_CHROME ?? '/usr/bin/google-chrome';
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.map': 'application/json' };
 
+/*
+  Stylesheets a module imported for their effect, collected while bundling so the page can carry
+  them — see `/imported.css` below.
+
+  A component whose CSS lives beside it says so with a bare `import './styles.css'`, which Vite
+  turns into a stylesheet the app loads and esbuild, bundling to one JS file, refuses outright. The
+  reachable set grows on its own: nothing here renders a graph, and `GraphHost`'s stylesheet is in
+  this list because a store two imports away now asks the platform a question. Dropping them to
+  keep the bundle quiet is the one option ruled out — this harness is believed about pixels, and
+  the comments below record two occasions when a missing stylesheet was reported as an app bug.
+*/
+const imported = new Set();
+
+/** Vite's `?raw`: a stylesheet read as text rather than applied. The theme registry holds themes this way. */
+const cssPlugin = {
+  name: 'we-stylesheets',
+  setup(build) {
+    build.onLoad({ filter: /\.css\?raw$/ }, async (args) => ({
+      contents: await readFile(args.path.replace(/\?raw$/, ''), 'utf8'),
+      loader: 'text',
+    }));
+    build.onLoad({ filter: /\.css$/ }, (args) => {
+      imported.add(args.path);
+      return { contents: '', loader: 'js' };
+    });
+  },
+};
+
 /** Bundle the page entry, resolving the workspace aliases the app itself uses. */
 async function bundle() {
   const out = await build({
+    plugins: [cssPlugin],
     entryPoints: [join(HERE, 'entry.ts')],
     bundle: true,
     format: 'esm',
@@ -92,10 +121,20 @@ async function main() {
     'utf8',
   ).catch(() => '');
 
+  /*
+    And every stylesheet the bundle imported for its effect, in the order the modules asked for
+    them — which is the order Vite would have emitted them in, and after the two above for the
+    same reason a component's own CSS loads after the app's base rules.
+  */
+  const importedCss = (await Promise.all([...imported].map((file) => readFile(file, 'utf8').catch(() => '')))).join(
+    '\n',
+  );
+
   const server = createServer((req, res) => {
     const url = (req.url ?? '/').split('?')[0];
     const send = (body, type) => res.writeHead(200, { 'content-type': type }).end(body);
     if (url === '/' || url === '/index.html') return send(html, MIME['.html']);
+    if (url === '/imported.css') return send(importedCss, MIME['.css']);
     if (url === '/shell.css') return send(shell, MIME['.css']);
     if (url === '/components.css') return send(components, MIME['.css']);
     if (url === '/entry.bundle.js') return send(js, MIME['.js']);
@@ -141,10 +180,26 @@ async function main() {
   let failures = 0;
   for (const file of files) {
     const mod = await import(join(HERE, 'cases', file));
-    for (const width of mod.widths ?? [320]) {
-      await page.evaluate(([s, w]) => window.__harness.mount(s, w), [mod.scenario, width]);
+    /*
+      The second sweep axis, beside width.
+
+      Width asks "does this layout hold when the panel is narrow"; scale asks "does this still hold
+      when there is a lot of it". They are the two questions a surface fails at, and a case declares
+      whichever it is about — a case with no `scales` sweeps `[undefined]`, so every layout case
+      written before this axis existed runs exactly as it did.
+
+      Flattened into one list rather than nested, so the body below is unchanged: a perf axis is not
+      worth re-indenting every layout assertion in the suite for.
+    */
+    const combos = [];
+    for (const scale of mod.scales ?? [undefined]) for (const w of mod.widths ?? [320]) combos.push([scale, w]);
+
+    for (const [scale, width] of combos) {
+      await page.evaluate(([s, w, n]) => window.__harness.mount(s, w, n), [mod.scenario, width, scale]);
       // One frame for the primitives to upgrade and lay out.
       await page.waitForTimeout(250);
+      /** Lines a case wants printed under its label — a measurement is a report, not a verdict. */
+      const notes = [];
       const api = {
         measure: (sel) => page.evaluate((s) => window.__harness.measure(s), sel),
         measureAll: (sel) => page.evaluate((s) => window.__harness.measureAll(s), sel),
@@ -169,6 +224,25 @@ async function main() {
           thing a screen reader would name.
         */
         count: (sel) => page.locator(sel).count(),
+        /*
+          Put a scroller somewhere, and report where it actually landed.
+
+          Clamping is the point as much as the move: asking for a position past either end and
+          reading back what the browser allowed is how a case discovers the scroll RANGE, which is
+          not otherwise inspectable — and under `flex-direction: column-reverse` the range does not
+          start at zero, which is exactly the sort of thing worth measuring rather than assuming.
+        */
+        scrollTo: (sel, top) =>
+          page.evaluate(
+            ([s, t]) => {
+              const host = document.querySelector(s);
+              const el = host?.shadowRoot?.querySelector("[part='base']") ?? host;
+              if (!el) return null;
+              el.scrollTop = t;
+              return Math.round(el.scrollTop);
+            },
+            [sel, top],
+          ),
         html: () => page.evaluate(() => window.__harness.html()),
         // Some states are only reachable by using the thing — a folded branch, an opened row. A
         // case that cannot press anything can only ever judge a first paint.
@@ -223,6 +297,41 @@ async function main() {
         },
         /** What a page-level listener recorded — for counting what a gesture actually emitted. */
         recorded: (key) => page.evaluate((k) => globalThis[k] ?? [], key),
+
+        // ── Performance ────────────────────────────────────────────────────
+        /*
+          What an interaction cost. See `instrument.ts` for what the numbers are and are not.
+
+          The interaction is named rather than passed, because it has to run INSIDE the page: a
+          Playwright callback would be a round trip per step and would time the protocol rather than
+          the app. So a case says `profile('resize', [320, 520])` and the page does the rest.
+        */
+        profile: (action, args = []) =>
+          page.evaluate(
+            ([a, rest]) => {
+              const h = window.__harness;
+              const run = {
+                resize: () => h.resizeMount(...rest),
+                addRow: () => h.addRow(...rest),
+                addProfile: () => h.addProfile(...rest),
+                // Nothing at all, for the same number of frames — the baseline every other figure
+                // is read against. See `idleFrames` for why it has to match the shape of what it is
+                // compared with rather than being a single frame.
+                idle: () => h.idleFrames(...rest),
+              }[a];
+              if (!run) throw new Error(`no profiled action "${a}"`);
+              return h.profile(run);
+            },
+            [action, args],
+          ),
+        /**
+         * A line printed under the case, whatever the verdict.
+         *
+         * Measurements are reported and assertions are separate, deliberately: a wall-clock figure
+         * from one machine must never decide whether a suite passes, and a suite that prints nothing
+         * when it passes cannot be used to watch a number move.
+         */
+        note: (text) => notes.push(text),
         /**
          * Collect an event's `detail` under `key`, listening at the document.
          *
@@ -239,8 +348,8 @@ async function main() {
             [type, key],
           ),
       };
-      const problems = (await mod.check(api, width)) ?? [];
-      const label = `${mod.name} @ ${width}px`;
+      const problems = (await mod.check(api, width, scale)) ?? [];
+      const label = scale === undefined ? `${mod.name} @ ${width}px` : `${mod.name} @ ${width}px n=${scale}`;
       if (process.env.WE_BROWSER_CHAIN) {
         const rows = await page.evaluate((t) => window.__harness.chain(t), process.env.WE_BROWSER_CHAIN);
         console.log(`  chain above "${process.env.WE_BROWSER_CHAIN}" at ${width}px:`);
@@ -262,6 +371,9 @@ async function main() {
       } else {
         console.log(`  ✓ ${label}`);
       }
+      // After the verdict either way: a measurement is worth reading when the case passes, which is
+      // most of the time and is exactly when a number quietly drifting would otherwise go unseen.
+      for (const n of notes) console.log(`      ${n}`);
     }
   }
 

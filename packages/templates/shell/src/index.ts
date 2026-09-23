@@ -32,4 +32,6 @@ export { settingsTemplate } from './Settings.schema';
 export { sidebar } from './Sidebar.schema';
 export { templateEditor } from './TemplateEditor.schema';
 export { createSpaceModal, createSpaceModalMount } from './CreateSpaceModal.ts';
+export { joinSpaceModalMount } from './JoinSpaceModal.ts';
+export { screenSourcePrompt } from './ScreenSourcePrompt.schema.ts';
 export { spaceSettingsPanel } from './spaces/SpaceSettingsPanel.schema';

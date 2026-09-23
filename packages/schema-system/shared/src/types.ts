@@ -444,7 +444,20 @@ export type QueryToken = {
        */
       levels?: Array<number | Record<string, unknown>>;
     };
-    subscribe?: boolean;
+    /**
+     * Follow the answer as it changes. Defaults to true; `false` fetches once.
+     *
+     * An **expression** is allowed here, and it is what lets a surface be live only while its
+     * subject is. A call's transcript is the case: while somebody is in the call it has to follow
+     * every utterance, and once the call is over the record is settled — so
+     * `{ $: 'modules.transcribe.callOnScreenLive' }` reads a past transcript with no subscription
+     * registered at all, where before it held one open over the whole thing for as long as it was
+     * on screen. Reading is the commonest thing anybody does to a long transcript, so this is
+     * where most of the cost of one was.
+     *
+     * Changing it re-asks the query, which is what tears the subscription down when a call ends.
+     */
+    subscribe?: boolean | SchemaProp;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
     dataset?: string;
     /**
@@ -548,7 +561,12 @@ export type QueryDescriptor = {
    */
   entity: unknown;
   params: Record<string, unknown>;
-  subscribe: boolean;
+  /**
+   * As authored: `true`/`false`, or an expression the framework layer resolves — see
+   * `QueryToken.subscribe`. `unknown` for the same reason `entity` is: this resolver is pure, and
+   * only the framework layer holds the stores an expression is evaluated against.
+   */
+  subscribe: unknown;
   dataset?: string;
   include?: Record<string, boolean | Record<string, unknown>>;
   /** The query runs only while this resolves truthy — see `QueryToken.when`. Kept out of `params`. */

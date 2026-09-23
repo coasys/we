@@ -612,10 +612,27 @@ function updateCustomVars(
   setProperty(el, `${prefix}max-width`, props.maxWidth);
   setProperty(el, `${prefix}max-height`, props.maxHeight);
   setProperty(el, `${prefix}position`, props.position);
-  setProperty(el, `${prefix}top`, props.top);
-  setProperty(el, `${prefix}right`, props.right);
-  setProperty(el, `${prefix}bottom`, props.bottom);
-  setProperty(el, `${prefix}left`, props.left);
+  /*
+    Offsets resolve space tokens, exactly as margin, padding and gap do.
+
+    They were raw passthrough, so `top: '200'` emitted an unitless `top: 200` — invalid, silently
+    dropped by the browser, and indistinguishable from a working offset at author time since the
+    prop is typed `string`. The failure is worse than a no-op: `position: absolute` still applies,
+    and an absolutely positioned box with no valid offsets renders at its *static* position — so
+    inside a centring parent the element lands dead centre and reads as a deliberate choice. That
+    is what put the call tile's reconnect button in the middle of everybody's face.
+
+    `buildLayoutStyles` in @we/design-utils fixed this for the Solid components and this parallel
+    path was missed, which is the hazard of two implementations of one job: the comment there says
+    offsets "were raw passthrough" in the past tense, and for every Lit primitive they still were.
+
+    No `axis` argument, deliberately — margin and the offsets share the `space` prefix and read no
+    theme family, so this stays a plain scale lookup. See tokenVar.
+  */
+  setProperty(el, `${prefix}top`, props.top ? tokenVar('space', props.top) : undefined);
+  setProperty(el, `${prefix}right`, props.right ? tokenVar('space', props.right) : undefined);
+  setProperty(el, `${prefix}bottom`, props.bottom ? tokenVar('space', props.bottom) : undefined);
+  setProperty(el, `${prefix}left`, props.left ? tokenVar('space', props.left) : undefined);
   setProperty(el, `${prefix}z-index`, zIndexVar(props.zIndex));
   setProperty(el, `${prefix}margin`, hasMargin ? getMarginValues(props) : undefined);
   setProperty(el, `${prefix}flex`, props.flex);

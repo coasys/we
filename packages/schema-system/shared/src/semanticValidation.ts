@@ -1085,6 +1085,20 @@ function checkProps(
     if (ctx.universalProps.has(propName)) continue;
     // Event handlers are always valid
     if (propName.startsWith('on') && propName.length > 2 && propName[2] === propName[2].toUpperCase()) continue;
+    /*
+      A data attribute is always valid, on anything.
+
+      They are how a consumer marks something for a primitive to find — `data-we-handle` says which
+      part of a sortable row is the grab area, `data-we-more` says a scroller has unloaded content
+      beyond an end — and the design system documents several. Nothing declares them as props,
+      because they are not props: they are attributes the renderer spreads through, and the element
+      that reads one is looking at the DOM rather than at a prop bag.
+
+      Refusing them pushed authors onto a bare `div` to carry a marker, which is why the existing
+      conventions are all documented against native elements. That is a workaround for this check
+      rather than a design.
+    */
+    if (propName.startsWith('data-')) continue;
 
     // Check if prop is known
     if (knownProps && !knownProps.has(propName)) {
@@ -1207,7 +1221,20 @@ function checkValuePositionIf(
   propTypes: Map<string, string> | undefined,
   errors: ValidationError[],
 ): void {
-  if (/^on[A-Z]/.test(propName)) return;
+  /*
+    Two spellings of "this prop is an event handler", and the second is easy to forget.
+
+    `onClick` is the delegated DOM event. `on:submit` is Solid's direct-listener syntax, which is
+    how a schema reaches a **custom event a Lit primitive declares** — `we-textarea`'s `submit`,
+    `we-menu-item`'s `select` — and which the design system's own guidance tells authors to prefer
+    there, because delegation is unreliable across a shadow boundary and the browser's top layer.
+
+    Only the first was exempt, so a `$if` guarding a custom-event handler was refused with advice to
+    use a ternary, which cannot hold a handler and would not have worked. `$action` in the same
+    position was always accepted, so the rule was not even self-consistent — it was rejecting the
+    conditional form of something it already allowed.
+  */
+  if (/^on[A-Z]/.test(propName) || propName.startsWith('on:')) return;
   const declared = propTypes?.get(propName);
   if (declared === 'function') return;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;

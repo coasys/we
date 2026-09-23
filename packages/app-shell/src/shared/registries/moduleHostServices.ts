@@ -320,6 +320,46 @@ export function createModuleStoreDeps(framework: {
         if (!devices?.getDisplayMedia) return Promise.reject(new Error('media: this host cannot share a screen'));
         return devices.getDisplayMedia(constraints);
       },
+      /*
+        `[]` rather than a rejection, on every path that cannot answer.
+
+        A machine with no media devices, a browser that has not been given permission, and a host
+        with no `navigator` are all states a chooser has to draw something sensible for — "no
+        microphones found" — and an error would turn each of them into a fault report. The two calls
+        above reject because *asking for a device and not getting one* is a failure; asking what
+        there is and being told nothing is not.
+
+        Narrowed to inputs, and to the four fields a chooser reads. `MediaDeviceInfo` also carries
+        `toJSON` and, on outputs, a routing id that nothing here uses — passing the browser's object
+        through would put a wider surface in front of every module than the kernel means to offer.
+      */
+      enumerateDevices: async () => {
+        const devices = globalThis.navigator?.mediaDevices;
+        if (!devices?.enumerateDevices) return [];
+        try {
+          const found = await devices.enumerateDevices();
+          return found
+            .filter((device) => device.kind === 'audioinput' || device.kind === 'videoinput')
+            .map((device) => ({
+              deviceId: device.deviceId,
+              kind: device.kind as 'audioinput' | 'videoinput',
+              label: device.label,
+              groupId: device.groupId,
+            }));
+        } catch {
+          return [];
+        }
+      },
+      /*
+        A no-op unsubscribe where the host cannot report changes, so a caller's teardown is the same
+        shape either way and nothing has to test whether it got a real subscription.
+      */
+      onDevicesChanged: (listener) => {
+        const devices = globalThis.navigator?.mediaDevices;
+        if (!devices?.addEventListener) return () => {};
+        devices.addEventListener('devicechange', listener);
+        return () => devices.removeEventListener('devicechange', listener);
+      },
       publish: (stream) => {
         publishedMedia = stream;
         for (const listener of mediaListeners) listener(stream);

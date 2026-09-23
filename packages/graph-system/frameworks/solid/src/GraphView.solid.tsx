@@ -674,6 +674,43 @@ export function GraphView(props: GraphViewProps) {
     live: props.live,
   });
 
+  /**
+   * A seed spec split into the part that decides the queries and the part that decides the drawing.
+   *
+   * The narrowness the effect below advertises used to stop at the prop: `seeds` was tracked whole,
+   * and `seeds` is one bag holding two kinds of thing. Which canvas, which types and how many decide
+   * what is fetched; which cards are marked as suggestions and which are left off are applied to
+   * rows already in hand. Only the seed knows which of its own options are which, so it says — see
+   * `presentationOptions` on `SeedSource`.
+   *
+   * A spec naming a source nothing has registered, or a literal one, has no presentation half and
+   * lands entirely in the structural key, which is the behaviour every seed had before this.
+   */
+  const splitSeed = (spec: unknown): [structural: unknown, presentation: unknown] => {
+    const source = (spec as { source?: unknown } | null)?.source;
+    const options = (spec as { options?: Record<string, unknown> } | null)?.options;
+    const keys = typeof source === 'string' ? registry.seed(source)?.presentationOptions : undefined;
+    if (!keys?.length || !options) return [spec, null];
+
+    const structural: Record<string, unknown> = {};
+    const presentation: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(options)) {
+      if (keys.includes(key)) presentation[key] = value;
+      else structural[key] = value;
+    }
+    return [{ ...(spec as object), options: structural }, presentation];
+  };
+
+  /** Both halves of every seed, as two comparable strings. */
+  const seedKeys = () => {
+    const specs = Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : [];
+    const split = specs.map(splitSeed);
+    return {
+      structural: JSON.stringify([split.map(([s]) => s), props.expansion ?? null]),
+      presentation: JSON.stringify(split.map(([, p]) => p)),
+    };
+  };
+
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
   // narrow: recolouring a map must never re-run its queries, and depending on the whole prop bag
   // would do exactly that. `props.layout` is read untracked so a layout swap does not land here.
@@ -687,11 +724,41 @@ export function GraphView(props: GraphViewProps) {
       which looks like a layout bug and is really this effect firing on churn. The layout and style
       effects below already compare; this one is the reason to.
     */
-    const next = JSON.stringify([props.seeds ?? null, props.expansion ?? null]);
+    const next = seedKeys().structural;
     if (previous === next) return next;
     untrack(() => {
       engine.setSpec(currentSpec());
       void engine.start();
+    });
+    return next;
+  });
+
+  /*
+    A marker changing is not the graph becoming a different graph.
+
+    The same seeds, drawn differently: a card a pass has just staged should start looking provisional,
+    and one somebody has just kept should stop. Sent down `refresh`, which re-reads and merges rather
+    than clearing — so the graph stays on screen, keeps its positions and its arrangement, and
+    `reloading` is never raised.
+
+    That last part is what this is for. `start` raises it, and `reloading` is what drops every layer
+    to 40% and puts a spinner over the middle of the canvas. On the workshop's canvas those markers
+    come straight from the transcriber, so with auto-extract on a call the whole screen faded under a
+    "Loading graph…" every couple of minutes — for a change that amounted to two cards changing
+    opacity.
+
+    `setSpec` first, or `refresh` would re-read the seeds against the markers they had last time.
+
+    The first run only records the value: the structural effect above has already loaded, and firing
+    here on mount would run every seed query a second time — the reason the revision effect below
+    does the same.
+  */
+  createEffect((previous: string | undefined) => {
+    const next = seedKeys().presentation;
+    if (previous === undefined || previous === next) return next;
+    untrack(() => {
+      engine.setSpec(currentSpec());
+      void engine.refresh();
     });
     return next;
   });
@@ -2819,10 +2886,19 @@ export function GraphView(props: GraphViewProps) {
                   A wider, transparent copy of the line under the real one — the hover mark, and the
                   reason it is a second path rather than a thicker stroke: the visible line keeps its
                   own width, so nothing about the drawing changes shape when the pointer is near it.
+
+                  The **selected** line carries the same mark, one step stronger, and keeps it once
+                  the pointer has gone. A card says which one is selected with a ring that stays; an
+                  edge said it with nothing at all, so selecting a line and moving away left the
+                  inspector talking about a connection nobody could see on the canvas. One path
+                  rather than two, so the two states cannot stack into a third brightness.
                 */}
-                <Show when={hoveredEdge() === entry.edge.id}>
+                <Show when={hoveredEdge() === entry.edge.id || selectedEdge() === entry.edge.id}>
                   <path
-                    class="we-graph__edge-hover"
+                    classList={{
+                      'we-graph__edge-hover': true,
+                      'we-graph__edge-hover--selected': selectedEdge() === entry.edge.id,
+                    }}
                     d={entry.path}
                     fill="none"
                     stroke={color(entry.visual.color, 'neutral-300')}

@@ -12,7 +12,7 @@
  * this backend compiles *that* to IR and executes it. So every shape here is a round trip through
  * `irToFlatQuery`, and anything that does not survive it — a filter that loses a branch, a sort that
  * loses its direction, a projection that loses its `where` — shows up as two different answers to
- * one question. Against AD4M the lowering is different, but the round trip is the same shape.
+ * one question. Against the production adapter the lowering is different, but the round trip is the same shape.
  *
  * The shapes are the page's own: filter (eq / contains / OR), sort, pagination, projections, and the
  * drill-down it listed as "check on real screens". What it could not cover here is liveness, which

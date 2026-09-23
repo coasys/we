@@ -38,8 +38,8 @@ import {
   compressImageToFileData,
   dataURIToFileData,
   EdgeRoute,
-  getEntitiesForPerspective,
   getEntity,
+  getEntityForDataset,
   Placement,
   PREDICATES,
   runEntityTransaction,
@@ -724,7 +724,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * global class and falls back to the space's own, so every caller here goes through it.
    */
   function entityClass(entity: string, handle: unknown): ReturnType<typeof getEntity> {
-    return (getEntitiesForPerspective(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
+    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
   }
 
   /**

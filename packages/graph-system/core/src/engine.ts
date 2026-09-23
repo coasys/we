@@ -235,6 +235,10 @@ export class GraphEngine {
   private inFlight = 0;
   /** Of those, how many cover the whole graph. See {@link EngineStatus.reloading}. */
   private reloadsInFlight = 0;
+  /** Aborts the reads of a load that has been replaced — see `loadSeeds`. */
+  private loadAbort?: AbortController;
+  /** Which load is current. Anything finishing on an older one drops what it found. */
+  private loadGeneration = 0;
   private disposed = false;
   /** What the layout last complained about, so a new arrangement can retire it. */
   private layoutWarnings: string[] = [];
@@ -478,7 +482,9 @@ export class GraphEngine {
     this.beginLoading('reload');
     try {
       const fragment = await this.loadSeeds();
-      if (this.disposed) return;
+      // Disposed, or replaced by a later load — either way this one has nothing to say about what
+      // is on screen now. See `loadSeeds`.
+      if (this.disposed || !fragment) return;
 
       /*
         The same graph, asked for again, keeps its arrangement.
@@ -573,7 +579,9 @@ export class GraphEngine {
 
   private async refreshOnce(): Promise<void> {
     const fragment = await this.loadSeeds();
-    if (this.disposed) return;
+    // As in `start`: a load that was replaced must not reconcile its rows into the graph that
+    // replaced it.
+    if (this.disposed || !fragment) return;
     await this.reconcile(fragment);
   }
 
@@ -582,6 +590,26 @@ export class GraphEngine {
    * it. The body of a refresh, and of a restart that turned out to be the same graph — see `start`.
    */
   private async reconcile(fragment: { nodes: GraphNode[]; edges: GraphEdge[] }): Promise<void> {
+    /*
+      A graph arriving on an empty screen is framed, whichever path brought it.
+
+      `start` frames what it loads and `refresh` deliberately does not — a viewport that jumped
+      whenever a peer wrote something would make a shared graph unusable. That reads as a rule about
+      the two methods, and it is really a rule about the graph: there is nothing to disturb when
+      nothing is on screen, and nothing else will ever frame it either. `resize` only re-frames on
+      the FIRST measurement, which on a cold boot happens seconds before any row arrives, with no
+      positions to find bounds in.
+
+      Which matters because `start` can end up doing nothing at all. A load that has been replaced
+      returns null and `start` gives up before its fit — so a refresh landing while the first load
+      was still in flight left the whole canvas at the origin, the reader seeing whichever cards
+      happened to be placed near it and no sign of the rest. On the workshop's canvas that is the
+      ordinary case on a reload mid-call: the transcriber's `pending` list arrives a moment after
+      mount, and a marker moving goes down `refresh`.
+
+      Measured before the merge, so this is "the screen was empty", not "the seeds found nothing".
+    */
+    const wasEmpty = this.store.nodeCount === 0;
     const nodes = this.trimToBudget(fragment.nodes);
     const seedNodes = new Set(nodes.map((n) => n.id));
     const seedEdges = new Set(fragment.edges.map((e) => e.id));
@@ -617,7 +645,7 @@ export class GraphEngine {
     }
 
     this.recomputeMetrics();
-    this.relayout();
+    this.relayout({ fit: wasEmpty });
     this.notify('graph');
   }
 
@@ -633,11 +661,37 @@ export class GraphEngine {
    * becomes live for free; the alternative — the engine parsing `options.entity` — would work for
    * exactly the sources that happen to spell it that way and silently fail for the rest.
    */
-  private async loadSeeds(): Promise<GraphFragment> {
+  /** What the seeds found, or `null` when this load was replaced before it finished. */
+  private async loadSeeds(): Promise<GraphFragment | null> {
     const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
     const read = new Map<string, WatchTarget>();
+
+    /*
+      The load that is happening now, and the one it replaces.
+
+      Two things were wrong without this, and the second is the serious one.
+
+      Every seed here takes an `AbortSignal` and threads it through each of its reads — the canvas
+      seed has done so since it was written — and nothing ever passed one, so the whole of that
+      plumbing was dead and a superseded load's queries all ran to completion. On a canvas that is
+      eleven reads nobody is waiting for.
+
+      Worse, they were not merely wasted. `refresh` serialises itself, but nothing serialised a
+      `refresh` against a `start`: switching canvases while a refresh was in flight left the older
+      load to finish afterwards and reconcile its rows into the graph that had replaced it. Rare,
+      silent, and indistinguishable from the backend having answered with the wrong canvas.
+
+      So a load takes a generation, and anything that finishes holding a stale one drops what it
+      found instead of applying it — the same shape as the `disposed` checks after every await here.
+    */
+    this.loadAbort?.abort();
+    const controller = new AbortController();
+    this.loadAbort = controller;
+    const generation = ++this.loadGeneration;
+    /** This load has been replaced, so whatever it found is about a graph nobody is looking at. */
+    const superseded = () => generation !== this.loadGeneration;
 
     const recording: ExpanderContext = {
       ...this.context,
@@ -658,11 +712,14 @@ export class GraphEngine {
             ? { nodes: seed.nodes, edges: seed.edges }
             : await this.registry
                 .seed(seed.source)
-                ?.seed(seed.options ?? {}, recording)
+                ?.seed(seed.options ?? {}, recording, controller.signal)
                 .catch((error: unknown) => {
-                  this.warn(`seed "${seed.source}" failed: ${describe(error)}`);
+                  // A load that was replaced did not fail. Reporting the abort would put a warning
+                  // on screen naming the seed, for a load whose results were never wanted.
+                  if (!superseded()) this.warn(`seed "${seed.source}" failed: ${describe(error)}`);
                   return undefined;
                 });
+        if (superseded()) return null;
         if (!fragment) {
           if (!('literal' in seed) && !this.registry.seed(seed.source)) {
             this.warn(`no seed source registered as "${seed.source}"`);
@@ -676,6 +733,13 @@ export class GraphEngine {
       this.endLoading('partial');
     }
 
+    /*
+      The watches belong to the load that is current, never to one that was replaced.
+
+      Registering a superseded load's reads would tear down the live graph's subscriptions and put
+      back the old graph's — `syncWatchers` reconciles against exactly the set it is handed.
+    */
+    if (superseded()) return null;
     this.lastSeedReads = read;
     this.syncWatchers(read);
     return { nodes, edges };

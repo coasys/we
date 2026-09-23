@@ -514,6 +514,8 @@ export const contextData: ContextData = {
         { name: 'maxWidth', type: 'string', optional: false, default: "''" },
         { name: 'pin', type: "'' | 'end'", optional: false, default: "''" },
         { name: 'jump', type: "'' | 'start' | 'end' | 'both'", optional: false, default: "''" },
+        { name: 'nearStart', type: 'number', optional: false, default: '0' },
+        { name: 'nearEnd', type: 'number', optional: false, default: '0' },
       ],
     },
     {
@@ -766,7 +768,7 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       props: [
         { name: 'editorState', type: 'EditorStateInput', optional: true },
-        { name: 'perspective', type: 'unknown', optional: true },
+        { name: 'dataset', type: 'unknown', optional: true },
         { name: 'onSave', type: '((document: ContentDocument) => void)', optional: true },
         { name: 'onReady', type: '((api: { save: () => void; }) => void)', optional: true },
         { name: 'onDirtyChange', type: '((dirty: boolean) => void)', optional: true },
@@ -782,7 +784,7 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       props: [
         { name: 'editorState', type: 'EditorStateInput', optional: true },
-        { name: 'perspective', type: 'unknown', optional: true },
+        { name: 'dataset', type: 'unknown', optional: true },
         { name: 'blockDrag', type: 'BlockDragSource', optional: true },
         { name: 'rootClass', type: 'string', optional: true },
       ],
@@ -2611,6 +2613,8 @@ export const contextData: ContextData = {
       state: {
         activeShellView: { type: 'string' },
         createSpaceOpen: { type: 'boolean' },
+        joinSpaceOpen: { type: 'boolean' },
+        pendingScreenSources: { type: 'array' },
         pendingDestructive: { type: 'object' },
         spaceSettingsOpen: { type: 'boolean' },
         spaceSettingsTab: { type: 'string' },
@@ -2638,6 +2642,8 @@ export const contextData: ContextData = {
         'openShellView',
         'closeShellView',
         'setCreateSpaceOpen',
+        'setJoinSpaceOpen',
+        'chooseScreenSource',
         'confirmDestructive',
         'cancelDestructive',
         'toggleSpaceSettings',
@@ -3071,6 +3077,7 @@ export const contextData: ContextData = {
         'kernel:peerConnection',
         'dock',
         'slot:dock-bottom',
+        'slot:overlay',
       ],
       members: [
         { name: 'active', kind: 'state', doc: 'Whether this agent is in a call right now.' },
@@ -3079,6 +3086,11 @@ export const contextData: ContextData = {
           name: 'attachAnchor',
           kind: 'action',
           doc: 'Make the running call about the record whose id is given, without rejoining it.',
+        },
+        {
+          name: 'audioDevice',
+          kind: 'state',
+          doc: 'The microphone this agent has chosen, or empty for whatever the system offers.',
         },
         { name: 'callId', kind: 'state', doc: 'The id of the call this agent is in, or null between calls.' },
         {
@@ -3092,14 +3104,32 @@ export const contextData: ContextData = {
           doc: 'The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.',
         },
         {
+          name: 'cameraOptions',
+          kind: 'state',
+          doc: 'The cameras as picker options, on the same terms as microphoneOptions.',
+        },
+        { name: 'cameras', kind: 'state', doc: 'The cameras this machine has, on the same terms as microphones.' },
+        {
           name: 'canCall',
           kind: 'state',
           doc: 'Whether a call could be started here — false in a personal space, which has nobody to call.',
         },
+        { name: 'closeDeviceSettings', kind: 'action', doc: 'Close the camera and microphone chooser.' },
         {
           name: 'continueCall',
           kind: 'action',
           doc: 'Pick a past call back up by its record id, joining anyone already in it and writing no new record.',
+        },
+        { name: 'deviceSettingsOpen', kind: 'state', doc: 'Whether the camera and microphone chooser is open.' },
+        {
+          name: 'devicesNamed',
+          kind: 'state',
+          doc: 'Whether this machine will say what its devices are called. False until capture has been allowed once.',
+        },
+        {
+          name: 'devicesProbed',
+          kind: 'state',
+          doc: 'Whether this machine has been asked for a device yet. Until it has, an empty device list means "not allowed to look", not "none here".',
         },
         { name: 'dismissProblem', kind: 'action', doc: 'Dismiss the problem message.' },
         {
@@ -3148,10 +3178,26 @@ export const contextData: ContextData = {
           doc: "This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.",
         },
         {
+          name: 'microphoneOptions',
+          kind: 'state',
+          doc: 'The microphones as picker options, "System default" first — ready for a we-select.',
+        },
+        {
+          name: 'microphones',
+          kind: 'state',
+          doc: 'The microphones this machine has — { deviceId, label, groupId } each. A label is empty until capture has been allowed once.',
+        },
+        {
+          name: 'nameDevices',
+          kind: 'action',
+          doc: 'Ask for a device once so this machine will say what its hardware is called.',
+        },
+        {
           name: 'ongoing',
           kind: 'state',
           doc: 'Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.',
         },
+        { name: 'openDeviceSettings', kind: 'action', doc: 'Open the camera and microphone chooser.' },
         {
           name: 'problem',
           kind: 'state',
@@ -3162,6 +3208,7 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: "Build one peer's connection again from scratch, without leaving the call.",
         },
+        { name: 'refreshDevices', kind: 'action', doc: 'Re-read which microphones and cameras this machine has.' },
         {
           name: 'returnToCall',
           kind: 'action',
@@ -3171,6 +3218,11 @@ export const contextData: ContextData = {
           name: 'setArrangement',
           kind: 'action',
           doc: 'Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.',
+        },
+        {
+          name: 'setDevice',
+          kind: 'action',
+          doc: 'Use a different microphone or camera; an empty id means whatever the system offers.',
         },
         {
           name: 'solo',
@@ -3208,10 +3260,16 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Turn this agent’s camera on or off, reporting through problem when it is refused.',
         },
+        {
+          name: 'videoDevice',
+          kind: 'state',
+          doc: 'The camera this agent has chosen, or empty for whatever the system offers.',
+        },
       ],
       parts: [
         { name: 'anchoredCallButton' },
         { name: 'continueCallButton' },
+        { name: 'deviceSettings' },
         { name: 'startCallButton' },
         { name: 'tile' },
       ],
@@ -3432,6 +3490,12 @@ export const contextData: ContextData = {
           doc: 'Suggestions staged on one conversation, by record id — read as proposalsFor[id].',
         },
         {
+          name: 'readTranscriptFromStart',
+          kind: 'action',
+          doc: 'Shows the beginning of the transcript, to be read forwards.',
+        },
+        { name: 'readTranscriptLive', kind: 'action', doc: 'Goes back to following the end of the transcript.' },
+        {
           name: 'reconnecting',
           kind: 'state',
           doc: 'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
@@ -3439,6 +3503,11 @@ export const contextData: ContextData = {
         { name: 'refreshProposals', kind: 'action', doc: 'Re-reads what is staged on a call, or on the live one.' },
         { name: 'rejectProposal', kind: 'action', doc: 'Drops a suggestion.' },
         { name: 'setProposalField', kind: 'action', doc: 'Sets one field of the open draft, by property name.' },
+        {
+          name: 'showMoreTranscript',
+          kind: 'action',
+          doc: 'Loads one more page of the transcript, in whichever direction it is being read.',
+        },
         { name: 'speaking', kind: 'state', doc: 'Whether the microphone level currently counts as speech.' },
         {
           name: 'status',
@@ -3475,6 +3544,12 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'Speech has gone to the model and its text has not come back yet.',
         },
+        {
+          name: 'transcriptFromStart',
+          kind: 'state',
+          doc: 'Whether the transcript is being read from its beginning rather than following the live end.',
+        },
+        { name: 'transcriptShown', kind: 'state', doc: 'How many transcript lines are loaded right now.' },
         { name: 'unconfirmedIds', kind: 'state', doc: 'Records a pass made that nobody has kept yet, by id.' },
         {
           name: 'watchProblem',

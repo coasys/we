@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { linkedRecords, pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
+import { linkedRecords, loadMore, pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
 
 /**
  * A page for one record.
@@ -267,15 +267,28 @@ const genericBody: SchemaNode = {
  * the children extraction and transcription wrote. The generic body would render a heading and an
  * empty box, so calls get a branch. This is the per-type override the page is designed around, and
  * the shape any other type would follow.
+ *
+ * ## The transcript is read a page at a time
+ *
+ * This is the one place in the app that draws a whole conversation as a document, and an hour of
+ * six people talking is a few thousand lines — each of which is an `$agent` lookup and three nodes.
+ * Unbounded it was the page's entire cost, paid before anything appeared, to render something
+ * nobody has scrolled to. From the top and forwards, because that is how a finished conversation is
+ * read; the live panel anchors at the other end, for the opposite reason.
  */
+const TRANSCRIPT_PAGE = 100;
+const TRANSCRIPT_FIELD = 'transcriptShown';
+
 const callBody: SchemaNode = {
   type: 'Column',
   props: { gap: '400', width: '100%' },
+  $localState: { [TRANSCRIPT_FIELD]: { type: 'number', initial: TRANSCRIPT_PAGE } },
   $queries: {
     utterances: {
       entity: 'TextBlock',
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: idExpr },
       order: { createdAt: 'asc' },
+      limit: { $: `local.${TRANSCRIPT_FIELD}` },
     },
   },
   children: [
@@ -299,8 +312,15 @@ const callBody: SchemaNode = {
         {
           type: 'we-text',
           props: { color: 'text-muted' },
+          // A count of a page is not a count of the call, so a full page says so rather than
+          // reporting the window as the total — the same reason the calls list says "200+".
           children: [
-            { $: "`· ${count(local.utterances)} ${plural(count(local.utterances), 'utterance', 'utterances')}`" },
+            {
+              $:
+                `count(local.utterances) >= local.${TRANSCRIPT_FIELD}` +
+                ' ? `· ${count(local.utterances)}+ utterances`' +
+                " : `· ${count(local.utterances)} ${plural(count(local.utterances), 'utterance', 'utterances')}`",
+            },
           ],
         },
       ],
@@ -382,6 +402,7 @@ const callBody: SchemaNode = {
         },
       },
     },
+    loadMore({ field: TRANSCRIPT_FIELD, rowsLocal: 'utterances', pageSize: TRANSCRIPT_PAGE, label: 'Read on' }),
   ],
 };
 

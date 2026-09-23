@@ -445,9 +445,16 @@ describe('the workshop template’s call selection', () => {
     // A live row is told apart by being live, not by being yours — which is what it used to test.
     expect(calls).not.toContain("call.id == modules.call.callRecordId ? 'danger' : 'text-faint'");
     expect(calls).toContain("find(modules.call.liveCalls, { recordId: call.id }) ? 'danger' : 'text-faint'");
-    // Who is in it, and the two words that tell your call from somebody else's.
+    // Who is in it — on your own row too, where there is nothing to press beside them.
     expect(calls).toContain('"type":"AvatarStack"');
-    expect(calls).toContain("'Go to' : 'Join'");
+    /*
+      And a way in on everybody else's. The row used to carry both words, "Go to" for your own call
+      and "Join" for another — but going to a call you are already in is what clicking the row does,
+      so that half went and the button is gated on the row not being yours. What is left is the act
+      that is not navigation, and the tooltip says what it costs.
+    */
+    expect(calls).not.toContain("'Go to' : 'Join'");
+    expect(calls).toContain("modules.call.active ? 'Leave your call and join this one' : 'Join this call'");
   });
 
   it('keeps a calendar where the archive of calls used to be', () => {
@@ -616,7 +623,9 @@ describe('the workshop template’s call selection', () => {
       `"hidden":{"$":"(routeStore.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
     );
     expect(json).toContain('"$action":"modules.transcribe.applyChange"');
-    expect(json).toContain('Pending acceptance hidden');
+    // Said in the key, which carries every reason a card is off the canvas, and nowhere else: a chip
+    // over the corner spoke for one of the three and stood beside the panel already saying it.
+    expect(json).not.toContain('Pending acceptance hidden');
     // Parked in slots a card fits, and pinned where it is drawn when kept.
     expect(json).toContain('"layout":{"type":"manual","options":{"size":{"width":180,"height":135}');
     expect(json).toContain(

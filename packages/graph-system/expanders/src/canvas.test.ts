@@ -804,3 +804,80 @@ describe('canvas connection waypoints', () => {
     expect(edges[0].data).not.toHaveProperty('waypoints');
   });
 });
+
+/**
+ * What the canvas asks for, and what it says when it cannot ask for everything.
+ *
+ * Both of these are about cost and about honesty rather than about what ends up on screen — which is
+ * why neither was noticed: the canvas looked right in every case below.
+ */
+describe('the canvas seed’s reads', () => {
+  it('asks one question once, however many times it was listed', async () => {
+    /*
+      `contains` is a caller's list — on the workshop's canvas it is the call's stored extraction
+      targets — so a repeated entry is a thing that happens, and each repeat cost a round trip and a
+      standing subscription, since the engine keys its watches on the read.
+    */
+    const { context: ctx, asked } = context({
+      Placement: [],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock', 'TaskBlock', 'TaskBlock'] }, ctx);
+
+    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(1);
+  });
+
+  it('still asks twice for a type that is both placed and owned, which is two questions', async () => {
+    /*
+      The dedup is exact repeats only, and this is why. "The ones positioned here", by id, and "the
+      ones this canvas owns", by containment, are different questions — the second is what finds a
+      card nobody has placed yet. They cannot be merged into one query either: one is a `where` and
+      the other a `scope`, and the grammar has no union of the two.
+    */
+    const { context: ctx, asked } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 }],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock'] }, ctx);
+
+    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(2);
+  });
+
+  it('says so when there are more placed cards than it is allowed to read', async () => {
+    /*
+      The placements read is not like the others. Every read here is bounded, and for most of them
+      hitting the bound means some cards of that kind are missing — visible, and obviously a
+      truncation. This one decides which records round two asks for, so exceeding it does not drop
+      the overflow cards, it makes them invisible to the rest of the load entirely. Nothing else ever
+      learns they exist, and what a person sees is a canvas that silently stops.
+    */
+    const { context: ctx, warnings } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'TaskBlock', x: 1, y: 1 },
+      ],
+      TaskBlock: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two' },
+      ],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', limit: 2 }, ctx);
+
+    expect(warnings.some((w) => w.includes('stopped at 2 placed cards'))).toBe(true);
+  });
+
+  it('says nothing about a cap it did not reach', async () => {
+    // A warning on every ordinary canvas would be worth nothing on the one that is truncated.
+    const { context: ctx, warnings } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 }],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', limit: 200 }, ctx);
+
+    expect(warnings.filter((w) => w.includes('placed cards'))).toEqual([]);
+  });
+});

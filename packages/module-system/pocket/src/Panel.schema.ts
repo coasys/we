@@ -1,4 +1,4 @@
-import { panelHeader, panelScroll, recordCard } from '@we/schema-kit';
+import { loadMore, panelHeader, panelScroll, recordCard } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
 import { POCKET_PREDICATES } from './entities';
@@ -14,7 +14,7 @@ import { POCKET_PREDICATES } from './entities';
  * ## Where its data comes from
  *
  * The agent's personal space, read straight from the fragments with
- * `dataset: 'datasetStore.personalDataset'` and written with `record.create`'s `perspective` option. That surface already existed; what the module
+ * `dataset: 'datasetStore.personalDataset'` and written with `record.create`'s `dataset` option. That surface already existed; what the module
  * contract was missing was permission for a *module's own* entities to be installed there, which is
  * what `entities: { scope: 'agent' }` adds. Only the parts a template genuinely cannot do — building
  * a reference, asking whether one is already held, going to one, and remembering which folder you
@@ -507,6 +507,15 @@ const eachItem = (child: SchemaNode): SchemaNode => ({
  * folder at all. `$queries` on a node run whether or not anything reads them, so leaving these
  * mounted and merely hiding the rows would still fire two drill-downs with no anchor.
  */
+/**
+ * How many gathered things a folder shows at a time.
+ *
+ * The Pocket is where things accumulate — that is its whole purpose — so this is the list here most
+ * likely to grow past what anybody scrolls, and it was unbounded.
+ */
+const ITEMS_PAGE = 30;
+const ITEMS_PAGE_FIELD = 'itemsPageSize';
+
 const folderContents: SchemaNode = {
   type: 'Column',
   props: { gap: '200', width: '100%' },
@@ -516,13 +525,23 @@ const folderContents: SchemaNode = {
       scope: { anchor: 'PocketFolder', via: 'folders', anchorId: currentFolder },
       dataset: PERSONAL,
     },
+    /*
+      A page of what is in this folder, newest first — the Pocket is where things accumulate, so this
+      is the one list here that grows without a ceiling.
+
+      `folders` above is deliberately unbounded beside it: a folder list is navigation, and a page of
+      it would hide somewhere a person had put something with no way to reach it. Sibling lists, two
+      different answers, because completeness means something different to each.
+    */
     items: {
       entity: 'PocketItem',
       scope: { anchor: 'PocketFolder', via: 'items', anchorId: currentFolder },
       order: { gatheredAt: 'desc' },
+      limit: { $: `local.${ITEMS_PAGE_FIELD}` },
       dataset: PERSONAL,
     },
   },
+  $localState: { [ITEMS_PAGE_FIELD]: { type: 'number', initial: ITEMS_PAGE } },
   children: [
     {
       type: '$if',
@@ -545,6 +564,7 @@ const folderContents: SchemaNode = {
       without this the first frame of every open would claim the Pocket is empty — which for the one
       screen whose whole job is to hold what you kept is the worst possible thing to say.
     */
+    loadMore({ field: ITEMS_PAGE_FIELD, rowsLocal: 'items', pageSize: ITEMS_PAGE }),
     {
       type: '$if',
       props: {
@@ -762,7 +782,7 @@ const newFolderForm: SchemaNode = {
                   'PocketFolder',
                   { name: { $: 'local.newFolderName' } },
                   {
-                    perspective: PERSONAL,
+                    dataset: PERSONAL,
                     parent: { id: currentFolder, predicate: POCKET_PREDICATES.folders },
                   },
                 ],

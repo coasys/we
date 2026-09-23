@@ -21,6 +21,7 @@ export type {
   DocumentAccess,
   KernelName,
   LanguageModelKernel,
+  MediaDevice,
   MediaKernel,
   ModuleKernels,
   PeerConnectionKernel,

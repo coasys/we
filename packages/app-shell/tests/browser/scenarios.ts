@@ -5,6 +5,8 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
+import { transcriptLines } from '@we/module-transcribe';
+import { panelScroll } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 
@@ -402,6 +404,230 @@ const nestedInteractive = (): Scenario => ({
 });
 
 /**
+ * A corner-pinned control, pinned with a space token rather than a length.
+ *
+ * `position: absolute` with a `top`/`right`/`bottom`/`left` is how anything gets pinned to the
+ * corner of a picture — a badge over a thumbnail, a reconnect button over a video tile. The offset
+ * is typed `string` and documented as "space token or CSS length", so `bottom: '200'` is what an
+ * author writes, and it has to become `var(--we-space-200)` before it reaches CSS.
+ *
+ * The Lit primitives and the Solid components resolve that in two different places, and only one of
+ * them was doing it: a primitive emitted the unitless `bottom: 200`, which is invalid, so the
+ * browser dropped the declaration. That failure is much worse than a no-op, and that is the whole
+ * reason for measuring it here. `position: absolute` still applied, and an absolutely positioned box
+ * with no valid offsets renders at its *static* position — so inside a centring parent the control
+ * landed dead centre and read as somebody's deliberate choice rather than as a bug.
+ *
+ * Both are pinned to the same `bottom`, one primitive and one component, so the case is a
+ * comparison rather than a number: whatever `space-200` is worth, the two paths owe the same answer.
+ */
+const tokenOffsets = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { id: 'pin-box', position: 'relative', width: '400px', height: '300px', ax: 'center', ay: 'center' },
+    children: [
+      // The Lit path — the one that passed the offset through raw.
+      {
+        type: 'we-button',
+        props: {
+          id: 'pin-lit',
+          variant: 'secondary',
+          size: 'xs',
+          square: true,
+          position: 'absolute',
+          bottom: '200',
+          right: '200',
+        },
+        children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+      },
+      // The Solid path, mirrored into the other corner — the control, which already resolved tokens.
+      {
+        type: 'Row',
+        props: { id: 'pin-solid', position: 'absolute', bottom: '200', left: '200', width: '24px', height: '24px' },
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * Square icon-only buttons, loading and not, at the two sizes the app actually uses them at.
+ *
+ * `square` sizes the width from the height, so the button is a box with room for one glyph. A
+ * spinner that joins the icon rather than replacing it therefore puts two of them in a box built
+ * for one — and since the spinner was a fixed 24px, an `xs` button (24px tall, 12px icons) had a
+ * spinner as big as its whole self before padding and border.
+ *
+ * Both of those are layout, and neither is visible in jsdom: the markup is well-formed either way,
+ * and what goes wrong is arithmetic the browser does.
+ */
+const squareLoading = (): Scenario => ({
+  node: {
+    type: 'Row',
+    props: { gap: '400', ay: 'center', p: '300' },
+    children: [
+      {
+        type: 'we-button',
+        props: { id: 'md-idle', variant: 'secondary', square: true },
+        children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
+      },
+      {
+        type: 'we-button',
+        props: { id: 'md-busy', variant: 'secondary', square: true, loading: true },
+        children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
+      },
+      {
+        type: 'we-button',
+        props: { id: 'xs-busy', variant: 'secondary', size: 'xs', square: true, loading: true },
+        children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * The shape every call surface is: a square control, a name of unknown length, a square control.
+ *
+ * A row capped narrower than its contents want, which is what a pill measured to its own contents
+ * and a panel row in a `sm` dock both are. The question is which item gives up the room, and the
+ * only honest answer is the text: it can truncate and say so with an ellipsis, where a square
+ * button has no narrower form and merely deforms.
+ *
+ * Nothing here is a stand-in for the real thing — it is the same three elements in the same order,
+ * with the same props. The defect is not in any one of them, it is in what flexbox does with a
+ * declaration nobody made, so a case that reproduced the *arrangement* is the case that reproduces
+ * the bug.
+ *
+ * `maxWidth` rather than a narrow viewport, so the squeeze is in the row itself and the sweep of
+ * widths stays free to say something else.
+ */
+const crowdedSquareRow = (): Scenario => ({
+  node: {
+    type: 'Row',
+    props: { gap: '200', ay: 'center', p: '300', maxWidth: '260px' },
+    children: [
+      {
+        type: 'we-button',
+        props: { id: 'lead', variant: 'ghost', square: true },
+        children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
+      },
+      {
+        type: 'we-text',
+        props: { id: 'title', variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
+        children: ['Thursday planning session about the autumn release and what is left in it'],
+      },
+      {
+        type: 'we-button',
+        props: { id: 'trail', variant: 'ghost', square: true },
+        children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * A pinned scroll area opening onto a page of rows that all arrive at once.
+ *
+ * The shape of a transcript opening: a bounded window, so the rows do not trickle in — the whole
+ * page mounts in one pass, and each row is several custom elements that render their own shadow
+ * content, which mount at one height and settle at another.
+ *
+ * Rows of real text at a real width, because the thing being measured is layout taking time: a
+ * scenario of fixed-height boxes settles in one frame and proves nothing.
+ *
+ * **Parameterised by length**, because the two used to fail differently and it is worth keeping both
+ * honest. A pinned list is now `column-reverse`, so it rests at its newest end by layout rather than
+ * by any scroll, and neither length should be able to open anywhere else.
+ *
+ * `grow` is here to make the case that actually mattered testable: the rows in a real transcript
+ * keep getting taller for seconds after they mount, as bylines resolve and avatars load. Pressing it
+ * reflows every row, which is what the old implementation could not survive — it jumped to the
+ * bottom, the content grew, the browser moved the scroller to hold the reader's place, and the
+ * element read that as the reader scrolling away and gave up 108px short.
+ */
+const pinnedPage = (rows: number) => (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { height: '320px', width: '100%' },
+    $localState: { tall: { type: 'boolean', initial: false } },
+    children: [
+      { type: 'we-button', props: { id: 'grow', size: 'xs', onClick: { $toggleLocal: 'tall' } }, children: ['grow'] },
+      {
+        type: 'we-scroll-area',
+        props: { id: 'feed', pin: 'end', flex: '1', minHeight: '0' },
+        children: [
+          {
+            type: 'Column',
+            props: { gap: '300', p: '300' },
+            children: [
+              {
+                type: '$each',
+                props: {
+                  items: Array.from({ length: rows }, (_, i) => ({
+                    id: `row-${i}`,
+                    text: `Line ${i} — something somebody said that runs on for long enough to wrap`,
+                    last: i === rows - 1,
+                  })),
+                  as: 'row',
+                },
+                children: [
+                  {
+                    type: 'Row',
+                    props: { gap: '200', ay: 'start' },
+                    children: [
+                      { type: 'we-avatar', props: { hash: { $: 'row.id' }, size: 'xs' } },
+                      {
+                        type: 'we-text',
+                        props: {
+                          variant: 'body',
+                          flex: '1',
+                          minWidth: '0',
+                          // What makes a row grow after it has mounted, the way a real one does when
+                          // its byline arrives.
+                          py: { $: "local.tall ? '500' : '0'" },
+                          // The last row is findable, so the case can ask the only question that
+                          // matters: is the newest line actually on screen.
+                          id: { $: "row.last ? 'last-line' : ''" },
+                        },
+                        children: [{ $: 'row.text' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
+const pinnedShortContent = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { height: '320px', width: '100%' },
+    children: [
+      {
+        type: 'we-scroll-area',
+        props: { id: 'feed', pin: 'end', flex: '1', minHeight: '0' },
+        children: [
+          {
+            type: 'Column',
+            props: { gap: '300', p: '300' },
+            children: [{ type: 'we-text', props: { id: 'placeholder' }, children: ['Nothing has been said yet.'] }],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * Three folding section headings in a column — plain, with a count, and with a control beside it.
  *
  * The heading with a control is a different tree from the other two: a button around the whole row
@@ -448,7 +674,71 @@ const panelSections = (): Scenario => ({
   tables: {},
 });
 
-export const scenarios: Record<string, () => Scenario> = {
+/**
+ * A call's transcript at whatever length a case asks for — the real `transcriptLines`.
+ *
+ * The real fragment rather than a stand-in, because the subject is what that fragment costs: its
+ * query, its `$agent` per row, its speaker grouping. A hand-written list of `we-text` would measure
+ * something nobody ships.
+ *
+ * Utterances vary in length and rotate between three speakers on purpose. Equal-length lines all
+ * wrap identically and make layout cost look flatter than it is, and one speaker means the grouping
+ * branch is never taken — both would flatter the thing being measured.
+ */
+const SPEAKERS = ['did:peer-a', 'did:peer-b', 'did:peer-c'];
+const CALL = 'call-record-1';
+
+const transcriptAt = (rows: number): Scenario => ({
+  /*
+    The feed's real shape: the rows inside a scroll area that follows the tail.
+
+    Composed here rather than importing `transcriptFeed`, which reaches its rows through `$part` and
+    so needs the module registry the harness does not mount. What matters is that the scroll area is
+    PRESENT — it observes its own size and reads `scrollTop`/`scrollHeight` whenever that changes,
+    which is the entire cost of resizing a panel full of transcript. Mounting the rows bare measures
+    a resize with nobody watching, which is a different and much cheaper thing.
+  */
+  node: panelScroll({ pin: 'end', jump: 'both', children: [transcriptLines] }),
+  tables: {
+    CollectionBlock: [{ id: CALL, kind: 'call', title: 'Standup', createdAt: '2026-09-01T09:00' }],
+    TextBlock: Array.from({ length: rows }, (_, i) => ({
+      id: `utterance-${i}`,
+      // What the scope drill-down resolves through — without it the relation finds nothing and the
+      // scenario measures an empty list very quickly.
+      parentId: CALL,
+      text: `${'A line of what somebody said. '.repeat(1 + (i % 4))}(${i})`,
+      author: SPEAKERS[i % SPEAKERS.length],
+      // Ordered, and lexicographically sortable, so `order: { createdAt }` means something.
+      createdAt: `2026-09-01T09:${String(Math.floor(i / 60) % 60).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`,
+    })),
+  },
+  relations: {
+    CollectionBlock: { children: { type: 'hasMany', target: 'TextBlock', foreignKey: 'parentId' } },
+  },
+  stores: {
+    profileStore: { profiles: SPEAKERS.map((did, i) => ({ did, name: `Peer ${i + 1}` })) },
+    /*
+      The window's own state, stubbed at the module's defaults.
+
+      Worth stating why these are here even where the fragment being measured does not read them: an
+      unresolved `limit` is DROPPED rather than refused — the same widening an unresolved `where`
+      gets — so a scenario that forgets them measures an unbounded query and reports the windowed
+      version as having changed nothing. Which is exactly what this scenario did until it was run
+      against the fix and reported no difference at all.
+    */
+    modules: {
+      transcribe: {
+        collectionId: CALL,
+        callOnScreenLive: true,
+        transcriptShown: 200,
+        transcriptFromStart: false,
+      },
+    },
+  },
+});
+
+export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'perf:transcript': (scale) => transcriptAt(scale ?? 100),
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
   'cards:counts': countControls,
@@ -456,5 +746,11 @@ export const scenarios: Record<string, () => Scenario> = {
   'signals:vocabulary': vocabulary,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
+  'ds:token-offsets': tokenOffsets,
+  'ds:square-loading': squareLoading,
+  'ds:crowded-square-row': crowdedSquareRow,
+  'ds:pinned-page': pinnedPage(120),
+  'ds:pinned-short': pinnedPage(20),
+  'ds:pinned-empty': pinnedShortContent,
   'panel:sections': panelSections,
 };

@@ -258,6 +258,19 @@ export function canvasSeed(): SeedSource {
   return {
     id: 'canvas',
     description: "A container's contents, positioned by the placements recorded against it.",
+    /*
+      The three that are applied to rows already in hand.
+
+      `pending` and `changed` stamp a flag on a node that has already been built; `hidden` drops
+      rows, and the lines to them, from a set already fetched. None of them reaches a query — which
+      is exactly why a change to one should not throw the graph away. See `presentationOptions` on
+      `SeedSource` for what that cost before this existed.
+
+      `hiddenTypes` is deliberately NOT here, and the difference is the whole point of the list: a
+      hidden type is never asked for, so putting a kind away really does change what is fetched and
+      really does want a reload.
+    */
+    presentationOptions: ['pending', 'changed', 'hidden'],
     async seed(rawOptions, context, signal) {
       const options = (rawOptions ?? {}) as CanvasSeedOptions;
       // No canvas chosen yet — a picker whose `$local` is still empty. Loading the types wholesale
@@ -302,6 +315,31 @@ export function canvasSeed(): SeedSource {
         declared(options.typeStyles) ? read(options.typeStyles as string) : [],
         declared(options.routes) ? read(options.routes as string) : [],
       ]);
+
+      /*
+        The one cap worth saying out loud.
+
+        Every read here is bounded at `limit`, and for most of them hitting it means some cards of
+        that kind are missing — visible, and obviously a truncation. The placements read is not like
+        the others: it is what tells round two which records to ask for, so exceeding it does not
+        drop the overflow cards, it makes them *invisible to the rest of the load entirely*. Nothing
+        else ever learns they exist.
+
+        What that looks like from the outside is a canvas that silently stops at some number of cards
+        and a person wondering where the rest of their work went. A warning cannot fetch them, but it
+        can say which of those two things happened — and the status strip already has somewhere to
+        put it.
+
+        Compared with `>=` rather than `>`: a read that came back exactly at its limit is a read that
+        was cut off, or one that happened to fill it exactly, and nothing here can tell those apart.
+        Saying so on the boundary is the honest side to err on.
+      */
+      if (placements.length >= limit) {
+        context.warn(
+          `canvas: stopped at ${limit} placed cards — anything beyond that is not on this canvas. ` +
+            `Raise the seed's \`limit\` to see the rest.`,
+        );
+      }
 
       /*
         Which of the records on this canvas are still only suggestions — see `pending` in the options.
@@ -421,9 +459,31 @@ export function canvasSeed(): SeedSource {
         appeared.
       */
       // A hidden type is not asked for at all — nothing of it is drawn, so there is nothing to read.
-      const wanted = passes.filter(
+      const askable = passes.filter(
         (pass) => pass.entity !== placementEntity && declared(pass.entity) && !hiddenTypes.has(pass.entity),
       );
+
+      /*
+        The same question twice is one query.
+
+        `contains` comes from a caller — on the workshop's canvas it is the call's extraction targets,
+        which is a stored list — so a repeated entry is a thing that can happen, and every repeat cost
+        a round trip *and* a standing subscription, since the engine keys its watches on the read.
+
+        Only exact repeats. A type that is both placed and in `contains` appears twice here on
+        purpose and must stay twice: those are two different questions — "the ones positioned here",
+        by id, and "the ones this canvas owns", by containment — and the second is what finds a card
+        nobody has placed yet. They cannot be merged into one query either, because one is a `where`
+        and the other a `scope`, and the grammar has no way to ask for their union. That is a real
+        cost and it is an ad4m-side one; this only stops us paying it twice for one question.
+      */
+      const seenPass = new Set<string>();
+      const wanted = askable.filter((pass) => {
+        const key = `${pass.entity}|${JSON.stringify(pass.where ?? null)}`;
+        if (seenPass.has(key)) return false;
+        seenPass.add(key);
+        return true;
+      });
 
       /**
        * The count projections one type can answer — see `counts`.
