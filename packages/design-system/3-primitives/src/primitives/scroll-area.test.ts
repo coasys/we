@@ -101,6 +101,20 @@ async function mount(options: {
     await settle();
   };
 
+  /**
+   * The box settles at a new content height, and the element notices — without anybody scrolling.
+   *
+   * What a panel finishing its layout looks like from in here: the travel available is
+   * `scrollHeight - clientHeight`, so it shrinks when the viewport grows just as it does when the
+   * content does, and either way the distance to both edges changes under a reader who has not
+   * moved. The appended row is only how the observer is made to look again — heights are stubbed, so
+   * it contributes none of its own.
+   */
+  const settleTo = async (height: number) => {
+    scrollHeight = height;
+    await addRow();
+  };
+
   const controls = async () => {
     await el.updateComplete;
     const root = el.shadowRoot!;
@@ -117,7 +131,7 @@ async function mount(options: {
     await el.updateComplete;
   };
 
-  return { el, base, scrollFromEnd, scrollFromStart, grow, addRow, controls, press, span };
+  return { el, base, scrollFromEnd, scrollFromStart, grow, addRow, settleTo, controls, press, span };
 }
 
 describe('we-scroll-area pin="end"', () => {
@@ -398,27 +412,85 @@ describe('we-scroll-area edges', () => {
     return seen;
   };
 
-  it('says nothing on the first look, however close to an edge that is', async () => {
+  it('says nothing when the edge arrives at a reader who has not moved', async () => {
     /*
-      The bug this exists for, and it cost a whole extra page on every open. A list at rest is
-      already against one of its ends, so a latch seeded `false` reports an approach nobody made the
-      instant anything is first measured.
+      The bug this exists for, and it cost a whole extra page on some opens. Distance to an edge is
+      `scrollHeight - clientHeight` away from the position, so it moves when the BOX changes as
+      surely as when the reader does — and a latch that only recorded "was near last time" read the
+      one as the other.
 
-      It was worse in the app: `pin` is a reactive prop and arrives AFTER the first render, so until
-      it did, a pinned list still read its position the ordinary way round — `scrollTop` of zero,
-      which is the *start* — and every transcript fetched a second page before the reader touched
-      anything. That is the scrollbar thumb dropping twice while a transcript loads.
+      In the app that was a transcript's first page settling to within a threshold of filling its
+      panel: measured taller for a frame, shorter once the panel finished laying out, and a second
+      page fetched on the strength of the difference. Intermittent, because it depended on which
+      measurement landed first.
+
+      It was worse before that, and the same shape: `pin` is a reactive prop arriving AFTER the first
+      render, so until it did, a pinned list read its position the ordinary way round — `scrollTop`
+      of zero, which is the *start* — and every transcript fetched a second page before the reader
+      touched anything.
     */
-    const { el, scrollFromStart } = await mount({ pin: 'end', nearStart: 400 });
+    const { el, settleTo, addRow } = await mount({ pin: 'end', nearStart: 400 });
     const seen = heard(el, 'nearstart');
 
-    // Mounted sitting inside the threshold. Observing that is not an approach.
-    scrollFromStart(0);
+    // Out of reach as the rows land: 1000 of content in a 200 box is 800 of travel.
+    await addRow();
     expect(seen).toHaveLength(0);
 
-    // Leaving and coming back is.
-    scrollFromStart(900);
+    // The panel finishes laying out and the travel shrinks to 300, which is inside the threshold.
+    // Nobody has scrolled, so nobody has approached anything.
+    await settleTo(500);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('is still armed afterwards, so the reader’s next scroll is heard', async () => {
+    /*
+      The other half, and the reason this is not simply "content changes are ignored". Once the whole
+      travel is shorter than the threshold the reader CANNOT leave it, so an edge that latched itself
+      on the settle would have no transition left to make and the list would stop paginating for
+      good — the gap the old shape had, quietly, whenever a page happened to nearly fill its panel.
+
+      So a content change moves nobody and arms nothing: the first flick still asks. Which is the
+      honest reading, since everything loaded is within a panel's height of where they are.
+    */
+    const { el, settleTo, addRow, scrollFromStart } = await mount({ pin: 'end', nearStart: 400 });
+    const seen = heard(el, 'nearstart');
+
+    await addRow();
+    await settleTo(500);
+    expect(seen).toHaveLength(0);
+
     scrollFromStart(100);
+    expect(seen).toHaveLength(1);
+
+    // And still once per stay: moving about inside the threshold does not ask again.
+    scrollFromStart(50);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('does not read scrolling away from an edge as arriving at it', async () => {
+    /*
+      A list rests against one of its ends, so its reader's first scroll is always a scroll AWAY from
+      that end — up out of a pinned tail, down off the top of an ordinary list. They are within reach
+      of it the whole time, and at no point have they approached anything.
+
+      This is what makes "the reader moved" safe to act on. Without the direction, taking a scroll at
+      face value would report the anchored end on the first flick of every list that has one, which
+      is the open-fetch bug again wearing the other end's clothes.
+    */
+    const { el, addRow, scrollFromEnd } = await mount({ pin: 'end', nearEnd: 400 });
+    const seen = heard(el, 'nearend');
+
+    // Resting against the newest end as the rows land.
+    await addRow();
+    expect(seen).toHaveLength(0);
+
+    // Reading back a little. Still inside the threshold, still not an approach.
+    scrollFromEnd(300);
+    expect(seen).toHaveLength(0);
+
+    // Away, and back: that is one.
+    scrollFromEnd(900);
+    scrollFromEnd(100);
     expect(seen).toHaveLength(1);
   });
 

@@ -148,6 +148,14 @@ const styles = css`
  */
 const AT_END_PX = 24;
 
+/** What one edge remembers between looks — see `#checkEdge`. */
+interface EdgeWatch {
+  /** How far the reader was from it when this last looked, or `null` before the first look. */
+  last: number | null;
+  /** Whether this edge has been reported for their current stay within reach of it. */
+  told: boolean;
+}
+
 /** Instance counter for the temporary diagnostic below. Module-level so it stays out of the CEM. */
 let probeSeq = 0;
 
@@ -270,13 +278,14 @@ export default class ScrollArea extends DesignSystemElement {
   /** The scroller. Assigned on first render; `null` before then and after disconnect. */
   #base: HTMLElement | null = null;
   /**
-   * Whether the reader was within reach of each edge when this last looked.
+   * What is known about the reader's relationship with each edge — see `#checkEdge`.
    *
-   * `null` until the first observation, which is what stops a list reporting an approach nobody made
-   * — see `#checkEdge`.
+   * `last` is how far away they were when this last looked, `null` before the first look. `told` is
+   * whether this edge has already been reported for their current stay within reach of it, cleared
+   * by leaving the threshold.
    */
-  #nearStart: boolean | null = null;
-  #nearEnd: boolean | null = null;
+  #atStart: EdgeWatch = { last: null, told: false };
+  #atEnd: EdgeWatch = { last: null, told: false };
   #mutations?: MutationObserver;
   #resize?: ResizeObserver;
 
@@ -468,50 +477,69 @@ export default class ScrollArea extends DesignSystemElement {
    * the bottom, so content loaded in above the reader does not move them — the thing the earlier
    * implementation spent a `#holdBottom`, a deadline and a restore pass on is simply how the box
    * behaves.
+   *
+   * `moved` is whether this look is because the READER moved. See `#checkEdge`.
    */
-  #checkEdges(): void {
-    this.#nearStart = this.#checkEdge(this.nearStart, this.#fromStart(), this.#nearStart, 'nearstart');
-    this.#nearEnd = this.#checkEdge(this.nearEnd, this.#fromEnd(), this.#nearEnd, 'nearend');
+  #checkEdges(moved: boolean): void {
+    this.#checkEdge(this.nearStart, this.#fromStart(), this.#atStart, 'nearstart', moved);
+    this.#checkEdge(this.nearEnd, this.#fromEnd(), this.#atEnd, 'nearend', moved);
   }
 
   /**
-   * One edge: has the reader just come within reach of it?
+   * One edge: has the reader just approached it?
    *
-   * ## The first look never fires
+   * Three things have to be true, and each of them is a case that went wrong.
    *
-   * That is the whole of the `null` state, and it is not defensiveness. A list at rest is already
-   * within reach of the end it rests against, so a latch seeded `false` reports an approach that
-   * nobody made, the instant the element first measures anything — and the consumer dutifully loads
-   * a page that was not asked for.
+   * **They have to be within reach.** That is the threshold, and it is the only one of the three
+   * that is obvious.
    *
-   * It was worse than that in practice, because `pin` is a reactive prop and arrives *after* the
-   * first render. Until it does, this element still thinks it is an ordinary scroller, so
-   * `#fromStart` reads `scrollTop` — zero — and every pinned list fired `nearstart` on open and
-   * fetched a second page before the reader had touched anything. That is the scrollbar thumb
-   * dropping twice while a transcript loads.
+   * **The reader has to have moved, not the box.** Distance to an edge is `scrollHeight -
+   * clientHeight` away from the position, so it changes when the content lands, when a panel
+   * finishes laying out, when a dock is dragged taller — under a reader who has done nothing. This
+   * used to be one latch for both, so a transcript whose first page settled to within a threshold of
+   * filling its panel — measured taller for a frame, shorter once the panel resolved — reported an
+   * approach nobody had made and fetched a second page on open. Intermittently, since it depended on
+   * which measurement landed first. So `#contentChanged` records where they are and says nothing.
    *
-   * So the first observation records where the reader is and says nothing. An *approach* is a
-   * transition into reach from outside it, which is the only thing a consumer's "fetch the next
-   * page" should answer to.
+   * **They have to have moved TOWARD it.** A list rests against one of its ends, so the first scroll
+   * in an unpinned list is a scroll away from the start and the first in a pinned one is a scroll
+   * away from the end — and without this both would be reported as arrivals at the edge they are
+   * leaving. It is also what the `null` first look protects, one case further out: with no previous
+   * distance there is no direction, so the first observation only ever records.
+   *
+   * ## Why the latch is "told" rather than "was near"
+   *
+   * So that leaving the threshold re-arms it while being *brought* inside it does not disarm it.
+   * When the loaded page overflows by less than the threshold the reader cannot leave — so a latch
+   * recording "near" had no transition left to make, and that list stopped paginating for good. This
+   * is the quiet half of the same bug: the spurious fetch on open was covering for it.
    */
-  #checkEdge(threshold: number, distance: number, latch: boolean | null, event: string): boolean | null {
+  #checkEdge(threshold: number, distance: number, watch: EdgeWatch, event: string, moved: boolean): void {
     // Nothing to be near the edge OF: a scroller with no overflow is at both ends at once.
-    if (!threshold || this.#span() <= AT_END_PX) return latch;
+    if (!threshold || this.#span() <= AT_END_PX) return;
 
-    const near = distance <= threshold;
-    if (near === latch) return latch;
-    if (latch !== null && near) this.dispatchEvent(new CustomEvent(event, { bubbles: true, composed: true }));
-    return near;
+    const closer = watch.last !== null && distance <= watch.last;
+    watch.last = distance;
+
+    // Out of reach: re-armed, whatever put them there.
+    if (distance > threshold) {
+      watch.told = false;
+      return;
+    }
+    if (watch.told || !moved || !closer) return;
+
+    watch.told = true;
+    this.dispatchEvent(new CustomEvent(event, { bubbles: true, composed: true }));
   }
 
   #onScrolled = (): void => {
-    this.#checkEdges();
+    this.#checkEdges(true);
     this.#syncControls();
   };
 
   #contentChanged(): void {
     this.#probeWatch('content');
-    this.#checkEdges();
+    this.#checkEdges(false);
     this.#syncControls();
   }
 
