@@ -1903,8 +1903,8 @@ the item is never asked to be narrower than its content in the first place.
 | bgImageTint | ColorValue | Color bgImage fades toward as bgImageOpacity decreases (default: the element's own `bg`, or neutral-0) — only meaningful with bgImageOpacity |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
-| border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
-| borderColor | ColorValue | Border color (token, e.g. "neutral-200", "primary-500") |
+| border | string | Border shorthand (e.g. "1px solid border" — color tokens are resolved) |
+| borderColor | ColorValue | Border color (token, e.g. "border", "border-strong") |
 | borderTop | string | Top border shorthand (color tokens resolved) |
 | borderRight | string | Right border shorthand (color tokens resolved) |
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
@@ -1995,7 +1995,7 @@ min-content — so under it the long string still pushes its container wider tha
 
 `we-text` variants (set via the `variant` prop) bundle typography presets. Always pair with a semantic `tag` prop for correct HTML structure:
 body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
-Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="neutral-400"` explicitly.
+Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="text-muted"` explicitly.
 
 ### State
 
@@ -3803,10 +3803,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "text-faint" } },
         {
           "type": "we-text",
-          "props": { "color": "textFaint", "textAlign": "center" },
+          "props": { "color": "text-faint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -4334,7 +4334,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
 ```json
 {
   "type": "Card",
-  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
+  "props": { "bg": "surface", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -4360,7 +4360,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accent-text" } },
         {
           "type": "Column",
           "props": { "gap": "100" },
