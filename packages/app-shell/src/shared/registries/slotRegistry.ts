@@ -38,6 +38,7 @@ import {
   joinSpaceModalMount,
   namePrompt,
   removeAccountModal,
+  screenSourcePrompt,
   sidebar,
   templateEditor,
 } from '@we/template-shell';
@@ -288,7 +289,15 @@ export function registerCoreSlots(): void {
   // something the user just did, so anything they *did* ask for belongs in front of it. Its own gate
   // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,
   // so it cannot appear over the boot screen either. See NamePrompt.schema.ts.
-  slotRegistry.register({ id: 'core:namePrompt', anchor: 'overlay', node: namePrompt, order: 6 });
+  /*
+    The host asking which screen to share, on a machine whose OS will not ask for it.
+
+    Above the two space dialogs and below the name prompt for the reason the ordering comment there
+    gives: this is something the user just asked for and is waiting on — a `getDisplayMedia` is
+    outstanding the whole time it is up — where the name prompt merely became answerable.
+  */
+  slotRegistry.register({ id: 'core:screenSource', anchor: 'overlay', node: screenSourcePrompt, order: 6 });
+  slotRegistry.register({ id: 'core:namePrompt', anchor: 'overlay', node: namePrompt, order: 7 });
   /*
     What a template you are about to install will be able to do.
 
@@ -297,7 +306,7 @@ export function registerCoreSlots(): void {
     because the user pressed a button to get here and is waiting on an answer, where the name
     prompt merely became answerable. See InstallPrompt.schema.ts.
   */
-  slotRegistry.register({ id: 'core:installPrompt', anchor: 'overlay', node: installPrompt, order: 7 });
+  slotRegistry.register({ id: 'core:installPrompt', anchor: 'overlay', node: installPrompt, order: 8 });
   /*
     The host's own confirmation in front of anything a space template deletes.
 
@@ -305,7 +314,7 @@ export function registerCoreSlots(): void {
     a promise the tier boundary is holding open — and a dialog a person cannot see is a delete that
     never resolves. See DestructivePrompt.schema.ts.
   */
-  slotRegistry.register({ id: 'core:destructivePrompt', anchor: 'overlay', node: destructivePrompt, order: 8 });
+  slotRegistry.register({ id: 'core:destructivePrompt', anchor: 'overlay', node: destructivePrompt, order: 9 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The editor's panels, as docks — see `editorDocks.ts` for why they are not part of the node above.

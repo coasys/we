@@ -70,6 +70,7 @@ import {
   unlaned,
   widestMin,
 } from '@shared/dockGeometry';
+import type { ScreenSource } from '@shared/platform/types';
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
@@ -93,6 +94,7 @@ import {
   templatePanels,
   templatePanelScope,
 } from '@shared/registries/templatePanels';
+import { usePlatform } from '@solid/providers/PlatformProvider';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
@@ -211,6 +213,16 @@ export interface ShellStore {
    */
   joinSpaceOpen: Accessor<boolean>;
   setJoinSpaceOpen: (open: boolean) => void;
+  /**
+   * The screens and windows the host is waiting for somebody to choose between, or none.
+   *
+   * Non-empty only on a desktop host whose OS draws no picker of its own, and only while a share is
+   * actually being asked for. Everywhere else — the web, macOS 15+, a Wayland portal — the OS or the
+   * browser asks and this stays empty.
+   */
+  pendingScreenSources: Accessor<ScreenSource[]>;
+  /** Answer it. An empty id cancels the share, which the caller reads as a cancellation. */
+  chooseScreenSource: (sourceId: string) => void;
   /**
    * The destructive action a template just asked for, waiting on a person's answer — or null.
    *
@@ -922,6 +934,52 @@ export function ShellStoreProvider(props: ParentProps) {
   const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
   const [joinSpaceOpen, setJoinSpaceOpen] = createSignal(false);
+
+  /*
+    Which screen to share, when the OS will not ask.
+
+    Host chrome for the same reason the consent and install prompts are: the *host* is asking, and it
+    is asking on behalf of a `getDisplayMedia` that a page is already awaiting — so the dialog cannot
+    belong to whichever surface happened to press the button, and it must exist even where that
+    surface has since been unmounted.
+
+    Absent on web and on any desktop whose OS draws its own picker: the platform only offers this
+    capability where it is needed, and Electron only *asks* on the branch the system picker did not
+    take. So an empty list here is the ordinary state, and the prompt is simply never raised.
+  */
+  const [pendingScreenSources, setPendingScreenSources] = createSignal<ScreenSource[]>([]);
+  /*
+    Asked for softly, because this store outlives the question.
+
+    `usePlatform` throws where there is no provider, which is right for a store that cannot work
+    without one — and this one can. The shell's layout is mounted on its own in tests, and a host
+    that offers no screen picking is the ordinary case anyway (the web, and every desktop whose OS
+    draws its own). So a missing platform reads as "no capability", which is a state this already
+    has to handle, rather than as a failure to construct the shell.
+  */
+  const screens = (() => {
+    try {
+      return usePlatform().screenSources;
+    } catch {
+      return undefined;
+    }
+  })();
+  if (screens) {
+    const stop = screens.onRequest((sources) => setPendingScreenSources(sources));
+    onCleanup(stop);
+  }
+
+  /**
+   * Answer the outstanding request, and clear the prompt.
+   *
+   * An empty id is a cancellation, which is an answer — the page's `getDisplayMedia` rejects with
+   * the same `NotAllowedError` it would get from closing a browser's own picker, and the call
+   * module already reads that as 'cancelled' rather than as a fault.
+   */
+  function chooseScreenSource(sourceId: string): void {
+    setPendingScreenSources([]);
+    screens?.choose(sourceId);
+  }
   const [spaceSettingsOpen, setSpaceSettingsOpen] = createSignal(false);
   // Where the panel starts, for a caller that knows which setting it is sending somebody to. Not a
   // controlled value — see `spaceSettingsTab`.
@@ -2680,6 +2738,8 @@ export function ShellStoreProvider(props: ParentProps) {
     setCreateSpaceOpen,
     joinSpaceOpen,
     setJoinSpaceOpen,
+    pendingScreenSources,
+    chooseScreenSource,
     pendingDestructive,
     confirmDestructive: () => settleDestructive(true),
     cancelDestructive: () => settleDestructive(false),

@@ -992,6 +992,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     setJoinSpaceOpen: action('navigation'),
     /*
+      `host-layout`, like the destructive prompt beside it and for the same reason: the *chrome*
+      draws this, and chrome renders at a tier that sees everything, so the classification is about
+      what a space template could reach rather than about where it is used. A template naming these
+      would be drawing its own dialog over a `getDisplayMedia` the host is holding — answering a
+      question about which of somebody's screens to share, on their behalf.
+    */
+    pendingScreenSources: state('host-layout'),
+    chooseScreenSource: action('host-layout'),
+    /*
       The host's delete confirmation.
 
       `wiring` for all four, deliberately, and this is the one classification in the file where

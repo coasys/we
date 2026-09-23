@@ -8,6 +8,21 @@ contextBridge.exposeInMainWorld('electron', {
   getIsDevelopment: () => ipcRenderer.invoke('get-is-development'),
   getDevLinkLanguageBundle: () => ipcRenderer.invoke('get-dev-link-language-bundle'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
+  /*
+    Choosing which screen to share, on a machine whose OS has no picker of its own.
+
+    The main process asks — see `askRendererForScreenSource` — because only it knows the ask is
+    needed: with `useSystemPicker` on, the handler that sends this is not reached at all where the
+    OS draws its own. Two members, one each way, and the listener hands back its own unsubscribe so
+    a caller's teardown needs no knowledge of ipcRenderer.
+  */
+  onScreenSourceRequest: (listener) => {
+    const forward = (_event, sources) => listener(sources);
+    ipcRenderer.on('screen-source-request', forward);
+    return () => ipcRenderer.removeListener('screen-source-request', forward);
+  },
+  // An empty id cancels the share, which is an answer rather than a failure.
+  chooseScreenSource: (id) => ipcRenderer.send('screen-source-picked', id),
 
   // Account management. Every mutation is registry-only until applyAccountSelection() takes effect.
   listAccounts: () => ipcRenderer.invoke('accounts-list'),

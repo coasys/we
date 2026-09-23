@@ -24,19 +24,15 @@ const media = () => deps().kernels.media!;
 
 /** Stand in for `navigator.mediaDevices`, which does not exist under Node. */
 function withMediaDevices(value: unknown) {
-  const navigator = (globalThis as { navigator?: Record<string, unknown> }).navigator;
-  const had = navigator && 'mediaDevices' in navigator;
-  const previous = navigator?.mediaDevices;
-  if (!navigator) {
-    (globalThis as { navigator?: unknown }).navigator = { mediaDevices: value };
-  } else {
-    navigator.mediaDevices = value;
-  }
+  const host = globalThis as unknown as { navigator?: Record<string, unknown> };
+  const had = !!host.navigator && 'mediaDevices' in host.navigator;
+  const previous = host.navigator?.mediaDevices;
+  if (!host.navigator) host.navigator = { mediaDevices: value };
+  else host.navigator.mediaDevices = value;
   return () => {
-    const nav = (globalThis as { navigator?: Record<string, unknown> }).navigator;
-    if (!nav) return;
-    if (had) nav.mediaDevices = previous;
-    else delete nav.mediaDevices;
+    if (!host.navigator) return;
+    if (had) host.navigator.mediaDevices = previous;
+    else delete host.navigator.mediaDevices;
   };
 }
 

@@ -6634,6 +6634,9 @@
         "joinSpaceOpen": {
           "type": "boolean"
         },
+        "pendingScreenSources": {
+          "type": "array"
+        },
         "pendingDestructive": {
           "type": "object"
         },
@@ -6706,6 +6709,7 @@
         "closeShellView",
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
+        "chooseScreenSource",
         "confirmDestructive",
         "cancelDestructive",
         "toggleSpaceSettings",

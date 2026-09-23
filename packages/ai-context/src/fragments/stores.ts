@@ -554,8 +554,16 @@ export const storeEntries: StoreEntry[] = [
       activeShellView: { type: 'string' },
       createSpaceOpen: { type: 'boolean' },
       joinSpaceOpen: { type: 'boolean' },
+      pendingScreenSources: { type: 'array' },
     },
-    actions: ['openShellView', 'closeShellView', 'setCreateSpaceOpen', 'setJoinSpaceOpen', 'scrollToId'],
+    actions: [
+      'openShellView',
+      'closeShellView',
+      'setCreateSpaceOpen',
+      'setJoinSpaceOpen',
+      'chooseScreenSource',
+      'scrollToId',
+    ],
   },
   {
     name: 'appStore',
@@ -1511,6 +1519,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
         joinSpaceOpen:
           'boolean — the join-a-space dialog is open, where somebody pastes an address they were sent. Shell state for createSpaceOpen’s reason, opened from the same two places. It exists because a share link only opens itself on the web: a desktop build has no address bar and registers no protocol handler, so an address arriving by any other route needs somewhere to go',
+        pendingScreenSources:
+          'ScreenSource[] \u2014 the screens and windows the host is waiting for somebody to choose between ({ id, name, thumbnail }), or empty. Non-empty only on a desktop host whose OS draws no picker of its own, and only while a share is being asked for: on the web, on macOS 15+ and under a Wayland portal the OS or the browser asks instead',
         dockGeometry:
           "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
@@ -1610,6 +1620,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(open: boolean): opens or closes the create-space modal. Shell state rather than a page\u2019s $localState because more than one place opens it — the settings page and the sidebar\u2019s spaces group — and a page-scoped flag could only be set from inside that page',
         setJoinSpaceOpen:
           '(open: boolean): opens or closes the join-a-space dialog, where somebody pastes an address they were sent. Asking for the dialog is not joining anything — spaceStore.joinSpace is where that decision is taken and keeps its own grant. Shell state for setCreateSpaceOpen’s reason, and offered beside it: the sidebar’s spaces group offers the pair behind one +',
+        chooseScreenSource:
+          '(sourceId: string): answers the host\u2019s "which screen do you want to share" with one of pendingScreenSources, or an empty id to cancel \u2014 which the page receives as the same refusal a browser\u2019s own picker gives when dismissed. Host chrome only: a `getDisplayMedia` is outstanding the whole time the prompt is up',
         closeShellView: '(): closes the currently open shell overlay',
         toggleSpaceSettings:
           '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',
