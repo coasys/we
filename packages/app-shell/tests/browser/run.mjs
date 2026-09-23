@@ -25,9 +25,38 @@ const CHROME = process.env.WE_CHROME ?? '/usr/bin/google-chrome';
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.map': 'application/json' };
 
+/*
+  Stylesheets a module imported for their effect, collected while bundling so the page can carry
+  them — see `/imported.css` below.
+
+  A component whose CSS lives beside it says so with a bare `import './styles.css'`, which Vite
+  turns into a stylesheet the app loads and esbuild, bundling to one JS file, refuses outright. The
+  reachable set grows on its own: nothing here renders a graph, and `GraphHost`'s stylesheet is in
+  this list because a store two imports away now asks the platform a question. Dropping them to
+  keep the bundle quiet is the one option ruled out — this harness is believed about pixels, and
+  the comments below record two occasions when a missing stylesheet was reported as an app bug.
+*/
+const imported = new Set();
+
+/** Vite's `?raw`: a stylesheet read as text rather than applied. The theme registry holds themes this way. */
+const cssPlugin = {
+  name: 'we-stylesheets',
+  setup(build) {
+    build.onLoad({ filter: /\.css\?raw$/ }, async (args) => ({
+      contents: await readFile(args.path.replace(/\?raw$/, ''), 'utf8'),
+      loader: 'text',
+    }));
+    build.onLoad({ filter: /\.css$/ }, (args) => {
+      imported.add(args.path);
+      return { contents: '', loader: 'js' };
+    });
+  },
+};
+
 /** Bundle the page entry, resolving the workspace aliases the app itself uses. */
 async function bundle() {
   const out = await build({
+    plugins: [cssPlugin],
     entryPoints: [join(HERE, 'entry.ts')],
     bundle: true,
     format: 'esm',
@@ -92,10 +121,20 @@ async function main() {
     'utf8',
   ).catch(() => '');
 
+  /*
+    And every stylesheet the bundle imported for its effect, in the order the modules asked for
+    them — which is the order Vite would have emitted them in, and after the two above for the
+    same reason a component's own CSS loads after the app's base rules.
+  */
+  const importedCss = (await Promise.all([...imported].map((file) => readFile(file, 'utf8').catch(() => '')))).join(
+    '\n',
+  );
+
   const server = createServer((req, res) => {
     const url = (req.url ?? '/').split('?')[0];
     const send = (body, type) => res.writeHead(200, { 'content-type': type }).end(body);
     if (url === '/' || url === '/index.html') return send(html, MIME['.html']);
+    if (url === '/imported.css') return send(importedCss, MIME['.css']);
     if (url === '/shell.css') return send(shell, MIME['.css']);
     if (url === '/components.css') return send(components, MIME['.css']);
     if (url === '/entry.bundle.js') return send(js, MIME['.js']);
