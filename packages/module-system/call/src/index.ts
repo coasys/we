@@ -36,6 +36,7 @@ import { defineModule, type ModuleHost } from '@we/module-shared';
 import { peopleTooltip } from '@we/schema-kit';
 import { expr, type SchemaNode } from '@we/schema-shared';
 
+import { deviceSettings, deviceSettingsModal } from './DeviceSettings.schema';
 import { devPeersAvailable } from './devPeers';
 import { createCallStore } from './store';
 
@@ -1288,6 +1289,24 @@ const moreMenu: SchemaNode = {
       { ...menuToggle(SOLO), hidden: { $: "surface.tier != 'base' || !modules.call.focusedId" } },
       {
         /*
+          Which microphone and camera this agent is sending.
+
+          In the menu rather than beside the mute button, and the distinction the bar's own docblock
+          draws is why: mute and camera never fold, because "a menu between a person and their
+          microphone is a step too many". Choosing a *device* is not that — it is a thing done once
+          and then forgotten, usually before anybody notices it was wrong, and it costs a press to
+          reach rather than a press to use.
+
+          Never hidden. The two entries above fold away when the row is roomy because the row is
+          showing them itself; this one has no counterpart in the bar at any width.
+        */
+        id: 'devices',
+        label: 'Camera and microphone…',
+        icon: 'sliders-horizontal',
+        onAction: { $action: 'modules.call.openDeviceSettings' },
+      },
+      {
+        /*
           Start a second call from inside one — a breakout, a different subject.
 
           The counterpart of the `+` in the join bar, which only somebody *not* in a call ever sees.
@@ -1914,7 +1933,7 @@ export const callModule = defineModule({
   // ── What it puts in front of a person ────────────────────────────────────
   contributes: {
     // Named fragments an interface places. Public API — see the note on `ModuleContributions.parts`.
-    parts: { anchoredCallButton, continueCallButton, startCallButton, tile },
+    parts: { anchoredCallButton, continueCallButton, deviceSettings, startCallButton, tile },
 
     // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
     // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
@@ -1980,6 +1999,12 @@ export const callModule = defineModule({
         the shell is, which is the property the sound needs and the panel deliberately does not have.
       */
       { anchor: 'dock-bottom', node: audioSink, order: 60 },
+      /*
+        The device chooser, as chrome for the same reason the sound is: it is opened from the call
+        bar and from a settings page, and neither of those can own a dialog the other also opens.
+        Order above the bar so a sheet is never drawn behind the row that raised it.
+      */
+      { anchor: 'overlay', node: deviceSettingsModal, order: 120 },
     ],
 
     /**

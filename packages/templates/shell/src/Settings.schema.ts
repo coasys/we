@@ -816,6 +816,36 @@ const spaceActions: SchemaNode = {
 };
 
 /**
+ * Which microphone and camera calls use, out of a call.
+ *
+ * The same chooser the call bar's More menu opens, placed inline — one `$part`, so there is one
+ * device picker in the app rather than two that can drift. The call module owns it because the call
+ * module owns the devices; this screen is a second door onto it.
+ *
+ * Out of a call is the harder half and the reason this exists rather than only the in-call sheet:
+ * nothing is captured here, so the machine will not say what its hardware is called until it has
+ * been asked for a device once. The part handles that itself — it offers to ask — which is why this
+ * section is three lines and not thirty.
+ */
+const deviceSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Camera & microphone'] },
+    {
+      type: 'we-text',
+      props: { variant: 'body', color: 'text-muted' },
+      children: ['What calls capture with on this computer. Remembered here, and not carried to your other devices.'],
+    },
+    {
+      type: 'Card',
+      props: { bg: 'surface' },
+      children: [{ type: '$part', props: { id: 'call.deviceSettings' } }],
+    },
+  ],
+};
+
+/**
  * One entry in the left-hand nav.
  *
  * `secondary` when it is the open page, `ghost` otherwise — the DS convention for a selected item,
@@ -947,6 +977,7 @@ export const settingsTemplate: TemplateSchema = {
     // standing — see `spaceSettingsPage`.
     { path: '/spaces/:uuid', ...page([spaceSettingsPage]) },
     { path: '/modules', ...page([modulesSection]) },
+    { path: '/devices', ...page([deviceSection]) },
     { path: '/ai', ...page([runtimeError, aiSection]) },
     {
       path: '/languages',
@@ -986,6 +1017,19 @@ export const settingsTemplate: TemplateSchema = {
                 navItem('Appearance', 'palette', '/appearance'),
                 navItem('Spaces & data', 'stack', '/spaces'),
                 navItem('Modules', 'squares-four', '/modules'),
+                /*
+                  Only where calls are installed, which is what makes a top-level entry honest:
+                  microphones and cameras are for calling with, and a deployment without the module
+                  would be offering a screen about hardware it never touches. `modules.call`
+                  resolves to nothing where it is absent, so the entry simply is not there.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'modules.call' },
+                    then: navItem('Camera & microphone', 'video-camera', '/devices'),
+                  },
+                },
                 // The rest are feature-detected: a backend that administers nothing has nothing to
                 // show, so the entry goes rather than leading to an empty page.
                 {

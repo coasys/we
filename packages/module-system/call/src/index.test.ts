@@ -196,7 +196,9 @@ describe('the compact bar', () => {
     */
     expect(tierGates(inCall())).toEqual([]);
 
-    const start = entries().find((entry) => entry.onAction);
+    // By id rather than "the first entry that does something": the menu holds more than one of
+    // those now, and a positional find would silently start asserting about whichever was added last.
+    const start = entries().find((entry) => entry.id === 'start-another');
     /*
       `args` explicitly, and the empty string is the point: a handler with none forwards the click,
       and `startCall` takes an optional anchor id — so it would be handed a PointerEvent and the
@@ -385,5 +387,50 @@ describe('the declaration', () => {
 
   it('is what the package factory hands a host', () => {
     expect(createModule({ components: {} })).toBe(callModule);
+  });
+});
+
+/**
+ * The device chooser, and the two places it is reached from.
+ *
+ * One fragment placed twice — the call bar's More menu, for somebody who cannot be heard right now,
+ * and the settings screen, for somebody choosing before they join. Those are genuinely different
+ * moments and the same control serves both; what must not happen is two controls that drift.
+ */
+describe('choosing a camera and microphone', () => {
+  it('is offered from the call bar, without folding at any width', () => {
+    /*
+      In the menu rather than beside the mute button, which the bar's own note explains: mute and
+      camera never fold because "a menu between a person and their microphone is a step too many".
+      Choosing a device is not that — it is done once and then forgotten.
+
+      Never hidden, unlike the two entries that fold when the row is roomy: those fold because the
+      row is showing them itself, and this one has no counterpart in the row at any width.
+    */
+    const menu = walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
+    const items = props(menu).items as { id?: string; onAction?: unknown; hidden?: unknown }[];
+    const entry = items.find((item) => item.id === 'devices');
+
+    expect(entry, 'the bar offers no way to change device').toBeDefined();
+    expect(entry?.onAction).toEqual({ $action: 'modules.call.openDeviceSettings' });
+    expect(entry?.hidden, 'the entry folds away at some width').toBeUndefined();
+  });
+
+  it('is published as a part, so a settings screen places the same one', () => {
+    // A part rather than a second copy: the settings page draws `call.deviceSettings` inline, and
+    // the sheet draws it inside a modal. Two pickers that could disagree is the failure this avoids.
+    const picker = part('deviceSettings');
+    expect(picker, 'nothing is published for a settings screen to place').toBeDefined();
+    expect(JSON.stringify(picker)).toContain('modules.call.setDevice');
+  });
+
+  it('draws its sheet as chrome, above the bar that opens it', () => {
+    // Chrome rather than a panel, for the audio sink's reason: it is opened from the bar and from a
+    // settings overlay, and neither can own a dialog the other also opens.
+    const sheet = (callModule.contributes?.slots ?? []).find((slot) =>
+      JSON.stringify(slot.node).includes('modules.call.deviceSettingsOpen'),
+    );
+    expect(sheet, 'the chooser has nowhere to render').toBeDefined();
+    expect(sheet?.anchor).toBe('overlay');
   });
 });

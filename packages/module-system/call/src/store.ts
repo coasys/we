@@ -399,8 +399,39 @@ export function createCallStore(deps: ModuleStoreDeps) {
     exists for, and a chooser that only worked mid-call would be the wrong way round.
   */
   const [inputDevices, setInputDevices] = signal<MediaDevice[]>([]);
+  /**
+   * Whether the chooser is up.
+   *
+   * The module's own, not the host's, for the reason the stage's openness is: whether somebody is
+   * picking a microphone is a fact about this module, and the two places that open it — the call
+   * bar's menu and the settings screen — both reach it through the same action.
+   */
+  const [deviceSettingsOpen, setDeviceSettingsOpen] = signal(false);
   const [audioDevice, setAudioDeviceId] = signal(readChosenDevice('audio'));
   const [videoDevice, setVideoDeviceId] = signal(readChosenDevice('video'));
+
+  /**
+   * One kind's devices as a picker's options, with "system default" at the top.
+   *
+   * Built here rather than in the schema for the reason `templateOverrideOptions` is: a schema can
+   * map a store array into options and cannot *prepend* to one, and without that first entry there
+   * is no way back to having no opinion — a picker you can only ever set is one you have to clear
+   * by knowing where the storage is.
+   *
+   * An unnamed device is still offered. Labels are empty until capture has been allowed once, so
+   * hiding them would make the list empty in exactly the state a first-run chooser is in; they are
+   * numbered instead, which is enough to tell two apart and honest about knowing nothing else.
+   */
+  function optionsFor(kind: 'audioinput' | 'videoinput', noun: string) {
+    const found = inputDevices().filter((device) => device.kind === kind);
+    return [
+      { label: `System default ${noun}`, value: '' },
+      ...found.map((device, at) => ({
+        label: device.label || `${noun.charAt(0).toUpperCase()}${noun.slice(1)} ${at + 1}`,
+        value: device.deviceId,
+      })),
+    ];
+  }
 
   /**
    * Ask the host what is plugged in.
@@ -1505,6 +1536,19 @@ export function createCallStore(deps: ModuleStoreDeps) {
     ),
     audioDevice: state(audioDevice, 'The microphone this agent has chosen, or empty for whatever the system offers.'),
     videoDevice: state(videoDevice, 'The camera this agent has chosen, or empty for whatever the system offers.'),
+    microphoneOptions: state(
+      () => optionsFor('audioinput', 'microphone'),
+      'The microphones as picker options, "System default" first — ready for a we-select.',
+    ),
+    cameraOptions: state(
+      () => optionsFor('videoinput', 'camera'),
+      'The cameras as picker options, on the same terms as microphoneOptions.',
+    ),
+    devicesNamed: state(
+      () => inputDevices().some((device) => !!device.label),
+      'Whether this machine will say what its devices are called. False until capture has been allowed once.',
+    ),
+    deviceSettingsOpen: state(deviceSettingsOpen, 'Whether the camera and microphone chooser is open.'),
     problem: state(
       problem,
       'Why the call could not start or a device could not be reached, as a sentence to show, or null.',
@@ -2027,6 +2071,39 @@ export function createCallStore(deps: ModuleStoreDeps) {
      * from then on — the store watches for hardware moving.
      */
     refreshDevices: action(() => void refreshDevices(), 'Re-read which microphones and cameras this machine has.'),
+    /**
+     * Open the chooser, and ask what is here on the way in.
+     *
+     * The refresh is the point of pairing them: a list gathered when the module was constructed is
+     * a list from before anything was plugged in, and the moment somebody opens a chooser is the
+     * moment it has to be true.
+     */
+    openDeviceSettings: action(() => {
+      void refreshDevices();
+      setDeviceSettingsOpen(true);
+    }, 'Open the camera and microphone chooser.'),
+    closeDeviceSettings: action(() => setDeviceSettingsOpen(false), 'Close the camera and microphone chooser.'),
+    /**
+     * Ask for a device once, purely so the machine will say what its hardware is called.
+     *
+     * Labels are withheld until capture has been allowed at least once — a page that could read them
+     * without asking could fingerprint a machine by its hardware. So a chooser opened before any
+     * call has ever run shows numbered devices and nothing else, and this is the way out of that:
+     * acquire, learn the names, and let go again immediately.
+     *
+     * Only outside a call. In one the devices are already open and the names are already known, and
+     * a second acquisition would be a second camera light for no reason.
+     */
+    nameDevices: action(async () => {
+      if (callId() || !mediaKernel) return;
+      try {
+        const probe = await mediaKernel.getUserMedia({ audio: true, video: true });
+        for (const track of probe.getTracks()) track.stop();
+      } catch {
+        // Refused, or no such device. The chooser stays as it was: numbered, and honest about it.
+      }
+      void refreshDevices();
+    }, 'Ask for a device once so this machine will say what its hardware is called.'),
     toggleScreenShare: action(async () => {
       if (media().screenShareEnabled) {
         controller?.stopScreenShare();

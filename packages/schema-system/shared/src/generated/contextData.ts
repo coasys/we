@@ -3075,6 +3075,7 @@ export const contextData: ContextData = {
         'kernel:peerConnection',
         'dock',
         'slot:dock-bottom',
+        'slot:overlay',
       ],
       members: [
         { name: 'active', kind: 'state', doc: 'Whether this agent is in a call right now.' },
@@ -3083,6 +3084,11 @@ export const contextData: ContextData = {
           name: 'attachAnchor',
           kind: 'action',
           doc: 'Make the running call about the record whose id is given, without rejoining it.',
+        },
+        {
+          name: 'audioDevice',
+          kind: 'state',
+          doc: 'The microphone this agent has chosen, or empty for whatever the system offers.',
         },
         { name: 'callId', kind: 'state', doc: 'The id of the call this agent is in, or null between calls.' },
         {
@@ -3096,14 +3102,27 @@ export const contextData: ContextData = {
           doc: 'The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.',
         },
         {
+          name: 'cameraOptions',
+          kind: 'state',
+          doc: 'The cameras as picker options, on the same terms as microphoneOptions.',
+        },
+        { name: 'cameras', kind: 'state', doc: 'The cameras this machine has, on the same terms as microphones.' },
+        {
           name: 'canCall',
           kind: 'state',
           doc: 'Whether a call could be started here — false in a personal space, which has nobody to call.',
         },
+        { name: 'closeDeviceSettings', kind: 'action', doc: 'Close the camera and microphone chooser.' },
         {
           name: 'continueCall',
           kind: 'action',
           doc: 'Pick a past call back up by its record id, joining anyone already in it and writing no new record.',
+        },
+        { name: 'deviceSettingsOpen', kind: 'state', doc: 'Whether the camera and microphone chooser is open.' },
+        {
+          name: 'devicesNamed',
+          kind: 'state',
+          doc: 'Whether this machine will say what its devices are called. False until capture has been allowed once.',
         },
         { name: 'dismissProblem', kind: 'action', doc: 'Dismiss the problem message.' },
         {
@@ -3152,10 +3171,26 @@ export const contextData: ContextData = {
           doc: "This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.",
         },
         {
+          name: 'microphoneOptions',
+          kind: 'state',
+          doc: 'The microphones as picker options, "System default" first — ready for a we-select.',
+        },
+        {
+          name: 'microphones',
+          kind: 'state',
+          doc: 'The microphones this machine has — { deviceId, label, groupId } each. A label is empty until capture has been allowed once.',
+        },
+        {
+          name: 'nameDevices',
+          kind: 'action',
+          doc: 'Ask for a device once so this machine will say what its hardware is called.',
+        },
+        {
           name: 'ongoing',
           kind: 'state',
           doc: 'Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.',
         },
+        { name: 'openDeviceSettings', kind: 'action', doc: 'Open the camera and microphone chooser.' },
         {
           name: 'problem',
           kind: 'state',
@@ -3166,6 +3201,7 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: "Build one peer's connection again from scratch, without leaving the call.",
         },
+        { name: 'refreshDevices', kind: 'action', doc: 'Re-read which microphones and cameras this machine has.' },
         {
           name: 'returnToCall',
           kind: 'action',
@@ -3175,6 +3211,11 @@ export const contextData: ContextData = {
           name: 'setArrangement',
           kind: 'action',
           doc: 'Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.',
+        },
+        {
+          name: 'setDevice',
+          kind: 'action',
+          doc: 'Use a different microphone or camera; an empty id means whatever the system offers.',
         },
         {
           name: 'solo',
@@ -3212,10 +3253,16 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Turn this agent’s camera on or off, reporting through problem when it is refused.',
         },
+        {
+          name: 'videoDevice',
+          kind: 'state',
+          doc: 'The camera this agent has chosen, or empty for whatever the system offers.',
+        },
       ],
       parts: [
         { name: 'anchoredCallButton' },
         { name: 'continueCallButton' },
+        { name: 'deviceSettings' },
         { name: 'startCallButton' },
         { name: 'tile' },
       ],
