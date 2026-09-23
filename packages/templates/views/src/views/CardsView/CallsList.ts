@@ -37,9 +37,45 @@ import {
  * A scoped drill-down rather than a filter over `children`, because children arrive as bare ids and
  * the ids alone cannot say which are utterances.
  */
+/**
+ * Whether THIS row's call is running right now.
+ *
+ * A list of recorded calls is almost entirely settled records: their transcripts cannot change, so
+ * a live subscription over one has the backend re-running the query on every change in the space to
+ * be told nothing changed — once per card, twenty times over. The one call that can change is the
+ * one somebody is in, and `liveCalls` names it by record.
+ */
+const CALL_IS_LIVE = 'call.id in modules.call.liveCalls.map(c, c.recordId)';
+
+/**
+ * How many utterances a card will count before it stops counting exactly.
+ *
+ * The count below is not decoration — it sits beside the faces and shows COVERAGE, the gap between
+ * who was present and how much of them was captured — so it has to be exact wherever it can be. A
+ * cap is the price of it being bounded at all, and at two hundred lines it is reached by a call long
+ * enough that "200+" is the more useful reading anyway.
+ *
+ * It cannot be a count projection over `children`, which is the obvious cheaper answer: extraction
+ * parents its records onto the call too, so that total is utterances plus findings and destroys the
+ * coverage reading. Filtering such a projection on `source` would be exact for anything written
+ * since that field existed and would silently read zero for every call recorded before it.
+ */
+const UTTERANCE_CAP = 200;
+
 const utterancesQuery = {
   entity: 'TextBlock',
   scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
+  /*
+    Bounded, because this is one query PER CARD in a list of up to twenty.
+
+    Unbounded it fetched, hydrated and fingerprinted every utterance of every call on screen — a
+    space with twenty recorded conversations of four hundred lines held twenty live subscriptions
+    over eight thousand rows to draw a list that shows none of them. The file's own note above
+    explains why `include` was avoided for exactly that reason; the per-card subscription
+    reintroduced it by another route.
+  */
+  limit: UTTERANCE_CAP,
+  subscribe: { $: CALL_IS_LIVE },
 };
 /** Hoisted on each call's card as `utterances`. */
 const utterances = { $: 'local.utterances' };
@@ -354,7 +390,14 @@ export const callsList: SchemaNode = {
                             it does not know the size of. The groups below carry their own counts, one
                             query each, which is where a count and the rows it describes belong.
                           */
-                                text: expr`count(${utterances}) + plural(count(${utterances}), ' utterance', ' utterances')`,
+                                /*
+                            Exact until the cap, and honest at it — see `UTTERANCE_CAP`.
+
+                            "200+" rather than a flat "200": a number that stops moving while the
+                            conversation plainly went on would be a quiet lie about coverage, which
+                            is the one thing this figure exists to tell the truth about.
+                          */
+                                text: expr`count(${utterances}) >= ${UTTERANCE_CAP} ? '${UTTERANCE_CAP}+ utterances' : count(${utterances}) + plural(count(${utterances}), ' utterance', ' utterances')`,
                               },
                             },
                             /*
@@ -874,6 +917,16 @@ export const callsList: SchemaNode = {
                                     entity: 'TextBlock',
                                     scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
                                     order: { createdAt: 'asc' },
+                                    /*
+                                      The opened transcript, bounded and read as a settled record.
+
+                                      The oldest N rather than the newest, unlike the panel's live
+                                      window: this is a call somebody opened to READ, so it starts
+                                      where the conversation started. A long one is followed in the
+                                      panel, which is the surface built for that.
+                                    */
+                                    limit: UTTERANCE_CAP,
+                                    subscribe: { $: CALL_IS_LIVE },
                                   },
                                 },
                                 as: 'utterance',
