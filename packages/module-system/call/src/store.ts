@@ -336,6 +336,23 @@ export function createCallStore(deps: ModuleStoreDeps) {
    */
   const SCREEN_UNAVAILABLE =
     'WE could not capture a screen. This computer does not appear to offer screen sharing to apps.';
+
+  /**
+   * A device that was working has gone — unplugged, or taken by another application.
+   *
+   * Two messages rather than one, because the remedy differs and so does the urgency: a camera that
+   * vanishes is visible to the person the moment they look at their own tile, where a microphone
+   * that vanishes is invisible by construction. They are both worth saying, and the microphone is
+   * the one that must be said.
+   *
+   * Phrased as what happened rather than as an instruction. "Reconnect it" is advice we cannot check
+   * — the device may be gone on purpose, and the call carries on perfectly well without it.
+   */
+  const MIC_LOST =
+    'Your microphone is no longer available — it may have been unplugged, or another app may have ' +
+    'taken it. You are muted until you choose another one.';
+  const CAMERA_LOST =
+    'Your camera is no longer available — it may have been unplugged, or another app may have taken it.';
   /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *
@@ -1087,12 +1104,22 @@ export function createCallStore(deps: ModuleStoreDeps) {
         const local = controller?.localStream();
         if (problem() === MEDIA_BLOCKED && local) setProblem(null);
         if (problem() === CAMERA_BLOCKED && local?.getVideoTracks().length) setProblem(null);
+        // A lost device that has come back clears its own message, on the same terms as the two
+        // above: each on its own condition, so one recovery cannot swallow another's report.
+        if (problem() === MIC_LOST && local?.getAudioTracks().length) setProblem(null);
+        if (problem() === CAMERA_LOST && local?.getVideoTracks().length) setProblem(null);
         // Fires once when devices are acquired, and on every mute after — the first is what tells a
         // listener the microphone exists at all.
         setLocalAudio(controller?.localStream() ?? null);
         publishActivity();
         rebuildTiles();
       },
+      /*
+        A device left. The controller has already corrected the state and republished; this is the
+        half that tells the person, because the microphone case is otherwise undiscoverable — they
+        look muted to everyone and there is nothing on their own screen to say why.
+      */
+      onDeviceLost: (kind) => setProblem(kind === 'audio' ? MIC_LOST : CAMERA_LOST),
       onError: (context, error) => console.error(`call: ${context}`, error),
     });
 

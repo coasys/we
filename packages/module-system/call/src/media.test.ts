@@ -66,14 +66,17 @@ function setup(overrides: Partial<MediaDeviceAccess> = {}) {
   const states: MediaState[] = [];
   const errors: string[] = [];
 
+  const lost: string[] = [];
+
   const controller = createMediaController({
     devices,
     onTrackChanged: (kind, track) => tracks.push([kind, track]),
     onStateChanged: (state) => states.push(state),
+    onDeviceLost: (kind) => lost.push(kind),
     onError: (context) => errors.push(context),
   });
 
-  return { controller, devices, mic, camera, screen, tracks, states, errors };
+  return { controller, devices, mic, camera, screen, tracks, states, errors, lost };
 }
 
 /** The track the mesh would currently be sending for a kind. */
@@ -463,5 +466,64 @@ describe('acquisition cancelled mid-prompt', () => {
     // The abandoned attempt's device is closed; the current one's is kept.
     expect(first.stopped).toBe(true);
     expect(second.stopped).toBe(false);
+  });
+});
+
+/**
+ * A device that goes away while it is being used.
+ *
+ * Nothing watched the tracks this agent was *sending*. Only remote ones were watched, and the screen
+ * track for the browser's own "Stop sharing" bar — so unplugging a USB headset mid-call ended the
+ * track and changed nothing else: the flag stayed true, presence went on publishing `audioEnabled:
+ * true`, and every peer's roster showed this agent unmuted while they sent silence. No error,
+ * nothing on screen, and no way to find out except by being told.
+ */
+describe('a device that is unplugged mid-call', () => {
+  it('reports the microphone going, and stops claiming to be sending it', async () => {
+    const { controller, mic, tracks, lost } = setup();
+    await controller.start();
+
+    mic.end();
+
+    expect(lost, 'nobody was told the microphone went').toEqual(['audio']);
+    expect(sent(tracks, 'audio'), 'the mesh was still being handed a dead track').toBe(null);
+    expect(controller.state().audioEnabled, 'presence would have gone on saying unmuted').toBe(false);
+  });
+
+  it('reports the camera going, on its own terms', async () => {
+    const { controller, camera, tracks, lost } = setup();
+    await controller.start();
+
+    camera.end();
+
+    expect(lost).toEqual(['video']);
+    expect(sent(tracks, 'video')).toBe(null);
+    expect(controller.state().videoEnabled).toBe(false);
+  });
+
+  it('leaves the other device alone', async () => {
+    // The two are independent: losing a camera is not a reason to stop sending audio, and the bug
+    // this fixes would be replaced by a worse one if it were.
+    const { controller, mic, camera, tracks } = setup();
+    await controller.start();
+
+    camera.end();
+
+    expect(sent(tracks, 'audio')).toBe(mic);
+    expect(controller.state().audioEnabled).toBe(true);
+  });
+
+  it('says nothing when the call ends, which is not a device going away', async () => {
+    /*
+      `track.stop()` does not fire `ended` — the spec fires it for the source ending, not for the
+      consumer letting go — so hanging up is silent here by construction. Asserted because the whole
+      design rests on it: if it were not true, every leave would report two lost devices.
+    */
+    const { controller, lost } = setup();
+    await controller.start();
+
+    controller.stop();
+
+    expect(lost).toEqual([]);
   });
 });

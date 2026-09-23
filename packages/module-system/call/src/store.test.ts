@@ -40,7 +40,9 @@ function makeStore() {
  * flips `enabled` and stops them, and the tile logic asks a video track whether it is live.
  */
 function fakeMicStream() {
-  const tracks = [{ kind: 'audio', enabled: true, readyState: 'live', stop() {} }];
+  // `addEventListener` because a real track has one and the controller now watches for a device
+  // being unplugged mid-call — see `watchForLoss` in media.ts. A fake without it threw on join.
+  const tracks = [{ kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} }];
   return {
     getTracks: () => [...tracks],
     getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),

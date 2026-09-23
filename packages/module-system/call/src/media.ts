@@ -48,6 +48,14 @@ export interface MediaControllerOptions {
   onTrackChanged?: (kind: 'audio' | 'video', track: MediaStreamTrack | null) => void;
   /** Called when enabled-flags change, so presence can republish `MediaSettings`. */
   onStateChanged?: (state: MediaState) => void;
+  /**
+   * A device this agent was using has gone — unplugged, or taken by something else.
+   *
+   * Its own callback rather than an `onError`, because nothing failed and there is nothing to retry:
+   * the hardware left. The state is already corrected by the time this fires; what the host does
+   * with it is say so, since the alternative is a person who looks unmuted and is sending silence.
+   */
+  onDeviceLost?: (kind: 'audio' | 'video') => void;
   onError?: (context: string, error: unknown) => void;
 }
 
@@ -114,6 +122,60 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   /** The video track the mesh should be sending right now: the screen while sharing, else the camera. */
   const publishVideo = () =>
     options.onTrackChanged?.('video', state.screenShareEnabled ? screenTrack() : cameraTrack());
+
+  /**
+   * A local track that stops existing, rather than one this agent turned off.
+   *
+   * ## What went wrong without it
+   *
+   * Nothing watched the camera or microphone this agent was *sending*. Only remote tracks were
+   * watched (for the frozen-tile case) and the screen track (for the browser's own "Stop sharing"
+   * bar). So unplugging a USB headset mid-call ended the track and nothing else changed at all:
+   * `audioEnabled` stayed true, presence went on publishing `audioEnabled: true`, and every peer's
+   * roster showed this agent unmuted while they sent silence. No error, nothing on screen, and no
+   * way for the person to discover it except by being told.
+   *
+   * It is the same shape as the bug `setVideoEnabled` describes — "the flag was the only thing that
+   * changed … nothing could ever resolve it" — for a cause that code never anticipated.
+   *
+   * ## Why `ended` and not `mute`
+   *
+   * `ended` is the source going away for good, which is the case worth acting on. `mute` on a local
+   * track is the source temporarily unable to produce — another application taking exclusive access,
+   * an OS-level mute — and it comes back, so treating it as loss would turn a hiccup into a state
+   * the person has to undo by hand. Worth revisiting if a browser turns out to report a real unplug
+   * that way.
+   *
+   * Calling `track.stop()` does **not** fire this: the spec fires `ended` for the source ending, not
+   * for the consumer letting go. So `stop()`, `stopScreenShare` and a deliberate device switch are
+   * all silent here, which is what makes one listener safe to attach for the life of the track.
+   */
+  function watchForLoss(track: MediaStreamTrack, kind: 'audio' | 'video') {
+    track.addEventListener('ended', () => {
+      // Only if it is still the track being sent. A device switched away from is stopped rather than
+      // ended, but a track that lost a race to a switch must not correct state about its successor.
+      if (!stream?.getTracks().includes(track)) return;
+      stream.removeTrack(track);
+
+      /*
+        The state is corrected to what is true, which is what this file does everywhere else: nothing
+        is being sent, so the flag says so and presence republishes it. A person reading their own
+        bar sees themselves muted, which is the honest reading — and the host says why.
+      */
+      if (kind === 'audio') {
+        state.audioEnabled = false;
+        options.onTrackChanged?.('audio', null);
+      } else {
+        state.videoEnabled = false;
+        // Not while sharing: the screen is what is being sent, and the camera going is not visible
+        // to anyone. `publishVideo` already picks the right one.
+        publishVideo();
+      }
+
+      options.onDeviceLost?.(kind);
+      emitState();
+    });
+  }
 
   function stopScreenShare() {
     if (!screenStream) return;
@@ -183,8 +245,14 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       if (!claim(acquired)) return;
       stream = acquired;
 
-      for (const track of stream.getAudioTracks()) track.enabled = state.audioEnabled;
-      for (const track of stream.getVideoTracks()) track.enabled = state.videoEnabled;
+      for (const track of stream.getAudioTracks()) {
+        track.enabled = state.audioEnabled;
+        watchForLoss(track, 'audio');
+      }
+      for (const track of stream.getVideoTracks()) {
+        track.enabled = state.videoEnabled;
+        watchForLoss(track, 'video');
+      }
 
       options.onTrackChanged?.('audio', stream.getAudioTracks()[0] ?? null);
       publishVideo();
@@ -245,6 +313,8 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         if (stream) stream.addTrack(track);
         else stream = acquired;
         track.enabled = true;
+        // The camera acquired here is as losable as the one acquired at `start` — see `watchForLoss`.
+        watchForLoss(track, 'video');
         state.videoEnabled = true;
         publishVideo();
         emitState();
