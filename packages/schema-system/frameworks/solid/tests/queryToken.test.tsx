@@ -360,7 +360,7 @@ describe('$query token', () => {
 
     expect(MockEntity.query).toHaveBeenCalledOnce();
     // The bound actually reached the backend — a query asked without it is the whole failure.
-    expect(MockEntity.query.mock.calls[0][1]).toMatchObject({ limit: 200 });
+    expect((MockEntity.query.mock.calls[0] as unknown[])[1]).toMatchObject({ limit: 200 });
   });
 
   /** A query with no bound written is unbounded on purpose, and stays that way. */
