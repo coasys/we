@@ -233,6 +233,40 @@ function reportRoutingRefusal(stores: RendererStores, message: string): void {
  * where the other way round opens a subscription nobody asked for — which is the cost this exists to
  * avoid, and the more expensive mistake of the two.
  */
+/**
+ * A bound the author wrote that has not resolved — the one place widening is never right.
+ *
+ * Everywhere else an unresolved operand WIDENS, deliberately: a `where` condition is pruned, an
+ * unanchored `scope` is dropped, and both leave a query that asks a broader question than intended.
+ * That is the right failure for a filter. A view reads its anchor from a URL parameter that is
+ * usually absent, and "the whole space" is what it should show.
+ *
+ * A bound is the opposite, and the difference is in the KIND of failure rather than its size:
+ *
+ * - An unfiltered `where` answers with more rows of the right kind — a superset, still correct
+ *   data, and visibly broader than asked for.
+ * - An absent `limit` answers with **unbounded work**, invisibly. Nothing on screen looks wrong;
+ *   the query simply costs the backend everything there is, and the more there is the worse it is.
+ *
+ * There is also no "optional limit" idiom the way there is an optional filter. Nobody writes a
+ * bound they do not mean, so an unresolved one is always a frame of "not ready yet" rather than an
+ * instruction to fetch the lot.
+ *
+ * So it is treated as a falsy `when`: the query is not asked, the result stays empty, and
+ * `<name>Loaded` stays false until the bound resolves. The cost of being wrong that way is one
+ * empty frame; the cost of the other way is every row in the space, which is what
+ * `perf:transcript` measured when its scenario forgot to seed a window.
+ *
+ * `offset` for the same reason one step along — an unresolved one silently pages from the start,
+ * so a reader on page three is shown page one and nothing says so.
+ */
+function unresolvedBound(authored: Record<string, unknown>, resolved: Record<string, unknown>): string | undefined {
+  for (const key of ['limit', 'offset']) {
+    if (authored[key] !== undefined && resolved[key] === undefined) return key;
+  }
+  return undefined;
+}
+
 function resolveSubscribe(
   authored: unknown,
   stores: Record<string, unknown>,
@@ -463,6 +497,12 @@ function createQuerySignal(
     // "narrow to the children of nothing". A view that reads its anchor from a URL parameter carries
     // the scope unconditionally and is unanchored when nobody named one.
     if (resolvedParams.scope !== undefined && !scopeIsAnchored(resolvedParams.scope)) delete resolvedParams.scope;
+    // A bound that has not resolved is "not ready", never "fetch everything" — see `unresolvedBound`.
+    if (unresolvedBound(descriptor.params, resolvedParams)) {
+      setItems(reconcile([]));
+      setLoaded(false);
+      return;
+    }
     const resolvedInclude =
       descriptor.include !== undefined
         ? (deepResolveTokens(descriptor.include, stores, context) as Record<string, boolean | Record<string, unknown>>)
@@ -988,6 +1028,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             else resolvedParams.where = prunedWhere;
           }
           if (resolvedParams.scope !== undefined && !scopeIsAnchored(resolvedParams.scope)) delete resolvedParams.scope;
+          // Same rule one node type along — see `unresolvedBound`.
+          if (unresolvedBound(descriptor.params, resolvedParams)) {
+            setHasItem(false);
+            return;
+          }
           const resolvedInclude =
             descriptor.include !== undefined
               ? (deepResolveTokens(descriptor.include, stores, effectiveContext) as Record<

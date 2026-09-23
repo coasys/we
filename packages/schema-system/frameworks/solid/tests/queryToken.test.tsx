@@ -299,6 +299,84 @@ describe('$query token', () => {
    * re-query per change for an answer that cannot change. Reading a finished transcript is the
    * commonest thing anybody does to a long one.
    */
+  // ---- a bound that has not resolved ----
+
+  /**
+   * The one place an unresolved operand must NOT widen.
+   *
+   * A pruned `where` and a dropped `scope` both answer a broader question than asked, which is the
+   * right failure for a filter: more rows of the right kind, visibly broader. An absent `limit`
+   * answers with unbounded work, invisibly — nothing on screen looks wrong and the backend is asked
+   * for everything there is.
+   *
+   * This was not hypothetical. The transcript's own perf scenario forgot to seed the window's store
+   * members, so its `limit` resolved to nothing, the query ran unbounded, and the rig reported the
+   * windowed fix as having changed nothing at all.
+   */
+  it('does not ask at all while a limit has not resolved', async () => {
+    const builder = createMockBuilder();
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn(() => Promise.resolve([])) };
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: () => MockEntity,
+      windowStore: {},
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: 'Post', limit: { $: 'windowStore.shown' } } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(MockEntity.query).not.toHaveBeenCalled();
+    expect(MockEntity.findAll).not.toHaveBeenCalled();
+  });
+
+  it('asks once the limit arrives, and asks for the bound', async () => {
+    const builder = createMockBuilder();
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const [shown, setShown] = createSignal<number | undefined>(undefined);
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: () => MockEntity,
+      get windowStore() {
+        return { shown: shown() };
+      },
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { entity: 'Post', limit: { $: 'windowStore.shown' } } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+    expect(MockEntity.query).not.toHaveBeenCalled();
+
+    setShown(200);
+    await tick();
+
+    expect(MockEntity.query).toHaveBeenCalledOnce();
+    // The bound actually reached the backend — a query asked without it is the whole failure.
+    expect(MockEntity.query.mock.calls[0][1]).toMatchObject({ limit: 200 });
+  });
+
+  /** A query with no bound written is unbounded on purpose, and stays that way. */
+  it('leaves a query that never named a limit alone', async () => {
+    const builder = createMockBuilder();
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const stores = { $currentDataset: () => ({ uuid: 'p1' }), $getEntity: () => MockEntity };
+
+    const node: SchemaNode = { type: 'DataDisplay', props: { data: { $query: { entity: 'Post' } } } };
+
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
+    await tick();
+
+    expect(MockEntity.query).toHaveBeenCalledOnce();
+  });
+
   it('fetches once when subscribe resolves falsy', async () => {
     const MockEntity = { query: vi.fn(), findAll: vi.fn(() => Promise.resolve([{ id: 1 }])) };
     const stores = {

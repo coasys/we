@@ -869,6 +869,11 @@ the condition, a scope is dropped and the query is space-wide. Right for an opti
 for a query whose scope is about to exist, which would draw everything for a frame and then narrow.
 Give such a query "when": { "$": "local.boardLoaded" } and it is not asked until the condition is
 truthy — the result stays empty and local.<name>Loaded stays false, so a loading state can hold.
+A BOUND is the exception, and the only one: an unresolved "limit" or "offset" does NOT widen — the
+query is not asked at all, exactly as a falsy "when" leaves it unasked, and it runs once the bound
+arrives. Widening a filter answers a broader question, which is visible; widening a bound asks the
+backend for everything there is, which is not. So an expression-valued limit costs at worst one
+empty frame, never an unbounded fetch.
 A $query cannot be read inside an expression — a question for the backend is hoisted here and read
 back through local. Use count() for conditional visibility:
 { "condition": { "$": "count(local.signalTypes)" } }
