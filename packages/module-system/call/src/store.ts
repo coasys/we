@@ -177,8 +177,32 @@ export const CALL_BAR_WIDTH_PX = 480;
  * seconds. Truthiness of the stream answers "do I know about this person", never "is there anything
  * to watch".
  */
+/**
+ * Connection states that mean "not on its way" — a pair that had one and lost it, or never will.
+ *
+ * `new` and `connecting` are absent on purpose: those are the window this whole `connecting` flag
+ * exists to cover. So is an absent state, which is a peer the mesh has not negotiated with yet.
+ */
+const GONE = new Set<string>(['disconnected', 'failed', 'closed']);
+
+/**
+ * Whether this stream has a video track that is actually delivering frames.
+ *
+ * `readyState` alone was the bug behind every frozen tile. It answers "has this track been stopped",
+ * which for a **remote** track is almost never: it stays `live` for as long as the connection object
+ * exists, whatever the far end is doing. What says "nothing is arriving" is `muted`, which the
+ * browser sets when RTP stops — a peer leaving, crashing, or losing their network — and clears again
+ * if it comes back.
+ *
+ * So a departed peer read as having a picture, the `<video>` kept its `srcObject`, and the browser
+ * went on painting the last frame it had decoded. Both halves are needed: `muted` alone would miss a
+ * track that was genuinely stopped, and `readyState` alone misses every way a call actually ends.
+ *
+ * The mesh re-emits its streams on `mute` and `unmute` so this is re-asked when the answer changes —
+ * see `pc.ontrack` there.
+ */
 function hasLiveVideo(stream: MediaStream | null): boolean {
-  return !!stream?.getVideoTracks().some((track) => track.readyState === 'live');
+  return !!stream?.getVideoTracks().some((track) => track.readyState === 'live' && !track.muted);
 }
 
 export function createCallStore(deps: ModuleStoreDeps) {
@@ -399,10 +423,48 @@ export function createCallStore(deps: ModuleStoreDeps) {
    */
   const tileCache = new Map<string, CallTile>();
 
+  /**
+   * Every call activity presence is still prepared to stand behind — the one place liveness is read.
+   *
+   * ## What it is filtering, and why every reader needs it
+   *
+   * The kernel lends the RAW peer list: everything the presence driver still holds, which is
+   * everyone seen within `evictAfter` — five minutes. Over that time a peer's `liveness` decays
+   * through idle and stale to offline, and the activities they last published are carried along
+   * completely unchanged. So an agent who closed a tab, crashed, or drove into a tunnel went on
+   * saying "I am in this call" for five minutes, because nothing asked how long ago they said it.
+   *
+   * What that looked like was a tile that would not go away — a frozen last frame, see
+   * `hasLiveVideo` for the other half of that, under a badge reading `disconnected` — and a call
+   * that stayed joinable in the calls panel long after the last person had left it.
+   *
+   * It was asked in four places and answered in none of them: this roster, the tile rebuild (which
+   * had its own copy of the same loop rather than using it), `liveCalls` and `ongoingPeers`. Hence
+   * one helper, so a fix to the question cannot land in three of the four again.
+   *
+   * ## Why `offline` and not something tighter
+   *
+   * Two reasons. It is the cut the host already makes for `presenceStore.calls`, so the stage and
+   * the calls panel now agree about who is in a call instead of disagreeing for four minutes. And
+   * the roster below drives `mesh.setRoster`, so dropping somebody closes their peer connection:
+   * cutting at `stale` would tear down a pair after thirty seconds of missed heartbeats that the
+   * mesh's own repair ladder is still working on, and a flaky network would be evicted and
+   * renegotiated rather than repaired. If the tiles should give up sooner than the mesh does, that
+   * is two thresholds, not this one moved.
+   *
+   * A clean Leave remains the fast path and is untouched: it clears the activity and publishes
+   * immediately, so the peer is gone from here on the next tick. This is the backstop for every
+   * departure that does not get to say goodbye — which is the one the transport cannot make
+   * reliable, since the publish is fire-and-forget over a lossy channel.
+   */
+  const liveCallActivities = () =>
+    activitiesOfType(presence?.peers() ?? [], 'call').filter(({ peer }) => peer.liveness !== 'offline');
+
+  /** Who is in *this* call — the membership the mesh reconciles against. */
   const roster = (): Peer[] => {
     const id = callId();
     if (!id || !presence) return [];
-    return activitiesOfType(presence.peers(), 'call')
+    return liveCallActivities()
       .filter(({ activity }) => activity.id === id)
       .map(({ peer }) => peer);
   };
@@ -478,7 +540,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
       });
     }
 
-    for (const { peer, activity } of activitiesOfType(presence?.peers() ?? [], 'call')) {
+    // Through the shared helper, which is what this loop used to duplicate without its liveness
+    // test — so a peer who had stopped heartbeating kept a tile even once the mesh had let them go.
+    for (const { peer, activity } of liveCallActivities()) {
       if (activity.id !== id || peer.agentId === me) continue;
       const settings = activity.media;
       const stream = remoteStreams.get(peer.agentId) ?? null;
@@ -496,9 +560,23 @@ export function createCallStore(deps: ModuleStoreDeps) {
         videoEnabled: settings?.videoEnabled ?? true,
         connection,
         hasPicture: picture,
-        // Expected and not yet arrived. Keyed on the track rather than on `peerStates`, which holds
-        // nothing until the first negotiation — exactly the window that showed nothing at all.
-        connecting: wantsPicture && !picture && connection !== 'failed',
+        /*
+          Expected and not yet arrived. Keyed on the track rather than on `peerStates`, which holds
+          nothing until the first negotiation — exactly the window that showed nothing at all.
+
+          Not once a connection has been made and lost, which is a different sentence. It used to
+          exclude `failed` only, and that was enough while a picture that stopped arriving went on
+          being counted as a picture: a departed peer sat there frozen rather than claiming to be
+          on its way. Now that a muted track reads as no picture — see `hasLiveVideo` — the same
+          expression would put "Connecting…" under somebody who has just left the call, which is a
+          worse answer than the frozen frame was.
+
+          `disconnected` and `closed` join it for that reason. What a genuine blip shows instead is
+          `retrying`, which the mesh sets when it actually starts repairing the pair, and which says
+          "Reconnecting…" — true of a connection coming back, and not claimed of one that never
+          connected.
+        */
+        connecting: wantsPicture && !picture && !GONE.has(connection ?? ''),
         // A repair is only worth announcing while the connection has not come back. Reading the
         // connection rather than clearing the map on every state change keeps the two in step
         // without a second source of truth.
@@ -1188,7 +1266,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       string,
       { id: string; recordId: string | null; anchorNodeId: string | null; peers: string[] }
     >();
-    for (const { peer, activity } of activitiesOfType(presence.peers(), 'call')) {
+    for (const { peer, activity } of liveCallActivities()) {
       const anchorOf = (activity as { anchor?: Focus }).anchor;
       if (anchorOf?.datasetUri && anchorOf.datasetUri !== uri) continue;
       const recordId = (activity as { record?: string }).record ?? null;
@@ -1240,7 +1318,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const uri = datasetUri?.() ?? null;
     if (!uri || !presence) return [];
     return (
-      activitiesOfType(presence.peers(), 'call')
+      liveCallActivities()
         .filter(({ activity }) => {
           const anchorOf = (activity as { anchor?: Focus }).anchor;
           return !anchorOf?.datasetUri || anchorOf.datasetUri === uri;
