@@ -3126,6 +3126,11 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'Whether this machine will say what its devices are called. False until capture has been allowed once.',
         },
+        {
+          name: 'devicesProbed',
+          kind: 'state',
+          doc: 'Whether this machine has been asked for a device yet. Until it has, an empty device list means "not allowed to look", not "none here".',
+        },
         { name: 'dismissProblem', kind: 'action', doc: 'Dismiss the problem message.' },
         {
           name: 'elsewhere',

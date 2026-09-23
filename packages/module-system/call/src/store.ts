@@ -407,6 +407,17 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * bar's menu and the settings screen — both reach it through the same action.
    */
   const [deviceSettingsOpen, setDeviceSettingsOpen] = signal(false);
+  /**
+   * Whether this machine has actually been asked, as opposed to not having answered yet.
+   *
+   * The difference decides what a chooser with nothing in it should say. Before a capture has ever
+   * been allowed, a browser lists no devices at all — so "no microphone found on this computer" is
+   * a claim about hardware made from a list that was never permitted to mention any. What is true
+   * at that point is that we have not been allowed to look, and the useful thing on screen is the
+   * button that fixes it. Only after asking and still finding nothing is the stronger sentence
+   * honest.
+   */
+  const [devicesProbed, setDevicesProbed] = signal(false);
   const [audioDevice, setAudioDeviceId] = signal(readChosenDevice('audio'));
   const [videoDevice, setVideoDeviceId] = signal(readChosenDevice('video'));
 
@@ -443,6 +454,20 @@ export function createCallStore(deps: ModuleStoreDeps) {
   async function refreshDevices(): Promise<void> {
     setInputDevices((await mediaKernel?.enumerateDevices()) ?? []);
   }
+
+  /*
+    Asked once at boot, so a chooser opened cold has something in it.
+
+    Without this the list was populated only by joining a call or by opening the sheet from the call
+    bar — so the settings page, which draws the same chooser inline and calls neither, rendered
+    against an empty list and said "no microphone found" on a machine with several. The two surfaces
+    disagreed about the hardware, which is a thing neither of them decides.
+
+    A browser that has been granted capture before remembers it, so on the ordinary machine this
+    returns real devices with real names straight away. One that has not returns little or nothing,
+    which is a state the chooser has to draw anyway — see `devicesProbed`.
+  */
+  void refreshDevices();
 
   /*
     The list follows the hardware.
@@ -1224,6 +1249,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       so a page cannot fingerprint a machine by its hardware. So the list gathered before a call is
       a list of anonymous devices, and this is the first moment it can have names in it.
     */
+    setDevicesProbed(true);
     void refreshDevices();
 
     // The call can end while the permission prompt is up — a hot reload, a second join, somebody
@@ -1543,6 +1569,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
     cameraOptions: state(
       () => optionsFor('videoinput', 'camera'),
       'The cameras as picker options, on the same terms as microphoneOptions.',
+    ),
+    devicesProbed: state(
+      devicesProbed,
+      'Whether this machine has been asked for a device yet. Until it has, an empty device list means "not allowed to look", not "none here".',
     ),
     devicesNamed: state(
       () => inputDevices().some((device) => !!device.label),
@@ -2100,8 +2130,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
         const probe = await mediaKernel.getUserMedia({ audio: true, video: true });
         for (const track of probe.getTracks()) track.stop();
       } catch {
-        // Refused, or no such device. The chooser stays as it was: numbered, and honest about it.
+        // Refused, or no such device. Still a probe: we asked, and what came back — nothing, or a
+        // refusal — is now a fact about this machine rather than a question nobody had put.
       }
+      setDevicesProbed(true);
       void refreshDevices();
     }, 'Ask for a device once so this machine will say what its hardware is called.'),
     toggleScreenShare: action(async () => {

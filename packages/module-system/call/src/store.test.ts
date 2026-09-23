@@ -764,6 +764,50 @@ describe('transport and device lifetime', () => {
     and a flaky network would be evicted and renegotiated rather than repaired. `offline` is also the
     cut the host already makes for `presenceStore.calls`, so the stage and the calls panel agree.
   */
+
+  /**
+   * The device list is populated without anybody joining a call.
+   *
+   * It was filled only by `join` and by the call bar's sheet, so the settings page — which draws the
+   * same chooser inline and calls neither — rendered against an empty list and reported that the
+   * machine had no microphone, on a machine with several. The two surfaces disagreed about the
+   * hardware, which is a thing neither of them decides.
+   */
+  describe('what the module knows about devices before a call', () => {
+    it('asks the host at construction, so a chooser opened cold has something in it', async () => {
+      const { store } = callable({
+        devices: [
+          { deviceId: 'mic-1', kind: 'audioinput', label: 'Headset', groupId: 'g1' },
+          { deviceId: 'cam-1', kind: 'videoinput', label: 'Webcam', groupId: 'g2' },
+        ],
+      });
+      // The enumeration is a promise the constructor does not await — a store cannot be async — so the
+      // first answer lands a microtask later, which is exactly what a reader waits for too.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(store.microphones().map((device: { deviceId: string }) => device.deviceId)).toEqual(['mic-1']);
+      expect(store.cameras().map((device: { deviceId: string }) => device.deviceId)).toEqual(['cam-1']);
+    });
+
+    it('has not probed until something asks, so an empty list is not read as an empty machine', async () => {
+      const { store } = callable();
+      await Promise.resolve();
+
+      expect(store.devicesProbed(), 'enumerating is not the same as being allowed to').toBe(false);
+    });
+
+    it('counts joining a call as having asked', async () => {
+      // A call acquires devices, so whatever the list says afterwards is a fact about the machine
+      // rather than about permission.
+      const { store } = callable();
+      await store.startCall();
+      await Promise.resolve();
+
+      expect(store.devicesProbed()).toBe(true);
+    });
+  });
+
   it('keeps a peer who is merely stale, whose connection the mesh is still repairing', async () => {
     const { store, joinedBy, fadedTo } = callable();
     await store.startCall();

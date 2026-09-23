@@ -30,8 +30,13 @@ function devicePicker(options: {
   return {
     type: '$if',
     props: {
-      // A machine with nothing of this kind gets a sentence rather than a picker offering only
-      // "System default", which reads as a control that does nothing.
+      /*
+        A picker only where there is something to pick between.
+
+        A list holding nothing but "System default" is a control that cannot be operated, so the
+        sentence below takes its place — and which sentence depends on whether we have been *allowed*
+        to look, which is the distinction `devicesProbed` carries.
+      */
       condition: { $: `count(${options.options}) > 1` },
       then: {
         type: 'we-form-field',
@@ -53,13 +58,28 @@ function devicePicker(options: {
           },
         ],
       },
+      /*
+        Said only once this machine has actually been asked.
+
+        Before a capture has ever been allowed, a browser lists no devices at all — so "no microphone
+        found on this computer" is a claim about hardware, made from a list that was never permitted
+        to mention any. That was the first thing the settings page said on a machine with a working
+        microphone plugged into it. Until we have asked, the honest state is the block below the
+        pickers, which offers to ask.
+      */
       else: {
-        type: 'Row',
-        props: { gap: '200', ay: 'center' },
-        children: [
-          { type: 'we-icon', props: { name: options.icon, color: 'text-faint' } },
-          { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [options.empty] },
-        ],
+        type: '$if',
+        props: {
+          condition: { $: 'modules.call.devicesProbed' },
+          then: {
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [
+              { type: 'we-icon', props: { name: options.icon, color: 'text-faint' } },
+              { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [options.empty] },
+            ],
+          },
+        },
       },
     },
   };
@@ -92,16 +112,22 @@ export const deviceSettings: SchemaNode = {
       empty: 'No camera found on this computer.',
     }),
     /*
-      The way out of an anonymous list.
+      The way out of a list this machine has not been allowed to describe.
 
-      Only where there is something to name and nothing is named yet — in a call the devices are
-      already open and the labels already arrived, so this would be a button offering to fix
-      something that is not broken.
+      Two states reach it and they look different on screen but have the same remedy. Either devices
+      are listed and anonymous — a browser withholds labels until a capture has been allowed, so that
+      a page cannot fingerprint a machine by its hardware — or nothing is listed at all, which is what
+      the same refusal looks like in a stricter browser. Both are "we have not been permitted to
+      look", and both are fixed by asking once.
+
+      Gone once the machine has been asked: in a call the devices are open and the names have
+      arrived, and after a probe that found nothing the sentence above is the true one. So this is a
+      button that offers to fix something, only while there is something to fix.
     */
     {
       type: '$if',
       props: {
-        condition: expr`!modules.call.devicesNamed && (count(modules.call.microphoneOptions) > 1 || count(modules.call.cameraOptions) > 1)`,
+        condition: expr`!modules.call.devicesProbed && !modules.call.devicesNamed`,
         then: {
           type: 'Column',
           props: { gap: '200', p: '300', r: 'surface', bg: 'surface-sunken' },
@@ -110,8 +136,8 @@ export const deviceSettings: SchemaNode = {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
               children: [
-                'This computer will not say what its devices are called until it has been asked for one ' +
-                  'at least once.',
+                'This computer will not list your microphones and cameras, or say what they are ' +
+                  'called, until it has been asked for one at least once.',
               ],
             },
             {
@@ -122,7 +148,7 @@ export const deviceSettings: SchemaNode = {
                 alignSelf: 'start',
                 onClick: { $action: 'modules.call.nameDevices' },
               },
-              children: ['Show device names'],
+              children: ['Allow access to list devices'],
             },
           ],
         },

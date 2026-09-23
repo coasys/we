@@ -3253,6 +3253,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - canCall — Whether a call could be started here — false in a personal space, which has nobody to call.
   - deviceSettingsOpen — Whether the camera and microphone chooser is open.
   - devicesNamed — Whether this machine will say what its devices are called. False until capture has been allowed once.
+  - devicesProbed — Whether this machine has been asked for a device yet. Until it has, an empty device list means "not allowed to look", not "none here".
   - elsewhere — Whether the call this agent is in belongs to a space other than the one on screen.
   - focusedId — Whose tile the stage is giving most of its room to, or null for an even grid.
   - liveCalls — Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.
