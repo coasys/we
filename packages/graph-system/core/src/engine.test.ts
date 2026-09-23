@@ -2041,3 +2041,90 @@ describe('GraphEngine folding', () => {
     }
   });
 });
+
+/**
+ * A load that has been replaced has nothing to say about what is on screen now.
+ *
+ * `refresh` serialises itself, but nothing serialised a `refresh` against a `start` — so switching
+ * canvases while a refresh was in flight left the older load to finish afterwards and reconcile its
+ * rows into the graph that had replaced it. Rare, silent, and indistinguishable from the backend
+ * having answered about the wrong canvas.
+ */
+describe('a superseded load', () => {
+  /** A seed that answers when told to, so two loads can be held open at once. */
+  function gatedSeed(): { source: SeedSource; release: (label: string) => void; waiting: () => number } {
+    const gates: { label: string; go: () => void }[] = [];
+    let current = 'first';
+    return {
+      waiting: () => gates.length,
+      release: (label: string) => {
+        const gate = gates.find((g) => g.label === label);
+        gate?.go();
+      },
+      source: {
+        id: 'test',
+        async seed() {
+          const label = current;
+          current = 'second';
+          await new Promise<void>((resolve) => gates.push({ label, go: resolve }));
+          return {
+            nodes: [{ id: `${label}-node`, kind: 'entity' as const, type: 'Thing', label }],
+            edges: [],
+          };
+        },
+      },
+    };
+  }
+
+  it('does not reconcile its rows into the graph that replaced it', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // Two loads open at once: the first still waiting when the second begins.
+    const first = engine.start();
+    await Promise.resolve();
+    const second = engine.start();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    // The replacement answers first and lands; the one it replaced answers afterwards.
+    gate.release('second');
+    await second;
+    gate.release('first');
+    await first;
+
+    const ids = [...engine.store.nodes()].map((n) => n.id);
+    expect(ids, 'the older load overwrote the newer one').toEqual(['second-node']);
+  });
+
+  it('hands the seed a signal, so its reads can stop when it is replaced', async () => {
+    /*
+      Every seed here takes an `AbortSignal` and threads it through each of its reads — the canvas
+      seed has done so since it was written — and nothing ever passed one, so the whole of that
+      plumbing was dead and a superseded load's queries all ran to completion. On a canvas that is
+      eleven reads nobody is waiting for.
+    */
+    const seen: (AbortSignal | undefined)[] = [];
+    const registry = new PluginRegistry({
+      seeds: [
+        {
+          id: 'test',
+          async seed(_options, _context, signal) {
+            seen.push(signal);
+            return { nodes: [], edges: [] };
+          },
+        },
+      ],
+      layouts,
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    await engine.start();
+    expect(seen[0], 'the seed was called without a signal').toBeInstanceOf(AbortSignal);
+    expect(seen[0]?.aborted, 'the load that is running is not aborted').toBe(false);
+
+    await engine.start();
+    expect(seen[0]?.aborted, 'starting again did not abort the load it replaced').toBe(true);
+  });
+});
