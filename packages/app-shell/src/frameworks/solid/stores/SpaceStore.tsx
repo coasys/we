@@ -5000,9 +5000,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     const current = untrack(datasetStore.currentDataset);
     if (current?.id === ds.id) return;
+    /*
+      A switch the address asked for publishes only if the address still asks for it.
+
+      `navigateToSpace` switches the dataset first and navigates second, so for a moment the stores
+      describe the new space while the URL still names the old one. A template that redirects its own
+      unknown addresses — Workshop's catch-all sends `/space/<old>/about` to `./canvas` — rewrites the
+      *old* space's address in that moment, and this effect read the rewrite as the reader asking for
+      the old space back. The switch it started was several round trips long; by the time it landed
+      the navigate had put the URL on the new space, and it published anyway: the previous space's
+      data and template under the current space's URL, with nothing left to match the route and
+      nothing to move it — the section guard rightly refuses to correct an address about a space it
+      is not reading from.
+
+      So the switch is told how to check, at the last moment, that the URL it was started from is
+      still the URL. Untracked, because the check runs inside the switch and not in this effect.
+    */
+    const stillAddressed = () => {
+      const now = untrack(routeStore.segments);
+      return now[0] === 'space' && datasetAddressedBy(ds, now[1] ?? '');
+    };
     void (async () => {
       await templateStore.preloadSpaceTemplates(ds);
-      await datasetStore.switchDataset(ds.id);
+      await datasetStore.switchDataset(ds.id, { stillWanted: stillAddressed });
     })();
   });
 

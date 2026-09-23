@@ -116,7 +116,12 @@ export interface DatasetStore {
   marketplaceJoined: Accessor<boolean>;
 
   // Actions
-  switchDataset: (uuid: string) => Promise<void>;
+  /**
+   * Switch to a dataset. `stillWanted` is asked once more, after the round trips and just before the
+   * switch is published; answering false abandons it. For a switch made on behalf of something that
+   * can move on without asking again — the address bar — see the URL effect in SpaceStore.
+   */
+  switchDataset: (uuid: string, options?: { stillWanted?: () => boolean }) => Promise<void>;
   reorderDatasets: (newOrder: string[]) => Promise<void>;
   /** Remove the dataset from the backend and local state. Space-level concerns (e.g. global
    * discovery cleanup) belong to SpaceStore.removeSpace, which calls this. */
@@ -970,7 +975,7 @@ export function DatasetStoreProvider(props: ParentProps) {
    */
   let requestedDataset: string | null = null;
 
-  async function switchDataset(uuid: string): Promise<void> {
+  async function switchDataset(uuid: string, options?: { stillWanted?: () => boolean }): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     requestedDataset = uuid;
@@ -1025,6 +1030,15 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Everything above is a round trip, and the reader may have asked for somewhere else while
       // they ran. Publishing now would overwrite a newer switch with an older answer.
       if (requestedDataset !== uuid) return;
+      /*
+        The other way a switch goes stale: not superseded by a later switch, but by a later
+        *navigation*. `requestedDataset` only knows about switches, so a switch the address bar asked
+        for could not tell that the address had since moved on — and it published anyway, landing the
+        previous space's data under the current space's URL. The caller that can answer "is this
+        still what the address says" is the one that read the address, so it is asked here rather
+        than guessed at.
+      */
+      if (options?.stillWanted && !options.stillWanted()) return;
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
