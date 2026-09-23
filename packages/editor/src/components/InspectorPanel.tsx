@@ -308,7 +308,7 @@ function TreeNode(props: TreeNodeProps) {
         <we-icon
           name={nodeTypeIcon(props.node.type)}
           size="xs"
-          color={isSelected() ? 'primary-600' : isSpecial() ? 'primary-400' : 'neutral-400'}
+          color={isSelected() ? 'accent-text' : isSpecial() ? 'accent' : 'text-faint'}
         />
 
         {/* Context label: route path, slot name, or prop name */}
@@ -327,7 +327,7 @@ function TreeNode(props: TreeNodeProps) {
           minWidth="0"
           whiteSpace="nowrap"
           styles={{ 'text-overflow': 'ellipsis' }}
-          color={isSelected() ? 'primary-700' : isSpecial() ? 'primary-500' : 'neutral-700'}
+          color={isSelected() ? 'accent-text' : isSpecial() ? 'accent' : 'text-muted'}
           prop:fontWeight={isSelected() ? '600' : '400'}
         >
           {props.node.type ?? '(root)'}

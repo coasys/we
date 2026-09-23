@@ -91,6 +91,18 @@ const CODE_SCALE =
   /(?:var\(--we-color-|tokenVar\(\s*['"]color['"]\s*,\s*['"])(neutral|primary|success|warning|danger)-(?:0|25|50|75|100|[2-9]00|1000)/g;
 
 /**
+ * A design-system colour prop, written in TSX, holding a scale position: `color="neutral-800"`,
+ * `<Column bg={x ? 'primary-100' : 'surface'}>`.
+ *
+ * The third spelling, and the one that looks most like a template — which is the point. The same
+ * value in a `.schema.ts` is a finding the other half of this script reports; written in TSX it was
+ * reaching the identical prop resolver with nothing watching. Both branches of a conditional are
+ * read, for the reason `colorValues` reads both: the eye checks the branch, not the value.
+ */
+const CODE_DS_PROP =
+  /\b(?:bg|color|borderColor|fadeColor|bgImageTint|ring)\s*=\s*[{"']?[^>\n]*?['"](neutral|primary|success|warning|danger)-(?:0|25|50|75|100|[2-9]00|1000)['"]/g;
+
+/**
  * A colour that is not even a token — a hex literal or an `rgb()`/`hsl()` call in a style position.
  *
  * Worse than a scale position rather than merely different: a step at least follows the theme's hue,
@@ -117,6 +129,17 @@ const CODE_PALETTES: { path: RegExp; why: string }[] = [
   { path: /\/3d\//, why: 'WebGL materials — lit in a scene, not painted on a surface the theme owns' },
   { path: /AppFailure/, why: 'the screen shown when the app did not start, so it cannot assume a stylesheet loaded' },
   { path: /\/fixtures\//, why: 'fixtures' },
+  {
+    path: /1-tokens\/src\/role\.ts$/,
+    why: 'the file that DEFINES the roles, in terms of the ramp — the one place the mapping has to be written',
+  },
+  {
+    path: /2-themes\/src\/[^/]+\/index\.css$/,
+    why: 'a theme pinning its roles to values, which is what a theme is',
+  },
+  { path: /primitives\/color-picker\./, why: 'the swatch grid IS the ramp, offered for somebody to pick from' },
+  { path: /leaflet-css\./, why: 'vendored third-party CSS, kept verbatim so it can be diffed against upstream' },
+  { path: /\/schemas\/shell\/tests\//, why: 'the schema-test fixtures, which paint every role on purpose' },
 ];
 
 /**
@@ -304,7 +327,7 @@ for (const file of await filesUnder(codeRoots, CODE_FILE)) {
     const unknown = [...line.matchAll(TOKEN_VAR)].map((m) => m[1]!).filter((name) => !isKnownColour(name));
 
     for (const [kind, hit] of [
-      ['scale', matches(CODE_SCALE)],
+      ['scale', matches(CODE_SCALE) || matches(CODE_DS_PROP)],
       ['literal', matches(CODE_LITERAL)],
       ['unknown', unknown.length > 0],
     ] as const) {

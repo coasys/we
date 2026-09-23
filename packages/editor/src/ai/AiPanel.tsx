@@ -102,7 +102,7 @@ export function AiPanel() {
                   rt="400"
                   px="12px"
                   height="32px"
-                  bg={isActive() ? 'neutral-200' : 'neutral-100'}
+                  bg={isActive() ? 'surface' : 'surface-sunken'}
                   cursor="pointer"
                   whiteSpace="nowrap"
                   flexShrink="0"
@@ -110,7 +110,7 @@ export function AiPanel() {
                   <we-text
                     fontSize="300"
                     prop:fontWeight={isActive() ? '600' : '400'}
-                    color={isActive() ? 'neutral-900' : 'neutral-700'}
+                    color={isActive() ? 'text' : 'text-muted'}
                     onClick={() => session.switchSession(chat.id)}
                     cursor="pointer"
                   >
@@ -248,7 +248,7 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
       r="400"
       gap="300"
       p={isUser() ? '300' : '0'}
-      bg={isUser() ? 'primary-200' : 'neutral-25'}
+      bg={isUser() ? 'accent-muted' : 'surface'}
       maxWidth={isUser() ? '90%' : '100%'}
       alignSelf={isUser() ? 'flex-end' : 'flex-start'}
     >

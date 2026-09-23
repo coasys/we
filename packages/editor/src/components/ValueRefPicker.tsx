@@ -92,7 +92,7 @@ export function ValueRefPicker(props: {
       <we-button variant="outline" size="xs" width="100%" onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" width="100%" minWidth="0">
           <we-icon name={operandIcon(props.value)} size="xs" color="text-faint" />
-          <we-text flex="1" truncate fontSize="200" color={props.value ? 'neutral-800' : 'neutral-400'}>
+          <we-text flex="1" truncate fontSize="200" color={props.value ? 'text' : 'text-faint'}>
             {label()}
           </we-text>
           <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
