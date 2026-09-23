@@ -2886,10 +2886,19 @@ export function GraphView(props: GraphViewProps) {
                   A wider, transparent copy of the line under the real one — the hover mark, and the
                   reason it is a second path rather than a thicker stroke: the visible line keeps its
                   own width, so nothing about the drawing changes shape when the pointer is near it.
+
+                  The **selected** line carries the same mark, one step stronger, and keeps it once
+                  the pointer has gone. A card says which one is selected with a ring that stays; an
+                  edge said it with nothing at all, so selecting a line and moving away left the
+                  inspector talking about a connection nobody could see on the canvas. One path
+                  rather than two, so the two states cannot stack into a third brightness.
                 */}
-                <Show when={hoveredEdge() === entry.edge.id}>
+                <Show when={hoveredEdge() === entry.edge.id || selectedEdge() === entry.edge.id}>
                   <path
-                    class="we-graph__edge-hover"
+                    classList={{
+                      'we-graph__edge-hover': true,
+                      'we-graph__edge-hover--selected': selectedEdge() === entry.edge.id,
+                    }}
                     d={entry.path}
                     fill="none"
                     stroke={color(entry.visual.color, 'neutral-300')}

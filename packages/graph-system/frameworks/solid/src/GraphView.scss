@@ -815,6 +815,23 @@
   pointer-events: none;
 }
 
+/**
+ * The same mark on the selected edge, one step stronger — and it stays when the pointer leaves.
+ *
+ * A selected card keeps a ring; a selected line kept nothing, so the only sign a connection was
+ * selected disappeared with the pointer and the inspector was left describing something the canvas
+ * did not point at. The hover value is deliberately faint — it answers "is the pointer on it?",
+ * which is a question that stops being asked the moment you let go — where this one has to hold on
+ * its own beside cards ringed in `primary-500`.
+ *
+ * The edge's own colour rather than the ring colour those cards use: a line has no fill to be
+ * mistaken for, so widening it in its own colour reads as *that* line being picked out, where a
+ * primary halo on a red line would read as a second, differently coloured line underneath it.
+ */
+.we-graph__edge-hover--selected {
+  opacity: 0.6;
+}
+
 // Resize handles on a selected card: four corners, four edges.
 //
 // Outside the card rather than inside it, so the card's `overflow: hidden` cannot clip them and they
