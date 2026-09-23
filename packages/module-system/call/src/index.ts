@@ -1123,12 +1123,11 @@ const participants: SchemaNode = peopleTooltip({
             wrap, "11 in the call" broke between the number and the words and made the whole bar a
             row taller, which moves every control in it.
 
-            Not a design-system prop, and `truncate` is the wrong one: that clips with an ellipsis,
-            where the honest behaviour for a bar too narrow for its contents is to overflow. Below
-            the compact tier this text is not rendered at all, which is the answer for the widths
-            where it actually happened.
+            `truncate` is the wrong prop: that clips with an ellipsis, where the honest behaviour
+            for a bar too narrow for its contents is to overflow. Below the compact tier this text
+            is not rendered at all, which is the answer for the widths where it actually happened.
           */
-            styles: { whiteSpace: 'nowrap' },
+            whiteSpace: 'nowrap',
           },
           children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.tiles)' } } }, ' in the call'],
         }),

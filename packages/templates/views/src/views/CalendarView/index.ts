@@ -299,7 +299,7 @@ const monthGrid: SchemaNode = {
     // ── The days ─────────────────────────────────────────────────────────────
     {
       type: 'Row',
-      props: { width: '100%', gap: '100', styles: { 'flex-wrap': 'wrap' } },
+      props: { width: '100%', gap: '100', wrap: true },
       children: [
         {
           type: '$each',

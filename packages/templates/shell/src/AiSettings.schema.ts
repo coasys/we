@@ -497,7 +497,7 @@ const taskCard: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted', styles: { 'white-space': 'pre-wrap' } },
+          props: { variant: 'footnote', color: 'text-muted', whiteSpace: 'pre-wrap' },
           children: [{ $: 'task.systemPrompt' }],
         },
       ],

@@ -597,6 +597,9 @@ const networkMetricsModal: SchemaNode = {
                 // The editor's own scroller rather than the modal's, so its fold gutter and search
                 // stay beside the text while it scrolls.
                 maxHeight: '60dvh',
+                // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                // declares no layout layer, so `width` on it is an unknown prop the
+                // validator warns about and the renderer drops.
                 styles: { width: '100%' },
               },
             },
@@ -755,6 +758,9 @@ const peerExchangeModal: SchemaNode = {
                         readOnly: true,
                         // Lower than the metrics viewer's: the paste box shares this modal.
                         maxHeight: '240px',
+                        // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                        // declares no layout layer, so `width` on it is an unknown prop the
+                        // validator warns about and the renderer drops.
                         styles: { width: '100%' },
                       },
                     },

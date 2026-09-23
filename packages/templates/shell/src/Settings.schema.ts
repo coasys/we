@@ -94,7 +94,7 @@ const templatesSection: SchemaNode = {
                 // Template icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'template.icon' }, size: '20px' } },
                     {
@@ -354,7 +354,7 @@ const themesSection: SchemaNode = {
                 // Theme icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'theme.icon' }, size: '20px' } },
                     {

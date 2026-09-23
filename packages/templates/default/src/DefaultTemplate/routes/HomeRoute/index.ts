@@ -50,7 +50,7 @@ export const homeRoute: RouteSchema = {
                         ax: 'center',
                         bg: 'surface',
                         width: '160px',
-                        styles: { cursor: 'pointer' },
+                        cursor: 'pointer',
                         onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
                       },
                       children: [
@@ -68,12 +68,11 @@ export const homeRoute: RouteSchema = {
                             variant: 'body',
                             fontWeight: 'medium',
                             textAlign: 'center',
-                            styles: {
-                              overflow: 'hidden',
-                              'text-overflow': 'ellipsis',
-                              'white-space': 'nowrap',
-                              'max-width': '140px',
-                            },
+                            // `truncate` is the three declarations this used to spell out by hand,
+                            // and it writes them on the part that holds the text rather than on the
+                            // host, which is where `text-overflow` has to be to do anything.
+                            truncate: true,
+                            maxWidth: '140px',
                           },
                           children: [{ $: 'space.name' }],
                         },

@@ -38,7 +38,17 @@ export const profileTemplate: TemplateSchema = {
             width: '120px',
             height: '120px',
             r: 'avatar',
-            ring: '0 0 0 3px var(--we-color-neutral-500)',
+            /*
+              The disc overlaps the cover image, and the ring is what separates the two — which is
+              `border-strong`, "two regions that are genuinely apart". It was `neutral-500`, a step
+              on the ramp: it follows the theme's hue and polarity but not what the theme *decides*
+              a strong edge is, and the contrast pass at apply time never measures it.
+
+              A role variable rather than the bare name because `ring` is emitted as `box-shadow`
+              verbatim — it is the one colour-carrying DS prop with no token resolution, so a role
+              has to be spelled as its CSS custom property here.
+            */
+            ring: '0 0 0 3px var(--we-role-border-strong)',
             placeholderIcon: 'user',
             uploadLabel: 'Add photo',
             editLabel: 'Change photo',
