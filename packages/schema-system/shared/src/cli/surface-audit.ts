@@ -143,15 +143,16 @@ const MODULE_PANEL = /\/module-system\/[^/]+\/src\/.*Panel\.schema\.ts$/;
  *
  * `surfaces.test.ts` asserts the stack's *order* and so passes on both: chrome and sunken are not
  * compared there, because nothing had noticed they needed to be.
+ *
+ * Being IN this map is what makes a ground a defect, and what the run exits non-zero on; the note is
+ * what it prints beside the count.
  */
-const VERDICTS: Record<string, { note: string; defect: true }> = {
+const VERDICTS: Record<string, { note: string }> = {
   chrome: {
     note: 'DEFECT: 0.5 L below chrome in light and 1.0 above in dark — invisible, and inverts. Use `surface`.',
-    defect: true,
   },
   'surface-sunken': {
     note: 'DEFECT: a well inside a well is the same colour as its ground. Use `surface`, or drop the bg.',
-    defect: true,
   },
 };
 
