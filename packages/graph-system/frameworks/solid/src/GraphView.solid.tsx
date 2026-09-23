@@ -3047,7 +3047,7 @@ export function GraphView(props: GraphViewProps) {
 
             The arrowhead says which way round the connection will be, which nothing else does — the
             highlight under the pointer names the card and not the direction. Its own marker rather
-            than the edges', because that one is filled `neutral-400` and this line is not; `context-
+            than the edges', because that one is filled `border-strong` and this line is not; `context-
             stroke` would say it once, and Safari does not support it.
           */}
           <Show when={pending()}>
@@ -3055,7 +3055,7 @@ export function GraphView(props: GraphViewProps) {
               <path
                 d={pathFrom(route(), ARROW_LENGTH * PENDING_WIDTH)}
                 fill="none"
-                stroke="var(--we-color-primary-500)"
+                stroke="var(--we-role-accent)"
                 stroke-width={PENDING_WIDTH}
                 stroke-dasharray="6 4"
                 vector-effect="non-scaling-stroke"
@@ -3099,7 +3099,7 @@ export function GraphView(props: GraphViewProps) {
               markerHeight={ARROW_LENGTH}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-neutral-400)" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-role-border-strong)" />
             </marker>
             {/*
               One head per colour anybody has actually asked for.
@@ -3139,7 +3139,7 @@ export function GraphView(props: GraphViewProps) {
               markerHeight={ARROW_LENGTH}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-primary-500)" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-role-accent)" />
             </marker>
           </defs>
         </svg>

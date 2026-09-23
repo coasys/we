@@ -217,9 +217,9 @@
   which ones it has caught — so anything more opaque hides the answer to the question being asked.
 */
 .we-graph__marquee {
-  fill: var(--we-color-primary-500);
+  fill: var(--we-role-accent);
   fill-opacity: 0.08;
-  stroke: var(--we-color-primary-500);
+  stroke: var(--we-role-accent);
   stroke-width: 1;
   pointer-events: none;
 }
@@ -240,9 +240,9 @@
 
   // Legible over the edge it sits on, without a background plate that would hide the line.
   text-shadow:
-    0 0 3px var(--we-color-neutral-0),
-    0 0 3px var(--we-color-neutral-0),
-    0 0 3px var(--we-color-neutral-0);
+    0 0 3px var(--we-role-page),
+    0 0 3px var(--we-role-page),
+    0 0 3px var(--we-role-page);
 }
 
 // A **zero-size anchor** at the node's position, with the dot and label hung off it.
@@ -352,7 +352,7 @@
     and to the left of the cards and none below or to the right.
   */
   padding: calc(8px / var(--graph-zoom));
-  border: calc(1px / var(--graph-zoom)) dashed var(--we-color-primary-500);
+  border: calc(1px / var(--graph-zoom)) dashed var(--we-role-accent);
   border-radius: calc(6px / var(--graph-zoom));
 
   // Chrome, not content: it must never take a press meant for a card underneath it.
@@ -427,8 +427,8 @@
   // Legible over edges and other nodes without needing a background plate.
   paint-order: stroke;
   text-shadow:
-    0 0 3px var(--we-color-neutral-0),
-    0 0 3px var(--we-color-neutral-0);
+    0 0 3px var(--we-role-page),
+    0 0 3px var(--we-role-page);
 }
 
 // The post-it: a sized box holding its own text, centred on the node's coordinates like every other
@@ -711,7 +711,7 @@
 */
 .we-graph__node--card.we-graph__node--hovered .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   box-shadow: var(--we-shadow-md);
-  outline: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-300);
+  outline: calc(2px / var(--graph-zoom)) solid color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
   outline-offset: calc(1px / var(--graph-zoom));
 }
 
@@ -739,11 +739,11 @@
 }
 
 .we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
-  --ring-color: var(--we-color-primary-300);
+  --ring-color: color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
 }
 
 .we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
-  --ring-color: var(--we-color-primary-500);
+  --ring-color: var(--we-role-accent);
 }
 
 /*
@@ -756,7 +756,7 @@
   as you zoom, which is the ring growing outwards past them.
 */
 .we-graph__node--card.we-graph__node--selected .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
-  box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-color-primary-500);
+  box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-role-accent);
 }
 
 // A card that is both selected and hovered keeps the selection ring alone — two rings around one
@@ -766,11 +766,11 @@
 }
 
 .we-graph__node--hovered .we-graph__dot {
-  box-shadow: 0 0 0 3px var(--we-color-primary-200);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--we-role-accent) 35%, var(--we-role-page));
 }
 
 .we-graph__node--selected .we-graph__dot {
-  box-shadow: 0 0 0 3px var(--we-color-primary-500);
+  box-shadow: 0 0 0 3px var(--we-role-accent);
 }
 
 /*
@@ -789,7 +789,7 @@
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles
   // too, and this sits further out than the selection ring does. A cut shape goes without: a dashed
   // ring cannot be made from shadows, and on a canvas every card is placed so the mark means nothing.
-  outline: calc(2px / var(--graph-zoom)) dashed var(--we-color-neutral-500);
+  outline: calc(2px / var(--graph-zoom)) dashed var(--we-role-border-strong);
   outline-offset: calc(3px / var(--graph-zoom));
 }
 
@@ -864,8 +864,8 @@
   width: var(--grip);
   height: var(--grip);
   border-radius: 50%;
-  background: var(--we-color-neutral-0);
-  border: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-500);
+  background: var(--we-role-page);
+  border: calc(2px / var(--graph-zoom)) solid var(--we-role-accent);
 }
 
 // The edges: strips along each side, deliberately unmarked. An edge handle announces itself by the
@@ -1109,7 +1109,7 @@
   height: var(--dot);
   border-radius: 50%;
   background: var(--we-role-accent);
-  border: 1.5px solid var(--we-color-neutral-0);
+  border: 1.5px solid var(--we-role-page);
   opacity: 0.6;
   transition:
     opacity 100ms ease-out,
@@ -1217,7 +1217,7 @@
 
 .we-graph__handle-dot {
   fill: var(--we-role-accent);
-  stroke: var(--we-color-neutral-0);
+  stroke: var(--we-role-page);
 
   // The press belongs to the target around it; taking it here would shrink the grip back to the dot.
   pointer-events: none;
@@ -1244,7 +1244,7 @@
   marks along a line would be four claims about a shape nobody has chosen yet.
 */
 .we-graph__handle--ghost .we-graph__handle-dot {
-  fill: var(--we-color-neutral-0);
+  fill: var(--we-role-page);
   stroke: var(--we-role-accent);
   opacity: 0.55;
 }
