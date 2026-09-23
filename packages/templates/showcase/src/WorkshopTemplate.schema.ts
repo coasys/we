@@ -704,11 +704,17 @@ const newCallButton = (size: 'sm' | 'md'): SchemaNode => ({
  * The way into a call: go to yours, join the one running here, or start one — and, beside it, always
  * a way to start a *new* one.
  *
- * Takes its size because it is placed at two scales. `md` on a page with no call to be about —
- * under the sentence each of the three routes shows there, which is the template's main way in and
- * wants the default control height. `sm` in the calls panel header, where `panelShell` reserves the
- * height of a small control and a default one would make that header taller than every other
- * panel's.
+ * Takes its size because it is placed at two scales, and the two no longer offer quite the same
+ * thing. `md` on a page with no call to be about — under the sentence each of the three routes shows
+ * there, which is the template's main way in and wants the default control height. `sm` in the calls
+ * panel header, where `panelShell` reserves the height of a small control and a default one would
+ * make that header taller than every other panel's.
+ *
+ * **The `sm` placement drops the "go to yours" state entirely**, so in the calls panel this is a
+ * join-or-start button and nothing else. A list of calls with the live one marked in red, a row
+ * click that already loads it, and a button above them all saying "Go to the call" is the same offer
+ * three times over — and that button's action is a no-op whenever the stage is up, which joining
+ * already made it. The gate is on the node; the reasoning is there.
  *
  * It used to sit in the corner beside the pill as well. That placement showed on the same condition
  * the page gates do and did the same thing, so it was the same door drawn twice — see `callChrome`.
@@ -764,66 +770,92 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
       },
       children: [
         {
-          type: 'we-button',
+          /*
+            In the calls panel, no button for the call you are already in.
+
+            Its third state was "Go to the call", and `goToCall` for a call you are in and in this
+            space is one line: show the stage. Joining already raised it and leaving lowers it, so
+            pressing this normally set a flag that was already set — and it sat directly above a list
+            whose live row is marked in red and already loads the call on a click. Three controls
+            call `goToCall`; the two named after it (the module rail's launcher, the pill's phone
+            button) are the ones to keep.
+
+            Only here. The `md` placement is a route's gate — a page with no call on it, where the
+            button is the whole invitation and there is no list under it saying the same thing.
+
+            Wrapped rather than given a condition of its own, so the two halves of the pair stay
+            independent: with this away and a call running, the header is the `+` alone, which is
+            what a list panel's header aside should be.
+          */
+          type: '$if',
           props: {
-            size,
-            gap: '200',
-            variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
-            /*
-              Three branches, flat, and read at the press.
+            condition: { $: size === 'sm' ? `!(${IN_A_CALL_HERE})` : 'true' },
+            then: {
+              type: 'we-button',
+              props: {
+                size,
+                gap: '200',
+                variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
+                /*
+                  Three branches, flat, and read at the press.
 
-              `goToCall` used to be the whole of this button, and it has a branch that continues the
-              call *in the address* when nothing is running — right for the module rail, where it is
-              how you pick up the meeting you are reading, and wrong here: with a call selected in
-              the list below, pressing "New call" reopened the selected one.
+                  `goToCall` used to be the whole of this button, and it has a branch that continues
+                  the call *in the address* when nothing is running — right for the module rail,
+                  where it is how you pick up the meeting you are reading, and wrong here: with a
+                  call selected in the list below, pressing "New call" reopened the selected one.
 
-              `joinCall` rather than `goToCall` for the middle branch, because `goToCall` answers
-              "bring me to my call" and this button is asking about *this space*. In a call elsewhere
-              with one running here, `goToCall` navigates you away — while the button plainly says
-              "Join the call". `joinCall` names the call it means and leaves whatever you were in,
-              which is what the word promises.
+                  `joinCall` rather than `goToCall` for the middle branch, because `goToCall` answers
+                  "bring me to my call" and this button is asking about *this space*. In a call
+                  elsewhere with one running here, `goToCall` navigates you away — while the button
+                  plainly says "Join the call". `joinCall` names the call it means and leaves
+                  whatever you were in, which is what the word promises.
 
-              Flat `$if` entries rather than nesting, so each condition is one sentence and the
-              handler array resolves them lazily — the state at the press, not at the paint that
-              happened to be current when the panel opened.
-            */
-            onClick: [
-              { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
-              {
-                $if: {
-                  condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
-                  // The first of them, which is the whole of what a singular button can mean. Which
-                  // call, where there are several, is the list's question — see `callsPanel`.
-                  then: {
-                    $action: 'modules.call.joinCall',
-                    args: [{ $: 'first(modules.call.liveCalls).id' }],
+                  The first branch is unreachable at `sm`, where the gate above has already taken the
+                  button away — kept because the same node serves the `md` route gates, and because a
+                  handler array resolves lazily: these read the state at the press, not at the paint
+                  that happened to be current when the panel opened.
+                */
+                onClick: [
+                  { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
+                  {
+                    $if: {
+                      condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
+                      // The first of them, which is the whole of what a singular button can mean.
+                      // Which call, where there are several, is the list's question — see
+                      // `callsPanel`.
+                      then: {
+                        $action: 'modules.call.joinCall',
+                        args: [{ $: 'first(modules.call.liveCalls).id' }],
+                      },
+                    },
                   },
-                },
+                  {
+                    $if: {
+                      condition: { $: `!(${IN_A_CALL_HERE}) && !(${CALL_RUNNING_HERE})` },
+                      then: NEW_CALL_ACTION,
+                    },
+                  },
+                  openLiveCall,
+                ],
               },
-              {
-                $if: {
-                  condition: { $: `!(${IN_A_CALL_HERE}) && !(${CALL_RUNNING_HERE})` },
-                  then: NEW_CALL_ACTION,
-                },
-              },
-              openLiveCall,
-            ],
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'phone-call' } },
-            {
-              type: 'we-text',
-              /*
-                Three words for three acts, because the middle one used to be missing: with a call
-                running that this agent had not joined, the button said "New call" and joined it.
-              */
               children: [
+                { type: 'we-icon', props: { name: 'phone-call' } },
                 {
-                  $: `${IN_A_CALL_HERE} ? 'Go to the call' : ${CALL_RUNNING_HERE} ? 'Join the call' : 'New call'`,
+                  type: 'we-text',
+                  /*
+                    Three words for three acts, because the middle one used to be missing: with a
+                    call running that this agent had not joined, the button said "New call" and
+                    joined it. The first is only ever drawn at `md` now — see the gate above.
+                  */
+                  children: [
+                    {
+                      $: `${IN_A_CALL_HERE} ? 'Go to the call' : ${CALL_RUNNING_HERE} ? 'Join the call' : 'New call'`,
+                    },
+                  ],
                 },
               ],
             },
-          ],
+          },
         },
         newCallButton(size),
       ],
@@ -2958,14 +2990,35 @@ const callsPanel: SchemaNode = {
                         },
                         {
                           /*
-                            Who is in this call, and the way in — on the rows where there is one.
+                            Who is in this call, and — on somebody else's — the way into it.
 
                             The panel's whole job is choosing which call every other surface is
-                            about, and until now choosing was all it could do: a live meeting was
-                            selectable and not joinable, so the only way in was the header's button,
-                            which is singular and therefore a guess the moment two calls are running.
-                            A row names the call it means, which is what makes this the right place
-                            for the choice rather than a second copy of the header.
+                            about, and until this row had a button choosing was all it could do: a
+                            live meeting was selectable and not joinable, so the only way in was the
+                            header's button, which is singular and therefore a guess the moment two
+                            calls are running. A row names the call it means, which is what makes
+                            this the right place for the choice rather than a second copy of the
+                            header.
+
+                            ## Nothing on the row for the call you are already in
+
+                            It carried a "Go to" there, and that button was `goToCall` — which, for a
+                            call you are in and in this space, is one line: show the stage. Joining
+                            already raised it and leaving lowers it, so unless you had deliberately
+                            closed the stage and stayed in the call, it set a flag that was already
+                            set. Beside a row whose red glyph says "this is the one you are in", next
+                            to a click that already points every surface at it, the button read as a
+                            second way to do what the row does and was in practice a no-op.
+
+                            Reopening a stage somebody closed is a real thing to want and keeps two
+                            controls that are named after it — the module rail's call launcher and
+                            the pill's phone button, both `goToCall`. What it does not need is a
+                            third, on the one surface where it is indistinguishable from navigation.
+
+                            The row click is left as pure navigation rather than inheriting the verb.
+                            Giving it `goToCall` would force the stage open on a row press, which is
+                            exactly the behaviour somebody who just closed the stage is asking not to
+                            have.
 
                             Absent rather than disabled on a finished call: there is nothing to join,
                             and picking one back up is what the pill's `call.continueCallButton` is
@@ -2982,60 +3035,60 @@ const callsPanel: SchemaNode = {
                                   // Faces rather than a count: three avatars say "a meeting is
                                   // happening and these are the people in it" in the width a number
                                   // and a noun would take. The stack carries its own "+N" past `max`.
+                                  // On your own row too: who is in it is worth saying whether or not
+                                  // there is anything to press beside it.
                                   type: 'AvatarStack',
                                   props: { avatars: { $: `${ROW_LIVE_CALL}.faces` }, size: 'xs', max: 3 },
                                 },
                                 {
-                                  type: 'we-tooltip',
+                                  /*
+                                    Joining is not navigation, which is the whole reason this button
+                                    outlived the one beside it. Clicking the row looks at a call;
+                                    this leaves whichever call you are in and enters another one, and
+                                    a heavier act than the row's own click deserves to be asked for
+                                    separately. The tooltip says what it costs.
+                                  */
+                                  type: '$if',
                                   props: {
-                                    content: {
-                                      $:
-                                        `${ROW_IS_MINE} ? 'Go to this call' : ` +
-                                        `modules.call.active ? 'Leave your call and join this one' : 'Join this call'`,
-                                    },
-                                    placement: 'top',
-                                  },
-                                  children: [
-                                    {
-                                      type: 'we-button',
+                                    condition: { $: `!(${ROW_IS_MINE})` },
+                                    then: {
+                                      type: 'we-tooltip',
                                       props: {
-                                        size: 'sm',
-                                        variant: { $: `${ROW_IS_MINE} ? 'secondary' : 'primary'` },
-                                        /*
-                                          Branched at the press, and `joinCall` rather than
-                                          `goToCall` for the row that is not yours.
-
-                                          `goToCall` means "bring me to my call", so pressed on
-                                          somebody else's row while in a call of your own it would
-                                          take you to *yours* — a button beside one conversation
-                                          doing something about another. `joinCall` names the id the
-                                          row carries and leaves whatever you were in, which is what
-                                          the word on it promises.
-                                        */
-                                        onClick: [
-                                          {
-                                            $if: {
-                                              condition: { $: ROW_IS_MINE },
-                                              then: { $action: 'modules.call.goToCall' },
-                                            },
-                                          },
-                                          {
-                                            $if: {
-                                              condition: { $: `!(${ROW_IS_MINE})` },
-                                              then: {
+                                        content: {
+                                          $: "modules.call.active ? 'Leave your call and join this one' : 'Join this call'",
+                                        },
+                                        placement: 'top',
+                                      },
+                                      children: [
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            size: 'sm',
+                                            variant: 'primary',
+                                            /*
+                                              `joinCall` rather than `goToCall`: the latter means
+                                              "bring me to my call", so pressed on somebody else's row
+                                              while in a call of your own it would take you to
+                                              *yours* — a button beside one conversation doing
+                                              something about another. `joinCall` names the id the row
+                                              carries and leaves whatever you were in, which is what
+                                              the word on it promises.
+                                            */
+                                            onClick: [
+                                              {
                                                 $action: 'modules.call.joinCall',
                                                 args: [{ $: `${ROW_LIVE_CALL}.id` }],
                                               },
-                                            },
+                                              // And point every other surface at it, which is what
+                                              // clicking the row itself would have done.
+                                              openCall('call.id'),
+                                            ],
                                           },
-                                          // And point every other surface at it, which is what
-                                          // clicking the row itself would have done.
-                                          openCall('call.id'),
-                                        ],
-                                      },
-                                      children: [{ $: `${ROW_IS_MINE} ? 'Go to' : 'Join'` }],
+                                          children: ['Join'],
+                                        },
+                                      ],
                                     },
-                                  ],
+                                  },
                                 },
                               ],
                             },
