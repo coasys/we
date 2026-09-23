@@ -1355,13 +1355,25 @@ describe('the extraction panel', () => {
       a section that unmounts itself cannot own the query that decides whether it should, or it
       would stop asking and never come back.
 
+      ## The count is not the whole gate any more
+
+      The live readout moved inside this section, so "is there anything to show" gained a second
+      answer: a pass in flight is a reading of this call that has not been written down yet. A call's
+      FIRST pass is exactly the state where the count is zero and somebody most wants to see
+      something happening, so gated on the count alone the section was absent for the whole of that
+      pass and appeared, already finished, a second after it ended.
+
+      Asserted as "the count is still part of it" plus "a running pass is too", rather than against
+      the whole expression: the point is which two facts decide it, not their spelling.
+
       The results could not be gated the same way. Each kind is its own subscription and a schema
       cannot sum a list of queries whose length it does not know, so nothing above the groups can
       ask whether any of them found anything — which is why the heading moved into the group, where
       the question is answerable about one kind at a time.
     */
-    const historyGate = json.indexOf('"condition":{"$":"count(local.passes)"}');
+    const historyGate = json.indexOf('"condition":{"$":"count(local.passes) ||');
     expect(historyGate).toBeGreaterThan(-1);
+    expect(json.slice(historyGate, historyGate + 200)).toContain('interpretationStore.runningCount');
     expect(json.indexOf('"Logs"')).toBeGreaterThan(historyGate);
 
     /*
@@ -1922,6 +1934,62 @@ describe('the things to extract fold like every other section', () => {
     // `secondary` read as the lesser of the two beside an "Auto extract: on" switch, when it is the
     // one that does something this instant.
     expect(JSON.stringify(extractionPanel)).toContain('"variant":"primary"');
+  });
+});
+
+describe('a pass that is running is part of the log', () => {
+  const json = JSON.stringify(extractionPanel);
+  /** Where the Logs heading is, which is where its section begins. */
+  const logs = json.indexOf('"Logs"');
+  /** Where the stored passes are drawn — the `$each` over the query, inside the same fold. */
+  const storedRows = json.indexOf('"items":{"$":"local.passes"}');
+
+  /*
+    It used to sit between the chips and this section, where it read as the output of "Things to
+    extract" rather than as the newest entry of the log it becomes one of a second later. It was
+    also the one region in a panel that folds section by section with no heading over it, so a
+    readout somebody found distracting had nowhere to go.
+  */
+  it('is drawn inside the Logs section rather than above it', () => {
+    expect(logs, 'the Logs heading is in the panel at all').toBeGreaterThan(-1);
+    /*
+      Found by its own state rather than by its condition. The heading's spinner is gated on exactly
+      the same expression, so a search for that string matches whichever of the two comes first and
+      would go on passing with the readout deleted — `openPasses` is the live rows' set of open
+      disclosures and belongs to nothing else.
+    */
+    const activity = json.indexOf('"openPasses"');
+    expect(activity, 'the live readout is in the panel at all').toBeGreaterThan(-1);
+    expect(activity, 'the live readout is under the Logs heading, not before it').toBeGreaterThan(logs);
+  });
+
+  /*
+    The stored rows are `createdAt: 'desc'`, so they read newest-first and a pass in flight is the
+    newest thing there is. Under them it would be the one item out of order — and on a call read
+    every few minutes for an hour, sixty rows below the heading before the thing happening now.
+  */
+  it('is drawn above the passes already written down', () => {
+    expect(storedRows, 'the stored passes are drawn at all').toBeGreaterThan(-1);
+    const activity = json.indexOf('"openPasses"');
+    // Both bounds, so this cannot pass by the readout having escaped the section entirely — which
+    // is where it used to be, and is also before the stored rows.
+    expect(activity, 'a live row is drawn inside the section').toBeGreaterThan(logs);
+    expect(activity, 'a live row is drawn before the stored ones').toBeLessThan(storedRows);
+  });
+
+  /*
+    The fold starts closed — that is the point of moving it here, a log being worth hiding when it
+    is distracting — so the heading has to say the one thing a fold cannot say about its contents:
+    that they are changing.
+  */
+  it('spins in the heading while the section is folded over it', () => {
+    // From the heading rather than from the top: the panel has a spinner of its own further up —
+    // searching the whole document finds that one and says nothing about this section.
+    const spinner = json.indexOf('"we-spinner"', logs);
+    const exportButton = json.indexOf('"Export the extraction log"', logs);
+    expect(spinner, 'the Logs heading has a spinner').toBeGreaterThan(-1);
+    expect(spinner, 'the spinner comes before the export button, not after it').toBeLessThan(exportButton);
+    expect(spinner, 'the heading spins before the rows are reached — it is in the header').toBeLessThan(storedRows);
   });
 });
 

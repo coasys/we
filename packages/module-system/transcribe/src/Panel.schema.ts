@@ -2010,8 +2010,19 @@ const extractionHistory: SchemaNode = {
 
       `local.passes` comes from the panel body, not from here — a section that unmounts itself
       cannot own the query that decides whether it should. See the `$queries` there.
+
+      ## Or a pass running, which is the case the count alone got wrong
+
+      A pass in flight is a reading of this call that has not been written down yet, and now that the
+      live readout is inside this section, the count is no longer the whole question. A call's FIRST
+      pass is the exact state where `count(local.passes)` is zero and somebody most wants to see
+      something happening — so gated on the count alone, the section would be absent for the whole
+      of that pass and appear, already finished, a second after it ended.
+
+      The same test the readout itself carries, so the two cannot disagree about whether there is
+      anything to show: this decides the heading exists, and its own `$if` decides it draws.
     */
-    condition: { $: 'count(local.passes)' },
+    condition: { $: `count(local.passes) || (interpretationStore.runningCount && (${VIEWING_LIVE_EXPR}))` },
     then: {
       type: 'Column',
       props: { gap: '200', width: '100%' },
@@ -2049,26 +2060,73 @@ const extractionHistory: SchemaNode = {
           tone: 'neutral',
           open: { field: 'logsOpen' },
           /*
-            Every pass on this call, as one file — the prompts and responses in full, the transcript
-            they read, what they wrote and what is still waiting — for handing to somebody, or a
-            model, working out why a call extracted what it did. Every member's passes, as this list
-            shows them, and all of them rather than the fifty drawn here.
+            Two controls about the whole section, in the gap the heading leaves between its name and
+            its count.
           */
           action: {
-            type: 'we-tooltip',
-            props: { content: 'Export the extraction log' },
+            type: 'Row',
+            props: { ay: 'center', gap: '200', flexShrink: '0' },
             children: [
               {
-                type: 'we-button',
+                /*
+                  That something is being read, while this section is folded over it.
+
+                  The readout below is the answer to "what is happening", and it is inside a fold
+                  that starts closed — which is the point of moving it here, since a log is worth
+                  hiding when it is distracting. What that costs is the one thing a fold cannot say
+                  about its own contents: that they are changing. A spinner in the heading is the
+                  smallest thing that says it, and it sits beside the count, which is the other
+                  number about what is underneath.
+
+                  Not a substitute for the rail, which spins on the same fact for everybody with no
+                  panel open (`busyWhen: 'passRunning'` on the Extraction launcher). This is for
+                  somebody looking straight at the panel, where the rail is out of the corner of the
+                  eye and a folded heading is the thing they are reading.
+
+                  `xs`, and no words. A heading is a row of small type; a spinner at the size of the
+                  export button beside it would be the loudest thing in a panel whose whole subject
+                  is somewhere else on the screen.
+                */
+                type: '$if',
                 props: {
-                  // The transcript panel's export, the same size: one act, two panels.
-                  variant: 'ghost',
-                  size: 'sm',
-                  square: true,
-                  label: 'Export the extraction log',
-                  onClick: { $action: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
+                  condition: { $: `interpretationStore.runningCount && (${VIEWING_LIVE_EXPR})` },
+                  then: {
+                    type: 'we-tooltip',
+                    props: {
+                      content: {
+                        $:
+                          'interpretationStore.runningCount > 1 ' +
+                          '? `${interpretationStore.runningCount} readings running` ' +
+                          ': `Reading this call`',
+                      },
+                    },
+                    children: [{ type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } }],
+                  },
                 },
-                children: [{ type: 'we-icon', props: { name: 'download' } }],
+              },
+              {
+                /*
+                  Every pass on this call, as one file — the prompts and responses in full, the
+                  transcript they read, what they wrote and what is still waiting — for handing to
+                  somebody, or a model, working out why a call extracted what it did. Every member's
+                  passes, as this list shows them, and all of them rather than the fifty drawn here.
+                */
+                type: 'we-tooltip',
+                props: { content: 'Export the extraction log' },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      // The transcript panel's export, the same size: one act, two panels.
+                      variant: 'ghost',
+                      size: 'sm',
+                      square: true,
+                      label: 'Export the extraction log',
+                      onClick: { $action: 'spaceStore.exportExtractionLog', args: [EXTRACTION_SUBJECT] },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'download' } }],
+                  },
+                ],
               },
             ],
           },
@@ -2080,6 +2138,27 @@ const extractionHistory: SchemaNode = {
               type: 'Column',
               props: { gap: '200', width: '100%' },
               children: [
+                /*
+                  What is being read right now, over what has been read already.
+
+                  It used to sit outside this section, between the chips and this heading, where it
+                  read as part of "Things to extract" — a live status under the controls that
+                  configure it, rather than under the log it is the newest entry of. The two lists
+                  are the same log split by durability: this one is a pass while it runs, that one is
+                  the record written when it ends, and a row crosses from the first to the second a
+                  second after it finishes.
+
+                  Above the `$each` for that reason and not by preference: the query is
+                  `createdAt: 'desc'`, so the rows below are newest-first, and a running pass is the
+                  newest thing there is. Underneath them it would be the one item out of order — and
+                  on a call read every few minutes for an hour, sixty rows below the heading before
+                  the thing that is happening now.
+
+                  It carries its own `$if` on the same test the section's gate uses, so on a call with
+                  readings and nothing running this contributes no node and the gap above the first
+                  row closes with it.
+                */
+                extractionActivity,
                 {
                   type: '$each',
                   props: { items: { $: 'local.passes' }, as: 'pass' },
@@ -4394,23 +4473,24 @@ export const extractionPanel: SchemaNode = {
             */
                   { type: '$if', props: { condition: EXTRACTION_SUBJECT, then: extract } },
                   /*
-              What the passes did, in full.
+              What the passes did, in full — and the one running, which is now inside it.
 
-              This used to be the whole of the call bar's readout, and it moved the call's furniture
-              every time somebody opened a row — see `extractionActivity`. It belongs here: this
-              panel is already the surface about extraction, opening something in it costs the call
-              nothing, and there is room for a prompt pane without a floating strip growing to 520px
-              over the controls somebody is reaching for.
+              `extractionActivity` was a sibling here, between the chips and the log. Two things were
+              wrong with that. It read as part of "Things to extract": a live status sitting directly
+              under the controls that configure it looks like their output, when what it actually is
+              is the newest entry of the log below. And it could not be put away — the whole panel
+              folds section by section, and this was the one region with no heading over it, so a
+              readout somebody found distracting had nowhere to go.
 
-              A one-line signal stays in the call chrome so the four people in five who did not start
-              a pass can still see one is running without opening anything.
+              Both are answered by it being the first child of the Logs fold rather than a section of
+              its own: it is with the rows it becomes, it folds with them, and the heading grew a
+              spinner so folding it does not hide the fact that something is happening. See
+              `extractionHistory`.
 
-              A sibling of `extract` rather than a child of it, which is where it and `proposals`
-              both were. Nested, they inherited `extractable` — a fact about the *node* — so a
-              running pass and a decision waiting on somebody were both invisible on a node that
-              could not start one, which is precisely the node whose passes came from a peer.
+              A one-line signal stays in the call chrome, and the module rail spins on the same fact,
+              so the four people in five who did not start a pass can still see one is running
+              without opening anything.
             */
-                  extractionActivity,
                   /*
               Nothing to ask about until there is a call to ask about.
 
