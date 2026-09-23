@@ -3901,8 +3901,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     A flex-grown item has a definite used height, so the percentage inside it resolves. This is the
     chain the graph view in `templates/views` uses, and the one the panels above already use.
   */
-  // `relative` so the hidden-suggestions chip can sit over the canvas's corner.
-  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden', position: 'relative' },
+  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden' },
   /*
     `syncParam`, so the inspector panel can read what the canvas selected — see `onNodeClick`.
 
@@ -3938,56 +3937,19 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     loads nothing until it is given a canvas, so mounting it with no call costs a read of nothing and
     keeps the surface constant from the first frame.
   */
+  /*
+    Nothing over the canvas's corner saying what is hidden.
+
+    There was a chip there while drafts were put away, on the reasoning that the switch lives in the
+    key and the key is a panel that can be closed. Three things take cards off this canvas, though —
+    drafts put away, a kind hidden, a card folded — and the key carries all three, where the chip
+    carried one and never asked whether the key was closed. So it sat beside an open panel saying
+    what that panel already said, and its absence read as "nothing is hidden" while two of the three
+    were. A reader who has put drafts away has the switch in the key, on the board's header and on
+    the calendar's, and the address they are at says so.
+  */
   children: [
     canvas,
-    /*
-      That drafts are hidden, said on the canvas itself.
-
-      The switch lives in the key, which is a panel and can be closed — and cards missing with nothing
-      on screen to say why is how a person comes to think extraction lost them. So while they are
-      hidden, a chip in the corner says so and brings them back. No count: the store's list spans every
-      call asked about, and a number that is not this canvas's would be worse than none.
-    */
-    {
-      type: '$if',
-      props: {
-        condition: { $: `(${CALL_EXPR}) && ${SUGGESTIONS_HIDDEN}` },
-        then: {
-          type: 'Row',
-          props: {
-            position: 'absolute',
-            left: '400',
-            bottom: '400',
-            gap: '200',
-            ay: 'center',
-            pl: '300',
-            pr: '100',
-            py: '100',
-            r: 'pill',
-            bg: 'surface-raised',
-            border: '1px solid border',
-            shadow: 'sm',
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'eye-slash', size: 'xs', color: 'text-muted' } },
-            {
-              type: 'we-text',
-              props: { fontSize: '200', color: 'text-muted' },
-              children: ['Pending acceptance hidden'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'ghost',
-                onClick: { $action: 'routeStore.setParam', args: ['suggestions', null] },
-              },
-              children: ['Show'],
-            },
-          ],
-        },
-      },
-    },
     /*
       Where a connection is actually written down.
 

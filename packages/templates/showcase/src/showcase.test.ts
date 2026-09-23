@@ -616,7 +616,9 @@ describe('the workshop template’s call selection', () => {
       `"hidden":{"$":"(routeStore.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
     );
     expect(json).toContain('"$action":"modules.transcribe.applyChange"');
-    expect(json).toContain('Pending acceptance hidden');
+    // Said in the key, which carries every reason a card is off the canvas, and nowhere else: a chip
+    // over the corner spoke for one of the three and stood beside the panel already saying it.
+    expect(json).not.toContain('Pending acceptance hidden');
     // Parked in slots a card fits, and pinned where it is drawn when kept.
     expect(json).toContain('"layout":{"type":"manual","options":{"size":{"width":180,"height":135}');
     expect(json).toContain(
