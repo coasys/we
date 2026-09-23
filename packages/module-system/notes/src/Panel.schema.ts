@@ -18,10 +18,20 @@
  * would need a timer and the draft's identity across two writes (create, then update), and neither is
  * something a fragment can hold; it is a follow-up for the store, not something to fake here.
  */
-import { confirmModal, panelScroll, panelShell } from '@we/schema-kit';
+import { confirmModal, loadMore, panelScroll, panelShell } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { NOTE_KIND } from './entities';
+
+/**
+ * How many notes the panel reads at a time.
+ *
+ * The list was every note somebody had ever written, newest first, with no bound — and each note
+ * drawn opens its OWN `shares` drill-down to say which spaces it has been posted into. So the cost
+ * was a note's worth of subscription per note, for a panel that shows the top of the list.
+ */
+const NOTES_PAGE = 20;
+const NOTES_PAGE_FIELD = 'notesPageSize';
 
 /** The dataset every read here names. Chrome tier only — a space's template has no such path. */
 const PERSONAL = 'datasetStore.personalDataset';
@@ -358,6 +368,15 @@ export const panel: SchemaNode = {
                       },
                     },
                   },
+                  /*
+                    A page at a time — see `NOTES_PAGE`.
+
+                    The panel is read from the top, newest first, so a page is what anybody looks at.
+                    It also bounds the per-note `shares` subscription, which is one drill-down for
+                    every note drawn: unbounded, somebody with two hundred notes held two hundred of
+                    them open to say which spaces each had been shared into.
+                  */
+                  loadMore({ field: NOTES_PAGE_FIELD, rowsLocal: 'notes', pageSize: NOTES_PAGE }),
                 ],
               },
             ],
@@ -367,6 +386,7 @@ export const panel: SchemaNode = {
         ],
       }),
       $localState: {
+        [NOTES_PAGE_FIELD]: { type: 'number', initial: NOTES_PAGE },
         composing: { type: 'boolean', initial: false },
         /** The note open for editing, or empty. One at a time: two open editors is two unsaved drafts. */
         editing: { type: 'string', initial: '' },
@@ -379,6 +399,7 @@ export const panel: SchemaNode = {
           entity: 'CollectionBlock',
           where: { kind: NOTE_KIND },
           order: { createdAt: 'desc' },
+          limit: { $: `local.${NOTES_PAGE_FIELD}` },
           dataset: PERSONAL,
         },
       },
