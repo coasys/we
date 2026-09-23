@@ -270,7 +270,15 @@ describe('transport and device lifetime', () => {
    * unregistering during a call — which a hot reload does — dropped the only reference to the live
    * peer connections and the media stream, leaving the camera on with nothing able to close it.
    */
-  function callable(options: { unicast?: string; personal?: boolean; settings?: Record<string, string> } = {}) {
+  function callable(
+    options: {
+      unicast?: string;
+      personal?: boolean;
+      settings?: Record<string, string>;
+      /** What the machine has to capture with, for a test about choosing between them. */
+      devices?: { deviceId: string; kind: 'audioinput' | 'videoinput'; label: string; groupId: string }[];
+    } = {},
+  ) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -393,6 +401,10 @@ describe('transport and device lifetime', () => {
           },
           publish: (stream: MediaStream | null) => void publishedMedia.push(stream),
           input: () => publishedMedia.at(-1) ?? null,
+          // A machine with nothing to choose between, which is one of the ordinary states the
+          // kernel promises to answer rather than fail for. Tests that care supply their own.
+          enumerateDevices: async () => options.devices ?? [],
+          onDevicesChanged: () => () => {},
         },
       },
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;

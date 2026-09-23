@@ -28,12 +28,13 @@
  * drives the mesh, and media drives what the mesh sends. Nothing flows back — the mesh never tells
  * presence who is in the call, because a connection failing is not the same as a peer leaving.
  */
-import type { DockAspect, MediaSettings, PanelBid } from '@we/module-shared';
+import type { DockAspect, MediaDevice, MediaSettings, PanelBid } from '@we/module-shared';
 import type { Focus, ModuleStoreDeps, Peer } from '@we/module-shared';
 import type { EphemeralScope } from '@we/module-shared';
 import { activitiesOfType } from '@we/module-shared';
 import { planEphemeral } from '@we/module-shared';
 
+import { type DeviceKind, readChosenDevice, writeChosenDevice } from './devices';
 import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPeerCount } from './devPeers';
 import { parseIceServers } from './iceServers';
 import { createMediaController, type MediaController } from './media';
@@ -384,6 +385,44 @@ export function createCallStore(deps: ModuleStoreDeps) {
     writeLocalAudio(stream);
     mediaKernel?.publish(stream);
   }
+
+  /*
+    What this machine has to capture with, and which of them this agent has picked.
+
+    The list is the host's to answer and changes when hardware moves, so it is a signal refreshed
+    from the kernel rather than a value read once. The choices are read from this machine's own
+    storage at construction — see `devices.ts` for why they are not module settings — so a call
+    joined after a reload uses the microphone the person chose last time without them touching
+    anything.
+
+    Held whether or not a call is running: choosing before you join is the case the settings screen
+    exists for, and a chooser that only worked mid-call would be the wrong way round.
+  */
+  const [inputDevices, setInputDevices] = signal<MediaDevice[]>([]);
+  const [audioDevice, setAudioDeviceId] = signal(readChosenDevice('audio'));
+  const [videoDevice, setVideoDeviceId] = signal(readChosenDevice('video'));
+
+  /**
+   * Ask the host what is plugged in.
+   *
+   * Answers with `[]` on a host that cannot say — a machine with no capture hardware, a browser that
+   * has not been asked for permission — which is an ordinary state a chooser draws rather than an
+   * error, so nothing here treats it as one. See the kernel.
+   */
+  async function refreshDevices(): Promise<void> {
+    setInputDevices((await mediaKernel?.enumerateDevices()) ?? []);
+  }
+
+  /*
+    The list follows the hardware.
+
+    Without this the choices go stale at exactly the moment they are read: somebody reaches for a
+    headset *because* they are about to use it, and a picker still listing what was there a minute
+    ago is a picker that lies when it matters. The unsubscribe is a no-op where the host cannot
+    watch, so this is the same shape on every platform.
+  */
+  const stopWatchingDevices = mediaKernel?.onDevicesChanged(() => void refreshDevices());
+  onDispose?.(() => stopWatchingDevices?.());
 
   let mesh: CallMesh | null = null;
   let controller: MediaController | null = null;
@@ -1129,7 +1168,32 @@ export function createCallStore(deps: ModuleStoreDeps) {
     rebuildTiles();
 
     const started = controller;
+    /*
+      Told which devices to use before it opens anything.
+
+      `setDevice` with nothing open only records the choice, which is exactly what is wanted here:
+      the controller then asks for them on its first acquisition rather than opening the system
+      default and switching a moment later, which would prompt twice on some platforms and show a
+      second of the wrong camera on all of them.
+
+      A stored id is a hint rather than a promise — see `devices.ts` — so one that has since been
+      unplugged makes the acquisition fail, and the controller's own ladder takes over: audio-only,
+      then nothing, each reported. That is the right answer for a device that has gone, and it is
+      why the choice is pinned with `exact` rather than hinted: a soft constraint would silently
+      open something else while the picker went on claiming the device it no longer had.
+    */
+    await started.setDevice('audio', audioDevice());
+    await started.setDevice('video', videoDevice());
     await started.start();
+
+    /*
+      Now that permission has been answered, ask again what is here.
+
+      Labels are empty until a capture has been granted at least once — the browser withholds them
+      so a page cannot fingerprint a machine by its hardware. So the list gathered before a call is
+      a list of anonymous devices, and this is the first moment it can have names in it.
+    */
+    void refreshDevices();
 
     // The call can end while the permission prompt is up — a hot reload, a second join, somebody
     // pressing leave. `teardown` nulls the controller, so the check below has to be against the one
@@ -1431,6 +1495,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
       media,
       "This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.",
     ),
+    microphones: state(
+      () => inputDevices().filter((device) => device.kind === 'audioinput'),
+      'The microphones this machine has — { deviceId, label, groupId } each. A label is empty until capture has been allowed once.',
+    ),
+    cameras: state(
+      () => inputDevices().filter((device) => device.kind === 'videoinput'),
+      'The cameras this machine has, on the same terms as microphones.',
+    ),
+    audioDevice: state(audioDevice, 'The microphone this agent has chosen, or empty for whatever the system offers.'),
+    videoDevice: state(videoDevice, 'The camera this agent has chosen, or empty for whatever the system offers.'),
     problem: state(
       problem,
       'Why the call could not start or a device could not be reached, as a sentence to show, or null.',
@@ -1922,6 +1996,37 @@ export function createCallStore(deps: ModuleStoreDeps) {
       await controller?.setVideoEnabled(wanted);
       if (wanted && !controller?.state().videoEnabled) setProblem(CAMERA_BLOCKED);
     }, 'Turn this agent’s camera on or off, reporting through problem when it is refused.'),
+    /**
+     * Send a different microphone or camera, in a call or before one.
+     *
+     * Remembered on this machine either way — the choice outlives the call, which is the whole point
+     * of choosing rather than being assigned. In a call it takes effect at once, without
+     * renegotiating: `replaceTrack` is the same path screen share has always used.
+     *
+     * The choice is written before the switch is attempted and kept even when the switch fails, so a
+     * device that is momentarily busy — another app holding it, a hub waking up — is still the one
+     * asked for next time rather than being forgotten because of one refusal. What a failure costs
+     * is that the call carries on with the previous device, which is stated by the switch answering
+     * `false` and by nothing appearing to change.
+     *
+     * An empty id is "whatever the system offers", which is how a chooser goes back to no opinion.
+     */
+    setDevice: action(async (kind: DeviceKind, deviceId: string) => {
+      writeChosenDevice(kind, deviceId);
+      if (kind === 'audio') setAudioDeviceId(deviceId);
+      else setVideoDeviceId(deviceId);
+      await controller?.setDevice(kind, deviceId);
+      // Names may have arrived with the first grant this switch triggered.
+      void refreshDevices();
+    }, 'Use a different microphone or camera; an empty id means whatever the system offers.'),
+    /**
+     * Ask the machine what it has to capture with.
+     *
+     * Called by a chooser as it opens rather than held permanently up to date, because enumerating
+     * is a question for the host and most of the app never asks it. The list keeps itself current
+     * from then on — the store watches for hardware moving.
+     */
+    refreshDevices: action(() => void refreshDevices(), 'Re-read which microphones and cameras this machine has.'),
     toggleScreenShare: action(async () => {
       if (media().screenShareEnabled) {
         controller?.stopScreenShare();

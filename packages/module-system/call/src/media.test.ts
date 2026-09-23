@@ -527,3 +527,116 @@ describe('a device that is unplugged mid-call', () => {
     expect(lost).toEqual([]);
   });
 });
+
+/**
+ * Sending a different microphone or camera, mid-call.
+ *
+ * The swap itself was always free — `replaceTrack` does not renegotiate, which is the path screen
+ * share has used since it was written. What had to be built was everything around it: the constraint
+ * that pins a device, a way to publish a *replaced* audio track (it was published exactly once, at
+ * start, and never again), and a new stream identity so the modules downstream learn about it.
+ */
+describe('choosing a device', () => {
+  it('asks for the chosen one exactly, so it cannot silently open something else', async () => {
+    /*
+      `exact` rather than `ideal`. A soft hint is advisory and a browser may ignore it, which would
+      give a picker that appears to work and does not — the one outcome with no way back, since
+      nothing on screen would say the choice had not been taken.
+    */
+    const { controller, devices } = setup();
+    await controller.start();
+
+    await controller.setDevice('audio', 'mic-2');
+
+    const asked = (devices.getUserMedia as unknown as { mock: { calls: [MediaStreamConstraints][] } }).mock.calls;
+    expect(asked.at(-1)?.[0].audio).toMatchObject({ deviceId: { exact: 'mic-2' } });
+  });
+
+  it('publishes the replacement, which the audio side had no way to do', async () => {
+    // A second microphone, so the swap is observable: the shared fake hands back the same track
+    // objects every time, which is right for every other test here and useless for this one.
+    const second = fakeTrack('audio');
+    let opened = 0;
+    const { controller, tracks } = setup({
+      getUserMedia: async () => (++opened === 1 ? fakeStream([fakeTrack('audio')]) : fakeStream([second])),
+    });
+    await controller.start();
+    const before = sent(tracks, 'audio');
+
+    await controller.setDevice('audio', 'mic-2');
+
+    expect(sent(tracks, 'audio'), 'the mesh was never told the microphone changed').not.toBe(before);
+    expect(sent(tracks, 'audio')).toBe(second);
+  });
+
+  it('hands out a new stream, because identity is how the change is announced', async () => {
+    /*
+      The stream is shared: the store publishes it through `media.publish` and the transcriber reads
+      it with `media.input()`. That store's setter dedupes on identity — deliberately, so a mute does
+      not re-announce the same capture — so mutating the tracks in place would change what is being
+      sent and tell nobody. The transcriber would go on listening to a microphone that had been
+      unplugged from the graph, transcribing silence, with nothing saying why.
+    */
+    const { controller } = setup();
+    await controller.start();
+    const before = controller.localStream();
+
+    await controller.setDevice('audio', 'mic-2');
+
+    expect(controller.localStream()).not.toBe(before);
+  });
+
+  it('keeps the old device running when the new one cannot be opened', async () => {
+    /*
+      Acquire, then let go. A device unplugged between listing and choosing, or held exclusively by
+      another application, must leave the call exactly as it was rather than silent — which is only
+      true if the old track is stopped *after* the new one is open, never before.
+    */
+    const working = fakeTrack('audio');
+    let opened = 0;
+    const { controller, tracks } = setup({
+      getUserMedia: async () => {
+        // The join succeeds; the switch after it is refused.
+        if (++opened === 1) return fakeStream([working]);
+        throw new Error('device in use');
+      },
+    });
+    await controller.start();
+
+    const switched = await controller.setDevice('audio', 'mic-2');
+
+    expect(switched, 'a refusal was reported as a success').toBe(false);
+    expect(sent(tracks, 'audio'), 'the working device was dropped on a failed switch').toBe(working);
+    expect(working.stopped, 'the old track was stopped before the new one was open').toBe(false);
+  });
+
+  it('remembers a choice made before anything is open', async () => {
+    // Choosing before joining is the case the settings screen exists for, so this must not require a
+    // live call — the id is kept and `start` asks for it.
+    const { controller, devices } = setup();
+
+    expect(await controller.setDevice('video', 'cam-9')).toBe(true);
+    await controller.start();
+
+    const asked = (devices.getUserMedia as unknown as { mock: { calls: [MediaStreamConstraints][] } }).mock.calls;
+    expect(asked[0][0].video).toMatchObject({ deviceId: { exact: 'cam-9' } });
+  });
+
+  it('keeps asking for the chosen camera when video is toggled off and on', async () => {
+    /*
+      The re-acquire in `setVideoEnabled` rebuilt its constraints from `DEFAULT_CONSTRAINTS`,
+      discarding whatever `start` was given. Harmless while nothing passed anything, and silently
+      wrong the moment a chosen camera exists: the first toggle reverted to the system default while
+      the picker went on claiming the choice.
+    */
+    const { controller, devices, camera } = setup();
+    await controller.setDevice('video', 'cam-9');
+    await controller.start();
+
+    camera.end();
+    await controller.setVideoEnabled(true);
+
+    const asked = (devices.getUserMedia as unknown as { mock: { calls: [MediaStreamConstraints][] } }).mock.calls;
+    expect(asked.at(-1)?.[0].video).toMatchObject({ deviceId: { exact: 'cam-9' } });
+  });
+});
