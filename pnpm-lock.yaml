@@ -828,6 +828,9 @@ importers:
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
+      playwright-core:
+        specifier: ^1.62.1
+        version: 1.62.1
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.0)

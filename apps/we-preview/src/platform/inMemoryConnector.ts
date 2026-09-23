@@ -30,7 +30,14 @@ export function requestedFixture(): Fixture {
 
 export const inMemoryConnector: BackendConnector = {
   async initialize(ctx): Promise<BackendInitResult> {
-    const fixture = requestedFixture();
+    let fixture = requestedFixture();
+
+    const externalTemplateId = (window as unknown as Record<string, unknown>).__externalTemplateId as
+      string | undefined;
+    if (externalTemplateId) {
+      fixture = { ...fixture, templateId: externalTemplateId };
+    }
+
     const datasetId = datasetIdFor(fixture);
 
     // Filled after the fixture is applied, and read later — when the presence store opens a scope
@@ -44,14 +51,17 @@ export const inMemoryConnector: BackendConnector = {
       // boot — the shoot script navigates straight to `/space/<id>/...` on first load, and an
       // in-memory backend re-mints everything on every load.
       datasets: [{ id: datasetId, name: fixture.space.name, sharedUri: `inmemory://${datasetId}` }],
-      profiles: fixture.agents.map((agent) => ({
-        did: agent.did,
-        firstName: agent.firstName,
-        lastName: agent.lastName ?? '',
-        handle: agent.handle,
-        bio: agent.bio ?? '',
-        ...(agent.avatar ? { avatar: agent.avatar } : {}),
-      })),
+      profiles: [
+        { did: 'did:preview:me', firstName: 'Preview', lastName: 'User', handle: 'preview', bio: '' },
+        ...fixture.agents.map((agent) => ({
+          did: agent.did,
+          firstName: agent.firstName,
+          lastName: agent.lastName ?? '',
+          handle: agent.handle,
+          bio: agent.bio ?? '',
+          ...(agent.avatar ? { avatar: agent.avatar } : {}),
+        })),
+      ],
       presence,
     });
 

@@ -1,7 +1,13 @@
 /* @refresh reload */
 import '@we/app-shell/shared/index.scss';
 
-import { PlatformProvider, StoreProvider, TemplateProvider, type WeSeedFile } from '@we/app-shell/solid';
+import {
+  PlatformProvider,
+  StoreProvider,
+  TemplateProvider,
+  templateRegistry,
+  type WeSeedFile,
+} from '@we/app-shell/solid';
 import { ToastContainer } from '@we/components/solid';
 import { datasetIdFor, pathFor } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
@@ -10,6 +16,18 @@ import rootSeed from '../../../we-seed.json';
 import { inMemoryConnector, requestedFixture } from './platform/inMemoryConnector';
 import { previewPlatform } from './platform/previewPlatform';
 import { PreviewBootstrap } from './PreviewBootstrap';
+
+const params = new URLSearchParams(window.location.search);
+const templateUrl = params.get('templateUrl');
+if (templateUrl) {
+  const res = await fetch(templateUrl);
+  if (res.ok) {
+    const template = (await res.json()) as { id?: string };
+    const id = template.id || 'cli-external';
+    (templateRegistry as Record<string, unknown>)[id] = template;
+    (window as unknown as Record<string, unknown>).__externalTemplateId = id;
+  }
+}
 
 /**
  * The deployment this host runs, derived from the root seed rather than declared beside it.
@@ -37,6 +55,7 @@ const previewSeed: WeSeedFile = {
 };
 
 const fixture = requestedFixture();
+const routeOverride = new URLSearchParams(window.location.search).get('route');
 
 /**
  * The root, composed rather than the packaged `<App/>`.
@@ -49,7 +68,7 @@ render(
   () => (
     <PlatformProvider seed={previewSeed} platform={previewPlatform} backend={inMemoryConnector}>
       <StoreProvider>
-        <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={pathFor(fixture)} />
+        <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={routeOverride ?? pathFor(fixture)} />
         <TemplateProvider />
         <ToastContainer />
       </StoreProvider>
