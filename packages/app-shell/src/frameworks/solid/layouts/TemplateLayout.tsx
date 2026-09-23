@@ -33,6 +33,7 @@ import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
+import type { SchemaNode } from '@we/schema-shared';
 import { applyThemeVars, clearThemeVars, parseOverrides, SPACE_ROUTE_DEPTH, surfaceStyles } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
@@ -124,7 +125,26 @@ function ShellOverlayInner({
   */
   const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
   const shellStores: Stores = { ...chromeStores, routeStore: shellRouteBag, ...(storeEntries as Partial<Stores>) };
-  const schema = reactiveSchema ?? view.schema;
+  /*
+    `$part` expanded here too, because a shell view is chrome and chrome may place a module's pieces.
+
+    Every other surface that renders module-aware schema already does this — the slot registry's
+    nodes in `TemplateProvider`, a panel's body in `TemplatePanelBody`, a template's routes on the
+    `$views` path — and the overlays were the one that did not, so a `$part` in Settings rendered as
+    `Unknown component "$part"` rather than as the thing it names.
+
+    It matters for exactly the case that found it. Settings draws the call module's device chooser
+    through `call.deviceSettings` rather than importing it, because a template package importing a
+    module would invert the dependency and make an optional capability mandatory; the part is how a
+    surface places something it must not depend on. Resolving to nothing where the module is absent
+    is the same property, and is why the section is gated on `modules.call` rather than on this.
+
+    At mount rather than in a memo, as `TemplatePanelBody` does it: modules register at boot, before
+    any overlay can be opened, and `resolveParts` returns by identity when there is nothing to
+    expand — so a view that places none pays nothing.
+  */
+  const resolved = resolveParts((reactiveSchema ?? view.schema) as SchemaNode);
+  const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof view.schema;
 
   return (
     <MemoryRouter

@@ -61,3 +61,36 @@ describe('the way into a space you were invited to', () => {
     expect(modalJson, 'and the failure').toContain('spaceStore.joinError');
   });
 });
+
+/**
+ * A `$part` placed by host chrome, which the settings overlay could not draw.
+ *
+ * Every surface that renders module-aware schema expands parts before the renderer sees them — the
+ * slot registry's nodes, a panel's body, a template's routes. The shell *overlays* were the one that
+ * did not, so Settings drew the literal words `Unknown component "$part"` where the call module's
+ * device chooser should have been.
+ *
+ * Asserted against the schema and the resolver rather than a render, because both halves are static:
+ * the settings page places a part, and the overlay has to be the kind of surface that expands one.
+ */
+describe('a module’s part, placed by a settings page', () => {
+  it('is what Settings places, rather than importing the module', () => {
+    /*
+      A template package importing a module would invert the dependency and make an optional
+      capability mandatory — the section is gated on `modules.call` precisely because a deployment
+      may not have calls. A part is how a surface places something it must not depend on.
+    */
+    expect(settingsJson).toContain('"call.deviceSettings"');
+    expect(settingsJson, 'the section should be gated on the module, not assumed').toContain('modules.call');
+  });
+
+  it('is expanded by the overlay before the renderer sees it', async () => {
+    // The fix is that `ShellOverlayInner` runs the schema through `resolveParts`. Read as source,
+    // because mounting the overlay needs a platform, a router and a full store bag — and what is
+    // being pinned is that the call exists at all, which is exactly what was missing.
+    const { readFileSync } = await import('node:fs');
+    const layout = readFileSync(new URL('../src/frameworks/solid/layouts/TemplateLayout.tsx', import.meta.url), 'utf8');
+
+    expect(layout, 'the shell overlay renders its schema without expanding parts').toContain('resolveParts(');
+  });
+});
