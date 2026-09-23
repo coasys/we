@@ -258,6 +258,19 @@ export function canvasSeed(): SeedSource {
   return {
     id: 'canvas',
     description: "A container's contents, positioned by the placements recorded against it.",
+    /*
+      The three that are applied to rows already in hand.
+
+      `pending` and `changed` stamp a flag on a node that has already been built; `hidden` drops
+      rows, and the lines to them, from a set already fetched. None of them reaches a query — which
+      is exactly why a change to one should not throw the graph away. See `presentationOptions` on
+      `SeedSource` for what that cost before this existed.
+
+      `hiddenTypes` is deliberately NOT here, and the difference is the whole point of the list: a
+      hidden type is never asked for, so putting a kind away really does change what is fetched and
+      really does want a reload.
+    */
+    presentationOptions: ['pending', 'changed', 'hidden'],
     async seed(rawOptions, context, signal) {
       const options = (rawOptions ?? {}) as CanvasSeedOptions;
       // No canvas chosen yet — a picker whose `$local` is still empty. Loading the types wholesale
