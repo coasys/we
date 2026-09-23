@@ -275,11 +275,11 @@ function TreeNode(props: TreeNodeProps) {
           cursor: 'pointer',
           'flex-shrink': '0',
           background: isSelected()
-            ? 'var(--we-color-primary-100)'
+            ? 'var(--we-role-accent-muted)'
             : isHovered()
-              ? 'var(--we-color-neutral-50)'
+              ? 'var(--we-role-surface-hover)'
               : 'transparent',
-          'border-left': isSelected() ? '2px solid var(--we-color-primary-500)' : '2px solid transparent',
+          'border-left': isSelected() ? '2px solid var(--we-role-accent)' : '2px solid transparent',
           'box-sizing': 'border-box',
         }}
       >
@@ -539,7 +539,7 @@ export function InspectorPanel() {
           height: '4px',
           cursor: 'row-resize',
           'flex-shrink': '0',
-          background: dividerResizing() ? 'var(--we-color-primary-300)' : 'var(--we-role-border)',
+          background: dividerResizing() ? 'var(--we-role-accent)' : 'var(--we-role-border)',
         }}
       />
 
@@ -1003,8 +1003,8 @@ function InlineSpaceInput(props: {
 
   const textColor = () =>
     props.value
-      ? (props.color ?? 'var(--we-color-neutral-800)')
-      : (props.placeholderColor ?? props.color ?? 'var(--we-color-neutral-400)');
+      ? (props.color ?? 'var(--we-role-text)')
+      : (props.placeholderColor ?? props.color ?? 'var(--we-role-text-faint)');
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
@@ -1129,10 +1129,10 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
               'flex-shrink': '0',
               background: swatchBg(props.value),
               'border-radius': '2px',
-              border: '1px solid rgba(0,0,0,0.15)',
+              border: '1px solid var(--we-role-border)',
             }}
           />
-          <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+          <we-text flex="1" truncate color={props.value ? 'text' : 'text-faint'} fontSize="200">
             {props.value || '—'}
           </we-text>
           <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
@@ -1375,8 +1375,8 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
           background: isRole(v) ? `var(--we-role-${v})` : `var(--we-color-${v})`,
           'box-shadow':
             color() === v
-              ? `0 0 0 2px var(--we-color-primary-600)`
-              : `0 0 0 1px var(--we-color-primary-${hovered() === v ? 600 : 300})`,
+              ? `0 0 0 2px var(--we-role-accent)`
+              : `0 0 0 1px var(--we-role-${hovered() === v ? 'accent' : 'border'})`,
           'border-radius': '3px',
           cursor: 'pointer',
           padding: '0',
@@ -1397,11 +1397,11 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
               height: '12px',
               'flex-shrink': '0',
               'border-radius': '2px',
-              background: 'var(--we-color-neutral-0)',
+              background: 'var(--we-role-surface)',
               'box-shadow': previewShadow(),
             }}
           />
-          <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+          <we-text flex="1" truncate color={props.value ? 'text' : 'text-faint'} fontSize="200">
             {props.value
               ? `${widthPx()}px · ${color() === RING_THEME_ACCENT ? 'theme accent' : color() || 'custom'}`
               : '—'}
@@ -1502,7 +1502,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                       cursor: 'pointer',
                       padding: '4px 6px',
                       'border-radius': '4px',
-                      background: color() === RING_THEME_ACCENT ? 'var(--we-color-primary-50)' : 'transparent',
+                      background: color() === RING_THEME_ACCENT ? 'var(--we-role-accent-muted)' : 'transparent',
                     }}
                   >
                     <div
@@ -1693,11 +1693,11 @@ function BgImagePicker(props: {
               height: '16px',
               'flex-shrink': '0',
               'border-radius': '2px',
-              border: '1px solid rgba(0,0,0,0.15)',
+              border: '1px solid var(--we-role-border)',
               ...previewStyle(props.value),
             }}
           />
-          <we-text flex="1" minWidth="0" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+          <we-text flex="1" minWidth="0" truncate color={props.value ? 'text' : 'text-faint'} fontSize="200">
             {triggerLabel()}
           </we-text>
           <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
@@ -1779,7 +1779,7 @@ function BgImagePicker(props: {
                               'aspect-ratio': '1 / 1',
                               cursor: 'pointer',
                               'border-radius': '4px',
-                              'box-shadow': img.src === props.value ? '0 0 0 2px var(--we-color-primary-600)' : 'none',
+                              'box-shadow': img.src === props.value ? '0 0 0 2px var(--we-role-accent)' : 'none',
                               ...previewStyle(img.src),
                             }}
                           />
@@ -1888,25 +1888,25 @@ function BgImagePicker(props: {
 // -----------------------------------------------------------------------
 
 const BOX_MARGIN = {
-  bg: 'var(--we-color-warning-200)',
+  bg: 'var(--we-role-warning-surface)',
   border: 'var(--we-role-warning-text)',
-  label: 'var(--we-color-warning-800)',
-  value: 'var(--we-color-warning-800)',
+  label: 'var(--we-role-warning-text)',
+  value: 'var(--we-role-warning-text)',
   placeholder: 'var(--we-role-warning-text)',
 };
 
 const BOX_PADDING = {
-  bg: 'var(--we-color-success-200)',
+  bg: 'var(--we-role-success-surface)',
   border: 'var(--we-role-success-text)',
-  label: 'var(--we-color-success-800)',
-  value: 'var(--we-color-success-800)',
+  label: 'var(--we-role-success-text)',
+  value: 'var(--we-role-success-text)',
   placeholder: 'var(--we-role-success-text)',
 };
 
 const BOX_ELEMENT = {
   bg: 'var(--we-role-accent-muted)',
   border: 'var(--we-role-accent)',
-  text: 'var(--we-color-primary-800)',
+  text: 'var(--we-role-accent-text)',
 };
 
 function BoxRecord(props: {
