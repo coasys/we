@@ -487,6 +487,47 @@ const squareLoading = (): Scenario => ({
 });
 
 /**
+ * The shape every call surface is: a square control, a name of unknown length, a square control.
+ *
+ * A row capped narrower than its contents want, which is what a pill measured to its own contents
+ * and a panel row in a `sm` dock both are. The question is which item gives up the room, and the
+ * only honest answer is the text: it can truncate and say so with an ellipsis, where a square
+ * button has no narrower form and merely deforms.
+ *
+ * Nothing here is a stand-in for the real thing — it is the same three elements in the same order,
+ * with the same props. The defect is not in any one of them, it is in what flexbox does with a
+ * declaration nobody made, so a case that reproduced the *arrangement* is the case that reproduces
+ * the bug.
+ *
+ * `maxWidth` rather than a narrow viewport, so the squeeze is in the row itself and the sweep of
+ * widths stays free to say something else.
+ */
+const crowdedSquareRow = (): Scenario => ({
+  node: {
+    type: 'Row',
+    props: { gap: '200', ay: 'center', p: '300', maxWidth: '260px' },
+    children: [
+      {
+        type: 'we-button',
+        props: { id: 'lead', variant: 'ghost', square: true },
+        children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
+      },
+      {
+        type: 'we-text',
+        props: { id: 'title', variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
+        children: ['Thursday planning session about the autumn release and what is left in it'],
+      },
+      {
+        type: 'we-button',
+        props: { id: 'trail', variant: 'ghost', square: true },
+        children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
  * A pinned scroll area opening onto a page of rows that all arrive at once.
  *
  * The shape of a transcript opening: a bounded window, so the rows do not trickle in — the whole
@@ -707,6 +748,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:nested-interactive': nestedInteractive,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
+  'ds:crowded-square-row': crowdedSquareRow,
   'ds:pinned-page': pinnedPage(120),
   'ds:pinned-short': pinnedPage(20),
   'ds:pinned-empty': pinnedShortContent,

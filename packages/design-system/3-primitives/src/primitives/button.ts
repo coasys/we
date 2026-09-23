@@ -263,6 +263,27 @@ const CSS_STYLES = css`
     pointer-events: none;
   }
 
+  /* A square button is the one shape that has to hold, so it refuses to be squeezed.
+
+     The square flag sets an explicit width and height on the host (see hostProps), and in a flex
+     row an explicit width is a BASIS rather than a promise: every item that may shrink gives some
+     up, in proportion, and this one's min-content is a single glyph — so a tight row compresses a
+     40px box to about 24 and the button becomes a rectangle. What such a row is actually short of
+     is never the button: it is the text beside it, which can truncate and say so with an ellipsis.
+
+     Here rather than at each call site, for the reason we-tooltip gives for its own boxless host —
+     a rule nobody can be expected to remember at 99 call sites is a rule that belongs in the
+     element. It is also the ONLY place it can go: flexShrink is a recognised layout key, so it
+     type-checks and validates, but no PropSpec table emits flex-shrink for a primitive host, so
+     passing it to a we-button sets a custom property nothing reads. That is worth fixing
+     separately; it is not worth every square button waiting on it.
+
+     Not gated behind the instance var the way padding is below, because there is no var to read:
+     until flex-shrink joins HOST_LAYOUT_SPECS, one would never be set. */
+  :host([square]) {
+    flex-shrink: 0;
+  }
+
   /* Square buttons are sized purely by component height — nothing from the padding cascade above
      applies. Still var()-first, for the same reason 'bare' is: see below. */
   :host([square]) [part='base'] {
