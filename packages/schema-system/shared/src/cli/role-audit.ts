@@ -24,7 +24,7 @@
  * findings, on the file they live in, because the judgement is "is this a meaning or a palette" and
  * only a person can make it.
  */
-import { readdir, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { register } from 'node:module';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -59,6 +59,54 @@ const SCALE = /^(neutral|primary|success|warning|danger)-(0|25|50|75|100|200|300
  * files move again, that is the failure mode to expect.
  */
 const PALETTES = [/GraphView\/Palette\./, /GraphView\/Board\./, /\/fixtures\//];
+
+/**
+ * ## The code half
+ *
+ * Everything above walks composed schema trees, so it structurally cannot see a colour written in
+ * TypeScript or SCSS — and the components, panels and overlays every template is rendered *through*
+ * are exactly that. `4-components` has had its own check since the theme-reach work
+ * (`themeReach.test.ts`, which is where the `CodeEditor` and `AudioVisualiser` palette exemptions
+ * were argued); a vitest suite can only see its own package, so the editor, the graph engine and the
+ * app shell had nothing looking at them at all.
+ *
+ * This pass is textual because there is nothing to walk: a scale position in a `style={{}}` object,
+ * a `.scss` rule or a CodeMirror theme is a string in a file. Paths after `--code` on the command
+ * line are scanned rather than imported.
+ */
+const CODE_FILE = /\.(ts|tsx|scss|css)$/;
+
+/** A scale position named as the CSS custom property it compiles to. */
+const CODE_SCALE = /var\(--we-color-(neutral|primary|success|warning|danger)-(?:0|25|50|75|100|[2-9]00|1000)\)/g;
+
+/**
+ * A colour that is not even a token — a hex literal or an `rgb()`/`hsl()` call in a style position.
+ *
+ * Worse than a scale position rather than merely different: a step at least follows the theme's hue,
+ * saturation and polarity, where `#3b82f6` follows nothing and is the same blue in a black theme as
+ * in a white one. Matched only next to a CSS property that paints, so a hex in a comment, an id or a
+ * data string is not a finding.
+ */
+const CODE_LITERAL =
+  /\b(background|background-color|backgroundColor|color|border|borderColor|border-color|fill|stroke|outline|box-shadow|boxShadow)\b\s*:\s*[^;,\n]*?(#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\()/g;
+
+/**
+ * Code whose colours are a palette, an engine's own drawing, or a last resort — with the reason.
+ *
+ * The same contract as `PALETTES`: a decision, listed so it is reviewable, never a heuristic. The
+ * reasons print on every run so they get re-read rather than accumulated, which is the convention
+ * `query-audit`'s `DELIBERATE` established.
+ */
+const CODE_PALETTES: { path: RegExp; why: string }[] = [
+  {
+    path: /CodeEditor/,
+    why: 'syntax highlighting: a theme pinning dangerText means its error messages, not every string literal',
+  },
+  { path: /AudioVisualiser/, why: 'a waveform’s bars are a category, not a status' },
+  { path: /\/3d\//, why: 'WebGL materials — lit in a scene, not painted on a surface the theme owns' },
+  { path: /AppFailure/, why: 'the screen shown when the app did not start, so it cannot assume a stylesheet loaded' },
+  { path: /\/fixtures\//, why: 'fixtures' },
+];
 
 /** Every child position a node can hold — children, routes, slots, and nodes hiding inside props. */
 function descend(node: Node): Node[] {
@@ -131,27 +179,35 @@ function walk(node: Node, file: string, path: string[]) {
   for (const child of descend(node)) walk(child, file, here);
 }
 
-async function walkDir(dir: string): Promise<string[]> {
+async function walkDir(dir: string, match: RegExp): Promise<string[]> {
   const out: string[] = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...(await walkDir(full)));
-    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') && !entry.name.endsWith('.d.ts'))
-      out.push(full);
+    if (entry.isDirectory()) out.push(...(await walkDir(full, match)));
+    else if (match.test(entry.name) && !entry.name.includes('.test.') && !entry.name.endsWith('.d.ts')) out.push(full);
   }
   return out;
 }
 
-const roots = process.argv.slice(2).map((a) => resolve(a));
-const files: string[] = [];
-for (const root of roots) {
-  const s = await stat(root).catch(() => null);
-  if (!s) continue;
-  files.push(...(s.isDirectory() ? await walkDir(root) : [root]));
+async function filesUnder(paths: string[], match: RegExp): Promise<string[]> {
+  const out: string[] = [];
+  for (const root of paths) {
+    const s = await stat(root).catch(() => null);
+    if (!s) continue;
+    out.push(...(s.isDirectory() ? await walkDir(root, match) : [root]));
+  }
+  return out.sort();
 }
 
-for (const file of files.sort()) {
+const argv = process.argv.slice(2);
+const split = argv.indexOf('--code');
+const schemaRoots = (split === -1 ? argv : argv.slice(0, split)).map((a) => resolve(a));
+const codeRoots = (split === -1 ? [] : argv.slice(split + 1)).map((a) => resolve(a));
+
+const files = await filesUnder(schemaRoots, /\.ts$/);
+
+for (const file of files) {
   let mod: Record<string, unknown>;
   try {
     mod = (await import(pathToFileURL(file).href)) as Record<string, unknown>;
@@ -160,6 +216,32 @@ for (const file of files.sort()) {
   }
   for (const value of Object.values(mod)) if (isNode(value)) walk(value, file, []);
 }
+
+/** Declarations only — several of these files discuss the very colours being asserted about. */
+const declarations = (text: string) =>
+  text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => (line.trim().startsWith('//') ? '' : line))
+    .join('\n');
+
+const codeFindings: { file: string; line: number; kind: 'scale' | 'literal'; text: string }[] = [];
+
+for (const file of await filesUnder(codeRoots, CODE_FILE)) {
+  const lines = declarations(await readFile(file, 'utf-8')).split('\n');
+  lines.forEach((line, i) => {
+    for (const [kind, re] of [
+      ['scale', CODE_SCALE],
+      ['literal', CODE_LITERAL],
+    ] as const) {
+      re.lastIndex = 0;
+      if (re.test(line)) codeFindings.push({ file, line: i + 1, kind, text: line.trim().slice(0, 110) });
+    }
+  });
+}
+
+const codePalette = codeFindings.filter((f) => CODE_PALETTES.some((p) => p.path.test(f.file)));
+const codeDefects = codeFindings.filter((f) => !CODE_PALETTES.some((p) => p.path.test(f.file)));
 
 const palette = findings.filter((f) => PALETTES.some((p) => p.test(f.file)));
 const defects = findings.filter((f) => !PALETTES.some((p) => p.test(f.file)));
@@ -178,4 +260,23 @@ for (const [file, list] of [...byFile.entries()].sort((a, b) => b[1].length - a[
 
 console.log(`\n${defects.length} scale positions where a role probably belongs.`);
 console.log(`${palette.length} in files declared to be palettes, not counted.`);
-process.exit(defects.length ? 1 : 0);
+
+if (codeRoots.length) {
+  const byCodeFile = new Map<string, typeof codeDefects>();
+  for (const f of codeDefects) {
+    const key = relative(process.cwd(), f.file);
+    if (!byCodeFile.has(key)) byCodeFile.set(key, []);
+    byCodeFile.get(key)!.push(f);
+  }
+  for (const [file, list] of [...byCodeFile.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    console.log(`\n${file}  (${list.length})`);
+    for (const f of list) console.log(`   ${f.line}: ${f.text}`);
+  }
+
+  const scale = codeDefects.filter((f) => f.kind === 'scale').length;
+  console.log(`\n${scale} scale positions and ${codeDefects.length - scale} raw colours in code.`);
+  console.log(`${codePalette.length} in code declared to be a palette, not counted:`);
+  for (const p of CODE_PALETTES) console.log(`   ${p.path.source} — ${p.why}`);
+}
+
+process.exit(defects.length + codeDefects.length ? 1 : 0);
