@@ -278,9 +278,45 @@ export interface PresenceKernel {
  * module may still reach `navigator` directly — code is code — but one that does has stepped outside
  * what its manifest says.
  */
+/** One capture device, as the host sees it. The browser's shape, narrowed to what a chooser needs. */
+export interface MediaDevice {
+  deviceId: string;
+  /** `audioinput` or `videoinput`. Outputs are not offered: nothing here routes playback yet. */
+  kind: 'audioinput' | 'videoinput';
+  /**
+   * What to call it — and **empty until permission has been granted at least once**.
+   *
+   * Not an oversight in the host: a page that could read device labels without asking could
+   * fingerprint a machine by its hardware, so the browser withholds them until there is a reason to
+   * trust the asking. A chooser has to handle the anonymous case rather than assume a name.
+   */
+  label: string;
+  /** Devices sharing a `groupId` are the same physical unit — a headset's mic and its speaker. */
+  groupId: string;
+}
+
 export interface MediaKernel {
   getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
   getDisplayMedia: (constraints?: DisplayMediaStreamOptions) => Promise<MediaStream>;
+  /**
+   * The capture devices this machine has, so a module can offer a choice between them.
+   *
+   * Here rather than reached through `navigator` for the reason the two above are: a module that
+   * enumerates the user's hardware is doing something a manifest should be able to declare, and the
+   * `permissions` list is where that is said.
+   *
+   * Answers `[]` on a host with no media rather than rejecting. A chooser with nothing to choose
+   * between is an ordinary state — a machine with one microphone, a browser that has not been given
+   * permission yet — and an error would make every one of those look like a fault.
+   */
+  enumerateDevices: () => Promise<MediaDevice[]>;
+  /**
+   * Called when the set of devices changes — something plugged in, something unplugged.
+   *
+   * Returns its own unsubscribe. Separate from `enumerateDevices` because a list that goes stale the
+   * moment somebody reaches for a headset is a list that lies at exactly the moment it is read.
+   */
+  onDevicesChanged: (listener: () => void) => () => void;
   /** Say what this module is capturing, or `null` when it stops. One publisher at a time; a second replaces the first and says so. */
   publish: (stream: MediaStream | null) => void;
   /** What some module is capturing right now, or `null`. Reactive. */
