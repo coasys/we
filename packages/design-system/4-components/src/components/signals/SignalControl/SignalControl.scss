@@ -24,7 +24,10 @@
     what makes a partial star a star rather than two broken arcs, so the weight stays and the colour
     gives instead.
   */
-  color: var(--we-color-neutral-100);
+  // `control-surface` — the role for the unfilled part of a control, which is what this is: the
+  // empty half of a rating, the same job a slider's track does behind its fill. It was
+  // `neutral-100`, which the contrast pass never measures against the card behind it.
+  color: var(--we-role-control-surface);
 
   // Emoji fallback: dim via custom property (pierces shadow DOM)
   > we-icon {
@@ -39,7 +42,8 @@
 
 .signal-icon-stack__fill {
   // Fill icon: primary colour + restore full emoji opacity
-  color: var(--we-color-primary-600);
+  // `accent-text`: the accent used AS a mark on an ordinary surface, rather than as a fill.
+  color: var(--we-role-accent-text);
 
   we-icon {
     --we-icon-emoji-opacity: 1;
