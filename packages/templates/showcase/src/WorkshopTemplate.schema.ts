@@ -2771,9 +2771,25 @@ const ROW_IS_MINE = 'call.id == modules.call.callRecordId';
  * No dedupe: `AvatarStack` does it, which matters here — `participants` is an add-only relation that
  * every agent transcribing appends to with no coordination, so a two-person call routinely lists each
  * of them several times over.
+ *
+ * ## The green ring is what tells the two apart
+ *
+ * Both sources draw the same thing — faces on a row — so without a mark a meeting three people are
+ * sitting in looks exactly like last Tuesday's attendance list. `tone: 'success'` puts a ring inside
+ * each live face, which is the distinction stated where the ambiguity is rather than somewhere else
+ * on the row.
+ *
+ * It is not the only thing saying so, which is what makes a colour acceptable here: the row already
+ * carries a red `phone-call` glyph for any live call, and the selected fill and the Join button say
+ * it again. The two colours are not in competition — the glyph says *this call is happening* and the
+ * rings say *these particular people are in it now* rather than having once been.
+ *
+ * The call module's own stage passes no tone, and its note says why: everyone on a stage is in the
+ * call, so a ring there would encode a distinction that cannot vary. In this list it varies row by
+ * row, which is exactly when it is worth drawing.
  */
 const ROW_FACES =
-  `${ROW_LIVE_CALL} ? ${ROW_LIVE_CALL}.faces ` +
+  `${ROW_LIVE_CALL} ? ${ROW_LIVE_CALL}.faces.map(f, { image: f.image, hash: f.hash, initials: f.initials, tone: 'success' }) ` +
   ': call.participants.map(m, { image: find(profileStore.profiles, { did: m }).avatar, hash: m })';
 
 /**
@@ -2938,95 +2954,47 @@ const callsPanel: SchemaNode = {
                               props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
                               children: [
                                 /*
-                                  The name, and after it who is in the call — one line.
+                                  The name, and the whole of it on hover along with whatever was
+                                  written about the call — the pill's arrangement, for its reasons;
+                                  see the note there.
 
-                                  The faces used to sit outside the button altogether, in a column of
-                                  their own between it and the trash, and only on rows that were live.
-                                  Against the name they say what the row *is* rather than decorating
-                                  the space beside it: this list is read to find a conversation, and
-                                  "the one with Anna and Josh" is how somebody finds it when three
-                                  meetings on a Tuesday have interchangeable names. Which is also why
-                                  they are on every row now and not only the live one — see
-                                  `ROW_FACES`.
-
-                                  The stack is at the end of the line rather than hugging the name —
-                                  the text takes the free space — so the faces make a column down the
-                                  list and every title truncates at the same point. Hugging would put
-                                  each stack at its own x, which is ragged to sweep.
-
-                                  `xs` is 24px, the line box the title already occupies, so nothing
-                                  about the row's height changes. And the stack cannot be compressed —
-                                  its avatars are each `flex-shrink: 0`, so its min-content is its
-                                  whole width — which means the title is what yields. That is the
-                                  right way round, since the title has somewhere to go: `minWidth: '0'`
-                                  lets it narrow past its own content and the whole of it is on hover.
+                                  The trigger is the text rather than the row: this list is read by
+                                  sweeping down it, and a bubble opening on every row the pointer
+                                  crosses is worse than no bubble. Resting on a name asks a question;
+                                  passing over one does not.
                                 */
                                 {
-                                  type: 'Row',
-                                  props: { width: '100%', ay: 'center', gap: '200' },
+                                  type: 'we-tooltip',
+                                  props: { placement: 'right' },
                                   children: [
-                                    /*
-                                      The name, and the whole of it on hover along with whatever was
-                                      written about the call — the pill's arrangement, for its
-                                      reasons; see the note there.
-
-                                      The trigger is the text rather than the row: this list is read
-                                      by sweeping down it, and a bubble opening on every row the
-                                      pointer crosses is worse than no bubble. Resting on a name asks
-                                      a question; passing over one does not. The faces are outside the
-                                      trigger for the same reason — a roster bubble over them would
-                                      be the thing this arrangement was written to avoid.
-                                    */
                                     {
-                                      type: 'we-tooltip',
-                                      props: { placement: 'right' },
+                                      type: 'we-text',
+                                      props: { truncate: true, width: '100%', textAlign: 'left' },
+                                      children: [{ $: "call.title ? call.title : 'Call'" }],
+                                    },
+                                    {
+                                      type: 'Column',
+                                      props: { gap: '100' },
+                                      slot: 'content',
                                       children: [
                                         {
-                                          /*
-                                            `flex: '1'` with `minWidth: '0'`, not `width: '100%'`: the
-                                            text is a flex item beside the stack now, and a percentage
-                                            width would be measured against the row and overlap it.
-                                            The tooltip around it is `display: contents`, so this
-                                            element is the flex item — the props have to be here.
-                                          */
                                           type: 'we-text',
-                                          props: { truncate: true, flex: '1', minWidth: '0', textAlign: 'left' },
+                                          props: { variant: 'label' },
                                           children: [{ $: "call.title ? call.title : 'Call'" }],
                                         },
                                         {
-                                          type: 'Column',
-                                          props: { gap: '100' },
-                                          slot: 'content',
-                                          children: [
-                                            {
+                                          // `on-inverse`, not `text-muted` — see the pill's note.
+                                          type: '$if',
+                                          props: {
+                                            condition: { $: 'call.description' },
+                                            then: {
                                               type: 'we-text',
-                                              props: { variant: 'label' },
-                                              children: [{ $: "call.title ? call.title : 'Call'" }],
+                                              props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                                              children: [{ $: 'call.description' }],
                                             },
-                                            {
-                                              // `on-inverse`, not `text-muted` — see the pill's note.
-                                              type: '$if',
-                                              props: {
-                                                condition: { $: 'call.description' },
-                                                then: {
-                                                  type: 'we-text',
-                                                  props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
-                                                  children: [{ $: 'call.description' }],
-                                                },
-                                              },
-                                            },
-                                          ],
+                                          },
                                         },
                                       ],
-                                    },
-                                    {
-                                      // Faces rather than a count: three avatars say who is in a
-                                      // meeting in the width a number and a noun would take, and the
-                                      // stack carries its own "+N" past `max`. On your own row too —
-                                      // who is in it is worth saying whether or not there is anything
-                                      // to press beside it.
-                                      type: 'AvatarStack',
-                                      props: { avatars: { $: ROW_FACES }, size: 'xs', max: 3 },
                                     },
                                   ],
                                 },
@@ -3074,6 +3042,39 @@ const callsPanel: SchemaNode = {
                                   },
                                 },
                               ],
+                            },
+                            {
+                              /*
+                                Who is in the call, or who was — inside the button, at the end of it.
+
+                                The faces used to sit outside the button altogether, in a column of
+                                their own between it and the trash, and only on rows that were live.
+                                Against the name they say what the row *is* rather than decorating the
+                                space beside it: this list is read to find a conversation, and "the one
+                                with Anna and Josh" is how somebody finds it when three meetings on a
+                                Tuesday have interchangeable names. Which is also why they are on every
+                                row now and not only the live one — see `ROW_FACES`.
+
+                                A sibling of the text column rather than a child of it, so the stack is
+                                centred against the whole row instead of sitting on the title's line.
+                                Three lines of text run to about twice the height of a face, so in the
+                                title line the stack read as pinned to the top-right corner of the row;
+                                the button's own `ay: 'center'` puts it against the middle of the
+                                block, where it reads as belonging to the row rather than to the name.
+
+                                Faces rather than a count: three of them say who is in a meeting in the
+                                width a number and a noun would take, and the stack carries its own
+                                "+N" past `max`. On your own row too — who is in it is worth saying
+                                whether or not there is anything to press beside it.
+
+                                `sm` is 32px. It cannot be compressed — the avatars are each
+                                `flex-shrink: 0`, so the stack's min-content is its whole width — which
+                                means the title is what yields, and that is the right way round: the
+                                title has somewhere to go, since the column beside it carries
+                                `minWidth: '0'` and the whole name is on hover.
+                              */
+                              type: 'AvatarStack',
+                              props: { avatars: { $: ROW_FACES }, size: 'sm', max: 3 },
                             },
                           ],
                         },
