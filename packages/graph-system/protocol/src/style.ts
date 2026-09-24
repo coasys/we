@@ -16,7 +16,7 @@
  * registered plugin, referenced from data with parameters. Same bargain the template system makes
  * with components.
  */
-import type { GraphValue } from './graph';
+import type { GraphNode, GraphValue } from './graph';
 import type { EdgeCurve } from './layout';
 
 /** Operators a match clause may use against a node/edge field. Mirrors the schema system's `$filter`. */
@@ -233,8 +233,17 @@ export type EdgeStyleRules = StyleRules<EdgeStyle>;
 export interface Metric {
   id: string;
   description?: string;
+  /**
+   * `nodes` are the nodes as everything downstream sees them, **data included**.
+   *
+   * It used to be `{ id }` alone, on the reasoning that a metric is about the graph's *shape*. That
+   * was true of the two that existed and false of the interesting one: "colour by how strongly people
+   * feel about this" reads a number off the node and needs to know the range the rest of the graph
+   * spans, which is exactly a metric's job and is impossible from ids. Widening it costs the existing
+   * metrics nothing — they go on reading `id` — and is what `field` is built on.
+   */
   compute(
-    graph: { nodes: { id: string }[]; edges: { source: string; target: string }[] },
+    graph: { nodes: GraphNode[]; edges: { source: string; target: string }[] },
     options?: Record<string, unknown>,
   ): Map<string, number>;
 }

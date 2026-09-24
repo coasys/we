@@ -466,7 +466,13 @@ export class GraphEngine {
     }
 
     const snapshot = {
-      nodes: [...this.store.nodes()].map((node) => ({ id: node.id })),
+      /*
+        Overlaid, for the reason the layout's input is: a metric reading a node's own data must see the
+        value that is on screen. Without it a card whose weight has just been written optimistically is
+        coloured from the number it had before the round trip, so the fill and the order disagree for
+        the second it takes to land.
+      */
+      nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
       edges: [...this.store.edges()].map((edge) => ({ source: edge.source, target: edge.target })),
     };
 

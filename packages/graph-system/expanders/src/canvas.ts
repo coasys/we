@@ -139,6 +139,51 @@ export interface CanvasSeedOptions {
    * whether the field is there rather than comparing it.
    */
   counts?: string[];
+  /**
+   * How much each card *weighs*, worked out from one kind of reaction on it — read onto its data as
+   * `weight`, with how many reactions produced it as `weightCount`.
+   *
+   * ## Why the seed rather than the layout or a metric
+   *
+   * Three things want this number and none of them can compute it. A layout is handed nodes and
+   * returns positions, so it cannot query; a metric sees the graph's shape and the nodes' own data, so
+   * it can normalise the number but not fetch what it is made of; and a style rule is data. The one
+   * place with the data layer in reach is here — and computing it once, in the read the seed already
+   * makes, is also what keeps it affordable: the reactions ride in as a projection rather than as one
+   * query per card.
+   *
+   * Writing it onto the node is what makes it usable by all three at once. `forest` orders siblings by
+   * `weight`; `{ metric: 'field', options: { from: 'weight' }, scale: 'heat' }` colours by it, on a
+   * freeform canvas as readily as on a tree; and a card can show the tally beside it.
+   *
+   * ## What it does not decide
+   *
+   * Whose reactions count, and how much each person's is worth. `excludeAuthors` is here because a
+   * reader's muted list is not an opinion about weighting — it is the same filter every other reaction
+   * surface in WE applies, and leaving it out would make this the one place a muted agent still counts.
+   * Per-agent *weighting* is a larger question (a reputation, a cohort, a slider) and belongs in
+   * whatever resolves that, which then passes the answer through here.
+   */
+  weigh?: {
+    /**
+     * Record id of the `SignalType` that counts. Nothing is weighed without one, which is what lets a
+     * picker start empty.
+     */
+    signalTypeId: string;
+    /**
+     * How the values are read as one number.
+     *
+     * Named by the caller rather than derived from the type's `mode`, deliberately. The rule for
+     * reading a reaction type as one number already exists one layer up — a community's own
+     * `aggregate` field, with a fallback per mode — and a second copy of it here is the kind of thing
+     * that drifts silently: the copy that fell behind would go on netting out a type somebody had
+     * switched to averaging. So the template passes the type's own `aggregate` through. Default
+     * `count`, which matches the field's own default.
+     */
+    aggregate?: 'count' | 'sum' | 'mean' | 'median';
+    /** DIDs whose reactions are ignored — a reader's muted list. */
+    excludeAuthors?: string[];
+  };
   limit?: number;
 }
 
@@ -241,6 +286,72 @@ export function placementPosition(row: Record<string, unknown>): Record<string, 
   const x = Number(row.x);
   const y = Number(row.y);
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {};
+}
+
+/**
+ * The reactions on one record, as one number — see {@link CanvasSeedOptions.weigh}.
+ *
+ * Two rules here are the whole of what makes a weight trustworthy.
+ *
+ * **One voice per person.** A shared perspective is last-write-wins and writable by every member, so
+ * the same agent can end up holding two reactions of one kind on one record — two devices, or a write
+ * that landed either side of a partition. Counting both would let a card gain weight from somebody
+ * having been offline. The newest of each author's wins, which is the same answer `upsertSignal` means
+ * to produce.
+ *
+ * **No reactions is absent, not zero.** A card nobody has answered about and the lowest-scoring card
+ * are different facts: absent sorts last whichever way the order runs, and leaves a heat rule falling
+ * through to whatever an earlier one set, where a zero would claim the coldest colour and the leftmost
+ * slot. A value that genuinely *is* zero — a vote that netted out — is written like any other.
+ */
+export function weighSignals(
+  rows: unknown,
+  settings: { signalTypeId: string; aggregate?: string; excludeAuthors?: string[] },
+): Record<string, GraphValue> {
+  if (!settings.signalTypeId || !Array.isArray(rows)) return {};
+  const muted = new Set(settings.excludeAuthors ?? []);
+
+  /** Author → their newest reaction of this type. */
+  const latest = new Map<string, { value: number; at: string }>();
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const signal = row as Record<string, unknown>;
+    if (signal.signalTypeId !== settings.signalTypeId) continue;
+    // An unattributed reaction is one nothing can be said about — not whose it is, not whether the
+    // reader has muted them, not whether it is a duplicate. Left out rather than counted as a stranger's.
+    const author = typeof signal.author === 'string' ? signal.author : '';
+    if (!author || muted.has(author)) continue;
+    const value = Number(signal.value);
+    const at = typeof signal.createdAt === 'string' ? signal.createdAt : '';
+    const held = latest.get(author);
+    // `>=` so a pair with no timestamps at all still settles on one of them rather than on neither.
+    if (held && held.at >= at) continue;
+    latest.set(author, { value: Number.isFinite(value) ? value : 0, at });
+  }
+
+  const values = [...latest.values()].map((entry) => entry.value);
+  if (!values.length) return {};
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+  let weight: number;
+  switch (settings.aggregate) {
+    case 'sum':
+      weight = total;
+      break;
+    case 'mean':
+      weight = total / values.length;
+      break;
+    case 'median': {
+      const sorted = [...values].sort((a, b) => a - b);
+      const middle = Math.floor(sorted.length / 2);
+      weight = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+      break;
+    }
+    default:
+      // `count` — how many people answered, which is what a toggle means and the field's own default.
+      weight = values.length;
+  }
+  return { weight, weightCount: values.length };
 }
 
 /** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
@@ -492,12 +603,24 @@ export function canvasSeed(): SeedSource {
        * for none rather than refusing the read and vanishing off the canvas.
        */
       const countsFor = (entity: string): Record<string, unknown> | undefined => {
-        const asked = options.counts ?? [];
-        if (!asked.length) return undefined;
         const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
-        const projections = Object.fromEntries(
+        const asked = options.counts ?? [];
+        const projections: Record<string, unknown> = Object.fromEntries(
           asked.filter((name) => relations.has(name)).map((name) => [`$${name}Count`, { from: name, count: true }]),
         );
+        /*
+          The reactions themselves, where a weight is wanted — see `weigh`.
+
+          Hydrated rather than counted, because the *values* are what an aggregate reads: a count says
+          how many people answered, which is only one of the four things a community can mean by a
+          reaction type. It rides in the read the seed already makes, so a canvas of three hundred cards
+          pays one projection rather than three hundred queries.
+
+          Guarded on the type declaring `signals`, exactly as a count is: a model that cannot answer is
+          asked for nothing, since a refused read would take that whole kind off the canvas rather than
+          merely leaving its cards unweighed.
+        */
+        if (options.weigh?.signalTypeId && relations.has('signals')) projections.signals = true;
         return Object.keys(projections).length ? projections : undefined;
       };
 
@@ -553,6 +676,9 @@ export function canvasSeed(): SeedSource {
             // Before the canvas's own fields: a count is the record's, and nothing a placement
             // carries is named like one, so the order is only a statement of which layer owns what.
             ...countsOf(row),
+            // Beside the counts, and for the same reason they are before the canvas's own fields: a
+            // weight is a fact about the record rather than about this canvas's arrangement of it.
+            ...(options.weigh?.signalTypeId ? weighSignals(row.signals, options.weigh) : {}),
             ...(typeColor ? { canvasTypeColor: typeColor } : {}),
             // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
             // are the two states — an explicit `false` on every other card would make "not pending"

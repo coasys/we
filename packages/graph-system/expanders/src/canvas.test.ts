@@ -10,7 +10,7 @@
 import type { EntityShape, ExpanderContext, ExpanderQuery } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
-import { canvasSeed, PLACEMENT_UNSET } from './canvas';
+import { canvasSeed, PLACEMENT_UNSET, weighSignals } from './canvas';
 
 const SHAPES: EntityShape[] = [
   {
@@ -879,5 +879,188 @@ describe('the canvas seed’s reads', () => {
     await canvasSeed().seed({ canvas: 'b1', limit: 200 }, ctx);
 
     expect(warnings.filter((w) => w.includes('placed cards'))).toEqual([]);
+  });
+});
+
+/**
+ * Weighing a card by the reactions on it.
+ *
+ * The aggregate is arithmetic and would be dull to test if the two rules around it were not both
+ * silent when wrong: a card that gained weight because somebody was offline, and a card nobody has
+ * answered about sitting where the least-liked card belongs.
+ */
+describe('weighSignals', () => {
+  const type = 'sig-like';
+  const signal = (author: string, value: number, createdAt = '2026-01-01') => ({
+    signalTypeId: type,
+    value,
+    author,
+    createdAt,
+  });
+
+  it('counts how many people reacted, by default', () => {
+    const data = weighSignals([signal('did:a', 1), signal('did:b', 1)], { signalTypeId: type });
+
+    expect(data).toEqual({ weight: 2, weightCount: 2 });
+  });
+
+  it('nets a vote out, averages a rating, and takes a median when asked', () => {
+    const rows = [signal('did:a', 5), signal('did:b', 1), signal('did:c', 3)];
+
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'sum' }).weight).toBe(9);
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'mean' }).weight).toBe(3);
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'median' }).weight).toBe(3);
+  });
+
+  it('takes the median between the middle pair when there is an even number', () => {
+    const rows = [signal('did:a', 1), signal('did:b', 2), signal('did:c', 8), signal('did:d', 10)];
+
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'median' }).weight).toBe(5);
+  });
+
+  it('gives one person one voice, however many records they hold', () => {
+    /*
+      A shared perspective is last-write-wins and writable by every member, so one agent can end up
+      holding two reactions of a kind on one record — two devices, or a write either side of a
+      partition. Counting both lets a card gain weight from somebody having been offline.
+    */
+    const rows = [signal('did:a', 1, '2026-01-01'), signal('did:a', 5, '2026-02-01'), signal('did:b', 1)];
+    const data = weighSignals(rows, { signalTypeId: type, aggregate: 'sum' });
+
+    // The newer of the two, and one voice from that author.
+    expect(data).toEqual({ weight: 6, weightCount: 2 });
+  });
+
+  it('answers with nothing at all when nobody has reacted', () => {
+    /*
+      Absent, not zero. A card nobody has answered about sorts last whichever way the order runs and
+      leaves a heat rule falling through to whatever set the fill before it — where a zero would claim
+      the coldest colour and the leftmost slot in the row.
+    */
+    expect(weighSignals([], { signalTypeId: type })).toEqual({});
+    expect(weighSignals([signal('did:a', 1)], { signalTypeId: 'other' })).toEqual({});
+  });
+
+  it('writes a zero that is a real answer', () => {
+    // A vote that netted out is not the same as a card nobody voted on.
+    const data = weighSignals([signal('did:a', 1), signal('did:b', -1)], {
+      signalTypeId: type,
+      aggregate: 'sum',
+    });
+
+    expect(data).toEqual({ weight: 0, weightCount: 2 });
+  });
+
+  it('leaves out a muted author, so a weight agrees with every other reaction surface', () => {
+    const data = weighSignals([signal('did:a', 1), signal('did:muted', 1)], {
+      signalTypeId: type,
+      excludeAuthors: ['did:muted'],
+    });
+
+    expect(data).toEqual({ weight: 1, weightCount: 1 });
+  });
+
+  it('ignores an unattributed reaction rather than counting it as a stranger', () => {
+    // Nothing can be said about it: not whose it is, not whether it is muted, not whether it is a
+    // duplicate of one already counted.
+    const data = weighSignals([{ signalTypeId: type, value: 1 }, signal('did:a', 1)], { signalTypeId: type });
+
+    expect(data).toEqual({ weight: 1, weightCount: 1 });
+  });
+
+  it('survives rubbish rather than taking the canvas down with it', () => {
+    expect(weighSignals(undefined, { signalTypeId: type })).toEqual({});
+    expect(weighSignals([null, 'nope', 7], { signalTypeId: type })).toEqual({});
+    expect(weighSignals([{ ...signal('did:a', 1), value: 'many' }], { signalTypeId: type, aggregate: 'sum' })).toEqual({
+      weight: 0,
+      weightCount: 1,
+    });
+  });
+
+  it('weighs nothing without a type, which is what lets a picker start empty', () => {
+    expect(weighSignals([signal('did:a', 1)], { signalTypeId: '' })).toEqual({});
+  });
+});
+
+describe('canvas seed — weighing', () => {
+  it('reads the reactions in the query it was already making, and puts the weight on the card', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [
+        {
+          id: 'c1',
+          title: 'Idea',
+          signals: [
+            { signalTypeId: 'sig-like', value: 1, author: 'did:a', createdAt: '2026-01-01' },
+            { signalTypeId: 'sig-like', value: 1, author: 'did:b', createdAt: '2026-01-01' },
+            { signalTypeId: 'sig-star', value: 5, author: 'did:a', createdAt: '2026-01-01' },
+          ],
+        },
+      ],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', weigh: { signalTypeId: 'sig-like', aggregate: 'count' } },
+      ctx,
+    );
+
+    /*
+      A projection on the reads the seed already makes — not a query per card. Two of them for this type
+      rather than one, which is the pair the seed always issues for it: the cards positioned here, by
+      id, and the ones this canvas owns and nobody has placed. Both carry the projection, so a card in
+      the tray is weighed exactly like a card on the board.
+    */
+    const reads = asked.filter((q) => q.entity === 'CollectionBlock');
+    expect(reads).toHaveLength(2);
+    expect(reads.every((q) => (q.include as Record<string, unknown> | undefined)?.signals === true)).toBe(true);
+    expect(nodes[0].data).toMatchObject({ weight: 2, weightCount: 2 });
+  });
+
+  it('asks a type that declares no reactions for none, rather than losing it to a refused read', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 's1', nodeType: 'Sighting', x: 10, y: 10 },
+      ],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+      Sighting: [{ id: 's1', name: 'Heron' }],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', weigh: { signalTypeId: 'sig-like' } }, ctx);
+
+    expect(asked.find((q) => q.entity === 'Sighting')?.include).toBeUndefined();
+    // Present, and simply unweighed — which a sort reads as "no answer" and puts last.
+    const sighting = nodes.find((n) => n.type === 'Sighting');
+    expect(sighting).toBeDefined();
+    expect(sighting?.data?.weight).toBeUndefined();
+  });
+
+  it('asks for no reactions at all when nothing is being weighed', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    await canvasSeed().seed({ canvas: 'b1' }, ctx);
+
+    expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toBeUndefined();
   });
 });
