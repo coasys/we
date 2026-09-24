@@ -37,7 +37,7 @@ export {
   zoomOutControl,
 } from './controls';
 export { connectionTarget } from './connect';
-export { GraphEngine, kindOf } from './engine';
+export { GraphEngine, kindOf, TRAVEL_MS } from './engine';
 export {
   anchorsOf,
   bowOffsets,

@@ -67,7 +67,34 @@ const PENDING_EDGE_ID = '__pending__';
  * went, which is the whole reason they travel instead of blinking out. The tick matches the layout's.
  */
 const FOLD_MS = 200;
-const FOLD_TICK = 16;
+
+/**
+ * The frame both of the engine's own animations advance on.
+ *
+ * One constant because it is one fact — how often a position that is being interpolated is rewritten
+ * — and because a fold and a layout travel can be in flight at the same time. Two timers at two
+ * rates rewriting one positions map is a card that judders, and the cause is invisible: each
+ * mechanism looks correct on its own.
+ *
+ * Driven by a timer rather than by the layout's tick, because the layouts that most want to animate
+ * are the ones that do not tick at all: `manual` and `forest` compute once and report nothing
+ * running, so there would be no frames to ride on.
+ */
+const ANIM_TICK = 16;
+
+/**
+ * How long a card takes to walk from where one layout had it to where the next one puts it.
+ *
+ * A default rather than a constant the engine imposes: the caller passes a duration, because only
+ * the caller knows whether the reader has asked for reduced motion. Zero is instant, which is both
+ * that answer and the answer for a graph nobody is watching change.
+ *
+ * Longer than a fold, and deliberately. A fold is punctuation — one card going away — and the eye
+ * only has to catch the direction. A layout change moves *everything at once*, and what the travel
+ * is for is letting a reader keep hold of a particular card while the arrangement reorganises around
+ * it. Too brief and the frames read as a jump with extra steps.
+ */
+export const TRAVEL_MS = 420;
 
 /** Nothing folded: the shape {@link GraphEngine.setFolded} starts from and returns to. */
 const NO_FOLD: FoldResult = { hidden: new Set(), counts: new Map(), owners: new Map(), bundles: [] };
@@ -310,6 +337,17 @@ export class GraphEngine {
   private foldAnim = new Map<string, { from: Point; to: Point; started: number; at: number; out: boolean }>();
   private foldTimer?: ReturnType<typeof setTimeout>;
   private foldDuration = FOLD_MS;
+  /**
+   * Cards walking from where the last layout had them to where this one puts them.
+   *
+   * `to` is the placement the layout actually returned, flags and all, so arriving is a matter of
+   * writing it rather than of reconstructing it — and so a card that is pinned stays pinned while it
+   * moves. See {@link stepTravel}.
+   */
+  private travelAnim = new Map<string, { from: Point; to: Placement; started: number }>();
+  private travelTimer?: ReturnType<typeof setTimeout>;
+  /** The duration the travel in flight was asked for. Zero means nothing is travelling. */
+  private travelDuration = 0;
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -809,6 +847,7 @@ export class GraphEngine {
     if (this.layoutTimer) clearTimeout(this.layoutTimer);
     if (this.watchTimer) clearTimeout(this.watchTimer);
     if (this.foldTimer) clearTimeout(this.foldTimer);
+    if (this.travelTimer) clearTimeout(this.travelTimer);
     // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
     // from a backend subscription, which is the shape of leak that only shows up as a slow app.
     for (const stop of this.watchers.values()) stop();
@@ -1231,7 +1270,7 @@ export class GraphEngine {
     this.reindex();
     this.routeEdges();
     this.notify('positions');
-    if (running) this.foldTimer = setTimeout(() => this.stepFold(), FOLD_TICK);
+    if (running) this.foldTimer = setTimeout(() => this.stepFold(), ANIM_TICK);
     // The last frame changed what the graph *holds*, not only where it is — a fold that has finished
     // has cards and lines that are no longer there, which is a different kind of news.
     else this.notify('graph');
@@ -1316,8 +1355,14 @@ export class GraphEngine {
    * Warm start is not an optimisation. Nodes arrive continuously — from expansion, and from live
    * queries while the user watches — and a layout that restarts from scratch each time makes the
    * whole map jump every few seconds.
+   *
+   * `travel` is how long the cards take to get there, and it is what makes swapping layouts legible:
+   * the same set of cards rearranging is one movement a reader can follow, where the same swap
+   * applied instantly is a new picture they have to find their card in again. See
+   * {@link beginTravel}. Omitted means instant, which is right for every path that is not a reader
+   * changing how the graph is arranged — an expansion, a subscription, a first load.
    */
-  relayout(options?: { fit?: boolean }): void {
+  relayout(options?: { fit?: boolean; travel?: number }): void {
     const spec = this.spec.layout ?? { type: 'force' };
     /*
       Keyed on the options as well as the type.
@@ -1375,7 +1420,7 @@ export class GraphEngine {
     });
     this.setLayoutWarnings(result.warnings ?? []);
     this.fitUntilSettled = !!options?.fit && !!result.running;
-    this.applyPositions(result.positions, options?.fit);
+    this.applyPositions(result.positions, options?.fit, options?.travel);
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
@@ -1432,7 +1477,7 @@ export class GraphEngine {
     }, 16);
   }
 
-  private applyPositions(positions: Map<string, Placement>, fit?: boolean): void {
+  private applyPositions(positions: Map<string, Placement>, fit?: boolean, travel?: number): void {
     // Re-asserted over whatever the layout returned — see `pinnedIds`.
     for (const id of this.pinnedIds) {
       const at = positions.get(id);
@@ -1466,11 +1511,131 @@ export class GraphEngine {
       if (this.foldAnim.has(id)) continue;
       positions.delete(id);
     }
+
+    /*
+      Where every card was standing a moment ago, which is the start of a travel and is knowable only
+      here. One line below, the layout's answer has replaced it and "where did this come from" is gone
+      — the same reason `setFolded` captures the positions before it recomputes the fold.
+    */
+    const before = this.positions;
     this.positions = positions;
+
+    /*
+      The camera before the travel, and against where the layout actually put things.
+
+      A fit computed from a travel's first frame frames the arrangement the cards are *leaving*, so a
+      switch into a layout that needs more room would settle with half the graph off screen — and the
+      reader would have watched it go there.
+    */
+    if (fit && !this.fitToContent()) this.pendingFit = true;
+
+    /*
+      Then the travel, which walks the moving cards back to where they were standing. Everything below
+      is derived from what is *drawn*, so it has to come after: an index built from the destinations
+      would leave every card pickable at a place it has not reached yet.
+    */
+    this.beginTravel(before, travel);
     this.reindex();
     this.routeEdges();
-    if (fit && !this.fitToContent()) this.pendingFit = true;
     this.notify('positions');
+    if (this.travelAnim.size && !this.travelTimer && !this.disposed) {
+      this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
+    }
+  }
+
+  /**
+   * Set up, or re-aim, the walk from the previous arrangement to this one.
+   *
+   * Two things are deliberately separate here. **Starting** a travel takes an explicit duration,
+   * because only a reader changing how the graph is arranged wants one — a first load has nowhere to
+   * come from, and an expansion is not a rearrangement. **Re-aiming** one in flight happens whatever
+   * brought us here, including a subscription landing mid-switch: snapping a card to its destination
+   * would abandon the movement halfway, and leaving it walking to a destination the layout has since
+   * revised would put it somewhere nothing is.
+   *
+   * A card in mid-fold is left alone. It is already travelling, on the other mechanism, and two of
+   * them writing one position is a card that flickers between two destinations — with each mechanism
+   * looking perfectly correct in isolation.
+   */
+  private beginTravel(before: ReadonlyMap<string, Placement>, travel?: number): void {
+    const asked = Math.max(0, travel ?? 0);
+    // Carried over, so a re-aim keeps the speed and the deadline the reader's action set rather than
+    // restarting the clock on every frame a live query happens to land on.
+    const started = new Map([...this.travelAnim].map(([id, anim]) => [id, anim.started]));
+    this.travelAnim.clear();
+    if (asked > 0) this.travelDuration = asked;
+    if (!this.travelDuration) return;
+
+    const now = Date.now();
+    for (const [id, to] of this.positions) {
+      if (this.foldAnim.has(id)) continue;
+      const from = before.get(id);
+      /*
+        Nothing to travel from. A card that has just arrived — from an expansion, a live query, a card
+        coming back out of a fold — belongs where it is put, rather than sliding in from a position it
+        never occupied.
+      */
+      if (!from) continue;
+      const carried = started.get(id);
+      if (carried === undefined && asked <= 0) continue;
+      // Sub-pixel moves are not worth a timer, and a row of them would hold one open for nothing.
+      if (Math.abs(from.x - to.x) < 0.5 && Math.abs(from.y - to.y) < 0.5) continue;
+      this.travelAnim.set(id, { from: { x: from.x, y: from.y }, to, started: carried ?? now });
+      this.positions.set(id, { ...to, x: from.x, y: from.y });
+    }
+    if (!this.travelAnim.size) this.travelDuration = 0;
+  }
+
+  /** One frame of the walk: move what is moving, and land what has arrived. */
+  private stepTravel(): void {
+    if (this.travelTimer) {
+      clearTimeout(this.travelTimer);
+      this.travelTimer = undefined;
+    }
+    const now = Date.now();
+    let running = false;
+
+    for (const [id, anim] of this.travelAnim) {
+      const t = this.travelDuration > 0 ? Math.min(1, (now - anim.started) / this.travelDuration) : 1;
+      // Cubic ease-out, matching the fold: most of the distance early, so the eye catches which way a
+      // card went before it has to track where it stops.
+      const eased = 1 - (1 - t) ** 3;
+      if (t >= 1) {
+        this.travelAnim.delete(id);
+        // The layout's own answer, flags included — a pinned card is still pinned once it gets there.
+        this.positions.set(id, anim.to);
+        continue;
+      }
+      running = true;
+      this.positions.set(id, {
+        ...anim.to,
+        x: anim.from.x + (anim.to.x - anim.from.x) * eased,
+        y: anim.from.y + (anim.to.y - anim.from.y) * eased,
+      });
+    }
+
+    this.reindex();
+    this.routeEdges();
+    this.notify('positions');
+    if (running && !this.disposed) this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
+    else this.travelDuration = 0;
+  }
+
+  /**
+   * Stop one card travelling, and leave it exactly where the hand is.
+   *
+   * Called wherever something *else* takes ownership of a position — a drag, a pin. Without it the
+   * travel goes on rewriting the card every frame and the drag is fought for as long as it lasts,
+   * which reads as a card that will not be picked up rather than as two writers.
+   */
+  private stopTravel(id: string): void {
+    this.travelAnim.delete(id);
+    if (!this.travelAnim.size) this.travelDuration = 0;
+  }
+
+  /** Whether any card is mid-travel — for a caller that should wait for the arrangement to settle. */
+  isTravelling(): boolean {
+    return this.travelAnim.size > 0;
   }
 
   /** Recompute routes after a style change — `curve` decides the shape, so it decides the geometry. */
@@ -1937,6 +2102,8 @@ export class GraphEngine {
     for (const id of ids) {
       const at = this.positions.get(id);
       if (!at) continue;
+      // Held or released, the layout's travel is no longer the authority on where this card is.
+      this.stopTravel(id);
       if (pinned) {
         if (this.isPinned(id)) continue;
         this.pinnedIds.add(id);
@@ -1958,6 +2125,8 @@ export class GraphEngine {
   }
 
   pin(id: string, at: Point | null): void {
+    // Whoever is pinning owns this card's position now — see {@link stopTravel}.
+    this.stopTravel(id);
     if (at) {
       this.pinnedIds.add(id);
       this.positions.set(id, { ...at, fixed: true });

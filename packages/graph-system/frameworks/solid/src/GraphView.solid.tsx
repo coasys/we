@@ -47,6 +47,7 @@ import {
   resolveStyle,
   routesAlike,
   splineThrough,
+  TRAVEL_MS,
   waypointFromWorld,
   waypointsOf,
   waypointToWorld,
@@ -270,6 +271,18 @@ const FOLD_TRAVEL_MS = 200;
 function foldTravel(): number {
   if (typeof window === 'undefined' || !window.matchMedia) return FOLD_TRAVEL_MS;
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : FOLD_TRAVEL_MS;
+}
+
+/**
+ * The same question for a layout change, and the same answer under reduced motion.
+ *
+ * Separate from the fold's number because the two movements are not the same kind of thing — see
+ * `TRAVEL_MS` in the engine — and asked here for the same reason: the engine has no business knowing
+ * there is a browser, so it takes a duration and interpolates.
+ */
+function layoutTravel(): number {
+  if (typeof window === 'undefined' || !window.matchMedia) return TRAVEL_MS;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : TRAVEL_MS;
 }
 
 /**
@@ -1102,13 +1115,25 @@ export function GraphView(props: GraphViewProps) {
     return next;
   });
 
-  // A layout swap rearranges what is already loaded rather than reloading it — the whole point of
-  // offering several layouts is to see the same graph differently.
+  /*
+    A layout swap rearranges what is already loaded rather than reloading it — the whole point of
+    offering several layouts is to see the same graph differently.
+
+    It travels rather than cutting, because the value of seeing the same graph two ways is in
+    recognising a card across the change, and an instant swap is a new picture the reader has to find
+    their card in again.
+
+    **The camera moves only when the layout does.** Re-tuning a layout — a different sort key, a
+    different spine — is the same arrangement answering a different question, and refitting on one
+    lurches the view every time a vote lands and re-orders a row. A different layout genuinely needs
+    the camera to go and find the graph, which may now occupy a quite different region.
+  */
   createEffect((previous: string | undefined) => {
     const next = JSON.stringify(props.layout ?? {});
     if (previous !== undefined && previous !== next) {
+      const wasType = (JSON.parse(previous) as { type?: string })?.type;
       engine.setSpec(currentSpec());
-      engine.relayout({ fit: true });
+      engine.relayout({ fit: props.layout?.type !== wasType, travel: layoutTravel() });
     }
     return next;
   });
