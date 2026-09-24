@@ -22,6 +22,7 @@ import './primitives/iframe';
 import './primitives/image';
 import './primitives/input';
 import './primitives/link';
+import './primitives/live-cursor';
 import './primitives/location-picker';
 import './primitives/markdown';
 import './primitives/number';

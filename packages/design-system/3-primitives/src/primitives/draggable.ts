@@ -4,6 +4,7 @@ import { customElement, property } from 'lit/decorators.js';
 
 import { warnAboutBoxlessLayoutProps } from '../shared/boxless';
 import { LayoutElement } from '../shared/design-system-element';
+import { RECORD_ATTR } from '../shared/helpers';
 import { pressIsOnText } from '../shared/textHit';
 
 const CSS_STYLES = css`
@@ -87,7 +88,14 @@ export default class Draggable extends LayoutElement {
   /** The model name the reference points at — `CollectionBlock`, `Space`, `Agent`. */
   @property({ type: String, reflect: true }) entity = '';
 
-  /** The record's id within its dataset. A DID, where the entity is an agent. */
+  /**
+   * The record's id within its dataset. A DID, where the entity is an agent.
+   *
+   * Also published as `data-we-record` — see {@link RECORD_ATTR}. That attribute is the design
+   * system's general marker for "this box stands for that record", and setting it here means the great
+   * majority of cards carry one already: anything a person can pick up is something a decoration can
+   * be anchored to, and both facts are the same id.
+   */
   @property({ type: String, reflect: true }) recordId = '';
 
   /**
@@ -153,6 +161,20 @@ export default class Draggable extends LayoutElement {
     this.addEventListener('pointerdown', this._onPointerDown);
     this.addEventListener('keydown', this._onKeyDown);
     this.addEventListener('dragstart', this._onNativeDragStart);
+  }
+
+  /**
+   * Publish the record this box stands for, for anything that anchors a mark to one.
+   *
+   * Written here rather than declared as a second reflected property because the attribute name is
+   * the design system's, shared with surfaces that are not draggable at all — see {@link RECORD_ATTR}.
+   * Removed rather than left empty when there is no record, so `[data-we-record]` is a sound selector.
+   */
+  override updated(changed: Map<string, unknown>) {
+    super.updated?.(changed);
+    if (!changed.has('recordId')) return;
+    if (this.recordId) this.setAttribute(RECORD_ATTR, this.recordId);
+    else this.removeAttribute(RECORD_ATTR);
   }
 
   firstUpdated() {
