@@ -362,6 +362,18 @@ export class GraphEngine {
   private travelCamera?: { from: { x: number; y: number; zoom: number }; to: { x: number; y: number; zoom: number } };
   /** Areas the current layout asked to have drawn behind the nodes — see {@link getLayoutRegions}. */
   private layoutRegions: LayoutRegion[] = [];
+  /**
+   * How long a rearrangement the **engine itself** decides on should take.
+   *
+   * Every travel so far has been asked for by a caller, which is right: the renderer is the only thing
+   * that can ask the browser about reduced motion, and the engine has no business knowing there is one.
+   * But some rearrangements are the engine's own — a card released back to a layout that computes once
+   * has to be drawn into place, and nobody is there to name a duration for it.
+   *
+   * So the renderer states it once and the engine spends it. Zero until told, which keeps a graph with
+   * no renderer at all behaving exactly as it did: instant.
+   */
+  private selfTravel = 0;
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -1756,6 +1768,16 @@ export class GraphEngine {
     if (!this.travelAnim.size) this.travelDuration = 0;
   }
 
+  /**
+   * How long the engine's own rearrangements take — see {@link selfTravel}.
+   *
+   * Set by the renderer, which is the only thing that can ask the browser whether the reader wants less
+   * movement. Zero is the honest answer for both "nobody said" and "the reader asked for none".
+   */
+  setSelfTravel(ms: number): void {
+    this.selfTravel = Math.max(0, ms || 0);
+  }
+
   /** Whether any card is mid-travel — for a caller that should wait for the arrangement to settle. */
   isTravelling(): boolean {
     return this.travelAnim.size > 0;
@@ -2257,8 +2279,8 @@ export class GraphEngine {
     if (!changed) return;
     this.positionsChanged();
     // Releasing especially: a node handed back to the layout should be drawn into place, not left
-    // sitting where it was let go.
-    this.resumeLayout();
+    // sitting where it was let go — which for a layout that computes once means running it again.
+    this.resumeLayout(!pinned);
   }
 
   pin(id: string, at: Point | null): void {
@@ -2274,7 +2296,7 @@ export class GraphEngine {
     }
     this.layout?.fix?.(id, at);
     this.positionsChanged();
-    this.resumeLayout();
+    this.resumeLayout(at === null);
   }
 
   /**
@@ -2289,9 +2311,26 @@ export class GraphEngine {
    * Costs nothing for a layout that computes in one pass — `tick` is absent, the first poll returns
    * undefined, and polling stops again.
    */
-  private resumeLayout(): void {
-    if (!this.layout?.tick) return;
-    this.scheduleTick();
+  private resumeLayout(released = false): void {
+    if (this.layout?.tick) {
+      this.scheduleTick();
+      return;
+    }
+    /*
+      A layout that computes once has no frames to resume into, so a node handed back to it stays
+      exactly where the hand let go — which on a tree is a card sitting in open space with the
+      arrangement broken around it, and is precisely what "released back to the layout" must not mean.
+      The comment on `setPinned` has always claimed this happens; for a deterministic layout it did not.
+
+      Only on a **release**. `pin` is called on every frame of a drag, so re-deriving there would lay the
+      whole graph out per pointer move — and worse, the siblings would shuffle under the card being
+      dragged, which is a feature to build deliberately rather than a side effect to discover.
+
+      And only where the layout derives positions at all: on a canvas a coordinate is the data, so
+      re-running `manual` would put the card back where its placement still says it is and undo the drop
+      a frame before the write lands.
+    */
+    if (released && this.layout?.derivesPositions !== false) this.relayout({ travel: this.selfTravel });
   }
 
   /**

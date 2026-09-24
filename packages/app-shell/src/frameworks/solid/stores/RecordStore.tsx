@@ -1616,7 +1616,14 @@ export function RecordStoreProvider(props: ParentProps) {
       before?: boolean;
     };
     const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !relationshipTypeId || !event.recordId || !event.recordType) return;
+    /*
+      `relationshipTypeId` may be empty, and that is an answer rather than a missing argument: the tree is
+      following every kind of connection, so this follows every kind too and mints a kindless one where it
+      has to create a parent. A connection with no kind is what the canvas's own connect gesture already
+      writes, and the layout draws it like any other — so refusing here would make the two disagree about
+      what the tree is, which is what the toast about the unconnected area was really reporting.
+    */
+    if (!dataset || !canvas || !event.recordId || !event.recordType) return;
     if (event.into !== 'loose' && !event.targetId) return;
     // A card dropped on itself is a gesture that went nowhere, not a claim about anything.
     if (event.targetId === event.recordId) return;

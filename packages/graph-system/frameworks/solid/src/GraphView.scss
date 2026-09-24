@@ -474,6 +474,14 @@
   justify-content: center;
   width: var(--node-size);
   height: var(--node-size);
+
+  // The same easing as a card's box, for a graph whose nodes are marks — a metric-sized dot changing
+  // what it is sized by should read as the same movement the cards are making.
+  .we-graph__layer--settling & {
+    transition:
+      width var(--node-box-ease, 0ms) ease-out,
+      height var(--node-box-ease, 0ms) ease-out;
+  }
   border-radius: var(--node-radius);
   background: var(--node-color);
   border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
@@ -544,6 +552,23 @@
   display: flex;
   width: var(--node-width);
   height: var(--node-height);
+
+  /*
+    The box eases while the arrangement is travelling — see `settling` in the Solid adapter.
+
+    A card stretched into a rectangle on the canvas is given one uniform box in the tree, and snapping
+    between the two in the middle of a movement every other card is easing through reads as the card
+    being *replaced* rather than rearranged.
+
+    Width and height only, never `transform`: the position is animated in the engine, frame by frame,
+    because the spatial index and the edge routes are derived from it. A transition on top of that would
+    be two animations on one property, each correct and neither what you see.
+  */
+  .we-graph__layer--settling & {
+    transition:
+      width var(--node-box-ease, 0ms) ease-out,
+      height var(--node-box-ease, 0ms) ease-out;
+  }
 
   // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
   opacity: var(--node-opacity, 1);

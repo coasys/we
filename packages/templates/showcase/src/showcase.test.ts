@@ -2132,10 +2132,21 @@ describe('the workshop’s tree', () => {
       nothing", and a change here reloads the seed — correctly, since unlike `pending` it changes what
       is fetched.
     */
-    expect(canvas).toContain('"weigh":{"$":"(local.order == \'signal\' && local.signalType) ? { signalTypeId:');
+    expect(canvas).toContain('"weigh":{"$":"(local.order == \'signal\'');
+    /*
+      And it weighs the type the picker is SHOWING, not only one somebody has explicitly chosen.
+
+      This was the bug. The picker fell back to the community's first type so it never showed an empty
+      box, while `local.signalType` stayed empty — so "by reaction" weighed nothing, ordered by date
+      instead, and looked exactly like a sort that did not work. A local cannot be seeded from a
+      subscription, so the fallback has to live in the expression and every reader has to share it.
+    */
+    const inForce = 'local.signalType ? local.signalType : first(local.treeSignalTypes).id';
+    expect(canvas).toContain(`signalTypeId: (${inForce})`);
+    expect(canvas).toContain(`local.order == 'signal' && (${inForce})`);
     // The community's own aggregate, passed through rather than re-derived. A second copy of that rule
     // is the copy that falls behind, and nothing on screen would say why an order looked wrong.
-    expect(canvas).toContain('aggregate: find(local.treeSignalTypes, { id: local.signalType }).aggregate');
+    expect(canvas).toContain(`aggregate: find(local.treeSignalTypes, { id: (${inForce}) }).aggregate`);
     // Muted authors left out, as they are on every other reaction surface here.
     expect(canvas).toContain('excludeAuthors: spaceStore.mutedDids');
   });

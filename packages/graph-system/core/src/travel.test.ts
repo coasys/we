@@ -410,3 +410,90 @@ describe('layout travel — the camera', () => {
     expect(engine.viewport.get().x).not.toBe(before.x);
   });
 });
+
+/**
+ * Releasing a card back to a layout that computes once.
+ *
+ * `setPinned`'s own comment has always said a released node "should be drawn into place, not left
+ * sitting where it was let go" — and for a deterministic layout it was not, because the only thing
+ * `resumeLayout` did was ask for more frames and there are none. On a tree that leaves the dropped card
+ * in open space with the arrangement broken around it, which is exactly what a drag must not do.
+ */
+describe('releasing a card', () => {
+  const rows = () => ({
+    id: 'rows',
+    init(input: {
+      nodes: { id: string }[];
+      previous?: ReadonlyMap<string, { x: number; y: number; fixed?: boolean }>;
+    }) {
+      const positions = new Map(input.nodes.map((n, i) => [n.id, { x: i * 100, y: 0 }]));
+      for (const [id, was] of input.previous ?? []) if (was.fixed && positions.has(id)) positions.set(id, was);
+      return { positions };
+    },
+  });
+
+  async function tree() {
+    const registry = new PluginRegistry({ seeds: [seedOf(['a', 'b'])], expanders: [], layouts: { rows } });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'rows' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    return engine;
+  }
+
+  it('puts a dropped card back where the arrangement wants it', async () => {
+    const engine = await tree();
+    expect(xOf(engine, 'b')).toBe(100);
+
+    // A drag: held frame by frame, then handed back.
+    engine.pin('b', { x: 640, y: 480 });
+    expect(xOf(engine, 'b')).toBe(640);
+    engine.pin('b', null);
+
+    expect(xOf(engine, 'b')).toBe(100);
+  });
+
+  it('holds a card that is still pinned, so a drag is not fought frame by frame', async () => {
+    /*
+      `pin` is called on every pointer move. Re-deriving there would lay the whole graph out per frame —
+      and shuffle the siblings under the card being dragged, which is a feature to build deliberately
+      rather than a side effect to discover.
+    */
+    const engine = await tree();
+
+    engine.pin('b', { x: 640, y: 480 });
+    engine.pin('b', { x: 650, y: 480 });
+
+    expect(xOf(engine, 'b')).toBe(650);
+  });
+
+  it('leaves a canvas alone, where the coordinate is the data', async () => {
+    /*
+      Re-running `manual` on release would read the card's stored placement — which has not been written
+      yet — and undo the drop a frame before the write lands.
+    */
+    const fromData = () => ({
+      id: 'manual',
+      derivesPositions: false,
+      init(input: { nodes: { id: string }[]; previous?: ReadonlyMap<string, { x: number; y: number }> }) {
+        return { positions: new Map(input.nodes.map((n, i) => [n.id, input.previous?.get(n.id) ?? { x: i, y: 0 }])) };
+      },
+    });
+    const registry = new PluginRegistry({ seeds: [seedOf(['a', 'b'])], expanders: [], layouts: { manual: fromData } });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'manual' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+
+    engine.pin('b', { x: 640, y: 480 });
+    engine.pin('b', null);
+
+    expect(xOf(engine, 'b')).toBe(640);
+  });
+});

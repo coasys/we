@@ -1186,6 +1186,13 @@ export function GraphView(props: GraphViewProps) {
     onCleanup(() => observer.disconnect());
   });
 
+  /*
+    How long a rearrangement the engine decides on by itself should take — a card released back to a
+    layout that computes once, which has to be drawn into place rather than left where the hand let go.
+    Stated here because only the renderer can ask the browser whether the reader wants less movement.
+  */
+  engine.setSelfTravel(layoutTravel());
+
   onCleanup(() => engine.dispose());
 
   // ─── Reactive projections ────────────────────────────────────────────────────
@@ -1202,6 +1209,29 @@ export function GraphView(props: GraphViewProps) {
   const regions = createMemo(() => {
     version();
     return [...engine.getLayoutRegions()];
+  });
+
+  /**
+   * Whether the arrangement is mid-travel — so a card's *box* can ease to its new size with it.
+   *
+   * Position is animated in the engine, because the spatial index and the edge routes are derived from
+   * it and all three have to agree every frame. A card's size is not: it is resolved from the style
+   * rules, and letting CSS ease it costs one declaration where doing it in the engine would mean
+   * threading a blend through `nodeVisual`, which is the one function both the drawing and the picking
+   * come from.
+   *
+   * The cost is honest and bounded: for the length of the travel a card is *picked* at the size it is
+   * arriving at rather than the size it is drawn. That is the drift `nodeVisual` exists to prevent, so it
+   * is worth being exact about why it is acceptable here — it lasts one travel, it self-heals, and it
+   * only ever makes the hit area agree with where the card is going, which is also where the pointer
+   * that started the switch is most likely headed.
+   *
+   * Only ever while travelling, so a resize drag stays immediate: a box easing behind the hand would
+   * read as lag.
+   */
+  const settling = createMemo(() => {
+    version();
+    return engine.isTravelling();
   });
 
   const nodes = createMemo(() => {
@@ -3003,9 +3033,18 @@ export function GraphView(props: GraphViewProps) {
         canvas is what is arriving.
       */}
       <div
-        classList={{ 'we-graph__layer': true, 'we-graph__layer--stale': status().reloading }}
+        classList={{
+          'we-graph__layer': true,
+          'we-graph__layer--stale': status().reloading,
+          // One class on the layer rather than one per card: the state is the graph's, and a class per
+          // node would be a reactive computation per node for an answer that is the same for all of them.
+          'we-graph__layer--settling': settling(),
+        }}
         style={{
           transform: transform(),
+          // What the eased box takes, published so the stylesheet keeps the curve and this carries only
+          // the number — the same split `--we-decoration-ease` makes.
+          '--node-box-ease': `${layoutTravel()}ms`,
           /*
             Load-bearing, and inline so it cannot be lost to a stale stylesheet.
 

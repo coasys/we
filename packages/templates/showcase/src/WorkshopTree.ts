@@ -83,7 +83,21 @@ export const TREE_ON = 'local.treeMode';
 const SPINE_SELECTOR = `{ field: 'data.relationshipTypeId', value: local.spine }`;
 
 /** Whether the order in force is one a reaction decides — which is also when a weight is worth fetching. */
-export const BY_SIGNAL = `(local.order == 'signal' && local.signalType)`;
+/**
+ * Which reaction the order is reading, whether or not anybody has picked one.
+ *
+ * The picker falls back to the community's first type so it never shows an empty box — and that was the
+ * whole of the bug: the *displayed* value fell back while `local.signalType` stayed empty, so "by
+ * reaction" weighed nothing, ordered by date instead, and looked exactly like a sort that did not work.
+ * A control showing a choice that is not in force is worse than one showing none.
+ *
+ * So the fallback is named once and every reader shares it: the picker's value, the test below, and the
+ * weight the seed fetches. A local cannot be seeded from a subscription — `initial` is static and the
+ * types arrive later — so the fallback has to live in the expression rather than in the declaration.
+ */
+const SIGNAL_IN_FORCE = `(local.signalType ? local.signalType : first(local.treeSignalTypes).id)`;
+
+export const BY_SIGNAL = `(local.order == 'signal' && ${SIGNAL_IN_FORCE})`;
 
 /**
  * Which card field the siblings are ordered by.
@@ -127,8 +141,8 @@ const CARD_BOX = `(local.cardSize == 'sm' ? ${box(CARD_SIZES.sm)} : (local.cardS
  */
 export const TREE_WEIGH: SchemaProp = {
   $:
-    `${BY_SIGNAL} ? { signalTypeId: local.signalType,` +
-    ` aggregate: find(local.treeSignalTypes, { id: local.signalType }).aggregate,` +
+    `${BY_SIGNAL} ? { signalTypeId: ${SIGNAL_IN_FORCE},` +
+    ` aggregate: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).aggregate,` +
     ` excludeAuthors: spaceStore.mutedDids } : null`,
 };
 
@@ -393,7 +407,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                     props: {
                       size: 'sm',
                       fit: true,
-                      value: { $: 'local.signalType ? local.signalType : first(local.treeSignalTypes).id' },
+                      value: { $: SIGNAL_IN_FORCE },
                       options: {
                         $: 'local.treeSignalTypes.map(t, { label: t.name, value: t.id })',
                       },
