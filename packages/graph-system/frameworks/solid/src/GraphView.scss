@@ -270,6 +270,62 @@
 }
 
 /*
+  Marks something outside the graph put on the canvas — see `GraphDecoration`.
+
+  The same zero-size anchoring the nodes use, so a mark's own origin lands exactly on its world
+  coordinates whatever it draws. Its own stacking context for the reason the nodes have one: a
+  cursor lifts itself above the cards deliberately, and without a context here it could rise past
+  the selection chrome as well.
+*/
+.we-graph__decorations {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.we-graph__decoration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/*
+  How a mark catches up to where it is now.
+
+  A transition on transform, and the duration is the point: marks that arrive on a network arrive in
+  steps — a cursor a dozen times a second at best — and a transition slightly longer than the gap
+  between steps turns those steps into continuous movement with no animation loop anywhere. Too
+  short and the stutter is still visible; too long and the mark trails visibly behind the person
+  moving it, which reads as lag rather than as smoothing.
+
+  `linear`, not an ease: each step is the middle of a continuous movement, and easing into and out of
+  every one of them is what makes interpolated cursors look like they are hesitating.
+
+  Only where the mark asked for it. Anything anchored to a record is where it is, and easing it would
+  animate a pin across the screen when a board reorders.
+*/
+.we-graph__decoration--eased {
+  transition: transform 90ms linear;
+}
+
+/*
+  A mark stays the size it was drawn at, whatever the camera is doing.
+
+  The camera's scale is published on the layer as `--graph-zoom`, so this is one declaration and no
+  reactive computation per mark. Origin at the top left because that is where the mark's own anchor
+  point is — scaling about the centre would move a cursor's tip away from what it is pointing at,
+  which is the one thing about a cursor that has to stay true.
+*/
+.we-graph__decoration-scale {
+  transform: scale(calc(1 / var(--graph-zoom, 1)));
+  transform-origin: 0 0;
+}
+
+/*
   Every node, in one stacking context.
 
   A node is positioned by a transform, and a transform makes it a stacking context: whatever it holds

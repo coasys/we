@@ -80,6 +80,31 @@ export class Viewport {
     };
   }
 
+  /**
+   * The world rectangle a reader can actually see — `visibleRect` in world units.
+   *
+   * **What the reader can see, not what the canvas spans**, which is the whole reason it is not
+   * `visibleBounds`: a host may float a panel over the graph without shrinking its box, so the canvas
+   * the engine believes is on screen and the canvas somebody is looking at are different rectangles.
+   *
+   * This is the shape one agent hands another to say "look at what I am looking at". A camera —
+   * `{ x, y, zoom }` — is the wrong thing to send, because the receiver's box is a different shape:
+   * the same zoom shows them a different amount of the canvas, and the same centre plus the same zoom
+   * puts whatever is being pointed at off their screen. A region is fittable into whatever box they
+   * have, and then both of them are looking at the same content.
+   */
+  visibleWorldRect(): { x: number; y: number; width: number; height: number } {
+    const rect = this.visibleRect();
+    const topLeft = this.toWorld({ x: rect.x, y: rect.y });
+    const bottomRight = this.toWorld({ x: rect.x + rect.width, y: rect.y + rect.height });
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      height: bottomRight.y - topLeft.y,
+    };
+  }
+
   resize(width: number, height: number): void {
     this.state = { ...this.state, width, height };
   }
@@ -130,16 +155,38 @@ export class Viewport {
 
   /** Frame a set of world bounds, with a margin so nodes are not flush against the edge. */
   fit(bounds: Bounds, margin = 60): void {
+    // Framing a single node should not zoom to the maximum; 1 reads as "actual size".
+    this.frameBounds(bounds, margin, 1);
+  }
+
+  /**
+   * Frame exactly the region somebody else can see — what following their view does.
+   *
+   * Two differences from {@link fit}, and both are about it being a *region somebody chose* rather
+   * than the extent of some content.
+   *
+   * **No margin.** The region already describes what a reader could see, so padding it would show a
+   * follower slightly less than the driver, and slightly less again if they passed it on.
+   *
+   * **No ceiling at zoom 1.** `fit`'s clamp is right for content — framing one node should not fill
+   * the screen with it — and wrong here: a driver examining detail at zoom 3 has a follower clamped to
+   * 1, looking at nine times the area at a third of the detail, which is not the same view in any
+   * useful sense. The camera's own maximum still applies.
+   */
+  frameRegion(region: { x: number; y: number; width: number; height: number }): void {
+    this.frameBounds(
+      { minX: region.x, minY: region.y, maxX: region.x + region.width, maxY: region.y + region.height },
+      0,
+      MAX_ZOOM,
+    );
+  }
+
+  private frameBounds(bounds: Bounds, margin: number, ceiling: number): void {
     const { width, height } = this.state;
     if (!width || !height) return;
     const spanX = Math.max(bounds.maxX - bounds.minX, 1);
     const spanY = Math.max(bounds.maxY - bounds.minY, 1);
-    const zoom = clamp(
-      Math.min((width - margin * 2) / spanX, (height - margin * 2) / spanY),
-      MIN_ZOOM,
-      // Framing a single node should not zoom to the maximum; 1 reads as "actual size".
-      1,
-    );
+    const zoom = clamp(Math.min((width - margin * 2) / spanX, (height - margin * 2) / spanY), MIN_ZOOM, ceiling);
     const centreX = (bounds.minX + bounds.maxX) / 2;
     const centreY = (bounds.minY + bounds.maxY) / 2;
     this.state = {

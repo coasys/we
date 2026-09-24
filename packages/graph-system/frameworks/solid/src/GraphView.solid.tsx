@@ -605,14 +605,59 @@ export function GraphView(props: GraphViewProps) {
 
   engine.subscribe((reason) => {
     batch(() => {
-      if (reason === 'viewport') setViewportVersion((n) => n + 1);
-      else if (reason === 'status') setStatusVersion((n) => n + 1);
+      if (reason === 'viewport') {
+        setViewportVersion((n) => n + 1);
+        /*
+          Reported from the notification rather than from an effect on the version signal, and the
+          difference matters: an effect would also fire for the *first* measurement, before there is a
+          camera worth describing, and a region of nothing at the origin is worse than no answer.
+          `visibleWorldRect` is empty until the surface has a size, and the guard below says so.
+        */
+        const region = engine.viewport.visibleWorldRect();
+        if (region.width > 0 && region.height > 0) props.onViewport?.(region);
+      } else if (reason === 'status') setStatusVersion((n) => n + 1);
       else if (reason === 'connection') setConnectionVersion((n) => n + 1);
       // Its own signal, not the general one: a sweep fires on every pointer move and moves one
       // rectangle, where `version` re-derives every node and every edge.
       else if (reason === 'marquee') setMarqueeVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
+  });
+
+  /**
+   * The marks a host wants drawn, split into the two questions the render asks separately.
+   *
+   * `decorationIds` is what `<For>` iterates, so a row is keyed by id rather than by the object the
+   * host happened to build this tick. `decorationsById` is how that row then reads its own position,
+   * which is the part that changes. Splitting them is what lets a moving mark be a transform on an
+   * element that stays put — see the note at the `<For>` itself.
+   */
+  const decorations = createMemo(() => props.host?.decorations?.() ?? []);
+  const decorationIds = createMemo(() => decorations().map((mark) => mark.id));
+  const decorationsById = createMemo(() => new Map(decorations().map((mark) => [mark.id, mark])));
+
+  /**
+   * Follow somebody else's view: frame the region they are looking at, once per change.
+   *
+   * `framed` is what keeps this from fighting the reader. Without it the effect re-runs on every
+   * camera notification — `engine.frame` itself notifies — and the camera would be pinned to the
+   * region for as long as it was set, so a follower could not pan at all and the graph would fight
+   * every gesture. Compared by value rather than by identity, since a host recomputing an equal
+   * region on an unrelated update is ordinary and must not re-frame.
+   */
+  let framed: string | undefined;
+  createEffect(() => {
+    const region = props.region;
+    if (!region) {
+      // Following nobody leaves the camera exactly where it is. Cleared so that following the same
+      // person again re-frames rather than being taken for a region already applied.
+      framed = undefined;
+      return;
+    }
+    const key = `${region.x},${region.y},${region.width},${region.height}`;
+    if (key === framed) return;
+    framed = key;
+    untrack(() => engine.frame(region));
   });
 
   /**
@@ -2690,12 +2735,38 @@ export function GraphView(props: GraphViewProps) {
     for (const { id, at } of held.home) engine.pin(id, at);
   }
 
+  /**
+   * The last world point reported to `onPointerAt`, and whether a report is already queued.
+   *
+   * Coalesced to one per animation frame because a pointer fires far more often than a screen
+   * changes — on a high-rate mouse, several times per frame — and a consumer that has to sample it
+   * itself is a consumer doing the host's job. The *latest* position is sent when the frame comes, so
+   * nothing is averaged and nothing lags.
+   */
+  let pointerFrame: number | null = null;
+  let pointerAt: { x: number; y: number } | null = null;
+
+  function reportPointer(at: { x: number; y: number } | null) {
+    if (!props.onPointerAt) return;
+    pointerAt = at;
+    if (pointerFrame !== null) return;
+    pointerFrame = requestAnimationFrame(() => {
+      pointerFrame = null;
+      props.onPointerAt?.(pointerAt);
+    });
+  }
+
+  onCleanup(() => {
+    if (pointerFrame !== null) cancelAnimationFrame(pointerFrame);
+  });
+
   function onPointerMove(event: PointerEvent) {
     carryTo(event);
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
     const at = engine.viewport.toWorld(toInput(event).at);
+    reportPointer(at);
     const [hit] = engine.index.hitTest(at);
     if (hit !== hovered()) setHovered(hit ?? null);
     /*
@@ -2764,6 +2835,16 @@ export function GraphView(props: GraphViewProps) {
         with it: chrome that takes text.
       */
       onKeyDown={onKeyDown}
+      /*
+        The pointer left the graph, so there is nothing to report about it.
+
+        On the **root**, not on `.we-graph__surface`, for the reason the keyboard is: the node layer,
+        every card's chrome and the selection's bar are siblings of the hit surface rather than
+        descendants, so a pointer moving from the canvas onto a card's own controls *leaves* the
+        surface without leaving the graph. Bound there, a peer's cursor would blink out every time
+        they passed over a card.
+      */
+      onPointerLeave={() => reportPointer(null)}
       style={{
         width: props.width ?? '100%',
         height: props.height ?? '100%',
@@ -3186,6 +3267,60 @@ export function GraphView(props: GraphViewProps) {
             </span>
           )}
         </For>
+
+        {/*
+          Marks something outside the graph put on the canvas — a peer's cursor, a pin on a card.
+
+          Inside the camera's own layer, which is the whole reason this is cheap: a decoration pans
+          and zooms with the drawing for nothing, because the layer it sits in is the thing being
+          transformed. Nothing here recomputes on a pan.
+
+          Before the nodes in document order, so a card drawn afterwards covers a mark rather than the
+          other way round — a mark is *about* the canvas and must not obscure what it is about. A
+          cursor is the exception and says so itself: `we-live-cursor` carries its own `z-index`.
+        */}
+        <Show when={props.host?.decorations}>
+          <div class="we-graph__decorations">
+            {/*
+              Keyed by **id**, which is why this iterates ids rather than marks.
+
+              `<For>` keys by reference, and a host recomputing its list hands over fresh objects every
+              time — so iterating the marks themselves recreates every row on every move. That is not a
+              performance note: a recreated element has no previous transform to transition *from*, so
+              a cursor jumps and the CSS meant to smooth it is still there looking correct. Iterating
+              ids is enough to fix it, because two equal strings are the same value.
+            */}
+            <For each={decorationIds()}>
+              {(id) => {
+                const mark = () => decorationsById().get(id);
+                /*
+                  Drawn once while this id is present, and then left alone — see `render`'s own note.
+                  Calling it inside the JSX would re-run it whenever the list was rebuilt, which is
+                  the remount this is all here to avoid.
+                */
+                const drawn = mark()?.render();
+                return (
+                  <div
+                    class="we-graph__decoration"
+                    classList={{ 'we-graph__decoration--eased': mark()?.ease === true }}
+                    style={{ transform: `translate(${mark()?.x ?? 0}px, ${mark()?.y ?? 0}px)` }}
+                  >
+                    {/*
+                    Counter-scaled against the camera, so a mark stays the size it was drawn at.
+
+                    In CSS rather than in JS: the layer publishes `--graph-zoom`, so this costs one
+                    declaration and no reactive computation per mark. A separate element from the one
+                    carrying the translate because that one may be transitioned — see `ease` — and a
+                    zoom folded into a transitioned transform would make every wheel click animate
+                    the cursors as well as move them.
+                  */}
+                    <div class="we-graph__decoration-scale">{drawn}</div>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
 
         {/*
           The nodes, in a stacking context of their own — see `.we-graph__nodes`. A card's `z` orders
