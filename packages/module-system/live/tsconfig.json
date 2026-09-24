@@ -1,8 +1,7 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
     // `@we/schema-kit` is exported as source, like every in-repo package a bundler compiles rather
     // than links, so typechecking this module also typechecks the kit's own `./x.ts` imports.
     "allowImportingTsExtensions": true,
@@ -11,5 +10,5 @@
     // repo-wide target is ES2020 and the call module carries the same pair for the same reason.
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "*.config.ts"]
 }

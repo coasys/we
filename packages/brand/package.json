@@ -19,7 +19,7 @@
     "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
     "tsx": "^4.23.13",
-    "typescript": "^5.7.2"
+    "typescript": "^6.0.3"
   },
   "sideEffects": false
 }

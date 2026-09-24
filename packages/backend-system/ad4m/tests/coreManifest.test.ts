@@ -38,7 +38,8 @@ const describeProperty = (p: SHACLShape['properties'][number]) => ({
   required: (p.minCount ?? 0) >= 1,
   collection: p.maxCount === undefined || p.maxCount > 1,
   storage: p.resolveLanguage ?? null,
-  initial: p.initial ?? null,
+  // Written by the compiler and not declared on the published SHACL property type.
+  initial: (p as { initial?: unknown }).initial ?? null,
   transformed: p.transform !== undefined,
   flagValue: p.hasValue ?? null,
   hint: p.interpretationHint ?? null,

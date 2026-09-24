@@ -1,13 +1,16 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "declarationMap": true,
     "outDir": "dist",
-    "rootDir": "src",
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    // This generator reads the repo off disk, so it needs node's types named. TypeScript 6 defaults
+    // `types` to [] instead of auto-loading every @types package it can find; `@types/node` was already a
+    // devDependency here and was arriving by accident.
+    "types": ["node"]
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "include": ["src", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

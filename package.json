@@ -37,8 +37,8 @@
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@typescript-eslint/eslint-plugin": "^8.68.0",
-    "@typescript-eslint/parser": "^8.68.0",
+    "@typescript-eslint/eslint-plugin": "^8.70.1",
+    "@typescript-eslint/parser": "^8.70.1",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.2.1",
@@ -51,7 +51,7 @@
     "stylelint": "^17.14.1",
     "stylelint-config-standard": "^40.0.0",
     "stylelint-config-standard-scss": "^17.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^6.0.3"
   },
   "pnpm": {
     "overrides": {

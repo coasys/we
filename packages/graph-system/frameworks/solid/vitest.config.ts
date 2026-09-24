@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   // The component this package exports is JSX, so the test run needs the same compiler the build uses
