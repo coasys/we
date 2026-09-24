@@ -2869,11 +2869,43 @@ const callsPanel: SchemaNode = {
                       $localState: { pointerOnRow: { type: 'boolean', initial: false } },
                       children: [
                         {
-                          type: 'we-button',
-                          props: {
-                            variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
-                            flex: '1',
-                            /*
+                          /*
+                            The whole row asks the question, not just its first line.
+
+                            The trigger used to be the title alone. That put the bubble on most of the
+                            row's width and none of its height: moving from the name down to the
+                            description — inside one row, over one subject — opened it and closed it
+                            again, and resting on the faces or the date asked nothing. A tooltip that
+                            answers "what is this row" should be triggered by the row.
+
+                            The note here used to argue the opposite, that a list read by sweeping
+                            should not open a bubble on every row the pointer crosses. Worth keeping
+                            the observation and dropping the conclusion: the title spans the row's
+                            width already, so the sweep has always opened them — what the narrow
+                            trigger bought was not fewer bubbles but a flickering one.
+
+                            What it costs is nothing in layout: this element and its trigger part are
+                            both `display: contents`, so the button is still the flex item that
+                            carries `flex: '1'` and `minWidth: '0'`, and the bubble anchors on the
+                            button's box.
+
+                            What it gains, besides the flicker: the tooltip shows on `focusin` as well
+                            as hover, and a `we-text` cannot take focus. Around the button — which is
+                            a real `<button>` — the full name is on the keyboard path for the first
+                            time.
+
+                            The Join and delete buttons keep their own tooltips and sit outside this
+                            one, so nothing nests and each control still says what it does.
+                          */
+                          type: 'we-tooltip',
+                          props: { placement: 'right' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
+                                flex: '1',
+                                /*
                               The half of `flex: '1'` that is easy to forget, and without which this
                               row overflowed its panel.
 
@@ -2885,10 +2917,10 @@ const callsPanel: SchemaNode = {
                               edge. The Column inside already has `minWidth: '0'` and never got
                               asked, because the floor was here.
                             */
-                            minWidth: '0',
-                            ax: 'start',
-                            gap: '200',
-                            /*
+                                minWidth: '0',
+                                ax: 'start',
+                                gap: '200',
+                                /*
                               Two lines — the name and when — and a button's size pins its height to
                               the one-line control height, so the selected row's fill was shorter
                               than its own label and the icon sat on the edge of it. `auto` lets the
@@ -2896,10 +2928,10 @@ const callsPanel: SchemaNode = {
                               keeps clear above and below it. Horizontal matches it: a list row in
                               a `sm` panel, not a standalone control, and the icon is its own inset.
                             */
-                            height: 'auto',
-                            py: '200',
-                            px: '200',
-                            /*
+                                height: 'auto',
+                                py: '200',
+                                px: '200',
+                                /*
                               The whole of choosing: the id goes in the address, and every surface
                               follows. Nothing is joined, claimed or written.
 
@@ -2913,20 +2945,20 @@ const callsPanel: SchemaNode = {
                               rather than choosing at render time — the one place `$if` is a token
                               rather than a node.
                             */
-                            onClick: {
-                              $if: {
-                                condition: { $: `call.id == (${CALL_EXPR})` },
-                                then: openLiveCall,
-                                else: openCall('call.id'),
+                                onClick: {
+                                  $if: {
+                                    condition: { $: `call.id == (${CALL_EXPR})` },
+                                    then: openLiveCall,
+                                    else: openCall('call.id'),
+                                  },
+                                },
                               },
-                            },
-                          },
-                          children: [
-                            {
-                              type: 'we-icon',
-                              props: {
-                                name: 'phone-call',
-                                /*
+                              children: [
+                                {
+                                  type: 'we-icon',
+                                  props: {
+                                    name: 'phone-call',
+                                    /*
                                   The fill role, for the reason the record icon above uses it: a
                                   live-call marker is a signal rather than a sentence, and the
                                   derived foreground goes pale in a dark theme.
@@ -2937,11 +2969,11 @@ const callsPanel: SchemaNode = {
                                   Which of them is *yours* is said twice over beside it — the row's
                                   selected fill, and a button that says "Go to" rather than "Join".
                                 */
-                                color: { $: `${ROW_LIVE_CALL} ? 'danger' : 'text-faint'` },
-                              },
-                            },
-                            {
-                              /*
+                                    color: { $: `${ROW_LIVE_CALL} ? 'danger' : 'text-faint'` },
+                                  },
+                                },
+                                {
+                                  /*
                                 What it was called, and when — in that order, because a list of
                                 meetings told apart only by date is a list you read by elimination.
 
@@ -2950,55 +2982,18 @@ const callsPanel: SchemaNode = {
                                 the title: clearing a name has to be allowed, and what it returns to
                                 is the plain "Call" it started as.
                               */
-                              type: 'Column',
-                              props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
-                              children: [
-                                /*
-                                  The name, and the whole of it on hover along with whatever was
-                                  written about the call — the pill's arrangement, for its reasons;
-                                  see the note there.
-
-                                  The trigger is the text rather than the row: this list is read by
-                                  sweeping down it, and a bubble opening on every row the pointer
-                                  crosses is worse than no bubble. Resting on a name asks a question;
-                                  passing over one does not.
-                                */
-                                {
-                                  type: 'we-tooltip',
-                                  props: { placement: 'right' },
+                                  type: 'Column',
+                                  props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
                                   children: [
+                                    // The name. The whole of it, and whatever was written about the call,
+                                    // are on hover — from the tooltip around the whole row button rather
+                                    // than from one around this line; see the note there.
                                     {
                                       type: 'we-text',
                                       props: { truncate: true, width: '100%', textAlign: 'left' },
                                       children: [{ $: "call.title ? call.title : 'Call'" }],
                                     },
-                                    {
-                                      type: 'Column',
-                                      props: { gap: '100' },
-                                      slot: 'content',
-                                      children: [
-                                        {
-                                          type: 'we-text',
-                                          props: { variant: 'label' },
-                                          children: [{ $: "call.title ? call.title : 'Call'" }],
-                                        },
-                                        {
-                                          // `on-inverse`, not `text-muted` — see the pill's note.
-                                          type: '$if',
-                                          props: {
-                                            condition: { $: 'call.description' },
-                                            then: {
-                                              type: 'we-text',
-                                              props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
-                                              children: [{ $: 'call.description' }],
-                                            },
-                                          },
-                                        },
-                                      ],
-                                    },
-                                  ],
-                                },
-                                /*
+                                    /*
                                   A line of what the call was about, where there is one — the thing
                                   the pill has no room for and this panel does. The panel is where
                                   one call is chosen out of thirty, and a date is what you fall back
@@ -3011,40 +3006,40 @@ const callsPanel: SchemaNode = {
                                   narrow. `truncate` is already nowrap, so it costs nothing and the
                                   tooltip above carries the rest.
                                 */
-                                {
-                                  type: '$if',
-                                  props: {
-                                    condition: { $: 'call.description' },
-                                    then: {
-                                      type: 'we-text',
+                                    {
+                                      type: '$if',
                                       props: {
-                                        truncate: true,
-                                        width: '100%',
-                                        textAlign: 'left',
-                                        variant: 'footnote',
-                                        color: 'text-muted',
+                                        condition: { $: 'call.description' },
+                                        then: {
+                                          type: 'we-text',
+                                          props: {
+                                            truncate: true,
+                                            width: '100%',
+                                            textAlign: 'left',
+                                            variant: 'footnote',
+                                            color: 'text-muted',
+                                          },
+                                          children: [{ $: 'call.description' }],
+                                        },
                                       },
-                                      children: [{ $: 'call.description' }],
                                     },
-                                  },
+                                    {
+                                      type: 'we-timestamp',
+                                      // No `truncate`: a timestamp is one short token and the primitive has
+                                      // no such prop. It went unnoticed because a panel's node was never
+                                      // walked by the validator until sections were.
+                                      props: {
+                                        value: { $: 'call.createdAt' },
+                                        relative: true,
+                                        relativeStyle: 'narrow',
+                                        fontSize: '100',
+                                        color: 'text-faint',
+                                      },
+                                    },
+                                  ],
                                 },
                                 {
-                                  type: 'we-timestamp',
-                                  // No `truncate`: a timestamp is one short token and the primitive has
-                                  // no such prop. It went unnoticed because a panel's node was never
-                                  // walked by the validator until sections were.
-                                  props: {
-                                    value: { $: 'call.createdAt' },
-                                    relative: true,
-                                    relativeStyle: 'narrow',
-                                    fontSize: '100',
-                                    color: 'text-faint',
-                                  },
-                                },
-                              ],
-                            },
-                            {
-                              /*
+                                  /*
                                 Who is in the call, or who was — inside the button, at the end of it.
 
                                 The faces used to sit outside the button altogether, in a column of
@@ -3073,8 +3068,34 @@ const callsPanel: SchemaNode = {
                                 title has somewhere to go, since the column beside it carries
                                 `minWidth: '0'` and the whole name is on hover.
                               */
-                              type: 'AvatarStack',
-                              props: { avatars: { $: ROW_FACES }, size: 'sm', max: 3 },
+                                  type: 'AvatarStack',
+                                  props: { avatars: { $: ROW_FACES }, size: 'sm', max: 3 },
+                                },
+                              ],
+                            },
+                            {
+                              type: 'Column',
+                              props: { gap: '100' },
+                              slot: 'content',
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'label' },
+                                  children: [{ $: "call.title ? call.title : 'Call'" }],
+                                },
+                                {
+                                  // `on-inverse`, not `text-muted` — see the pill's note.
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: 'call.description' },
+                                    then: {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                                      children: [{ $: 'call.description' }],
+                                    },
+                                  },
+                                },
+                              ],
                             },
                           ],
                         },
