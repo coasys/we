@@ -5,6 +5,7 @@ import { ToastContainer, toastService } from '@we/components/solid';
 import { ErrorBoundary, onCleanup, onMount } from 'solid-js';
 
 import { AppFailure } from './components/AppFailure';
+import { LiveViewHost } from './components/LiveView';
 import { injectDSInteropStyles } from './dsInterop';
 
 injectDSInteropStyles();
@@ -48,6 +49,15 @@ export default function App() {
     <ErrorBoundary fallback={(error) => <AppFailure error={error} />}>
       <StoreProvider>
         <TemplateProvider />
+        {/*
+          Outside the template, and after it, deliberately.
+
+          Outside because what it binds is the *screen* — the router, the shell's insets, the pointer —
+          none of which belongs to whatever template happens to be rendering, and all of which has to
+          survive a template switch. After, so the marks it draws paint over the content rather than
+          under it; they are `pointer-events: none`, so nothing they cover becomes unreachable.
+        */}
+        <LiveViewHost />
         <ToastContainer />
       </StoreProvider>
     </ErrorBoundary>

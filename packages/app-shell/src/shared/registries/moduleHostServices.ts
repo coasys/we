@@ -45,6 +45,7 @@ import type {
   ModuleKernels,
   ModuleStoreDeps,
   RecordQuery,
+  ViewKernel,
 } from '@we/module-shared';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
@@ -73,6 +74,14 @@ export interface ModuleHostServices {
     setActivity: (activity: Activity) => void;
     clearActivity: (type: string, id?: string) => void;
   };
+  /**
+   * The screen: where this agent's pointer is, what is in view, and what to draw on top.
+   *
+   * Bound by the component that can see all three — the router, the DOM and the shell's insets — and
+   * forwarded to the `view` kernel below. See `shared/liveView.ts` for why none of it can be a
+   * module's own.
+   */
+  view?: ViewKernel;
   transcription?: TranscriptionPort;
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
@@ -303,6 +312,19 @@ export function createModuleStoreDeps(framework: {
       peers: () => services.presence?.peers() ?? [],
       setActivity: (activity) => services.presence?.setActivity(activity),
       clearActivity: (type, id) => services.presence?.clearActivity(type, id),
+    },
+
+    /*
+      Forwarded, like every other kernel here, and the degraded answers are the interesting part: a
+      host with no view binding reports a pointer that never moves, a frame with an empty path, and
+      accepts decorations nobody draws. A module must survive all three — which is the ordinary case
+      on a host that has not finished booting, and the permanent case on one with no screen at all.
+    */
+    view: {
+      onPointer: (cb) => services.view?.onPointer(cb) ?? (() => {}),
+      frame: () => services.view?.frame() ?? { path: '' },
+      apply: (frame) => services.view?.apply(frame),
+      decorate: (get) => services.view?.decorate(get) ?? (() => {}),
     },
 
     // A stable function that forwards, so a module capturing the port at construction still reaches

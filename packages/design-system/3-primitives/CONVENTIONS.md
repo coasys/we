@@ -271,7 +271,7 @@ level down. **Fall back to the first child that has a box** — the same rule `w
 `data-we-id`. Measuring the marker blindly gives a zero rect, and every fraction computed against it
 collapses into a corner.
 
-The constant is `RECORD_ATTR` in `shared/helpers.ts`. Do not hardcode the string.
+The constant is `RECORD_ATTR`, exported from `@we/design-utils` so the app shell can read it too. Do not hardcode the string.
 
 ## Token Types vs CSS Enums
 

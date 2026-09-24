@@ -1,10 +1,10 @@
+import { RECORD_ATTR } from '@we/design-utils';
 import { type DragItem, type DragPreview, dragSession, type DragWithin, watchPointerDrag } from '@we/drag';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import { warnAboutBoxlessLayoutProps } from '../shared/boxless';
 import { LayoutElement } from '../shared/design-system-element';
-import { RECORD_ATTR } from '../shared/helpers';
 import { pressIsOnText } from '../shared/textHit';
 
 const CSS_STYLES = css`

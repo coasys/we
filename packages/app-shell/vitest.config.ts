@@ -51,6 +51,10 @@ const SOLID_TESTS = [
   'tests/dockStowAndReveal.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
+  // Nothing renders, but every case measures a real element's box and reads real attributes off a
+  // real tree — the DOM is the subject, and the frame maths is what a live cursor is right or
+  // silently wrong by.
+  'tests/liveView.test.ts',
 ];
 
 export default defineConfig({
