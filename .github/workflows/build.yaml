@@ -5,9 +5,37 @@
 # history.
 name: CI
 
+# Deactivated: these checks now run on CircleCI (`.circleci/config.yml`), on the
+# self-hosted `coasys/marvin-we` pool. Running both would mean every push paying
+# twice for the same six answers, and two check lists to read on every PR.
+#
+# Deactivated rather than deleted, and the distinction is deliberate: everything
+# below — why there are five jobs and not one, why the drift check has no
+# exclusions, why the build outputs are derived from `git status --ignored`
+# rather than a path list — is the reasoning the CircleCI translation was built
+# from. Deleting the file would delete the argument and keep only the result.
+#
+# `workflow_dispatch` stays so this can be run by hand: if CircleCI or the runner
+# host is ever unavailable, this is the fallback, and a fallback that has never
+# been runnable is not one.
+#
+# `pull_request` also stays, but every job is gated on the PR coming from a fork.
+# This repository is public and the CircleCI project has **Build forked pull
+# requests off** (verified via the project settings API, 2026-09-16). Without
+# this gate a fork PR would get no CI at all once these checks moved: CircleCI
+# declines to build it and Actions no longer would either. Turning that setting
+# on is the wrong fix — it runs a stranger's code directly on the Coasys host,
+# beside `~/.cargo`, the pnpm store and `$CI_ARTIFACT_DIR`.
+#
+# So the split is by trust, not by system: a fork gets hosted CI on GitHub's
+# runners with a restricted token, a same-repo branch gets CircleCI on the
+# self-hosted pool, and no pull request ever shows two check lists.
+#
+# To also restore pushes to `dev` here, add:
+#   push:
+#     branches: [dev]
 on:
-  push:
-    branches: [dev]
+  workflow_dispatch:
   pull_request:
 
 # One run per branch/PR — a second push cancels the in-flight run instead of
@@ -33,6 +61,8 @@ concurrency:
 jobs:
   lint:
     name: Lint
+    # Forks only — see the `on:` block. Same condition on all six jobs.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -76,6 +106,8 @@ jobs:
 
   build:
     name: Build
+    # Forks only — see the `on:` block. Same condition on all six jobs.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -147,6 +179,8 @@ jobs:
   typecheck:
     name: Typecheck
     needs: build
+    # Forks only — see the `on:` block. Same condition on all six jobs.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -159,6 +193,8 @@ jobs:
   test:
     name: Test
     needs: build
+    # Forks only — see the `on:` block. Same condition on all six jobs.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -222,6 +258,8 @@ jobs:
   # close: once the crate resolves, add the `cargo test` step below it and drop this note.
   rust:
     name: Rust formatting
+    # Forks only — see the `on:` block. Same condition on all six jobs.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -292,6 +330,8 @@ jobs:
   schemas:
     name: Validate schemas
     needs: build
+    # Forks only — see the `on:` block. Same condition on all six jobs.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
