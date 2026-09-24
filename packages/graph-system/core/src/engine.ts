@@ -21,6 +21,7 @@ import type {
   GraphSpec,
   GraphValue,
   Layout,
+  LayoutRegion,
   Placement,
   Point,
   StyleRules,
@@ -348,6 +349,8 @@ export class GraphEngine {
   private travelTimer?: ReturnType<typeof setTimeout>;
   /** The duration the travel in flight was asked for. Zero means nothing is travelling. */
   private travelDuration = 0;
+  /** Areas the current layout asked to have drawn behind the nodes — see {@link getLayoutRegions}. */
+  private layoutRegions: LayoutRegion[] = [];
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -1419,6 +1422,10 @@ export class GraphEngine {
       ...(width && height ? { visible: this.visibleWorldRect() } : {}),
     });
     this.setLayoutWarnings(result.warnings ?? []);
+    // Areas the layout named — see `LayoutRegion`. Replaced wholesale rather than merged: a region is
+    // a fact about *this* arrangement, so one kept from the previous run would be drawn around cards
+    // that have since moved out of it.
+    this.layoutRegions = result.regions ?? [];
     this.fitUntilSettled = !!options?.fit && !!result.running;
     this.applyPositions(result.positions, options?.fit, options?.travel);
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
@@ -1636,6 +1643,17 @@ export class GraphEngine {
   /** Whether any card is mid-travel — for a caller that should wait for the arrangement to settle. */
   isTravelling(): boolean {
     return this.travelAnim.size > 0;
+  }
+
+  /**
+   * Areas of the arrangement the layout named, for the renderer to draw behind the nodes.
+   *
+   * Empty for every layout where a position says the whole of what was decided, which is most of them.
+   * See `LayoutRegion`: a region is a caption on a part of the arrangement, not a node, so nothing
+   * here is picked, selected, dragged or counted against the budget.
+   */
+  getLayoutRegions(): readonly LayoutRegion[] {
+    return this.layoutRegions;
   }
 
   /** Recompute routes after a style change — `curve` decides the shape, so it decides the geometry. */

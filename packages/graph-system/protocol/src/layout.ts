@@ -70,8 +70,36 @@ export interface LayoutInput {
   visible?: { x: number; y: number; width: number; height: number };
 }
 
+/**
+ * An area of the arrangement that means something, for the renderer to draw behind the nodes.
+ *
+ * A layout can only answer with positions, and there are arrangements where a position is not the
+ * whole of what was decided: `forest` puts every card that is on no tree in a zone of its own, and a
+ * region of cards with nothing said about it reads as a tree whose lines failed to draw. What makes
+ * it legible is the thing a position cannot carry — that this area is a *kind* of place, and how many
+ * cards are in it.
+ *
+ * Deliberately not a node. A synthetic node would be picked, dragged, selected, counted in the
+ * budget, offered a fold and asked for its record, and every one of those is wrong for a caption. It
+ * is also deliberately not styled: a region says what it is and the renderer decides what that looks
+ * like, exactly as a warning is worded here and drawn by the status strip.
+ */
+export interface LayoutRegion {
+  /** Stable within a layout, so a renderer can key on it across runs. */
+  id: string;
+  /** What this area is, in the reader's language. The renderer draws it as the region's caption. */
+  label?: string;
+  /** World bounds, as {@link Bounds}. */
+  bounds: Bounds;
+}
+
 export interface LayoutResult {
   positions: Map<string, Placement>;
+  /**
+   * Areas of the arrangement worth naming — see {@link LayoutRegion}. Absent for the layouts where
+   * position says everything, which is most of them.
+   */
+  regions?: LayoutRegion[];
   /**
    * True while the layout is still settling — a force simulation between ticks.
    *

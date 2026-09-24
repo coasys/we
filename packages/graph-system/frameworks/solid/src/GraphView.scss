@@ -270,6 +270,49 @@
 }
 
 /*
+  An area of the arrangement the layout named — see `LayoutRegion`.
+
+  A dashed outline and a tinted wash rather than a border and a fill, because a region is a *caption on
+  a place* and not a container: the cards in it are ordinary cards, and something drawn like a panel
+  would say they were inside a thing rather than merely together. Dashed is the same vocabulary a card
+  nobody has agreed to already uses here — provisional, an observation about the drawing.
+
+  `pointer-events: none` for the reason everything in this layer has it: what was clicked is answered
+  from geometry the engine owns, and a region is not a thing that can be clicked.
+*/
+.we-graph__region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px dashed var(--we-role-border);
+  border-radius: var(--we-radius-300);
+  background: var(--we-role-surface-sunken);
+  pointer-events: none;
+}
+
+/*
+  The zone's name, sitting on its top edge.
+
+  Counter-scaled against the camera, like a decoration's content: a caption is chrome about the
+  arrangement rather than part of the drawing, and one that shrank to nothing as the reader zoomed out
+  to take in the whole forest would disappear exactly when it is most worth reading.
+
+  `bottom: 100%` puts it above the region rather than inside it, so it never sits over the first row of
+  cards — a label a card covers is a label that reads as absent.
+*/
+.we-graph__region-label {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  transform: scale(calc(1 / var(--graph-zoom, 1)));
+  transform-origin: 0 100%;
+  padding-block-end: var(--we-space-100);
+  color: var(--we-role-text-faint);
+  font-size: var(--we-font-size-100);
+  white-space: nowrap;
+}
+
+/*
   Marks something outside the graph put on the canvas — see `GraphDecoration`.
 
   The same zero-size anchoring the nodes use, so a mark's own origin lands exactly on its world

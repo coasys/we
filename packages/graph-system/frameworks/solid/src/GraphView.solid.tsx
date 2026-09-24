@@ -1165,6 +1165,20 @@ export function GraphView(props: GraphViewProps) {
 
   // ─── Reactive projections ────────────────────────────────────────────────────
 
+  /**
+   * Areas of the arrangement the layout named — the `forest`'s zone of unconnected cards, and whatever
+   * a later layout wants to caption.
+   *
+   * Drawn rather than left implicit because a region of cards with nothing said about it reads as a
+   * tree whose lines failed to render, which is a much worse thing to conclude than the truth. And
+   * drawn from the layout's own answer rather than derived here: only the layout knows which of its
+   * cards are in which part of its arrangement.
+   */
+  const regions = createMemo(() => {
+    version();
+    return [...engine.getLayoutRegions()];
+  });
+
   const nodes = createMemo(() => {
     version();
     const placed = engine.getPositions();
@@ -2984,6 +2998,35 @@ export function GraphView(props: GraphViewProps) {
           '--graph-zoom': String(zoom()),
         }}
       >
+        {/*
+          The areas the layout named, behind everything.
+
+          First in document order, so a card always covers its region rather than the other way round —
+          a region is *about* the cards in it, exactly as a decoration is about the canvas. It is inside
+          the camera's layer, so it pans and zooms with the drawing for nothing.
+
+          The caption is counter-scaled against the camera, like a decoration's content: a zone's name
+          is chrome about the arrangement rather than part of the drawing, and a label that shrank to
+          nothing when the reader zoomed out to see the whole forest would vanish exactly when it is
+          most needed.
+        */}
+        <For each={regions()}>
+          {(region) => (
+            <div
+              class="we-graph__region"
+              style={{
+                transform: `translate(${region.bounds.minX}px, ${region.bounds.minY}px)`,
+                width: `${Math.max(0, region.bounds.maxX - region.bounds.minX)}px`,
+                height: `${Math.max(0, region.bounds.maxY - region.bounds.minY)}px`,
+              }}
+            >
+              <Show when={region.label}>
+                <span class="we-graph__region-label">{region.label}</span>
+              </Show>
+            </div>
+          )}
+        </For>
+
         <svg class="we-graph__edges" aria-hidden="true">
           <For each={edges()}>
             {(entry) => (

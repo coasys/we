@@ -51,6 +51,7 @@ export type {
   Layout,
   LayoutFactory,
   LayoutInput,
+  LayoutRegion,
   LayoutResult,
   Placement,
   Point,
