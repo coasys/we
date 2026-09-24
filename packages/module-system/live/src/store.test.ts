@@ -565,6 +565,36 @@ describe('following', () => {
     expect(view.applied).toHaveLength(1);
   });
 
+  it('says when the driver is looking at something this screen does not have open', () => {
+    const { store, presence, wire, view } = setup();
+    presence.publish(ANA, { type: 'driving', since: 1 });
+    store.follow();
+
+    const send = (frame: Record<string, unknown>, seq: number) =>
+      wire.agent(ANA).channel('live').publish({ v: LIVE_PROTOCOL_VERSION, seq, kind: 'view', frame });
+
+    /*
+      A frame carries a page, a surface within it, and a position on that surface. The page always
+      arrives; the position only means anything if this screen has the same surface to put it on. When it
+      does not, the follower is on the right page looking at something else while every control says they
+      are following, which reads as following being broken rather than as reaching its limit.
+    */
+    send({ path: '/space/a/canvas', surface: 'canvas:other', region: { x: 0, y: 0, width: 10, height: 10 } }, 1);
+    // Nothing yet: navigation is not instant, so a surface judged on the tick of the apply that will
+    // change it is always a mismatch. The next frame is the earliest honest moment.
+    expect(store.problem()).toBe('');
+
+    send({ path: '/space/a/canvas', surface: 'canvas:other', region: { x: 0, y: 0, width: 10, height: 10 } }, 2);
+    expect(store.problem()).toContain('Ana');
+    expect(store.problem()).toContain('does not have open');
+
+    // And it clears itself once the two screens agree, rather than sitting there after the fact.
+    view.setFrame({ path: '/space/a/canvas', surface: 'canvas:same' });
+    send({ path: '/space/a/canvas', surface: 'canvas:same' }, 3);
+    send({ path: '/space/a/canvas', surface: 'canvas:same' }, 4);
+    expect(store.problem()).toBe('');
+  });
+
   it('stops when the person being followed goes away', () => {
     const { store, presence } = setup();
     presence.publish(ANA, { type: 'driving', since: 1 });

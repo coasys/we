@@ -142,6 +142,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    * the request would call every successful apply a movement by the follower.
    */
   let watch: FollowWatch = { anchor: '', at: 0 };
+  /** The surface the last applied frame named, so the next one can say whether this screen ever got there. */
+  let appliedSurface = '';
 
   const now = () => Date.now();
 
@@ -269,6 +271,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     attachedTo = handle;
     // A property of the medium, not of this agent — see the declaration.
     publishCost = 0;
+    appliedSurface = '';
     /*
       A change of space clears the synthetic cursors.
 
@@ -396,6 +399,28 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
     // A view is worth acting on only from the person this agent chose to follow.
     if (message.kind === 'view' && followingDid() && from === followingDid()) {
+      /*
+        Say when part of a frame could not be taken up, rather than diverging in silence.
+
+        A frame carries a page, a surface within it and a position on that surface. The page always
+        arrives; the position only means something if this screen has the same surface to put it on. When
+        it does not — the driver is on a canvas this agent has not opened, or has a different one open —
+        the follower ends up on the right page looking at something else, with every control saying they
+        are following. That reads as following being broken rather than as reaching its limit.
+
+        Judged against the frame BEFORE this one, which is what makes it sound: applying a frame navigates,
+        navigation is not instant, and a surface compared on the same tick as the apply that will change it
+        is always a mismatch. A driver republishes every couple of seconds, so the next frame is the
+        earliest honest moment to look.
+      */
+      const mine = view?.frame()?.surface ?? '';
+      if (appliedPath && appliedSurface && mine && appliedSurface !== mine) {
+        setProblem(`${nameOf(from) || 'They'} are looking at something this screen does not have open.`);
+      } else if (appliedSurface) {
+        setProblem('');
+      }
+      appliedSurface = message.frame.surface ?? '';
+
       appliedPath = message.frame.path;
       // Nothing to compare against until the surface has settled where this put it — see `followRelease`.
       watch = { anchor: '', at: now() };
