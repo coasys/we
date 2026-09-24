@@ -216,13 +216,46 @@ export const TREE_EDGE_RULES: SchemaProp = {
  * that is present and inert is worse than one that is absent: it invites a press and answers with
  * nothing. The mode button is always there, which is the other half of the same rule.
  */
-export function treeStrip(): SchemaNode {
+export function treeStrip(opts: { below?: string } = {}): SchemaNode {
+  /*
+    Where the strip's top edge goes.
+
+    `below` is the line the surrounding chrome ends at, which the caller knows and this does not: on the
+    workshop it is the pinned pill bar, whose height is an expression over the control-height token and
+    a theme's offset to it. Without it the strip sat at the container's own top corner — *underneath* the
+    call pill and the undo/redo pills, which are `position: fixed` over the whole route. The controls
+    rendered perfectly, measured correctly and could not be seen or pressed.
+
+    Absent means the corner, which is right for a canvas with nothing pinned over it.
+  */
+  const top = opts.below ? `calc(${opts.below} + var(--we-space-300))` : 'var(--we-space-300)';
   return {
     type: 'Row',
     props: {
+      /*
+        Pinned to the corner with `top`/`left` rather than nudged with `x`/`y`.
+
+        The design system prefers the transform pair for anything in flow, because those respond to a
+        breakpoint and compose with rotation. This is not in flow: it is an overlay whose whole
+        instruction is "that corner, that far in", and `top` is the property that says so. A transform
+        would say "this far from wherever you would otherwise have been", which for an absolutely
+        positioned child of a flex container is the content-box origin — the same place, arrived at less
+        directly and unclamped by the box.
+      */
       position: 'absolute',
+      top,
+      /*
+        A plain token, where the pills beside it need `--we-chrome-left`.
+
+        They are `position: fixed`, so they resolve against the viewport and have to add back the
+        sidebar and any left-hand dock themselves. This is `absolute` inside the route, which the shell
+        has already inset by both — so the same visual gap is the bare token, and reading the chrome
+        variable here would push the strip in by the sidebar's width twice.
+      */
+      left: '300',
+      // Above the graph's own layers. The graph is `position: relative` with no stacking of its own, so
+      // a later sibling would paint over it anyway; stated because the reason it works is not visible.
       zIndex: 2,
-      m: '300',
       p: '200',
       gap: '200',
       ay: 'center',
@@ -231,7 +264,8 @@ export function treeStrip(): SchemaNode {
       r: 'surface',
       border: '1px solid border',
       shadow: 'sm',
-      maxWidth: 'calc(100% - var(--we-space-600))',
+      // The inset on each side, so a wrapped strip never runs off a narrow canvas.
+      maxWidth: 'calc(100% - 2 * var(--we-space-300))',
     },
     children: [
       /*

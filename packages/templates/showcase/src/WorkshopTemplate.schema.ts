@@ -915,6 +915,19 @@ const PILL_HEIGHT =
 const CHROME_BOTTOM = `calc(${CHROME_TOP} + ${PILL_HEIGHT})`;
 
 /**
+ * The same three numbers, as one thing, for the surfaces that are not routes.
+ *
+ * `ROUTE_BAND` turns them into padding, which is what a page of content wants. The canvas cannot: it is
+ * full-bleed, and the only thing on it that has to clear the pills is the reading strip floating in its
+ * corner — which needs the line as a coordinate rather than as padding.
+ *
+ * Exported as a band rather than as three constants because that is what it is, and because the browser
+ * harness needs the same geometry to assert the strip clears it: a case that hard-coded 68px would pass
+ * against a theme that adds to control heights and lie about every other one.
+ */
+export const CALL_CHROME_BAND = { top: CHROME_TOP, height: PILL_HEIGHT, bottom: CHROME_BOTTOM } as const;
+
+/**
  * The corner that says which call every other surface is about.
  *
  * ## What it is, now that it is one thing
@@ -4072,7 +4085,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     canvas,
     // How the canvas is read: the mode, and what the tree is made of. Over the canvas's own corner
     // rather than in a panel, because a panel can be closed and this is the only way out of the mode.
-    treeStrip(),
+    treeStrip({ below: CALL_CHROME_BAND.bottom }),
     /*
       Where a connection is actually written down.
 

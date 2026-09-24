@@ -2088,6 +2088,16 @@ describe('the workshop’s tree', () => {
     */
     expect(canvas).toContain('"$toggleLocal":"treeMode"');
     expect(canvas).toContain('"position":"absolute"');
+    /*
+      And below the pinned pill bar, off the band the template exports rather than a number.
+
+      The strip shipped at the container's own corner, which is *underneath* the call and history pills
+      — `position: fixed` over the whole route — so every control rendered, measured correctly and could
+      neither be seen nor pressed. That it clears them is a claim about pixels and is asserted in
+      `tests/browser/cases/treeStrip.mjs`; this is the narrower claim that the clearance is expressed as
+      the shared band, since a second copy of that arithmetic is what drifted last time.
+    */
+    expect(canvas).toContain('"top":"calc(calc(var(--we-space-300) + calc(var(--we-component-height-md)');
     // And the strip's box is positioned against the route rather than whatever ancestor happens to be
     // above it — without which "the canvas's own corner" is somewhere else entirely.
     expect(canvas).toContain('"position":"relative"');
