@@ -187,7 +187,7 @@ describe('what this agent has in view', () => {
     const state = createLiveViewState();
     const key = canvasSurface('c1');
     state.surfaces.set(key, { key, region: { x: 1, y: 2, width: 3, height: 4 } });
-    expect(composeFrame(state, '/space/a/canvas?call=x', CONTENT)).toEqual({
+    expect(composeFrame(state, { path: '/space/a/canvas?call=x', pathname: '/space/a/canvas' }, CONTENT)).toEqual({
       path: '/space/a/canvas?call=x',
       surface: key,
       region: { x: 1, y: 2, width: 3, height: 4 },
@@ -199,11 +199,28 @@ describe('what this agent has in view', () => {
     const card = boxed({ x: 0, y: -25, width: 100, height: 100 });
     card.setAttribute(RECORD_ATTR, 'top');
     document.body.append(card);
-    expect(composeFrame(state, '/kanban', CONTENT)).toEqual({
+    expect(composeFrame(state, { path: '/kanban', pathname: '/kanban' }, CONTENT)).toEqual({
       path: '/kanban',
       surface: 'route:/kanban',
       anchor: { record: 'top', offset: 0.25 },
     });
+  });
+
+  it('keeps the query out of the surface key, and in the path', () => {
+    const state = createLiveViewState();
+    const frame = composeFrame(state, { path: '/space/a/kanban?call=xyz', pathname: '/space/a/kanban' }, CONTENT);
+
+    /*
+      Two halves of one address, and not interchangeable. `path` is what a follower has to reproduce, and
+      in WE half of what a page shows lives in the query. The *surface* is screen geometry, which two
+      people with different view state share — so a key built from the full address disagrees with the
+      publisher and the overlay, both of which key on the pathname. Everything whose surface came from
+      here was then dropped, while real cursors between two peers carried on working: the development
+      harness drew nothing at all and nothing else looked wrong.
+    */
+    expect(frame.path).toBe('/space/a/kanban?call=xyz');
+    expect(frame.surface).toBe(routeSurface('/space/a/kanban'));
+    expect(frame.surface).not.toContain('?');
   });
 
   it('ignores a canvas that is registered but has never reported a camera', () => {
@@ -211,7 +228,7 @@ describe('what this agent has in view', () => {
     state.surfaces.set(canvasSurface('c1'), { key: canvasSurface('c1') });
     // Before the first measurement there is no camera worth describing, and a region of nothing at the
     // origin would frame a follower on empty space.
-    expect(composeFrame(state, '/x', CONTENT).region).toBeUndefined();
+    expect(composeFrame(state, { path: '/x', pathname: '/x' }, CONTENT).region).toBeUndefined();
   });
 });
 

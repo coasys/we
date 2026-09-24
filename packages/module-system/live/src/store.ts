@@ -379,9 +379,17 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
   const marks = (): LiveDecoration[] => {
     cursorVersion();
-    if (!cursorsOn() || !cursorsAllowed()) return [];
-    const real = [...held].map(([did, cursor]) => cursorMark(did, cursor));
-    return [...real, ...fakeMarks()];
+    /*
+      The synthetic ones are outside the switch, deliberately.
+
+      They exist to look at cursor *rendering* without finding peers, so gating them on the live toggle
+      made the harness need a second, undiscoverable step — press `+` and nothing happens — which is the
+      opposite of what a harness is for. A real cursor is somebody else's state and stays behind the
+      switch; a fake one is a developer asking to see marks.
+    */
+    const fakes = fakeMarks();
+    if (!cursorsOn() || !cursorsAllowed()) return fakes;
+    return [...[...held].map(([did, cursor]) => cursorMark(did, cursor)), ...fakes];
   };
 
   /**

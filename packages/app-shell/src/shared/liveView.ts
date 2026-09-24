@@ -270,17 +270,30 @@ export function allMarks(state: LiveViewState): LiveDecoration[] {
  * `surface` and `region` come from the canvas that most recently reported a camera. In every interface
  * that has one there is exactly one on screen, and picking the freshest is what keeps that true after a
  * route change without anything having to say which canvas is "the" canvas.
+ *
+ * ## Two halves of one address, and they are not interchangeable
+ *
+ * `path` is the **whole** address, query included, because that is what following somebody has to
+ * reproduce — in WE half of what a page is showing lives in the query, so a follower sent a bare
+ * pathname lands on the same route showing a different subject.
+ *
+ * `pathname` is what the **surface key** is built from, and it must not carry the query. A surface is a
+ * piece of screen geometry, and two people on the same page with different view state are looking at the
+ * same geometry. Building the key from the full address instead is a bug that hides well: the publisher
+ * and the overlay both key on the pathname, so they agree with each other and disagree only with *this*
+ * — which drops every mark whose surface came from here while real cursors between two peers keep
+ * working. It is how the development harness came to draw nothing at all.
  */
 export function composeFrame(
   state: LiveViewState,
-  path: string,
+  address: { path: string; pathname: string },
   content: { x: number; y: number; width: number; height: number },
   root: ParentNode = document,
 ): ViewFrame {
   const canvas = [...state.surfaces.values()].reverse().find((surface) => surface.region);
-  if (canvas) return { path, surface: canvas.key, region: canvas.region };
+  if (canvas) return { path: address.path, surface: canvas.key, region: canvas.region };
   const anchor = scrollAnchor(content, root);
-  return { path, surface: routeSurface(path), ...(anchor ? { anchor } : {}) };
+  return { path: address.path, surface: routeSurface(address.pathname), ...(anchor ? { anchor } : {}) };
 }
 
 /** Hold a region a follower should frame, until a surface picks it up or it goes stale. */

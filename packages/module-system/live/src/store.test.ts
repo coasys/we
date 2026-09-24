@@ -29,7 +29,7 @@ const WORLD = { surface: 'canvas:c1', kind: 'world' as const, x: 10, y: 20 };
 function setup(options: { settings?: Record<string, boolean>; dataset?: unknown; shared?: boolean } = {}) {
   const wire = fakeEphemeral({ self: ME });
   const presence = fakePresence({ self: ME });
-  const view = fakeView({ frame: { path: '/space/a/canvas' } });
+  const view = fakeView({ frame: { path: '/space/a/canvas', surface: 'route:/space/a/canvas' } });
   const identities = new Map([[ANA, { name: 'Ana', avatar: 'ana.png' }]]);
   const notified: { tone: string; message: string }[] = [];
 
@@ -525,5 +525,63 @@ describe('following', () => {
     const { store } = setup();
     store.follow();
     expect(store.following()).toBe(false);
+  });
+});
+
+describe('the synthetic cursors', () => {
+  /** The harness members, present only in a development build — which vitest is. */
+  const harness = (store: LiveStore) =>
+    store as unknown as { fakeCursorCount: () => number; addFakeCursor: () => void; removeFakeCursor: () => void };
+
+  it('draws nothing until asked', () => {
+    const { store, view } = setup();
+    expect(harness(store).fakeCursorCount()).toBe(0);
+    expect(view.decorations()).toEqual([]);
+  });
+
+  it('draws without the live switch, because that is what a harness is for', () => {
+    const { store, view } = setup();
+    harness(store).addFakeCursor();
+    harness(store).addFakeCursor();
+
+    /*
+      Outside the switch, deliberately. These exist to look at cursor *rendering* without finding peers,
+      so gating them on the toggle made the harness need a second, undiscoverable step — press `+` and
+      nothing happens. A real cursor is somebody else's state and stays behind the switch; a fake one is
+      a developer asking to see marks.
+    */
+    expect(store.cursorsOn()).toBe(false);
+    expect(view.decorations()).toHaveLength(2);
+    expect(view.decorations()[0].node.type).toBe('we-live-cursor');
+  });
+
+  it('sits in the surface this agent is on, or nowhere', () => {
+    const { store, view } = setup();
+    harness(store).addFakeCursor();
+    expect(view.decorations()[0].at.surface).toBe('route:/space/a/canvas');
+
+    // A frame naming no surface is the boot window, and a mark with nowhere to go is not drawn — which
+    // is also what made the harness look broken: the fake frame here had no surface either.
+    view.setFrame({ path: '/space/a/canvas' });
+    expect(view.decorations()).toEqual([]);
+  });
+
+  it('counts down again, and stops drawing at zero', () => {
+    const { store, view } = setup();
+    harness(store).addFakeCursor();
+    harness(store).removeFakeCursor();
+    expect(harness(store).fakeCursorCount()).toBe(0);
+    expect(view.decorations()).toEqual([]);
+  });
+
+  it('draws alongside real cursors rather than instead of them', () => {
+    const { store, view, wire } = setup();
+    store.toggleCursors();
+    wire.agent(ANA).channel('live').publish({ v: LIVE_PROTOCOL_VERSION, seq: 1, kind: 'cursor', at: WORLD });
+    harness(store).addFakeCursor();
+
+    const drawn = view.decorations();
+    expect(drawn).toHaveLength(2);
+    expect(drawn.map((mark) => mark.id)).toContain(ANA);
   });
 });

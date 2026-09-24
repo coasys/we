@@ -217,7 +217,7 @@ export function LiveViewHost() {
       // Both: a camera move changes the region, and a scroll changes which record is at the top.
       cameras();
       geometry();
-      return composeFrame(state, address(), content());
+      return composeFrame(state, { path: address(), pathname: routeStore.currentPath() }, content());
     },
     apply: (frame) => applyFrame(frame),
     decorate: (get) => {
