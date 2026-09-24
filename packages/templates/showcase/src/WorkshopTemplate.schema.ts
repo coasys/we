@@ -605,20 +605,18 @@ const switcher: SchemaNode = {
               Who else is on this page.
 
               The other half of live cursors, and what makes them legible: a cursor that disappears is
-              explained by a face turning up beside another route, rather than by the feature seeming
-              to break. Useful on its own in a space where nobody has cursors on at all.
+              explained by a face turning up beside another route, rather than by the feature seeming to
+              break. Useful on its own in a space where nobody has cursors on at all.
 
-              `reserve` is the load-bearing option. This pill is content-sized and centred — the same
-              property its own note gives for keeping the call's title out of it — so an aside that
-              sized itself would move Canvas, Kanban and Calendar sideways every time somebody opened
-              another page. A fixed 34px holds room for three overlapped `xs` faces and never changes.
+              No width is held for it, deliberately — see the fragment. This pill held 34px so its
+              buttons would not shift as people moved around, and nobody being there is the ordinary
+              state, so what that actually bought was a permanent gap at the end of every button.
 
               Edged in the pill's own colour so overlapping faces read as separate; `surface-raised` is
               what the pill is painted with a few lines above.
             */
             peopleAtPath({
               path: { $: '`${spaceStore.spacePath}/${nav.segment}`' },
-              reserve: '34px',
               edge: 'var(--we-role-surface-raised)',
             }),
           ],

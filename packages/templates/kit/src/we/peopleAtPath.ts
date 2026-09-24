@@ -13,16 +13,6 @@ export interface PeopleAtPathOptions {
    * A nav pill is `surface-raised`, so `var(--we-role-surface-raised)` is the usual answer here.
    */
   edge?: string;
-  /**
-   * A width to hold whether or not anybody is there.
-   *
-   * **Set this inside anything whose position matters.** The faces come and go as people move around,
-   * so an aside that sizes itself is an aside that changes the width of whatever contains it — and in
-   * a centred nav pill that means every button shifting sideways each time somebody opens another
-   * page. Nav you cannot build muscle memory for is worse than nav you have to look at, which is the
-   * argument the workshop's own switcher already makes about its title.
-   */
-  reserve?: string;
 }
 
 /**
@@ -78,22 +68,22 @@ export function peopleAtPath(opts: PeopleAtPathOptions): SchemaNode {
   });
 
   /*
-    Mounted only where there is somebody, inside a box that holds its room either way.
+    Mounted only where there is somebody, and taking no room at all otherwise.
 
-    Two separate decisions, and both are needed. `AvatarStack` with no avatars is a flex container with
-    no children and so no height, which would make the row it sits in change height — and an empty
-    stack is still in the accessibility tree and still found by find-in-page, which is why this is an
-    `$if` rather than an opacity.
+    An `$if` rather than an opacity or a reserved width, and each alternative was tried. `AvatarStack`
+    with no avatars is a flex container with no children and so no height, and an empty stack is still in
+    the accessibility tree and still found by find-in-page — so it has to be absent rather than
+    invisible.
+
+    And **no width is held for it**. Reserving one stops the row changing size as people come and go,
+    which sounds right and is wrong in practice: nobody being there is the ordinary state, so the reserve
+    is a permanent gap that reads as a rendering fault, in exchange for smoothing a shift that only
+    happens when somebody actually moves between pages — which is a real event and worth seeing. If the
+    shifting ever becomes the louder problem, it is visible and has an obvious fix; a gap that is always
+    there is neither.
   */
-  const gated: SchemaNode = {
+  return {
     type: '$if',
     props: { condition: expr`count(${here})`, then: faces },
-  };
-
-  if (!opts.reserve) return gated;
-  return {
-    type: 'Row',
-    props: { width: opts.reserve, ax: 'end', ay: 'center', flex: '0 0 auto' },
-    children: [gated],
   };
 }

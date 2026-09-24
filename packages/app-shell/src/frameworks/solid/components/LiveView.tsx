@@ -359,11 +359,21 @@ export function LiveViewHost() {
                   left: '0',
                   top: '0',
                   transform: `translate(${entry()?.at.x ?? 0}px, ${entry()?.at.y ?? 0}px)`,
-                  // The same 90ms linear catch-up the canvas uses, for the same reason — see
-                  // `.we-graph__decoration--eased`. A record-anchored mark is not eased: it is where
-                  // its card is, and easing it would animate a pin across the screen when a board
-                  // reorders.
-                  ...(entry()?.mark.ease ? { transition: 'transform 90ms linear' } : {}),
+                  /*
+                    The same 90ms linear catch-up the canvas uses, for the same reason — see
+                    `.we-graph__decoration--eased`. A record-anchored mark is not eased: it is where its
+                    card is, and easing it would animate a pin across the screen when a board reorders.
+
+                    **Suspended while a panel is being dragged.** A resize changes the content box on
+                    every pointer move, so every mark measured against it moves too — legitimately, since
+                    a fraction of a smaller box *is* somewhere else. But the updates arrive far faster
+                    than 90ms, so each transition restarts from wherever the last one had got to: the
+                    marks jitter in place and make almost no progress until the drag ends. Tracking
+                    exactly is the honest answer while the geometry is being dragged, and it is what the
+                    shell publishes `dockResizing` for — the content viewport suspends its own
+                    transitions on the same signal.
+                  */
+                  ...(entry()?.mark.ease && !shellStore.dockResizing() ? { transition: 'transform 90ms linear' } : {}),
                 }}
               >
                 {drawn}
