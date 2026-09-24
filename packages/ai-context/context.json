@@ -933,6 +933,37 @@
       ]
     },
     {
+      "tagName": "we-live-cursor",
+      "className": "LiveCursor",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "hash",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "image",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        }
+      ]
+    },
+    {
       "tagName": "we-location-picker",
       "className": "LocationPicker",
       "superclass": "DesignSystemElement",
@@ -3452,6 +3483,21 @@
         {
           "name": "onRedo",
           "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onPointerAt",
+          "type": "((at: { x: number; y: number; } | null) => void)",
+          "optional": true
+        },
+        {
+          "name": "onViewport",
+          "type": "((region: GraphRegion) => void)",
+          "optional": true
+        },
+        {
+          "name": "region",
+          "type": "GraphRegion | null",
           "optional": true
         },
         {
@@ -8072,6 +8118,177 @@
         }
       ],
       "activities": {},
+      "components": [],
+      "functions": [],
+      "views": [],
+      "blocks": [],
+      "entities": []
+    },
+    {
+      "id": "live",
+      "name": "Live presence",
+      "description": "See each other’s cursors, and follow one person’s screen.",
+      "icon": "cursor-click",
+      "scope": "space",
+      "requires": {
+        "kernels": ["presence", "ephemeral", "view"]
+      },
+      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-controls", "slot:call-status"],
+      "members": [
+        {
+          "name": "canDrive",
+          "kind": "state",
+          "doc": "Whether taking the wheel is possible here."
+        },
+        {
+          "name": "canFollow",
+          "kind": "state",
+          "doc": "Whether somebody else is driving, so this agent could follow them."
+        },
+        {
+          "name": "canShareCursors",
+          "kind": "state",
+          "doc": "Whether live cursors are possible here — false in a space with no transport, or where they are switched off."
+        },
+        {
+          "name": "canTakeWheel",
+          "kind": "state",
+          "doc": "Whether the wheel is free to take, or already this agent’s."
+        },
+        {
+          "name": "cursorsOn",
+          "kind": "state",
+          "doc": "Whether this agent’s pointer is shared, and other people’s shown."
+        },
+        {
+          "name": "dismissProblem",
+          "kind": "action",
+          "doc": "Dismiss the problem message."
+        },
+        {
+          "name": "driverName",
+          "kind": "state",
+          "doc": "The name of whoever is driving, or empty when nobody is."
+        },
+        {
+          "name": "driving",
+          "kind": "state",
+          "doc": "Whether this agent has the wheel."
+        },
+        {
+          "name": "faces",
+          "kind": "state",
+          "doc": "One entry per cursor on screen — { did, name, image }."
+        },
+        {
+          "name": "follow",
+          "kind": "action",
+          "doc": "Follow whoever has the wheel."
+        },
+        {
+          "name": "following",
+          "kind": "state",
+          "doc": "Whether this agent is following somebody’s screen."
+        },
+        {
+          "name": "followingName",
+          "kind": "state",
+          "doc": "The name of whoever this agent is following."
+        },
+        {
+          "name": "problem",
+          "kind": "state",
+          "doc": "Why something could not be done, as a sentence to show, or empty."
+        },
+        {
+          "name": "releaseWheel",
+          "kind": "action",
+          "doc": "Give up the wheel."
+        },
+        {
+          "name": "takeWheel",
+          "kind": "action",
+          "doc": "Take the wheel, so anybody who opts in follows this screen."
+        },
+        {
+          "name": "toggleCursors",
+          "kind": "action",
+          "doc": "Share this agent’s pointer and show other people’s, or stop."
+        },
+        {
+          "name": "toggleFollow",
+          "kind": "action",
+          "doc": "Follow whoever has the wheel, or stop — whichever this press means."
+        },
+        {
+          "name": "toggleWheel",
+          "kind": "action",
+          "doc": "Take the wheel, or give it up — whichever this press means."
+        },
+        {
+          "name": "unfollow",
+          "kind": "action",
+          "doc": "Stop following."
+        },
+        {
+          "name": "watching",
+          "kind": "state",
+          "doc": "How many other people here have live cursors on."
+        }
+      ],
+      "parts": [
+        {
+          "name": "cursorToggle"
+        },
+        {
+          "name": "wheelButton"
+        },
+        {
+          "name": "driverStrip"
+        }
+      ],
+      "panels": [],
+      "launchers": [
+        {
+          "key": "live:cursors",
+          "label": "Share your pointer"
+        },
+        {
+          "key": "live:wheel",
+          "label": "Take the wheel"
+        },
+        {
+          "key": "live:follow",
+          "label": "Follow the driver"
+        }
+      ],
+      "settings": [
+        {
+          "key": "cursors",
+          "label": "Live cursors",
+          "description": "Let people here see each other’s pointers.",
+          "type": "boolean",
+          "levels": ["deployment", "space", "agent-in-space"]
+        },
+        {
+          "key": "driving",
+          "label": "Driving",
+          "description": "Let one person take the wheel, so others can follow their screen.",
+          "type": "boolean",
+          "levels": ["deployment", "space"]
+        }
+      ],
+      "activities": {
+        "live": {
+          "cursors": "boolean"
+        },
+        "driving": {
+          "since": "number"
+        },
+        "following": {
+          "id": "string"
+        }
+      },
       "components": [],
       "functions": [],
       "views": [],

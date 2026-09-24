@@ -240,6 +240,121 @@ describe('the compact bar', () => {
 });
 
 /**
+ * The order of the bar, which is a readability decision and therefore assertable.
+ *
+ * Nothing here was caught by a test before, because every existing one asks whether a control is
+ * *present* and none asks where. That is how two identical-looking `−  N  +` triples ended up either
+ * side of the fold button: each was correct on its own and the row was not.
+ */
+describe('how the bar reads left to right', () => {
+  /** The control row — the one holding the contributed-controls slot as a direct child. */
+  const row = (): SchemaNode =>
+    walk(slotNodes()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  /** One recognisable token per child of the row, in order. */
+  const reading = (): string[] =>
+    ((row().children ?? []) as SchemaNode[]).map((child) => {
+      const inner = walk(child);
+      if (child.type === '$slot') return `slot:${String(props(child).anchor)}`;
+      if (inner.some((node) => node.type === '$slot' && props(node).anchor === 'call-dev')) return 'dev';
+      if (child.type === 'we-divider') return 'divider';
+      if (inner.some((node) => node.type === 'DropdownMenu')) return 'fold';
+      const acted = inner.find((node) => typeof (props(node).onClick as { $action?: string })?.$action === 'string');
+      return acted ? String((props(acted).onClick as { $action: string }).$action) : String(child.type ?? '');
+    });
+
+  it('puts the fold after the controls it folds', () => {
+    const order = reading();
+    // `STAGE` is one of the things the menu swallows when the row is compact, so the button sits where
+    // its own contents just left rather than above them.
+    expect(order.indexOf('fold')).toBeGreaterThan(order.indexOf('modules.call.toggleStage'));
+  });
+
+  it('puts the development group last, after everything a shipped build has', () => {
+    const order = reading();
+    const dev = order.indexOf('dev');
+    expect(dev).toBeGreaterThan(-1);
+    /*
+      The whole arrangement in one assertion: a user's bar and a developer's differ by one trailing
+      group. So nothing shipped may follow it except the rule and the readout that close the row.
+    */
+    expect(order.slice(dev + 1)).toEqual(['divider', 'we-tooltip', 'modules.call.leave']);
+    expect(order.indexOf('fold')).toBeLessThan(dev);
+    expect(order.indexOf('slot:call-controls')).toBeLessThan(dev);
+  });
+
+  it('opens the development region straight after its own harness, so the two sit together', () => {
+    const group = walk(row()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-dev',
+        ),
+    ) as SchemaNode;
+    const children = (group.children ?? []) as SchemaNode[];
+
+    /*
+      Adjacency is the point, and it is the reason the region exists rather than an `order` in the
+      control region: contributions land at a single point, so this module's triple could never be
+      threaded in between another module's controls.
+
+      A rule, this module's triple, a rule, then whatever else is contributed. The region draws both
+      separators itself: a rule inside a contributed fragment is either missing or doubled depending on
+      what else is installed, and sits against that fragment's own tight gap rather than the bar's.
+    */
+    expect(children.map((child) => child.type)).toEqual(['we-divider', 'Row', 'we-divider', '$slot']);
+    expect(walk(children[1]).some((node) => props(node).name === 'users')).toBe(true);
+    expect(props(children[3]).anchor).toBe('call-dev');
+  });
+
+  it('draws no rule inside the triple, and hangs its tooltip on the glyph', () => {
+    const group = walk(row()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-dev',
+        ),
+    ) as SchemaNode;
+    const triple = ((group.children ?? []) as SchemaNode[])[1];
+
+    // The separators belong to the region, so the triple carries none of its own.
+    expect(walk(triple).filter((node) => node.type === 'we-divider')).toEqual([]);
+
+    /*
+      The tooltip explaining what this counts sits on the icon, not on the number.
+
+      The icon is the only part that says which of the two triples this is, so it is what a pointer
+      looking for an explanation lands on. The number is the part somebody is reading, and a tooltip
+      over it covers the value it is explaining.
+    */
+    const glyph = walk(triple).find((node) => props(node).name === 'users') as SchemaNode;
+    const holder = lineage(triple, glyph)?.find((step) => step.type === 'we-tooltip');
+    expect(props(holder).content).toBe('Fake participants — development only');
+
+    const number = walk(triple).find((node) => node.type === 'we-number') as SchemaNode;
+    expect(lineage(triple, number)?.some((step) => step.type === 'we-tooltip')).toBe(false);
+  });
+
+  it('declares the development region only in a build that has one', () => {
+    /*
+      Vitest is a development build, so the region is declared here. The assertion worth making is the
+      pairing: whatever draws the slot must declare the anchor, or a contribution to it is refused at
+      registration and disappears with no error anywhere — which is the failure mode that cost a day
+      when `view` was missing from the host's kernels.
+    */
+    const drawn = walk(slotNodes()).some((node) => node.type === '$slot' && props(node).anchor === 'call-dev');
+    expect(callModule.contributes?.anchors ?? []).toContain('call-dev');
+    expect(drawn).toBe(true);
+  });
+});
+
+/**
  * The way back into a call somebody is reading.
  *
  * Published as a part rather than drawn by a panel, and the reason is a category error that showed

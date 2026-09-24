@@ -45,7 +45,10 @@ import type {
   ModuleKernels,
   ModuleStoreDeps,
   RecordQuery,
+  ViewKernel,
 } from '@we/module-shared';
+
+import { addLiveMarks, addLivePointerListener } from '../liveView';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
 export interface ModuleHostServices {
@@ -73,6 +76,14 @@ export interface ModuleHostServices {
     setActivity: (activity: Activity) => void;
     clearActivity: (type: string, id?: string) => void;
   };
+  /**
+   * The screen: where this agent's pointer is, what is in view, and what to draw on top.
+   *
+   * Bound by the component that can see all three — the router, the DOM and the shell's insets — and
+   * forwarded to the `view` kernel below. See `shared/liveView.ts` for why none of it can be a
+   * module's own.
+   */
+  view?: ViewKernel;
   transcription?: TranscriptionPort;
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
@@ -144,6 +155,49 @@ export interface ModuleHostServices {
 const services: ModuleHostServices = {};
 
 /**
+ * A signal every late-bound accessor reads, so an effect over one is never born dead.
+ *
+ * ## The failure this exists for
+ *
+ * A module store is built before the host stores publish their slices, so at construction
+ * `services.dataset` is `undefined` and `() => services.dataset?.() ?? null` reads **nothing
+ * reactive**. A module doing the obvious thing —
+ *
+ * ```ts
+ * effect(() => attach(deps.dataset?.() ?? null));
+ * ```
+ *
+ * gets an effect whose first run tracks zero dependencies, which Solid therefore never runs again.
+ * The module is handed `null` once, for ever. Nothing throws, nothing warns, and the feature simply
+ * does not exist — which is how the live module shipped with no controls on the rail at all: its
+ * availability was derived from a transport that had never been opened, because the effect that would
+ * have opened it ran before there was a dataset to open one for.
+ *
+ * Reading the revision inside every forwarding closure means the closure always touches *a* signal,
+ * so the effect has at least one dependency however early it runs. Bumping it after every
+ * `provideModuleHostServices` re-runs those effects against the slice that has just arrived.
+ *
+ * The alternative — telling module authors not to use `effect` over a service — is a rule nobody can
+ * see they have broken.
+ */
+let readServicesRevision: (() => void) | null = null;
+let bumpServicesRevision: (() => void) | null = null;
+
+/**
+ * Read the revision, then the service — see {@link readServicesRevision}.
+ *
+ * At module scope rather than inside `createModuleStoreDeps`, because the kernels are built above it and
+ * need it just as much: `presence.peers` is a reactive read, and an effect over it before presence is
+ * bound is the same dead effect as one over `dataset`.
+ */
+function tracked<T>(read: () => T): () => T {
+  return () => {
+    readServicesRevision?.();
+    return read();
+  };
+}
+
+/**
  * Publish a slice of host services to registered modules.
  *
  * Merges rather than replaces, because the slices arrive from different stores at different times.
@@ -152,6 +206,8 @@ const services: ModuleHostServices = {};
  */
 export function provideModuleHostServices(slice: ModuleHostServices): () => void {
   Object.assign(services, slice);
+  // After the assignment, so an effect re-running here sees the slice rather than the frame before it.
+  bumpServicesRevision?.();
   const mine = Object.entries(slice) as [keyof ModuleHostServices, unknown][];
   return () => {
     for (const [key, value] of mine) {
@@ -163,6 +219,8 @@ export function provideModuleHostServices(slice: ModuleHostServices): () => void
 /** Test seam: drop everything between cases so one test's bindings cannot leak into the next. */
 export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
+  readServicesRevision = null;
+  bumpServicesRevision = null;
   publishedMedia = null;
   mediaListeners.clear();
   copiedInListeners.clear();
@@ -232,11 +290,24 @@ function forwardDocuments(live: () => DocumentAccess | undefined): DocumentAcces
   };
 }
 
-/** The kernels this host implements — what a manifest's `requires.kernels` is checked against. */
+/**
+ * The kernels this host implements — what a manifest's `requires.kernels` is checked against.
+ *
+ * **Adding a kernel means adding it here too**, and forgetting is silent in the worst way: a module
+ * naming one this list omits is *refused at registration*, so it has no store, no launcher, no slot and
+ * no panel. The feature is simply absent, and because a refusal reads as a console line in an app that
+ * then works fine, the obvious conclusion is that the module is switched off somewhere. That is exactly
+ * how the live module's controls went missing from the rail — `view` was implemented in the bag below
+ * and never declared up here.
+ *
+ * A test asserts this list against the keys the bag actually builds, in both directions, because two
+ * hand-maintained copies of one fact is what caused it.
+ */
 export const HOST_KERNELS: readonly KernelName[] = [
   'records',
   'agentData',
   'presence',
+  'view',
   'ephemeral',
   'media',
   'peerConnection',
@@ -286,8 +357,9 @@ export function createModuleStoreDeps(framework: {
 
     // Forwarded rather than captured: a module store is built before the personal space has been found.
     agentData: {
-      ready: () => services.agentData?.ready() ?? false,
-      refKey: () => services.agentData?.refKey() ?? '',
+      // Reactive reads, so they are tracked for the reason `dataset` is — see `readServicesRevision`.
+      ready: tracked(() => services.agentData?.ready() ?? false),
+      refKey: tracked(() => services.agentData?.refKey() ?? ''),
       create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
       find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
       update: async (entity, id, fields) => {
@@ -300,9 +372,43 @@ export function createModuleStoreDeps(framework: {
     },
 
     presence: {
-      peers: () => services.presence?.peers() ?? [],
+      /*
+        Tracked, and this is the one that cost a debugging session.
+
+        `peers` is a reactive read — every module that cares who is here puts it in an effect or a memo
+        — and an effect reading it before `services.presence` is bound tracks nothing, so it never runs
+        again. The live module's publish rate was derived that way and stayed at "nobody is watching"
+        for the life of the session, so it never sent a cursor at all.
+      */
+      peers: tracked(() => services.presence?.peers() ?? []),
       setActivity: (activity) => services.presence?.setActivity(activity),
       clearActivity: (type, id) => services.presence?.clearActivity(type, id),
+    },
+
+    /*
+      Forwarded, like every other kernel here, and the degraded answers are the interesting part: a
+      host with no view binding reports a pointer that never moves, a frame with an empty path, and
+      accepts decorations nobody draws. A module must survive all three — which is the ordinary case
+      on a host that has not finished booting, and the permanent case on one with no screen at all.
+    */
+    /*
+      Half of this is a registry and half of it needs a component, and they are wired differently.
+
+      `decorate` and `onPointer` are **registrations**, and a module makes them when its store is built
+      — which `PlatformProvider` does before `App` renders. Forwarded through `services.view` they were
+      `undefined?.decorate(…)`, answering with a no-op unsubscribe for ever: nothing a module asked to
+      draw was drawn, and this agent's pointer was never reported. So they land in the shared registry,
+      where there is nothing to be early for.
+
+      `frame` and `apply` genuinely need the component — the router, the DOM, the shell's insets — so
+      they forward, and degrade honestly: a frame with an empty path, and an `apply` that does nothing.
+      A module calls those later, in response to something, rather than at construction.
+    */
+    view: {
+      onPointer: addLivePointerListener,
+      decorate: addLiveMarks,
+      frame: () => services.view?.frame() ?? { path: '' },
+      apply: (frame) => services.view?.apply(frame),
     },
 
     // A stable function that forwards, so a module capturing the port at construction still reaches
@@ -474,6 +580,17 @@ export function createModuleStoreDeps(framework: {
     // `secrets` is built per module by the registry, which knows the module's group.
   };
 
+  /*
+    Created on the first call, with the host's own signal, so it lives in the same reactive graph as
+    the effects that will read it through the closures below.
+  */
+  if (!readServicesRevision) {
+    const [revision, setRevision] = framework.signal(0);
+    let count = 0;
+    readServicesRevision = () => void revision();
+    bumpServicesRevision = () => setRevision(++count);
+  }
+
   return {
     signal: framework.signal,
     effect: framework.effect,
@@ -482,11 +599,11 @@ export function createModuleStoreDeps(framework: {
     state: ((accessor: unknown, _doc: string) => (typeof accessor === 'function' ? accessor : () => accessor)) as never,
     action: ((fn: unknown) => fn) as never,
 
-    dataset: () => services.dataset?.() ?? null,
-    datasetUri: () => services.datasetUri?.() ?? null,
-    callOnScreen: () => services.callOnScreen?.() ?? null,
-    datasetRefKey: () => services.datasetRefKey?.() ?? '',
-    selfId: () => services.selfId?.() ?? null,
+    dataset: tracked(() => services.dataset?.() ?? null),
+    datasetUri: tracked(() => services.datasetUri?.() ?? null),
+    callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
+    datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
+    selfId: tracked(() => services.selfId?.() ?? null),
     notify: (tone, message) => services.notify?.(tone, message),
     datasets: {
       get: (uri) => services.datasets?.get(uri),

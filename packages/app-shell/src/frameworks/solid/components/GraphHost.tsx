@@ -30,11 +30,13 @@ import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import type { RenderProps } from '@we/schema-solid';
 import { RenderSchema } from '@we/schema-solid';
 import { fillForSemantic } from '@we/template-kit';
-import { createComputed, createMemo, type JSX, Show } from 'solid-js';
+import { createComputed, createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
+import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
+import { componentRegistry } from '../registries/componentRegistry';
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
@@ -43,6 +45,7 @@ import { useShapeStore } from '../stores/ShapeStore';
 import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 import { nodeControls } from './graphControls';
+import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -323,10 +326,87 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     });
   }
 
+  /**
+   * The canvas this graph is showing, if it is showing one — the surface a peer's mark is addressed to.
+   *
+   * Read out of the `canvas` seed's own options rather than taken as a prop, because that is already
+   * where a template says which canvas it is drawing: a second way of saying it would be a second
+   * thing to keep in step, and the one that fell behind would silently address marks to a canvas
+   * nobody is looking at. A graph with no canvas seed — a schema map, a static diagram — has no
+   * shared coordinate space, so it registers nothing and draws no marks.
+   */
+  const canvasId = createMemo(() => {
+    const seeds = Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : [];
+    for (const seed of seeds) {
+      if (!('source' in seed) || seed.source !== 'canvas') continue;
+      const id = seed.options?.canvas;
+      if (typeof id === 'string' && id) return id;
+    }
+    return null;
+  });
+
+  /**
+   * Register with the live-view host for as long as this graph is showing one canvas.
+   *
+   * Re-registered when the canvas changes, which is what keeps the surface key honest: a graph whose
+   * template switches canvas is a different shared coordinate space, and marks addressed to the old one
+   * must stop being drawn rather than being placed in the new one's units.
+   *
+   * ## An effect, emphatically not a memo
+   *
+   * This was a memo, and a memo is computed *lazily* — on first read, inside whatever computation
+   * happened to read it. That read was the graph's own decorations memo, which also depends on the
+   * registry's version signal. So registering bumped a signal from inside a computation that depends on
+   * it, which invalidated that computation from within itself, which registered again: `markDownstream`
+   * recursion until the stack went, and a frozen tab with no clue but a stack of one repeated frame. It
+   * bit hardest on a space change, where the canvas id changes and the whole cycle starts again.
+   *
+   * An effect runs in the effects queue, outside anybody's tracking scope, so the write is an ordinary
+   * update. The result goes in a signal because a value is still wanted downstream.
+   */
+  const [live, setLive] = createSignal<ReturnType<typeof registerLiveCanvas> | null>(null);
+  createEffect(() => {
+    const id = canvasId();
+    if (!id) {
+      setLive(null);
+      return;
+    }
+    const surface = registerLiveCanvas(id);
+    setLive(surface);
+    onCleanup(() => {
+      surface.dispose();
+      setLive(null);
+    });
+  });
+
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard, record: RecordCard },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.
     nodeControls,
+
+    /**
+     * Peers' marks, and anything else a capability has put on this canvas.
+     *
+     * Turned from what a module declares — a `SchemaNode` and a point — into what the graph draws.
+     * The node is rendered against the **chrome** bag, not a template's: a mark comes from a
+     * capability the person installed, so it is repo-authored chrome wherever it happens to land, and
+     * grants follow authorship rather than render site.
+     */
+    decorations: () => {
+      const surface = live();
+      const bag = chromeBag();
+      if (!surface || !bag) return [];
+      return liveSurfaceMarks(surface.key).map((mark) => ({
+        id: mark.id,
+        x: mark.at.x,
+        y: mark.at.y,
+        ease: mark.ease,
+        // Passed through rather than defaulted here: only the producer knows the gap it is covering,
+        // and the graph's own stylesheet owns what a mark that does not say gets.
+        easeMs: mark.easeMs,
+        render: () => RenderSchema({ node: mark.node, stores: bag, registry: componentRegistry }),
+      }));
+    },
 
     /**
      * The parts of the graph's box the shell's floating panels are sitting over.
@@ -526,7 +606,28 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     },
   };
 
-  return <GraphView {...props} host={host} />;
+  /*
+    The three seams the live-view host needs from a canvas, bound only while there is one.
+
+    `props` wins where a template bound the same callback: a template asking for the pointer is asking
+    for its own reason, and this has to forward rather than replace it. Nothing in the app binds either
+    today, so the spread is about not surprising whoever does.
+  */
+  return (
+    <GraphView
+      {...props}
+      host={host}
+      onPointerAt={(at) => {
+        live()?.reportPointer(at);
+        props.onPointerAt?.(at);
+      }}
+      onViewport={(region) => {
+        live()?.reportRegion(region);
+        props.onViewport?.(region);
+      }}
+      region={props.region ?? (live() ? liveSurfaceRegion(live()!.key) : null)}
+    />
+  );
 }
 
 export default GraphHost;

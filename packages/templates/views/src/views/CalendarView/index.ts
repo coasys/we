@@ -550,9 +550,25 @@ export const calendarView: TemplateSchema = {
   $queries: { events: eventsDecl, dayEvents: dayEventsDecl },
   $localState: {
     /** The day the grid has selected, `YYYY-MM-DD`. Empty means "everything scheduled". */
-    day: { type: 'string', initial: '' },
+    /*
+      In the URL for the same reason, and pushed, so choosing a day is a step Back can undo.
+      Absolute, unlike the month above, because a day already is: no flaw to note here.
+    */
+    day: { type: 'string', initial: '', syncParam: { name: 'day', push: true } },
     /** Months from today the grid is showing. Paged by `$setLocal … by`, reset by "Today". */
-    monthOffset: { type: 'number', initial: 0 },
+    /*
+      In the URL, because which month you are looking at is the clearest case the rule has:
+      send somebody a link to a month and they should open on that month. It is also what
+      makes the calendar follow a driver, since a frame carries the whole address.
+
+      **An offset, so it is relative to the reader's today.** Within a session that is exactly
+      right and both agents agree. A link opened after midnight on the first of a month lands
+      one month out, which is a real flaw and the reason to move this to an absolute `YYYY-MM`
+      eventually; the expression language has no month arithmetic, so stepping from an absolute
+      month is not a one-line change. Wrong by a month across a boundary is a great deal better
+      than a link that always opens on today.
+    */
+    monthOffset: { type: 'number', initial: 0, syncParam: 'month' },
     /** The jump-to-month panel under the heading. */
     pickerOpen: { type: 'boolean', initial: false },
     /** The gate only — the drafts behind it live on the composer itself. */

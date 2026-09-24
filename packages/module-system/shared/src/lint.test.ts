@@ -110,3 +110,106 @@ describe('lintModule — warnings', () => {
     expect(lint.warnings[0]).toContain('not marked blockable');
   });
 });
+
+describe('lintModule — one module reaching another', () => {
+  it('refuses a store read from a part, and names the surface and the member', () => {
+    const lint = lintModule(
+      mod({ contributes: { parts: { bar: { type: 'Column', props: { hidden: { $: '!modules.call.active' } } } } } }),
+    );
+    expect(lint.problems).toHaveLength(1);
+    expect(lint.problems[0]).toContain('part "bar"');
+    expect(lint.problems[0]).toContain('modules.call.active');
+    expect(lint.problems[0]).toContain('capabilities-and-surfaces');
+  });
+
+  it('refuses an action, and finds one inside an array a renderer walk would step over', () => {
+    // A `DropdownMenu`'s entries are a *prop*, so a structural walk never reaches them — which is
+    // exactly where a reference would survive review.
+    const lint = lintModule(
+      mod({
+        contributes: {
+          panels: [
+            {
+              name: 'p',
+              title: 'P',
+              node: {
+                type: 'DropdownMenu',
+                props: { items: [{ id: 'x', label: 'Go', onSelect: { $action: 'modules.call.startCall' } }] },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(lint.problems).toHaveLength(1);
+    expect(lint.problems[0]).toContain('panel "p"');
+    expect(lint.problems[0]).toContain('modules.call.startCall');
+  });
+
+  it("refuses placing another module's part, and says whose it is", () => {
+    const lint = lintModule(
+      mod({
+        contributes: {
+          slots: [{ anchor: 'overlay', node: { type: '$part', props: { id: 'transcribe.transcriptFeed' } } }],
+        },
+      }),
+    );
+    expect(lint.problems).toHaveLength(1);
+    expect(lint.problems[0]).toContain('anchor "overlay"');
+    expect(lint.problems[0]).toContain('transcribe module');
+  });
+
+  it('allows the bare installed-check, and a module naming itself', () => {
+    const lint = lintModule(
+      mod({
+        contributes: {
+          parts: {
+            // The sanctioned optional dependency: resolves to nothing where the module is absent.
+            gate: { type: '$if', props: { condition: { $: 'modules.call' }, then: { type: 'Column' } } },
+            own: { type: 'we-button', props: { onClick: { $action: 'modules.demo.toggle' } } },
+          },
+        },
+      }),
+    );
+    expect(lint.problems).toEqual([]);
+  });
+
+  it('warns rather than refuses in a contributed view, which is a template', () => {
+    const lint = lintModule(
+      mod({
+        contributes: {
+          views: [
+            {
+              id: 'v',
+              meta: { role: 'view', name: 'V', description: '', icon: 'x' },
+              type: 'Column',
+              props: { hidden: { $: 'modules.call.active' } },
+            } as never,
+          ],
+        },
+      }),
+    );
+    expect(lint.problems).toEqual([]);
+    expect(lint.warnings[0]).toContain('view "v"');
+    expect(lint.warnings[0]).toContain('meta.requires.modules');
+  });
+
+  it('reports each distinct member once, however often it is named', () => {
+    const lint = lintModule(
+      mod({
+        contributes: {
+          parts: {
+            a: {
+              type: 'Column',
+              props: { hidden: { $: 'modules.call.active' }, bg: { $: 'modules.call.active ? "page" : "surface"' } },
+              children: [{ type: 'we-text', props: { text: { $: 'modules.call.callId' } } }],
+            },
+          },
+        },
+      }),
+    );
+    expect(lint.problems).toHaveLength(2);
+    expect(lint.problems.some((p) => p.includes('modules.call.active'))).toBe(true);
+    expect(lint.problems.some((p) => p.includes('modules.call.callId'))).toBe(true);
+  });
+});

@@ -795,7 +795,6 @@ export function updateAllCustomVars(
 export const STATES_ATTR = 'data-we-states';
 /** Present on a primitive whose props include any breakpoint bag (`smUpProps`, …). */
 export const TIERS_ATTR = 'data-we-tiers';
-
 // ────────────────────────────────────────────
 // Static CSS generation (once per component class)
 // ────────────────────────────────────────────

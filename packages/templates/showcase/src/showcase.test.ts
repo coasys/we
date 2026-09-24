@@ -1657,6 +1657,22 @@ describe('the workshop’s people', () => {
     expect(calendar).not.toContain('setAttending');
   });
 
+  it('keeps the month and the chosen day in the address, so a link and a driver both land there', () => {
+    const calendar = route('/calendar');
+    /*
+      Which month you are looking at is the clearest case the rule has: send somebody a link to a month
+      and they should open on that month. It is also what makes the calendar follow a driver, since a
+      published frame carries the whole address and nothing else about a route travels.
+
+      The month is an offset from the reader's today, so a link opened across a month boundary lands one
+      month out. That is noted where it is declared: the expression language has no month arithmetic, so
+      an absolute month is not a one-line change, and wrong by a month at a boundary beats always opening
+      on today.
+    */
+    expect(calendar).toContain('"syncParam":"month"');
+    expect(calendar).toContain('"syncParam":{"name":"day","push":true}');
+  });
+
   it('filters the calendar with the board’s own control, the chosen people in the address and the mode on the device', () => {
     const calendar = route('/calendar');
     expect(calendar).toContain('"calendarPeople":{"type":"array","initial":[],"syncParam":"who"}');

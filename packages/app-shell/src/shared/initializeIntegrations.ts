@@ -109,7 +109,7 @@ export function initializeIntegrations(
 
     // Activate the feature modules this deployment declares. Components are passed in rather than
     // imported by each module, so Solid and @we/widgets stay single instances shared with the host.
-    const { activated } = activateSeedModules(
+    const { activated, refused } = activateSeedModules(
       seedModuleIds(seed),
       { components: deps.components ?? {}, storeDeps: deps.storeDeps },
       host,
@@ -121,6 +121,22 @@ export function initializeIntegrations(
       `✓ ${seed.project.name} initialized — ${embedded.length} embedded app(s)` +
         (activated.length ? `, ${activated.length} module(s): ${activated.join(', ')}` : ''),
     );
+
+    /*
+      And say what did *not* start, in the same breath.
+
+      The registry already warns per refusal, and that was not enough: the line somebody actually reads
+      is this summary, and a summary that lists only what worked reads as a healthy boot. A module the
+      seed asked for and the host refused is then a feature that is simply absent — no store, no
+      launcher, no panel — with the only evidence a warning further up a console nobody had reason to
+      scroll. That cost three rounds of looking for a switch that did not exist.
+
+      `warn`, not `info`: the deployment asked for something it did not get.
+    */
+    if (refused.length) {
+      const named = refused.map(({ id, problems }) => `${id} (${problems.join('; ')})`).join(', ');
+      console.warn(`⚠ ${refused.length} module(s) the seed asked for did not start: ${named}`);
+    }
   } catch (error) {
     console.error('❌ Failed to initialize integrations:', error);
   }

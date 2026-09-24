@@ -73,6 +73,7 @@ import {
   newSignalTypeButton,
   panelHeader,
   panelScroll,
+  peopleAtPath,
   peopleFilter,
   peopleRow,
   recordFormModal,
@@ -600,6 +601,24 @@ const switcher: SchemaNode = {
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
             { type: 'we-text', children: [{ $: 'nav.label' }] },
+            /*
+              Who else is on this page.
+
+              The other half of live cursors, and what makes them legible: a cursor that disappears is
+              explained by a face turning up beside another route, rather than by the feature seeming to
+              break. Useful on its own in a space where nobody has cursors on at all.
+
+              No width is held for it, deliberately — see the fragment. This pill held 34px so its
+              buttons would not shift as people moved around, and nobody being there is the ordinary
+              state, so what that actually bought was a permanent gap at the end of every button.
+
+              Edged in the pill's own colour so overlapping faces read as separate; `surface-raised` is
+              what the pill is painted with a few lines above.
+            */
+            peopleAtPath({
+              path: { $: '`${spaceStore.spacePath}/${nav.segment}`' },
+              edge: 'var(--we-role-surface-raised)',
+            }),
           ],
         },
       ],
@@ -2736,6 +2755,44 @@ const ROW_LIVE_CALL = 'find(modules.call.liveCalls, { recordId: call.id })';
 const ROW_IS_MINE = 'call.id == modules.call.callRecordId';
 
 /**
+ * The faces on a row — who is in that call now, or who was in it.
+ *
+ * Two sources, because the question changes with the row. A live call has people in it this second,
+ * which is what `liveCalls` carries; a finished one has the roster its record kept — `participants`,
+ * everyone who was present, whether or not they ever said anything. Reading the record's roster on a
+ * live row would draw everyone who has *ever* been in that meeting rather than whoever is in it now,
+ * which is the wrong answer in a list somebody is scanning to find the conversation happening.
+ *
+ * The record's roster comes back as bare DIDs — the relation is untyped — so the pictures are joined
+ * from the profile cache here, exactly as `peopleRow` does for the pill. `hash` is the DID itself and
+ * is set unconditionally rather than as a fallback for a missing picture: somebody whose profile has
+ * not arrived is then still a distinct face instead of one of several identical blanks.
+ *
+ * No dedupe: `AvatarStack` does it, which matters here — `participants` is an add-only relation that
+ * every agent transcribing appends to with no coordination, so a two-person call routinely lists each
+ * of them several times over.
+ *
+ * ## The green ring is what tells the two apart
+ *
+ * Both sources draw the same thing — faces on a row — so without a mark a meeting three people are
+ * sitting in looks exactly like last Tuesday's attendance list. `tone: 'success'` puts a ring inside
+ * each live face, which is the distinction stated where the ambiguity is rather than somewhere else
+ * on the row.
+ *
+ * It is not the only thing saying so, which is what makes a colour acceptable here: the row already
+ * carries a red `phone-call` glyph for any live call, and the selected fill and the Join button say
+ * it again. The two colours are not in competition — the glyph says *this call is happening* and the
+ * rings say *these particular people are in it now* rather than having once been.
+ *
+ * The call module's own stage passes no tone, and its note says why: everyone on a stage is in the
+ * call, so a ring there would encode a distinction that cannot vary. In this list it varies row by
+ * row, which is exactly when it is worth drawing.
+ */
+const ROW_FACES =
+  `${ROW_LIVE_CALL} ? ${ROW_LIVE_CALL}.faces.map(f, { image: f.image, hash: f.hash, initials: f.initials, tone: 'success' }) ` +
+  ': call.participants.map(m, { image: find(profileStore.profiles, { did: m }).avatar, hash: m })';
+
+/**
  * The calls, as a panel — how you change which call every other surface is about.
  *
  * The same list the `/calls` route draws, without the transcripts: choosing is a two-second act and
@@ -2812,11 +2869,43 @@ const callsPanel: SchemaNode = {
                       $localState: { pointerOnRow: { type: 'boolean', initial: false } },
                       children: [
                         {
-                          type: 'we-button',
-                          props: {
-                            variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
-                            flex: '1',
-                            /*
+                          /*
+                            The whole row asks the question, not just its first line.
+
+                            The trigger used to be the title alone. That put the bubble on most of the
+                            row's width and none of its height: moving from the name down to the
+                            description — inside one row, over one subject — opened it and closed it
+                            again, and resting on the faces or the date asked nothing. A tooltip that
+                            answers "what is this row" should be triggered by the row.
+
+                            The note here used to argue the opposite, that a list read by sweeping
+                            should not open a bubble on every row the pointer crosses. Worth keeping
+                            the observation and dropping the conclusion: the title spans the row's
+                            width already, so the sweep has always opened them — what the narrow
+                            trigger bought was not fewer bubbles but a flickering one.
+
+                            What it costs is nothing in layout: this element and its trigger part are
+                            both `display: contents`, so the button is still the flex item that
+                            carries `flex: '1'` and `minWidth: '0'`, and the bubble anchors on the
+                            button's box.
+
+                            What it gains, besides the flicker: the tooltip shows on `focusin` as well
+                            as hover, and a `we-text` cannot take focus. Around the button — which is
+                            a real `<button>` — the full name is on the keyboard path for the first
+                            time.
+
+                            The Join and delete buttons keep their own tooltips and sit outside this
+                            one, so nothing nests and each control still says what it does.
+                          */
+                          type: 'we-tooltip',
+                          props: { placement: 'right' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
+                                flex: '1',
+                                /*
                               The half of `flex: '1'` that is easy to forget, and without which this
                               row overflowed its panel.
 
@@ -2828,10 +2917,10 @@ const callsPanel: SchemaNode = {
                               edge. The Column inside already has `minWidth: '0'` and never got
                               asked, because the floor was here.
                             */
-                            minWidth: '0',
-                            ax: 'start',
-                            gap: '200',
-                            /*
+                                minWidth: '0',
+                                ax: 'start',
+                                gap: '200',
+                                /*
                               Two lines — the name and when — and a button's size pins its height to
                               the one-line control height, so the selected row's fill was shorter
                               than its own label and the icon sat on the edge of it. `auto` lets the
@@ -2839,10 +2928,10 @@ const callsPanel: SchemaNode = {
                               keeps clear above and below it. Horizontal matches it: a list row in
                               a `sm` panel, not a standalone control, and the icon is its own inset.
                             */
-                            height: 'auto',
-                            py: '200',
-                            px: '200',
-                            /*
+                                height: 'auto',
+                                py: '200',
+                                px: '200',
+                                /*
                               The whole of choosing: the id goes in the address, and every surface
                               follows. Nothing is joined, claimed or written.
 
@@ -2856,20 +2945,20 @@ const callsPanel: SchemaNode = {
                               rather than choosing at render time — the one place `$if` is a token
                               rather than a node.
                             */
-                            onClick: {
-                              $if: {
-                                condition: { $: `call.id == (${CALL_EXPR})` },
-                                then: openLiveCall,
-                                else: openCall('call.id'),
+                                onClick: {
+                                  $if: {
+                                    condition: { $: `call.id == (${CALL_EXPR})` },
+                                    then: openLiveCall,
+                                    else: openCall('call.id'),
+                                  },
+                                },
                               },
-                            },
-                          },
-                          children: [
-                            {
-                              type: 'we-icon',
-                              props: {
-                                name: 'phone-call',
-                                /*
+                              children: [
+                                {
+                                  type: 'we-icon',
+                                  props: {
+                                    name: 'phone-call',
+                                    /*
                                   The fill role, for the reason the record icon above uses it: a
                                   live-call marker is a signal rather than a sentence, and the
                                   derived foreground goes pale in a dark theme.
@@ -2880,11 +2969,11 @@ const callsPanel: SchemaNode = {
                                   Which of them is *yours* is said twice over beside it — the row's
                                   selected fill, and a button that says "Go to" rather than "Join".
                                 */
-                                color: { $: `${ROW_LIVE_CALL} ? 'danger' : 'text-faint'` },
-                              },
-                            },
-                            {
-                              /*
+                                    color: { $: `${ROW_LIVE_CALL} ? 'danger' : 'text-faint'` },
+                                  },
+                                },
+                                {
+                                  /*
                                 What it was called, and when — in that order, because a list of
                                 meetings told apart only by date is a list you read by elimination.
 
@@ -2893,55 +2982,18 @@ const callsPanel: SchemaNode = {
                                 the title: clearing a name has to be allowed, and what it returns to
                                 is the plain "Call" it started as.
                               */
-                              type: 'Column',
-                              props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
-                              children: [
-                                /*
-                                  The name, and the whole of it on hover along with whatever was
-                                  written about the call — the pill's arrangement, for its reasons;
-                                  see the note there.
-
-                                  The trigger is the text rather than the row: this list is read by
-                                  sweeping down it, and a bubble opening on every row the pointer
-                                  crosses is worse than no bubble. Resting on a name asks a question;
-                                  passing over one does not.
-                                */
-                                {
-                                  type: 'we-tooltip',
-                                  props: { placement: 'right' },
+                                  type: 'Column',
+                                  props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
                                   children: [
+                                    // The name. The whole of it, and whatever was written about the call,
+                                    // are on hover — from the tooltip around the whole row button rather
+                                    // than from one around this line; see the note there.
                                     {
                                       type: 'we-text',
                                       props: { truncate: true, width: '100%', textAlign: 'left' },
                                       children: [{ $: "call.title ? call.title : 'Call'" }],
                                     },
-                                    {
-                                      type: 'Column',
-                                      props: { gap: '100' },
-                                      slot: 'content',
-                                      children: [
-                                        {
-                                          type: 'we-text',
-                                          props: { variant: 'label' },
-                                          children: [{ $: "call.title ? call.title : 'Call'" }],
-                                        },
-                                        {
-                                          // `on-inverse`, not `text-muted` — see the pill's note.
-                                          type: '$if',
-                                          props: {
-                                            condition: { $: 'call.description' },
-                                            then: {
-                                              type: 'we-text',
-                                              props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
-                                              children: [{ $: 'call.description' }],
-                                            },
-                                          },
-                                        },
-                                      ],
-                                    },
-                                  ],
-                                },
-                                /*
+                                    /*
                                   A line of what the call was about, where there is one — the thing
                                   the pill has no room for and this panel does. The panel is where
                                   one call is chosen out of thirty, and a date is what you fall back
@@ -2954,34 +3006,93 @@ const callsPanel: SchemaNode = {
                                   narrow. `truncate` is already nowrap, so it costs nothing and the
                                   tooltip above carries the rest.
                                 */
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: 'call.description' },
+                                        then: {
+                                          type: 'we-text',
+                                          props: {
+                                            truncate: true,
+                                            width: '100%',
+                                            textAlign: 'left',
+                                            variant: 'footnote',
+                                            color: 'text-muted',
+                                          },
+                                          children: [{ $: 'call.description' }],
+                                        },
+                                      },
+                                    },
+                                    {
+                                      type: 'we-timestamp',
+                                      // No `truncate`: a timestamp is one short token and the primitive has
+                                      // no such prop. It went unnoticed because a panel's node was never
+                                      // walked by the validator until sections were.
+                                      props: {
+                                        value: { $: 'call.createdAt' },
+                                        relative: true,
+                                        relativeStyle: 'narrow',
+                                        fontSize: '100',
+                                        color: 'text-faint',
+                                      },
+                                    },
+                                  ],
+                                },
                                 {
+                                  /*
+                                Who is in the call, or who was — inside the button, at the end of it.
+
+                                The faces used to sit outside the button altogether, in a column of
+                                their own between it and the trash, and only on rows that were live.
+                                Against the name they say what the row *is* rather than decorating the
+                                space beside it: this list is read to find a conversation, and "the one
+                                with Anna and Josh" is how somebody finds it when three meetings on a
+                                Tuesday have interchangeable names. Which is also why they are on every
+                                row now and not only the live one — see `ROW_FACES`.
+
+                                A sibling of the text column rather than a child of it, so the stack is
+                                centred against the whole row instead of sitting on the title's line.
+                                Three lines of text run to about twice the height of a face, so in the
+                                title line the stack read as pinned to the top-right corner of the row;
+                                the button's own `ay: 'center'` puts it against the middle of the
+                                block, where it reads as belonging to the row rather than to the name.
+
+                                Faces rather than a count: three of them say who is in a meeting in the
+                                width a number and a noun would take, and the stack carries its own
+                                "+N" past `max`. On your own row too — who is in it is worth saying
+                                whether or not there is anything to press beside it.
+
+                                `sm` is 32px. It cannot be compressed — the avatars are each
+                                `flex-shrink: 0`, so the stack's min-content is its whole width — which
+                                means the title is what yields, and that is the right way round: the
+                                title has somewhere to go, since the column beside it carries
+                                `minWidth: '0'` and the whole name is on hover.
+                              */
+                                  type: 'AvatarStack',
+                                  props: { avatars: { $: ROW_FACES }, size: 'sm', max: 3 },
+                                },
+                              ],
+                            },
+                            {
+                              type: 'Column',
+                              props: { gap: '100' },
+                              slot: 'content',
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'label' },
+                                  children: [{ $: "call.title ? call.title : 'Call'" }],
+                                },
+                                {
+                                  // `on-inverse`, not `text-muted` — see the pill's note.
                                   type: '$if',
                                   props: {
                                     condition: { $: 'call.description' },
                                     then: {
                                       type: 'we-text',
-                                      props: {
-                                        truncate: true,
-                                        width: '100%',
-                                        textAlign: 'left',
-                                        variant: 'footnote',
-                                        color: 'text-muted',
-                                      },
+                                      props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
                                       children: [{ $: 'call.description' }],
                                     },
-                                  },
-                                },
-                                {
-                                  type: 'we-timestamp',
-                                  // No `truncate`: a timestamp is one short token and the primitive has
-                                  // no such prop. It went unnoticed because a panel's node was never
-                                  // walked by the validator until sections were.
-                                  props: {
-                                    value: { $: 'call.createdAt' },
-                                    relative: true,
-                                    relativeStyle: 'narrow',
-                                    fontSize: '100',
-                                    color: 'text-faint',
                                   },
                                 },
                               ],
@@ -2990,7 +3101,7 @@ const callsPanel: SchemaNode = {
                         },
                         {
                           /*
-                            Who is in this call, and — on somebody else's — the way into it.
+                            On somebody else's live call, the way into it.
 
                             The panel's whole job is choosing which call every other surface is
                             about, and until this row had a button choosing was all it could do: a
@@ -2999,6 +3110,11 @@ const callsPanel: SchemaNode = {
                             calls are running. A row names the call it means, which is what makes
                             this the right place for the choice rather than a second copy of the
                             header.
+
+                            Who is *in* it is no longer said here. The faces moved into the name
+                            line, where they are on every row rather than only the live ones — see
+                            `ROW_FACES` — which left this a single conditional button with a Row and
+                            a nested `$if` around it for no remaining reason.
 
                             ## Nothing on the row for the call you are already in
 
@@ -3026,69 +3142,48 @@ const callsPanel: SchemaNode = {
                           */
                           type: '$if',
                           props: {
-                            condition: { $: ROW_LIVE_CALL },
+                            /*
+                              One condition, where there used to be two nested. Joining is not
+                              navigation, which is the whole reason this button outlived the one
+                              beside it: clicking the row looks at a call, where this leaves whichever
+                              call you are in and enters another one, and a heavier act than the row's
+                              own click deserves to be asked for separately. The tooltip says what it
+                              costs.
+                            */
+                            condition: { $: `${ROW_LIVE_CALL} && !(${ROW_IS_MINE})` },
                             then: {
-                              type: 'Row',
-                              props: { gap: '100', ay: 'center', flexShrink: '0' },
+                              type: 'we-tooltip',
+                              props: {
+                                content: {
+                                  $: "modules.call.active ? 'Leave your call and join this one' : 'Join this call'",
+                                },
+                                placement: 'top',
+                              },
                               children: [
                                 {
-                                  // Faces rather than a count: three avatars say "a meeting is
-                                  // happening and these are the people in it" in the width a number
-                                  // and a noun would take. The stack carries its own "+N" past `max`.
-                                  // On your own row too: who is in it is worth saying whether or not
-                                  // there is anything to press beside it.
-                                  type: 'AvatarStack',
-                                  props: { avatars: { $: `${ROW_LIVE_CALL}.faces` }, size: 'xs', max: 3 },
-                                },
-                                {
-                                  /*
-                                    Joining is not navigation, which is the whole reason this button
-                                    outlived the one beside it. Clicking the row looks at a call;
-                                    this leaves whichever call you are in and enters another one, and
-                                    a heavier act than the row's own click deserves to be asked for
-                                    separately. The tooltip says what it costs.
-                                  */
-                                  type: '$if',
+                                  type: 'we-button',
                                   props: {
-                                    condition: { $: `!(${ROW_IS_MINE})` },
-                                    then: {
-                                      type: 'we-tooltip',
-                                      props: {
-                                        content: {
-                                          $: "modules.call.active ? 'Leave your call and join this one' : 'Join this call'",
-                                        },
-                                        placement: 'top',
+                                    size: 'sm',
+                                    variant: 'primary',
+                                    /*
+                                      `joinCall` rather than `goToCall`: the latter means "bring me to
+                                      my call", so pressed on somebody else's row while in a call of
+                                      your own it would take you to *yours* — a button beside one
+                                      conversation doing something about another. `joinCall` names the
+                                      id the row carries and leaves whatever you were in, which is what
+                                      the word on it promises.
+                                    */
+                                    onClick: [
+                                      {
+                                        $action: 'modules.call.joinCall',
+                                        args: [{ $: `${ROW_LIVE_CALL}.id` }],
                                       },
-                                      children: [
-                                        {
-                                          type: 'we-button',
-                                          props: {
-                                            size: 'sm',
-                                            variant: 'primary',
-                                            /*
-                                              `joinCall` rather than `goToCall`: the latter means
-                                              "bring me to my call", so pressed on somebody else's row
-                                              while in a call of your own it would take you to
-                                              *yours* — a button beside one conversation doing
-                                              something about another. `joinCall` names the id the row
-                                              carries and leaves whatever you were in, which is what
-                                              the word on it promises.
-                                            */
-                                            onClick: [
-                                              {
-                                                $action: 'modules.call.joinCall',
-                                                args: [{ $: `${ROW_LIVE_CALL}.id` }],
-                                              },
-                                              // And point every other surface at it, which is what
-                                              // clicking the row itself would have done.
-                                              openCall('call.id'),
-                                            ],
-                                          },
-                                          children: ['Join'],
-                                        },
-                                      ],
-                                    },
+                                      // And point every other surface at it, which is what clicking
+                                      // the row itself would have done.
+                                      openCall('call.id'),
+                                    ],
                                   },
+                                  children: ['Join'],
                                 },
                               ],
                             },
@@ -4924,9 +5019,25 @@ const calendarRoute: RouteSchema = {
               $localState: {
                 // Paging is arithmetic on an offset, so every source reads the same offset and the template
                 // only ever adds to it.
-                monthOffset: { type: 'number', initial: 0 },
+                /*
+                  In the URL, because which month you are looking at is the clearest case the rule has:
+                  send somebody a link to a month and they should open on that month. It is also what
+                  makes the calendar follow a driver, since a frame carries the whole address.
+
+                  **An offset, so it is relative to the reader's today.** Within a session that is exactly
+                  right and both agents agree. A link opened after midnight on the first of a month lands
+                  one month out, which is a real flaw and the reason to move this to an absolute `YYYY-MM`
+                  eventually; the expression language has no month arithmetic, so stepping from an absolute
+                  month is not a one-line change. Wrong by a month across a boundary is a great deal better
+                  than a link that always opens on today.
+                */
+                monthOffset: { type: 'number', initial: 0, syncParam: 'month' },
                 // The day a reader has picked, as `YYYY-MM-DD`, or empty for the whole month.
-                day: { type: 'string', initial: '' },
+                /*
+                  In the URL for the same reason, and pushed, so choosing a day is a step Back can undo.
+                  Absolute, unlike the month above, because a day already is: no flaw to note here.
+                */
+                day: { type: 'string', initial: '', syncParam: { name: 'day', push: true } },
                 /*
                   The people filter's two halves, split the way the board splits them: who is chosen
                   rides in the address, since "what Ana is going to" is a thing a link can point at,

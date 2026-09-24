@@ -278,12 +278,12 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
   },
   {
     label: 'Depth & inversion',
-    hint: 'The things that are deliberately not on the light/dark ramp.',
+    hint: 'The things that do not simply follow the light/dark ramp.',
     roles: [
       {
         role: 'surfaceInverse',
         label: 'Inverse surface',
-        hint: 'A surface deliberately opposite to the page — a tooltip. Stays dark in a dark theme too.',
+        hint: 'A surface deliberately opposite to the page — a tooltip. Measured from the page, so it stays clear of it in a dark theme too.',
       },
       { role: 'overlay', label: 'Scrim', hint: 'The dimming behind a modal or drawer. Carries its own transparency.' },
       {

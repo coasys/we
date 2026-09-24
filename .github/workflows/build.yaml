@@ -38,8 +38,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
+      # The heap the whole-monorepo walk needs lives in the `lint` script itself, so CI and a developer's
+      # own `pnpm lint` cannot disagree about it. It used to be set here only, which meant the command
+      # passed in CI and died locally — a gate nobody could reproduce a failure of.
       - name: Lint
-        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
+        run: pnpm lint
 
       # Stylelint was configured (config, deps, editor integration) but never ran anywhere
       # but editors — now it gates the authored CSS.

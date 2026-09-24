@@ -1414,15 +1414,7 @@ export class GraphEngine {
    * `Viewport.setObscured`.
    */
   private visibleWorldRect(): { x: number; y: number; width: number; height: number } {
-    const rect = this.viewport.visibleRect();
-    const topLeft = this.viewport.toWorld({ x: rect.x, y: rect.y });
-    const bottomRight = this.viewport.toWorld({ x: rect.x + rect.width, y: rect.y + rect.height });
-    return {
-      x: topLeft.x,
-      y: topLeft.y,
-      width: bottomRight.x - topLeft.x,
-      height: bottomRight.y - topLeft.y,
-    };
+    return this.viewport.visibleWorldRect();
   }
 
   private scheduleTick(): void {
@@ -1865,6 +1857,25 @@ export class GraphEngine {
   fit(): void {
     if (!this.fitToContent()) this.pendingFit = true;
     else this.notify('viewport');
+  }
+
+  /**
+   * Frame one world rectangle — what following somebody else's view does.
+   *
+   * Distinct from {@link fit}, which frames the *content*: this frames a region somebody named, which
+   * may be empty canvas, and does so with no margin. A margin here would be a follower seeing
+   * slightly less than the driver at every hop, and the region is already what the driver could see
+   * rather than the extent of anything.
+   *
+   * Does nothing before there is a surface to frame into, and deliberately does not remember the
+   * request the way `fit` does: a view somebody was sharing a moment ago is not worth applying once a
+   * box finally exists, by which time they have moved.
+   */
+  frame(region: { x: number; y: number; width: number; height: number }): void {
+    const { width, height } = this.viewport.get();
+    if (!width || !height) return;
+    this.viewport.frameRegion(region);
+    this.notify('viewport');
   }
 
   /**
