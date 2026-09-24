@@ -185,13 +185,38 @@ export function LiveViewHost() {
     });
   });
 
+  /**
+   * Bumped by anything that moves the page without changing what is on it — a scroll, a resize.
+   *
+   * Two readers, and both need it. A mark anchored to a record has moved on screen without the mark
+   * changing, so the overlay has to re-place it. And `frame()` below describes a scrolling surface by
+   * *which record is at the top*, which is a different answer after a scroll — without this a driver
+   * scrolling a board would publish nothing until the two-second repeat came round, so a follower
+   * would trail a page behind them.
+   *
+   * Listened for in the **capture** phase on the document, because `scroll` does not bubble: a scroll
+   * inside a panel or a board column would otherwise never be seen at all.
+   */
+  const [geometry, setGeometry] = createSignal(0);
+  onMount(() => {
+    const invalidate = () => setGeometry(geometry() + 1);
+    document.addEventListener('scroll', invalidate, { capture: true, passive: true });
+    window.addEventListener('resize', invalidate, { passive: true });
+    onCleanup(() => {
+      document.removeEventListener('scroll', invalidate, { capture: true });
+      window.removeEventListener('resize', invalidate);
+    });
+  });
+
   const kernel: ViewKernel = {
     onPointer: (cb) => {
       state.pointerListeners.add(cb);
       return () => state.pointerListeners.delete(cb);
     },
     frame: () => {
+      // Both: a camera move changes the region, and a scroll changes which record is at the top.
       cameras();
+      geometry();
       return composeFrame(state, address(), content());
     },
     apply: (frame) => applyFrame(frame),
@@ -240,24 +265,6 @@ export function LiveViewHost() {
   onCleanup(provideModuleHostServices({ view: kernel }));
 
   // ── The overlay ────────────────────────────────────────────────────────────
-
-  /**
-   * Bumped by anything that can move a mark without the mark itself changing — a scroll, a resize.
-   *
-   * Listened for in the capture phase on the document, because a scroll inside a panel or a board
-   * column does not bubble: `scroll` events do not, and a mark anchored to a card in that column has
-   * just moved.
-   */
-  const [geometry, setGeometry] = createSignal(0);
-  onMount(() => {
-    const invalidate = () => setGeometry((n) => n + 1);
-    document.addEventListener('scroll', invalidate, { capture: true, passive: true });
-    window.addEventListener('resize', invalidate, { passive: true });
-    onCleanup(() => {
-      document.removeEventListener('scroll', invalidate, { capture: true });
-      window.removeEventListener('resize', invalidate);
-    });
-  });
 
   /**
    * The marks this component draws: everything not addressed to a canvas, resolved to a client point.

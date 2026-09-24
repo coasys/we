@@ -216,6 +216,10 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       if (!isNewer(current, message.seq)) return;
       if (!message.at) held.delete(from);
       else held.set(from, { at: message.at, at_ms: now(), seq: message.seq });
+      // Started here rather than at construction: there is nothing to expire until somebody's cursor
+      // is on screen, and it stops itself once the last one has gone.
+      if (held.size) startExpiry();
+      else stopExpiry();
       bumpCursors();
       return;
     }
@@ -245,8 +249,20 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     publish({ kind: 'cursor', at: pendingAt });
   }
 
+  /**
+   * Run the publish timer at the rate the ladder picks — and only while there is anything to publish.
+   *
+   * The gate is the same condition `flushPointer` checks, moved up to the timer, which is strictly
+   * better: a store is constructed once per app whether or not anybody switches cursors on, so a timer
+   * started regardless is one every session pays for a feature most sessions never use. It is also a
+   * live handle that keeps a Node process alive, and `generate-context` builds every module's store —
+   * which is how an unconditional interval here turned the build into a hang with every file already
+   * written.
+   */
   function retime(watching: number): void {
     if (publishTimer) clearInterval(publishTimer);
+    publishTimer = null;
+    if (!cursorsOn() || !cursorsAllowed() || watching <= 0) return;
     publishTimer = setInterval(flushPointer, cursorIntervalMs(watching));
   }
 
@@ -333,10 +349,12 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     setDriving(true);
     setActivity({ type: 'driving', since: now() });
     publishView();
+    startViewRepeat();
   };
 
   const releaseWheel = () => {
     setDriving(false);
+    stopViewRepeat();
     presence?.clearActivity('driving');
   };
 
@@ -401,11 +419,14 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     const next = !cursorsOn();
     setCursorsOn(next);
     setProblem('');
+    // The switch is half of what decides whether the publish timer runs at all — see `retime`.
+    retime(watchers().length);
     if (next) {
       setActivity({ type: 'live', cursors: true });
     } else {
       presence?.clearActivity('live');
       held.clear();
+      stopExpiry();
       publishedAt = null;
       bumpCursors();
       // Say so rather than leaving peers to the TTL: switching off is deliberate, and three seconds
@@ -428,23 +449,56 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   effect?.(() => retime(watchers().length));
 
   /**
-   * Drop cursors nobody has heard about.
+   * Drop cursors nobody has heard about — while there are any to drop.
    *
    * On a timer rather than computed at read time, because the read is what draws them: a cursor whose
    * peer went quiet would otherwise stay on screen until something else happened to change, which on a
    * still page is indefinitely.
+   *
+   * **Started and stopped rather than left running**, and it is worth saying why out loud. A store is
+   * constructed once per app whether or not anybody ever switches cursors on, so an interval started
+   * here unconditionally is an interval every session pays for a feature most sessions do not use. It
+   * is also a live handle, which in Node keeps the process alive: `generate-context` builds every
+   * module's store to catalogue it, and two unconditional intervals made the build hang for ever with
+   * every file already written. A module's constructor should leave nothing running.
    */
-  expiryTimer = setInterval(() => {
-    if (!held.size) return;
+  function sweepCursors(): void {
     const { live, expired } = liveCursors(held, now());
-    if (!expired.length) return;
-    held.clear();
-    for (const [did, cursor] of live) held.set(did, cursor);
-    bumpCursors();
-  }, CURSOR_TTL_MS / 2);
+    if (expired.length) {
+      held.clear();
+      for (const [did, cursor] of live) held.set(did, cursor);
+      bumpCursors();
+    }
+    if (!held.size) stopExpiry();
+  }
 
-  /** Repeat the view for a follower who arrived while the driver was sitting still. */
-  viewTimer = setInterval(publishView, VIEW_REPEAT_MS);
+  function startExpiry(): void {
+    if (expiryTimer) return;
+    expiryTimer = setInterval(sweepCursors, CURSOR_TTL_MS / 2);
+  }
+
+  function stopExpiry(): void {
+    if (!expiryTimer) return;
+    clearInterval(expiryTimer);
+    expiryTimer = null;
+  }
+
+  /**
+   * Repeat the view for a follower who arrived while the driver was sitting still.
+   *
+   * Only while this agent is driving, for the reason above: nobody is listening otherwise, and a store
+   * that leaves a timer running has made every session pay for it.
+   */
+  function startViewRepeat(): void {
+    if (viewTimer) return;
+    viewTimer = setInterval(publishView, VIEW_REPEAT_MS);
+  }
+
+  function stopViewRepeat(): void {
+    if (!viewTimer) return;
+    clearInterval(viewTimer);
+    viewTimer = null;
+  }
 
   /** Publish the view the moment it changes, rather than waiting out the repeat. */
   effect?.(() => {
@@ -512,8 +566,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     stopPointer?.();
     stopDecorating?.();
     if (publishTimer) clearInterval(publishTimer);
-    if (expiryTimer) clearInterval(expiryTimer);
-    if (viewTimer) clearInterval(viewTimer);
+    stopExpiry();
+    stopViewRepeat();
     if (cursorsOn()) presence?.clearActivity('live');
     releaseWheel();
     stopFollowing();

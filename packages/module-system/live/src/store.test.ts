@@ -56,6 +56,49 @@ beforeEach(() => {
   vi.useRealTimers();
 });
 
+describe('what a fresh store leaves running', () => {
+  it('leaves no timer behind, because most sessions never switch anything on', () => {
+    /*
+      A store is constructed once per app whether or not anybody uses the feature, so a timer started
+      in the constructor is one every session pays for. It is also a live handle that keeps a Node
+      process alive — and `generate-context` builds every module's store to catalogue it, so two
+      unconditional intervals turned the whole build into a hang with every file already written. That
+      is what this pins.
+
+      Asserted through the environment rather than by inspecting the store, because what went wrong was
+      a *handle*, and the store has nothing to say about one.
+    */
+    const started: unknown[] = [];
+    const spy = vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: never, ms: never) => {
+      started.push(ms);
+      return 0 as never;
+    }) as never);
+
+    setup();
+    expect(started).toEqual([]);
+    spy.mockRestore();
+  });
+
+  it('runs the publish timer only once there is somebody to publish to', () => {
+    const started: unknown[] = [];
+    const spy = vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: never, ms: never) => {
+      started.push(ms);
+      return 0 as never;
+    }) as never);
+
+    const { store, presence } = setup();
+    // Switched on with nobody watching: still nothing to send, so still nothing ticking.
+    store.toggleCursors();
+    expect(started).toEqual([]);
+
+    presence.publish(ANA, { type: 'live', cursors: true });
+    store.toggleCursors();
+    store.toggleCursors();
+    expect(started.length).toBeGreaterThan(0);
+    spy.mockRestore();
+  });
+});
+
 describe('switching cursors on', () => {
   it('tells peers, so they know there is somebody to publish to', () => {
     const { store, presence } = setup();
