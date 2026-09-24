@@ -4473,6 +4473,12 @@
           "type": "string",
           "predicate": "we://card_shape",
           "required": false
+        },
+        {
+          "name": "rank",
+          "type": "number",
+          "predicate": "we://rank",
+          "required": false
         }
       ],
       "relations": [

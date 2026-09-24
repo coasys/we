@@ -1620,6 +1620,7 @@ export const contextData: ContextData = {
         { name: 'z', type: 'number', predicate: 'we://z', required: false },
         { name: 'color', type: 'string', predicate: 'we://color', required: false },
         { name: 'cardShape', type: 'string', predicate: 'we://card_shape', required: false },
+        { name: 'rank', type: 'number', predicate: 'we://rank', required: false },
       ],
       relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://placed_node' }],
     },

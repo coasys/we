@@ -2351,6 +2351,7 @@ Placement extends Ad4mModel:
   - z: number [we://z]
   - color: string [we://color]
   - cardShape: string [we://card_shape]
+  - rank: number [we://rank]
   Relations:
   - node: HasOne [we://placed_node]
 
