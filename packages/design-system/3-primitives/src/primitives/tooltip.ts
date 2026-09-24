@@ -53,7 +53,6 @@ const CSS_STYLES = css`
        UA's overflow:auto then draws a scrollbar on the bubble itself. */
     margin: 0;
     inset: unset;
-    border: none;
     width: max-content;
     height: auto;
     overflow: visible;
@@ -88,10 +87,27 @@ const CSS_STYLES = css`
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
     /* The inverse pair. Not text/onInverse: those are scale positions, so they flip with the
-       theme and a dark tooltip in light mode became a white one in dark. Both halves of this pair
-       hold a fixed lightness, so the tooltip stays opposite to the page in either polarity. */
+       theme and a dark tooltip in light mode became a white one in dark. This pair is measured
+       from the page instead, so the bubble stays a fixed distance off it in either polarity —
+       see surfaceInverse in @we/tokens for the measurements that made that necessary. */
     background: var(--we-role-surface-inverse);
     color: var(--we-role-on-inverse);
+    /*
+      An edge as well as a fill, because the fill alone was never doing the whole job.
+
+      The shadow below is built from shadow-color, which is pinned near-black — so on a dark page it
+      is invisible, and the bubble's only separation from what is behind it was its own lightness.
+      That is the half that had failed; a 1px border is the half that never depended on the ramp
+      having room, and it costs nothing in a light theme where the fill already reads.
+
+      The arrow is deliberately left unbordered. It is 8px, rotated 45 degrees and half-buried in
+      the bubble, so bordering it would draw a line across the join — a seam somewhere obvious to
+      fix a seam nowhere near it. This also overrides the UA's border on a promoted popover, which
+      is what the reset above used to spend a "border: none" on.
+
+      (No backticks in here either: this is the same tagged template literal.)
+    */
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-border-radius, 4px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
     /*

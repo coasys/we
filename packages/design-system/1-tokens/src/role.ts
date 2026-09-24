@@ -175,12 +175,54 @@ export const role = {
    * A surface deliberately opposite to the page — the tooltip, and anything else that must read as
    * "not part of the document".
    *
-   * Like `onInverse`, pinned in lightness so it does not flip. The tooltip hardcoded `#222` for
-   * exactly this reason and the dark theme carried a CSS override to undo it in dark mode; both are
-   * gone, and a theme can now move the pair together.
+   * ## A distance, not a point — which is what "opposite" means
+   *
+   * This was pinned at an absolute `oklch(24.8%)`, on the same reasoning as `onInverse`: a scale
+   * position flips with the theme, so a dark tooltip in light mode became a white one in dark. True,
+   * and the pin is the wrong correction, because *opposite to the page* is a relationship and a
+   * fixed point cannot hold one. The page moved and the tooltip did not:
+   *
+   * | theme     | chrome | page | surface | sunken | tooltip |
+   * |-----------|-------:|-----:|--------:|-------:|--------:|
+   * | light     |   97.0 |100.0 |   100.0 |   96.5 |    24.8 |
+   * | dark      |   25.0 | 28.0 |    30.5 |   24.5 |    24.8 |
+   * | channels  |   24.1 | 27.1 |    29.6 |   23.6 |    24.8 |
+   * | black     |   15.7 | 18.7 |    21.2 |   15.2 |    24.8 |
+   * | cyberpunk |   28.4 | 31.4 |    33.9 |   27.9 |    24.8 |
+   *
+   * In `dark` the tooltip sat **0.2 points from the chrome and 0.3 from a sunken well** — not close,
+   * identical — so a tooltip over the rail or over an input trough had no edge at all. In `channels`
+   * and `black` it came out *lighter* than the chrome, and in `black` lighter than every plane in
+   * the theme, which is the inverse inverted. `cyberpunk` read correctly by accident: its floor is
+   * 23.5%, so the page floated up and away from the pin. One polarity was served and three themes
+   * got noise.
+   *
+   * ## Why `clamp` rather than a signed step
+   *
+   * Both polarities want the chip *darker* — a light tooltip in a dark theme was tried and rejected
+   * — so there is nothing for a polarity flag to decide. What differs is only the magnitude, and
+   * that is because the page itself has moved: twelve points below the page is the whole rule, with
+   * the upper bound holding light themes at the dark chip they already had (page 100 − 12 would be a
+   * pale grey, which is not a tooltip) and the lower bound keeping a theme that is already near the
+   * sRGB floor off literal black.
+   *
+   * So the bounds are not a fudge around a formula that does not work — they are the two ends of the
+   * ramp stating what they need, and the middle term is the relationship. Resolved: light 25.0,
+   * cyberpunk 19.4, dark 16.0, channels 15.1, black 6.7 — every one of them clear of its own chrome.
+   *
+   * Twelve because the whole in-document stack spans seven (chrome 25 → raised 32 in `dark`) and the
+   * largest single step in it is three. A plane that is further from the page than any of the planes
+   * are from each other is one the eye reads as somewhere else, which is the job.
+   *
+   * `c h` from the page, like every other derived surface, so a theme that tints its neutrals gets a
+   * tinted chip for free. That replaces an explicit chroma expression whose taper was baked for
+   * 24.8% and would have been measured at the wrong lightness from here on; the two differ by about
+   * 0.0007 chroma in `dark`, which is why it is not worth a second expression to keep.
+   *
+   * `onInverse` is re-derived against whatever this resolves to (`AUTO_CONTRAST` in `themeStyles`),
+   * so the label follows on its own and needs nothing said here.
    */
-  surfaceInverse:
-    'oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue))',
+  surfaceInverse: 'oklch(from var(--we-role-page) clamp(0.04, calc(l - 0.12), 0.25) c h)',
   /** Default border/divider. */
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
@@ -550,6 +592,10 @@ export const ROLE_ALIASES: Record<string, string> = {
  *   *fill*, and flashes transparent mid-click.
  * - **`onAccentMuted`** falls back to `onAccent`. The tier is gone and the hierarchy flattens, but
  *   every word is still legible, which is the property worth keeping when only one can be.
+ * - **`surfaceInverse`** falls back to the absolute pin it used to be. That is right in light and
+ *   indistinguishable from the chrome in dark — which is the defect the relative form fixes, so the
+ *   fallback is the old behaviour rather than a new one, and nobody on such a browser is worse off
+ *   than they were. A dropped declaration here is a tooltip with no background at all.
  *
  * Deliberately not `color-mix`, which is more widely supported and wrong for the job: mixing a
  * percentage toward white moves by a share of the distance remaining, so the same 8% is 0.4 points
@@ -559,6 +605,8 @@ export const ROLE_RELATIVE_FALLBACK = {
   surface: 'var(--we-color-neutral-0)',
   surfaceRaised: 'var(--we-color-neutral-0)',
   surfaceSunken: 'var(--we-color-neutral-100)',
+  surfaceInverse:
+    'oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue))',
   onAccentMuted: 'var(--we-role-on-accent)',
   accentHover: 'var(--we-role-accent)',
   accentActive: 'var(--we-role-accent)',

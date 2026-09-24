@@ -1,8 +1,17 @@
 /* ===== ELEMENTS OVERRIDES ===== */
-[data-we-theme='black'] we-tooltip::part(tooltip) {
-  background: var(--we-color-neutral-100);
-  color: var(--we-color-black);
-}
+
+/*
+  The tooltip override that used to be here is gone, and it had stopped working long before it was
+  removed. It painted `neutral-100` with `color: black` — written when the ramp was HSL and that step
+  was a near-white, to undo a tooltip hardcoded to `#222`. Under the OKLCH ramp `neutral-100` in this
+  theme's dark polarity resolves to L 18.4%, so it was near-black text on a near-black chip, and an
+  outer-tree `::part` rule beats the shadow tree's own — so it won, silently, in the one theme that
+  looked like it had been thought about.
+
+  Nothing replaces it. `surfaceInverse` is now measured from the page rather than pinned, which lands
+  this theme's tooltip at L 6.7% against a page of 18.7%, and `onInverse` is derived against that.
+  A theme-level override here would be the same mistake a third time.
+*/
 
 [data-we-theme='black'] we-menu-item::part(base) {
   margin-top: var(--we-space-100);
