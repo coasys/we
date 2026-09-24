@@ -274,11 +274,24 @@ function forwardDocuments(live: () => DocumentAccess | undefined): DocumentAcces
   };
 }
 
-/** The kernels this host implements — what a manifest's `requires.kernels` is checked against. */
+/**
+ * The kernels this host implements — what a manifest's `requires.kernels` is checked against.
+ *
+ * **Adding a kernel means adding it here too**, and forgetting is silent in the worst way: a module
+ * naming one this list omits is *refused at registration*, so it has no store, no launcher, no slot and
+ * no panel. The feature is simply absent, and because a refusal reads as a console line in an app that
+ * then works fine, the obvious conclusion is that the module is switched off somewhere. That is exactly
+ * how the live module's controls went missing from the rail — `view` was implemented in the bag below
+ * and never declared up here.
+ *
+ * A test asserts this list against the keys the bag actually builds, in both directions, because two
+ * hand-maintained copies of one fact is what caused it.
+ */
 export const HOST_KERNELS: readonly KernelName[] = [
   'records',
   'agentData',
   'presence',
+  'view',
   'ephemeral',
   'media',
   'peerConnection',
