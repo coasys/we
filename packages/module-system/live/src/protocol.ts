@@ -225,6 +225,37 @@ export interface HeldCursor {
   at_ms: number;
   /** The highest `seq` seen from this sender, so a late duplicate cannot move them backwards. */
   seq: number;
+  /** How long it had been since the position before this one — see {@link easeMsFor}. */
+  gap_ms: number;
+}
+
+/**
+ * The shortest and longest an eased cursor should take to cover one gap.
+ *
+ * The floor is there because a burst of positions arriving together must not each animate for longer
+ * than the next one takes to arrive, or the cursor falls permanently behind its own data. The ceiling
+ * is the more interesting one: a gap of several seconds is real, and easing across the whole of it
+ * would leave the cursor seconds behind where the peer actually is, which is worse than being still.
+ * Past the ceiling the honest drawing is a quick glide and then a wait.
+ */
+export const EASE_MIN_MS = 60;
+export const EASE_MAX_MS = 400;
+
+/**
+ * How long to ease a cursor that arrived `gap` after the position before it.
+ *
+ * The whole point of easing a cursor is to cover the time until the next one, so the duration is a
+ * measurement rather than a setting. The alternative, which this replaced, was a fixed duration chosen
+ * for the rate the sender aims at: right when the transport keeps up and wrong the moment it does not,
+ * when it draws a tenth of a second of movement followed by a second of stillness and reads as the
+ * stutter the easing exists to remove.
+ *
+ * A first sighting has no gap to measure and gets the ceiling, so somebody's cursor arrives with a
+ * glide rather than snapping into place.
+ */
+export function easeMsFor(gap: number): number {
+  if (!Number.isFinite(gap) || gap <= 0) return EASE_MAX_MS;
+  return Math.min(EASE_MAX_MS, Math.max(EASE_MIN_MS, Math.round(gap)));
 }
 
 /**

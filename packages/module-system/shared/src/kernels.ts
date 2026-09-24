@@ -390,6 +390,17 @@ export interface LiveDecoration {
    * reads as a stuttering jump rather than as a hand moving. A pin on a card is where it is.
    */
   ease?: boolean;
+  /**
+   * How long that ease should take, in milliseconds. Ignored unless {@link ease}.
+   *
+   * Absent means the host's own default, which is tuned for a cursor arriving as fast as the
+   * transport allows. Pass a number when the producer knows better, and it usually does: a cursor is
+   * eased to cover the gap between one position and the next, so the honest duration is the gap this
+   * peer's messages are *actually* arriving at, not the one the sender hoped for. On a congested
+   * executor those differ by an order of magnitude, and a fixed duration then spends a tenth of the
+   * gap gliding and the rest frozen, which is the stutter it was meant to remove.
+   */
+  easeMs?: number;
 }
 
 /**

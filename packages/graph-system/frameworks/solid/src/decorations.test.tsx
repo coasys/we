@@ -40,11 +40,12 @@ function mount(props: GraphViewProps = {}) {
  */
 const drawing = (decorations: () => GraphDecoration[]) => ({ decorations }) as unknown as GraphHostBindings;
 
-const mark = (id: string, x: number, y: number, ease = false): GraphDecoration => ({
+const mark = (id: string, x: number, y: number, ease = false, easeMs?: number): GraphDecoration => ({
   id,
   x,
   y,
   ease,
+  ...(easeMs === undefined ? {} : { easeMs }),
   render: () => <span data-mark={id} />,
 });
 
@@ -84,6 +85,21 @@ describe('decorations', () => {
     const [first, second] = [...host.querySelectorAll('.we-graph__decoration')];
     expect(first.classList.contains('we-graph__decoration--eased')).toBe(true);
     expect(second.classList.contains('we-graph__decoration--eased')).toBe(false);
+  });
+
+  it('eases for as long as the mark says, and leaves the default alone when it says nothing', () => {
+    const host = mount({ host: drawing(() => [mark('slow', 0, 0, true, 320), mark('quiet', 0, 0, true)]) });
+    const [slow, quiet] = [...host.querySelectorAll('.we-graph__decoration')] as HTMLElement[];
+
+    /*
+      A variable rather than the transition itself, so the stylesheet keeps the curve and the timing
+      function while the mark carries only the number it knows. Its producer is measuring the gap its
+      positions actually arrive at; a duration much shorter than that draws a brief glide followed by
+      stillness, which is the stutter the easing exists to remove.
+    */
+    expect(slow.style.getPropertyValue('--we-decoration-ease')).toBe('320ms');
+    // Absent, not zero: the stylesheet's fallback is what a mark that does not say gets.
+    expect(quiet.style.getPropertyValue('--we-decoration-ease')).toBe('');
   });
 
   it('moves a mark without remounting it, so there is something to interpolate', () => {

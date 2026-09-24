@@ -683,6 +683,15 @@ export interface GraphDecoration {
    */
   ease?: boolean;
   /**
+   * How long that ease takes, in milliseconds. Ignored unless {@link ease}.
+   *
+   * Absent means the stylesheet's own default, tuned for a mark arriving as fast as a transport allows.
+   * A producer that knows how far apart its positions are really arriving should say so: the easing is
+   * there to cover the time until the next one, so a duration much shorter than the real gap draws a
+   * brief glide followed by stillness, which is the stutter it was meant to remove.
+   */
+  easeMs?: number;
+  /**
    * What to draw. Host-supplied, for the reason `nodeContent` is.
    *
    * **Called once while this `id` is present**, not on every change to the list: what a mark *is* stays

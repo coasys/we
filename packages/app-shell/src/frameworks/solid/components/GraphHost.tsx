@@ -401,6 +401,9 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         x: mark.at.x,
         y: mark.at.y,
         ease: mark.ease,
+        // Passed through rather than defaulted here: only the producer knows the gap it is covering,
+        // and the graph's own stylesheet owns what a mark that does not say gets.
+        easeMs: mark.easeMs,
         render: () => RenderSchema({ node: mark.node, stores: bag, registry: componentRegistry }),
       }));
     },

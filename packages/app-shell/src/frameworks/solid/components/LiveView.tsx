@@ -145,6 +145,14 @@ export function registerLiveCanvas(canvasId: string) {
  *
  * Mounted once, beside the app's other always-on chrome.
  */
+/**
+ * How long to ease a mark that did not say.
+ *
+ * Tuned for a cursor arriving as fast as the transport allows, which is what the producers that say
+ * nothing are. A producer that knows its own cadence passes `easeMs` instead.
+ */
+const DEFAULT_EASE_MS = 90;
+
 export function LiveViewHost() {
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
@@ -387,6 +395,11 @@ export function LiveViewHost() {
                     `.we-graph__decoration--eased`. A record-anchored mark is not eased: it is where its
                     card is, and easing it would animate a pin across the screen when a board reorders.
 
+                    The duration comes from the mark, because only its producer knows how far apart this
+                    peer's positions are actually arriving. A fixed one was right while the transport kept
+                    up and wrong the moment it did not — see `easeMsFor`. Absent, the host's own default
+                    stands in.
+
                     On `left`/`top` rather than on a transform, because a percentage is what makes this
                     correct and `translate()` resolves a percentage against the element's own size — which
                     is zero here, the origin sitting at the pointer's hot point. The cost is that these
@@ -398,7 +411,13 @@ export function LiveViewHost() {
                     same thing, so there is nothing to suspend and the mark's own motion keeps its easing
                     for the whole drag. `placementIn` has the argument.
                   */
-                  ...(entry()?.mark.ease ? { transition: 'left 90ms linear, top 90ms linear' } : {}),
+                  ...(entry()?.mark.ease
+                    ? {
+                        transition: `left ${entry()?.mark.easeMs ?? DEFAULT_EASE_MS}ms linear, top ${
+                          entry()?.mark.easeMs ?? DEFAULT_EASE_MS
+                        }ms linear`,
+                      }
+                    : {}),
                 }}
               >
                 {drawn}

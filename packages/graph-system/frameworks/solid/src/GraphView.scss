@@ -309,7 +309,11 @@
   animate a pin across the screen when a board reorders.
 */
 .we-graph__decoration--eased {
-  transition: transform 90ms linear;
+  /*
+    The duration is a variable because only the mark's producer knows the gap it is covering — see
+    `GraphDecoration.easeMs`. The fallback is what a mark that does not say gets.
+  */
+  transition: transform var(--we-decoration-ease, 90ms) linear;
 }
 
 /*

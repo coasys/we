@@ -3303,7 +3303,12 @@ export function GraphView(props: GraphViewProps) {
                   <div
                     class="we-graph__decoration"
                     classList={{ 'we-graph__decoration--eased': mark()?.ease === true }}
-                    style={{ transform: `translate(${mark()?.x ?? 0}px, ${mark()?.y ?? 0}px)` }}
+                    style={{
+                      transform: `translate(${mark()?.x ?? 0}px, ${mark()?.y ?? 0}px)`,
+                      // A variable rather than the transition itself, so the stylesheet keeps the curve
+                      // and the timing function and this carries only the one number it knows.
+                      ...(mark()?.easeMs ? { '--we-decoration-ease': `${mark()!.easeMs}ms` } : {}),
+                    }}
                   >
                     {/*
                     Counter-scaled against the camera, so a mark stays the size it was drawn at.

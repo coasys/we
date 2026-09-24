@@ -27,6 +27,7 @@ import {
 import {
   CURSOR_TTL_MS,
   cursorIntervalMs,
+  easeMsFor,
   type HeldCursor,
   isNewer,
   LIVE_PROTOCOL_VERSION,
@@ -323,7 +324,17 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       const current = held.get(from);
       if (!isNewer(current, message.seq)) return;
       if (!message.at) held.delete(from);
-      else held.set(from, { at: message.at, at_ms: now(), seq: message.seq });
+      else {
+        /*
+          The gap since this peer's previous position, which is what their cursor is eased over.
+
+          Measured on arrival rather than taken from the sender: what matters is how long this screen
+          waited, and congestion between the two of us is exactly the difference. A peer heard from for
+          the first time has no gap, and `easeMsFor` gives those a full glide.
+        */
+        const at_ms = now();
+        held.set(from, { at: message.at, at_ms, seq: message.seq, gap_ms: current ? at_ms - current.at_ms : 0 });
+      }
       // Started here rather than at construction: there is nothing to expire until somebody's cursor
       // is on screen, and it stops itself once the last one has gone.
       if (held.size) startExpiry();
@@ -414,6 +425,15 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       at: cursor.at,
       // Eased: a cursor arrives in steps and is drawn as continuous movement. See the transition.
       ease: true,
+      /*
+        Over the gap this peer's messages actually arrived at, not over a fixed duration.
+
+        The easing exists to cover the time until the next position, so its length is a measurement.
+        Fixed, it was right while the transport kept up and wrong the moment it did not: a tenth of a
+        second of gliding followed by a second of stillness, which reads as the stutter the easing was
+        added to remove. Clamped at both ends — see `easeMsFor`.
+      */
+      easeMs: easeMsFor(cursor.gap_ms),
       node: {
         type: 'we-live-cursor',
         props: { hash: did, name: face('name'), image: face('image') },

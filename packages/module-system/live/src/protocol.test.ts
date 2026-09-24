@@ -11,6 +11,9 @@ import { describe, expect, it } from 'vitest';
 import {
   CURSOR_TTL_MS,
   cursorIntervalMs,
+  EASE_MAX_MS,
+  EASE_MIN_MS,
+  easeMsFor,
   type HeldCursor,
   isNewer,
   LIVE_PROTOCOL_VERSION,
@@ -126,12 +129,43 @@ describe('ordering', () => {
   });
 });
 
+describe('how long a cursor is eased for', () => {
+  it('covers the gap it actually arrived after', () => {
+    // The whole point of the easing is to cover the time until the next position, so the duration is a
+    // measurement rather than a setting.
+    expect(easeMsFor(120)).toBe(120);
+    expect(easeMsFor(250)).toBe(250);
+  });
+
+  it('never eases for longer than the ceiling, however long the gap was', () => {
+    /*
+      A gap of seconds is real under a congested executor, and easing across the whole of it would leave
+      the cursor seconds behind where its owner actually is. Past the ceiling the honest drawing is a
+      quick glide and then a wait.
+    */
+    expect(easeMsFor(3_000)).toBe(EASE_MAX_MS);
+    expect(easeMsFor(60_000)).toBe(EASE_MAX_MS);
+  });
+
+  it('never eases for less than the floor, so a burst cannot outrun its own animation', () => {
+    // Positions that arrive together must not each animate for longer than the next takes to arrive.
+    expect(easeMsFor(5)).toBe(EASE_MIN_MS);
+    expect(easeMsFor(1)).toBe(EASE_MIN_MS);
+  });
+
+  it('gives a first sighting a full glide rather than a snap', () => {
+    // No previous position, so nothing to measure. Arriving with a glide reads as somebody appearing.
+    expect(easeMsFor(0)).toBe(EASE_MAX_MS);
+    expect(easeMsFor(Number.NaN)).toBe(EASE_MAX_MS);
+  });
+});
+
 describe('expiry', () => {
   it('keeps what has been heard from and reports what has not', () => {
     const at = { surface: 'c', kind: 'world' as const, x: 0, y: 0 };
     const held = new Map<string, HeldCursor>([
-      ['did:fresh', { at, at_ms: 1_000, seq: 1 }],
-      ['did:gone', { at, at_ms: 1_000 - CURSOR_TTL_MS - 1, seq: 1 }],
+      ['did:fresh', { at, at_ms: 1_000, seq: 1, gap_ms: 90 }],
+      ['did:gone', { at, at_ms: 1_000 - CURSOR_TTL_MS - 1, seq: 1, gap_ms: 90 }],
     ]);
     const { live, expired } = liveCursors(held, 1_000);
     expect([...live.keys()]).toEqual(['did:fresh']);
