@@ -58,6 +58,10 @@ const SOLID_TESTS = [
   // Drives real Solid effects, which is the whole subject: the failure is what a framework does with
   // an effect whose first run tracked nothing, and the node project's SSR build never re-runs one.
   'tests/moduleServiceBinding.test.ts',
+  // Builds a module's store against a real reactive graph. The module package's own tests use the
+  // one-shot effect, which cannot reproduce an effect that re-triggers itself — the bug that froze the
+  // app before login.
+  'tests/liveStoreReactive.test.tsx',
 ];
 
 export default defineConfig({

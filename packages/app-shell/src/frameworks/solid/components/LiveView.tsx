@@ -229,7 +229,8 @@ export function LiveViewHost() {
    */
   const [geometry, setGeometry] = createSignal(0);
   onMount(() => {
-    const invalidate = () => setGeometry(geometry() + 1);
+    // Updater form, for the reason `bumpRegistered` gives — never read a signal you are about to write.
+    const invalidate = () => setGeometry((n) => n + 1);
     document.addEventListener('scroll', invalidate, { capture: true, passive: true });
     window.addEventListener('resize', invalidate, { passive: true });
     onCleanup(() => {

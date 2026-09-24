@@ -79,7 +79,17 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    * can supply, so there is no `set(n => n + 1)` to reach for. Read-then-write, in one helper.
    */
   const [cursorVersion, setCursorVersion] = signal(0);
-  const bumpCursors = () => setCursorVersion(cursorVersion() + 1);
+  /**
+   * A counter kept outside the signal, so bumping never *reads* it.
+   *
+   * `deps.signal`'s setter takes a value rather than an updater — the smallest shape every framework can
+   * supply — so the obvious `setCursorVersion(cursorVersion() + 1)` reads inside whatever scope called
+   * it. That froze the app before login: `attach` bumps, `attach` is called from the store's effect, so
+   * the effect came to depend on a signal it had just written, re-ran, wrote again, and recursed until
+   * the stack went. Nothing here may read a signal it is about to write.
+   */
+  let cursorSeq = 0;
+  const bumpCursors = () => setCursorVersion((cursorSeq += 1));
   const [driving, setDriving] = signal(false);
   const [followingDid, setFollowingDid] = signal('');
   /** Why something could not be done, as a sentence to show. */
@@ -87,6 +97,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   /** Synthetic cursors, and the clock that moves them. Development only — see `devCursors.ts`. */
   const [fakeCount, setFakeCount] = signal(readDevCursorCount());
   const [fakeTick, setFakeTick] = signal(0);
+  let fakeSeq = 0;
   let fakeTimer: ReturnType<typeof setInterval> | null = null;
 
   /** Peers' cursors, by did. A plain map: `cursorVersion` is what makes reading it reactive. */
@@ -196,7 +207,15 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    */
   function ensureAttached(): void {
     const handle = deps.dataset?.() ?? null;
-    if (handle === attachedTo && cursorChannel) return;
+    /*
+      The handle alone decides, and `attachedTo` starts as `undefined` so the first call always attaches
+      even for a null one.
+
+      It used to also require a live channel, which meant a null handle — every frame before login — was
+      re-attached on every call, and `attach` clears state and bumps. Cheap in itself and not the bug, but
+      it is the loop's fuel: nothing should redo work for a space that has not changed.
+    */
+    if (handle === attachedTo) return;
     attach(handle);
   }
 
@@ -657,7 +676,9 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     if (fakeTimer) clearInterval(fakeTimer);
     fakeTimer = null;
     if (!devCursorsAvailable || count <= 0) return;
-    fakeTimer = setInterval(() => setFakeTick(fakeTick() + 1), 100);
+    // A counter, not a read — see `cursorSeq`. This one fires from a timer rather than a computation, so
+    // it was safe today and would not stay safe.
+    fakeTimer = setInterval(() => setFakeTick((fakeSeq += 1)), 100);
   };
   if (devCursorsAvailable) retimeFakes(fakeCount());
 
