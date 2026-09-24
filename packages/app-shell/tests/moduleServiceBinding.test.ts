@@ -21,6 +21,7 @@
  * queues effects rather than running them inline, so every assertion here waits a microtask; asserting
  * synchronously reads the frame before the queue is flushed and fails whether or not the fix works.
  */
+import { allMarks, liveView, reportPointer } from '@shared/liveView';
 import {
   createModuleStoreDeps,
   provideModuleHostServices,
@@ -29,7 +30,14 @@ import {
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
-afterEach(() => resetModuleHostServices());
+afterEach(() => {
+  resetModuleHostServices();
+  // The registry is a module-level singleton, so a test that registers something has to take it back
+  // out or the next one inherits it.
+  liveView.marks.clear();
+  liveView.pointerListeners.clear();
+  liveView.pointerBySource.clear();
+});
 
 /** The deps a module gets, wired to Solid exactly as the host wires them. */
 const solidDeps = () => createModuleStoreDeps({ signal: createSignal, effect: createEffect });
@@ -112,5 +120,55 @@ describe('a service published after the store was built', () => {
     // read too early, which reads as the publish not having happened.
     expect(held.seen.at(-1)).toBe('did:test:me');
     held.disposer();
+  });
+});
+
+describe('a module registering before any component exists', () => {
+  /**
+   * The failure this is here for: no cursors at all, of any kind, ever.
+   *
+   * `PlatformProvider` builds every module store *before* `App` renders, so a module registering a
+   * decoration accessor or a pointer listener does so before `LiveViewHost` has mounted. Forwarded
+   * through that component's binding, those calls were `undefined?.decorate(…)` — answering with a
+   * no-op unsubscribe, for ever. Nothing a module asked to draw was drawn and this agent's pointer was
+   * never reported, and because both forwarders returned a plausible unsubscribe, nothing threw.
+   *
+   * Registration therefore lands in the shared registry, where there is nothing to be early for. These
+   * assertions go through the kernel a module is actually handed, not the registry, so they fail if the
+   * wiring goes back to forwarding.
+   */
+  it('registers a decoration accessor with no view binding published', () => {
+    const deps = createModuleStoreDeps({ signal: (v) => [() => v, () => {}], effect: (fn) => fn() });
+    const mark = {
+      id: 'did:test:ana',
+      at: { surface: 'route:/x', kind: 'viewport' as const, x: 0.5, y: 0.5 },
+      node: { type: 'we-live-cursor' },
+    };
+
+    const stop = deps.kernels.view!.decorate(() => [mark]);
+    expect(allMarks(liveView)).toEqual([mark]);
+    // And the unsubscribe is real rather than a placeholder that silently kept it registered.
+    stop();
+    expect(allMarks(liveView)).toEqual([]);
+  });
+
+  it('registers a pointer listener with no view binding published', () => {
+    const deps = createModuleStoreDeps({ signal: (v) => [() => v, () => {}], effect: (fn) => fn() });
+    const seen: unknown[] = [];
+
+    const stop = deps.kernels.view!.onPointer((at) => void seen.push(at));
+    reportPointer(liveView, 'document', { surface: 'route:/x', kind: 'viewport', x: 0.25, y: 0.5 });
+    expect(seen).toHaveLength(1);
+    stop();
+    reportPointer(liveView, 'document', null);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('degrades the two halves that genuinely need the app, rather than pretending', () => {
+    const deps = createModuleStoreDeps({ signal: (v) => [() => v, () => {}], effect: (fn) => fn() });
+    // `frame` and `apply` need the router, the DOM and the shell's insets. With no component they answer
+    // honestly and do nothing — which a module must survive, since it is the boot window every time.
+    expect(deps.kernels.view!.frame()).toEqual({ path: '' });
+    expect(() => deps.kernels.view!.apply({ path: '/somewhere' })).not.toThrow();
   });
 });

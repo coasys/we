@@ -325,3 +325,61 @@ export function regionFor(
   if (now - held.at > REGION_FRESH_MS) return null;
   return held.region;
 }
+
+// ── The one registry, and why it is not the component's ──────────────────────
+
+/**
+ * The live-view state for this app.
+ *
+ * Module-level, and that is the whole point rather than a convenience. `PlatformProvider` builds every
+ * module store *before* `App` renders, so a module registering a decoration accessor or a pointer
+ * listener does so before any component exists. Forwarding those registrations through a component's
+ * binding therefore threw them away: `services.view?.decorate(get)` was `undefined?.decorate` and
+ * answered with a no-op unsubscribe, for ever, so nothing a module asked to draw was ever drawn and
+ * this agent's pointer was never reported. Nothing threw; the feature simply did not exist.
+ *
+ * So registration lands here, where there is nothing to be early for. What genuinely needs the
+ * component — the router, the DOM under the pointer, the shell's insets — stays behind
+ * {@link ViewKernel.frame} and `apply`, which a module calls later and can honestly degrade.
+ */
+export const liveView = createLiveViewState();
+
+/** Told whenever something registers or unregisters, so a renderer can re-read. */
+const changeListeners = new Set<() => void>();
+
+/**
+ * Subscribe to registration changes. Returns its own unsubscribe.
+ *
+ * A plain listener set rather than a signal, because this file is framework-neutral and the thing that
+ * needs to react is a Solid memo. The component turns these into a signal; nothing here knows how.
+ */
+export function onLiveViewChanged(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+export function notifyLiveViewChanged(): void {
+  for (const listener of changeListeners) {
+    try {
+      listener();
+    } catch (error) {
+      console.warn('view: a change listener threw', error);
+    }
+  }
+}
+
+/** Register a module's decoration accessor. Never forwarded — see {@link liveView}. */
+export function addLiveMarks(get: () => LiveDecoration[]): () => void {
+  liveView.marks.add(get);
+  notifyLiveViewChanged();
+  return () => {
+    liveView.marks.delete(get);
+    notifyLiveViewChanged();
+  };
+}
+
+/** Register a module's pointer listener. Never forwarded, for the same reason. */
+export function addLivePointerListener(cb: (at: LiveAnchor | null) => void): () => void {
+  liveView.pointerListeners.add(cb);
+  return () => liveView.pointerListeners.delete(cb);
+}

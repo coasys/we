@@ -30,7 +30,9 @@ import {
   anchorForPoint,
   canvasSurface,
   composeFrame,
-  createLiveViewState,
+  liveView as state,
+  notifyLiveViewChanged,
+  onLiveViewChanged,
   pointForAnchor,
   regionFor,
   reportPointer,
@@ -46,19 +48,20 @@ import type { LiveDecoration, ViewFrame, ViewKernel } from '@we/module-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
-/** The one live-view state for this app — see the note above on why it is not a context. */
-const state = createLiveViewState();
-
 /**
- * Bumped whenever the set of registered things changes — a module calling `decorate`, a canvas
- * mounting or leaving.
+ * Bumped whenever the set of registered things changes — a module calling `decorate`, a canvas mounting
+ * or leaving.
  *
- * The marks themselves need no version: they come from accessors a module owns, so reading one inside
- * a Solid computation already tracks whatever signal it reads. What is *not* reactive on its own is the
+ * The marks themselves need no version: they come from accessors a module owns, so reading one inside a
+ * Solid computation already tracks whatever signal it reads. What is *not* reactive on its own is the
  * `Set` those accessors live in, and the `Map` of surfaces, both of which are mutated in place.
+ *
+ * Subscribed to the registry rather than owned here, because a module registers before this component
+ * exists — see `liveView` for why that is the ordinary case and not a race.
  */
 const [registered, setRegistered] = createSignal(0);
-const bumpRegistered = () => setRegistered((n) => n + 1);
+const bumpRegistered = () => setRegistered(registered() + 1);
+onLiveViewChanged(bumpRegistered);
 
 /**
  * Bumped whenever a canvas reports a new camera, so a frame read picks it up.
@@ -89,7 +92,7 @@ export function liveSurfaceRegion(key: string) {
 export function registerLiveCanvas(canvasId: string) {
   const key = canvasSurface(canvasId);
   state.surfaces.set(key, { key });
-  bumpRegistered();
+  notifyLiveViewChanged();
   return {
     key,
     reportPointer: (at: { x: number; y: number } | null) =>
@@ -104,7 +107,7 @@ export function registerLiveCanvas(canvasId: string) {
       state.surfaces.delete(key);
       state.pointerBySource.delete(key);
       state.requested.delete(key);
-      bumpRegistered();
+      notifyLiveViewChanged();
     },
   };
 }
@@ -208,11 +211,15 @@ export function LiveViewHost() {
     });
   });
 
-  const kernel: ViewKernel = {
-    onPointer: (cb) => {
-      state.pointerListeners.add(cb);
-      return () => state.pointerListeners.delete(cb);
-    },
+  /*
+    Only `frame` and `apply`, because only those need the app.
+
+    `decorate` and `onPointer` are registrations a module makes when its store is built, which happens
+    before this component exists — so they live in the shared registry and are wired straight to it in
+    `moduleHostServices`. Publishing them here as well would be two paths to one set, and the one that
+    lost would be the one a module actually used.
+  */
+  const kernel: Pick<ViewKernel, 'frame' | 'apply'> = {
     frame: () => {
       // Both: a camera move changes the region, and a scroll changes which record is at the top.
       cameras();
@@ -220,14 +227,6 @@ export function LiveViewHost() {
       return composeFrame(state, { path: address(), pathname: routeStore.currentPath() }, content());
     },
     apply: (frame) => applyFrame(frame),
-    decorate: (get) => {
-      state.marks.add(get);
-      bumpRegistered();
-      return () => {
-        state.marks.delete(get);
-        bumpRegistered();
-      };
-    },
   };
 
   /**
@@ -262,7 +261,8 @@ export function LiveViewHost() {
     window.scrollBy({ top: at.y - box.y, behavior: 'auto' });
   }
 
-  onCleanup(provideModuleHostServices({ view: kernel }));
+  // Merged with the registry half in `moduleHostServices`, which owns the kernel a module sees.
+  onCleanup(provideModuleHostServices({ view: kernel as ViewKernel }));
 
   // ── The overlay ────────────────────────────────────────────────────────────
 

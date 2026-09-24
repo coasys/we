@@ -48,6 +48,8 @@ import type {
   ViewKernel,
 } from '@we/module-shared';
 
+import { addLiveMarks, addLivePointerListener } from '../liveView';
+
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
 export interface ModuleHostServices {
   dataset?: () => DatasetHandle | null;
@@ -389,11 +391,24 @@ export function createModuleStoreDeps(framework: {
       accepts decorations nobody draws. A module must survive all three — which is the ordinary case
       on a host that has not finished booting, and the permanent case on one with no screen at all.
     */
+    /*
+      Half of this is a registry and half of it needs a component, and they are wired differently.
+
+      `decorate` and `onPointer` are **registrations**, and a module makes them when its store is built
+      — which `PlatformProvider` does before `App` renders. Forwarded through `services.view` they were
+      `undefined?.decorate(…)`, answering with a no-op unsubscribe for ever: nothing a module asked to
+      draw was drawn, and this agent's pointer was never reported. So they land in the shared registry,
+      where there is nothing to be early for.
+
+      `frame` and `apply` genuinely need the component — the router, the DOM, the shell's insets — so
+      they forward, and degrade honestly: a frame with an empty path, and an `apply` that does nothing.
+      A module calls those later, in response to something, rather than at construction.
+    */
     view: {
-      onPointer: (cb) => services.view?.onPointer(cb) ?? (() => {}),
+      onPointer: addLivePointerListener,
+      decorate: addLiveMarks,
       frame: () => services.view?.frame() ?? { path: '' },
       apply: (frame) => services.view?.apply(frame),
-      decorate: (get) => services.view?.decorate(get) ?? (() => {}),
     },
 
     // A stable function that forwards, so a module capturing the port at construction still reaches
