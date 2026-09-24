@@ -17,7 +17,7 @@
  * expect(lintModule(myModule).problems).toEqual([]);
  * ```
  */
-import type { Activity, EphemeralPort, Peer } from '@we/backend-shared';
+import type { Activity, EphemeralPort, Peer, PublishResult } from '@we/backend-shared';
 import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
 import type {
   AgentDataKernel,
@@ -325,6 +325,9 @@ export function fakeEphemeral(options: { self?: string; dataset?: unknown } = {}
   const dataset = (options.dataset ?? { id: 'fake-dataset' }) as never;
   const sent: { tag: string; payload: unknown; to?: string }[] = [];
   let dropping = false;
+  /** Listeners per channel tag, so `report` can answer only the channel a test means. */
+  const resultListeners = new Map<string, Set<(result: PublishResult) => void>>();
+  let reports = false;
 
   const portFor = (agentId: string) => createInMemoryEphemeralPort(bus, agentId);
 
@@ -348,6 +351,23 @@ export function fakeEphemeral(options: { self?: string; dataset?: unknown } = {}
             sent.push({ tag, payload, to: to?.agentId });
             if (!dropping) channel.publish(payload, to);
           },
+          /*
+            Present only once a test has asked for it, because ABSENT IS A DISTINCT ANSWER.
+
+            A transport that cannot tell how its sends went must not pretend to, and a consumer is
+            required to treat the absence as "no idea" rather than as success. A fake that always
+            offered the hook would make the one branch nobody writes by hand impossible to test.
+          */
+          ...(reports
+            ? {
+                onPublishResult: (cb: (result: PublishResult) => void) => {
+                  const listeners = resultListeners.get(tag) ?? new Set();
+                  listeners.add(cb);
+                  resultListeners.set(tag, listeners);
+                  return () => listeners.delete(cb);
+                },
+              }
+            : {}),
         };
       },
       dispose: () => scope.dispose(),
@@ -370,6 +390,21 @@ export function fakeEphemeral(options: { self?: string; dataset?: unknown } = {}
      * is the case every protocol here has to survive and the one a fake makes too easy to forget.
      */
     drop: (on = true) => void (dropping = on),
+    /**
+     * Make the channels report how their sends went. Off by default — see the hook itself.
+     *
+     * Call it before the store attaches, since a consumer subscribes when it opens the channel.
+     */
+    reportsResults: (on = true) => void (reports = on),
+    /**
+     * Tell whoever is listening on `tag` how a send went, as a stalled or healthy executor would.
+     *
+     * Results are deliberately not correlated with individual messages: this traffic is
+     * last-write-wins, so the only question worth asking is how the most recent send went.
+     */
+    report: (tag: string, result: PublishResult) => {
+      for (const cb of resultListeners.get(tag) ?? []) cb(result);
+    },
   };
 }
 

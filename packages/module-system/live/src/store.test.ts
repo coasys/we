@@ -27,8 +27,12 @@ const WORLD = { surface: 'canvas:c1', kind: 'world' as const, x: 10, y: 20 };
  * `buildStore` hands the definition only the kernels its manifest names, exactly as the registry does —
  * so a manifest that forgot one fails here rather than passing and degrading in the app.
  */
-function setup(options: { settings?: Record<string, boolean>; dataset?: unknown; shared?: boolean } = {}) {
+function setup(
+  options: { settings?: Record<string, boolean>; dataset?: unknown; shared?: boolean; reportsResults?: boolean } = {},
+) {
   const wire = fakeEphemeral({ self: ME });
+  // Before the store attaches, since a consumer subscribes as it opens the channel.
+  if (options.reportsResults) wire.reportsResults();
   const presence = fakePresence({ self: ME });
   const view = fakeView({ frame: { path: '/space/a/canvas', surface: 'route:/space/a/canvas' } });
   const identities = new Map([[ANA, { name: 'Ana', avatar: 'ana.png' }]]);
@@ -257,6 +261,63 @@ describe('publishing a pointer', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     // A still pointer is not news.
     expect(published(wire).length).toBe(before);
+  });
+
+  it('slows down when the transport says its sends are expensive', async () => {
+    const { store, view, wire, presence } = setup({ reportsResults: true });
+    presence.publish(ANA, { type: 'live', cursors: true });
+    store.toggleCursors();
+
+    /*
+      A stalled executor, reported the way the real port reports one. Nothing about the roster has
+      changed, so the watcher ladder still asks for its fastest interval; the only reason to slow down is
+      the measurement, which is the whole point — the rate used to be chosen from the roster alone, so a
+      stalled node was answered by publishing into a queue this agent shares with everything on it.
+    */
+    view.move({ ...WORLD, x: 1 });
+    wire.report('live', { ok: true, ms: 600 });
+
+    const before = published(wire).filter((p) => p.kind === 'cursor').length;
+    view.move({ ...WORLD, x: 2 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Well past the ladder's 80ms and still nothing: the floor is now the cost the transport reported.
+    expect(published(wire).filter((p) => p.kind === 'cursor')).toHaveLength(before);
+  });
+
+  it('keeps the ladder alone when the transport says nothing about its sends', async () => {
+    /*
+      Absent results mean "no idea", not "fine", so a transport that cannot report must behave exactly as
+      it did before any of this existed. `fakeEphemeral` offers the hook only when asked for precisely so
+      this branch is reachable.
+    */
+    const { store, view, wire, presence } = setup();
+    presence.publish(ANA, { type: 'live', cursors: true });
+    store.toggleCursors();
+
+    view.move({ ...WORLD, x: 1 });
+    view.move({ ...WORLD, x: 2 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(published(wire).filter((p) => p.kind === 'cursor')).toHaveLength(2);
+  });
+
+  it('ignores a superseded result, which measures nothing about the transport', async () => {
+    /*
+      A superseded send is the coalescing channel working as intended: a newer position replaced an older
+      one before it went out. Its `ms` is the time until it was dropped, so counting it would speed the
+      rate UP on the evidence that the transport is behind.
+    */
+    const { store, view, wire, presence } = setup({ reportsResults: true });
+    presence.publish(ANA, { type: 'live', cursors: true });
+    store.toggleCursors();
+
+    view.move({ ...WORLD, x: 1 });
+    wire.report('live', { ok: true, ms: 900, superseded: true });
+
+    const before = published(wire).filter((p) => p.kind === 'cursor').length;
+    view.move({ ...WORLD, x: 2 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Unslowed: the ladder still decides, because nothing has been measured.
+    expect(published(wire).filter((p) => p.kind === 'cursor')).toHaveLength(before + 1);
   });
 
   it('sends nothing at all until somebody is watching, then sends on the next move', async () => {

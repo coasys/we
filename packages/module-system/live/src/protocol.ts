@@ -212,6 +212,47 @@ export const VIEW_REPEAT_MS = 2_000;
  * motion. That is the honest rendering of a coarse signal, and better than interpolating over a third
  * of a second, which shows everybody a cursor that is visibly behind where its owner is pointing.
  */
+/**
+ * The slowest this will ever throttle itself to, however badly the transport is doing.
+ *
+ * A ceiling rather than an unbounded climb because a cursor arriving twice a second is still a cursor,
+ * and a rate that backed off without limit would answer a stalled executor by switching the feature
+ * off — which is worse, and indistinguishable to whoever is watching from it being broken.
+ */
+export const SEND_CEILING_MS = 2_000;
+
+/** How much weight one measurement carries against everything before it. */
+const COST_ALPHA = 0.3;
+
+/**
+ * The running estimate of what a send costs, updated by one result.
+ *
+ * A blend rather than the latest value, because a single slow send is normal and a rate that lurched on
+ * each one would be its own kind of stutter. A failure is counted as the ceiling: it says the executor
+ * is stalled or gone, which is the strongest evidence available that sending more will not help, and
+ * successes blend it back down as soon as there are any.
+ */
+export function blendCost(previous: number, result: { ok: boolean; ms: number }): number {
+  const sample = result.ok ? Math.max(0, result.ms) : SEND_CEILING_MS;
+  return previous <= 0 ? sample : previous + (sample - previous) * COST_ALPHA;
+}
+
+/**
+ * The shortest gap between sends that the transport's own measured cost justifies.
+ *
+ * The rule is one line and the whole argument for it is this: if the executor takes 500ms to accept a
+ * broadcast, publishing more often than every 500ms cannot make anything arrive sooner. It can only
+ * lengthen a queue that this agent shares with everything else on the node, which is what ad4m#1133
+ * makes so easy to do — so the cursor rate contributes to the congestion that makes cursors late.
+ *
+ * Paired with {@link cursorIntervalMs} by taking whichever is slower: the ladder is about how many
+ * people are watching, this is about whether the transport is coping, and both are floors.
+ */
+export function sendFloorMs(cost: number): number {
+  if (!Number.isFinite(cost) || cost <= 0) return 0;
+  return Math.min(SEND_CEILING_MS, Math.round(cost));
+}
+
 export function cursorIntervalMs(watchers: number): number {
   if (watchers <= 4) return 80;
   if (watchers <= 8) return 160;

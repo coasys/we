@@ -25,6 +25,7 @@ import {
   writeDevCursorCount,
 } from './devCursors';
 import {
+  blendCost,
   CURSOR_TTL_MS,
   cursorIntervalMs,
   easeMsFor,
@@ -35,6 +36,7 @@ import {
   liveCursors,
   parseLiveMessage,
   sameAnchor,
+  sendFloorMs,
   trimAnchor,
   VIEW_REPEAT_MS,
 } from './protocol';
@@ -121,6 +123,14 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   let attachedTo: unknown;
   /** The path this agent was last *sent* to, so their own navigation can be told from a driver's. */
   let appliedPath = '';
+  /**
+   * The running estimate of what one send costs this transport, in milliseconds. Zero until measured.
+   *
+   * Reset on attach, because it is a property of the medium rather than of this agent: a different space
+   * is a different neighbourhood, and carrying a stalled node's estimate into a healthy one would throttle
+   * a channel that is coping.
+   */
+  let publishCost = 0;
 
   const now = () => Date.now();
 
@@ -239,6 +249,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
   function attach(handle: unknown): void {
     attachedTo = handle;
+    // A property of the medium, not of this agent — see the declaration.
+    publishCost = 0;
     /*
       A change of space clears the synthetic cursors.
 
@@ -284,11 +296,32 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
     const stopCursors = cursors.onMessage((from, payload) => receive(from, payload));
     const stopViews = views.onMessage((from, payload) => receive(from, payload));
+
+    /*
+      What the transport says about its own sends, which is what the rate backs off from.
+
+      Optional on the contract, and absent means "no idea" rather than "fine" — so with no hook the
+      estimate stays at zero and the ladder decides alone, exactly as it used to. Present, it is the only
+      way this module can tell a healthy node from a stalled one: `publish` is fire-and-forget by design,
+      so without this there is nothing to notice.
+
+      A superseded result is skipped on purpose. It means a newer message replaced this one before it went,
+      which is the coalescing channel working as intended and says nothing about what a send costs — its
+      `ms` is the time until it was dropped, and blending that in would *speed the rate up* on the
+      evidence that the transport is behind.
+    */
+    const stopResults =
+      cursors.onPublishResult?.((result) => {
+        if (result.superseded) return;
+        publishCost = blendCost(publishCost, result);
+      }) ?? (() => {});
+
     cursorChannel = cursors;
     viewChannel = views;
     detach = () => {
       stopCursors();
       stopViews();
+      stopResults();
       scope.dispose();
     };
   }
@@ -388,9 +421,22 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    * it is where somebody stopped pointing. At most one is ever armed, and it re-reads the latest
    * position when it fires, so a flurry of moves costs one send.
    */
+  /**
+   * How long to wait between sends: the watcher ladder, or the transport's own cost if that is slower.
+   *
+   * Two floors, answering different questions. The ladder asks how many people are watching. This asks
+   * whether the executor is coping, and it is the one that was missing: the rate was chosen entirely
+   * from the roster, so a stalled node was answered by going on publishing at the fastest interval into
+   * a queue this agent shares with everything else on it. Cursors were then late *partly because of
+   * their own traffic*.
+   */
+  function sendGapMs(): number {
+    return Math.max(cursorIntervalMs(watchers().length), sendFloorMs(publishCost));
+  }
+
   function schedulePublish(): void {
     if (!cursorsOn() || !cursorsAllowed()) return;
-    const gap = cursorIntervalMs(watchers().length);
+    const gap = sendGapMs();
     const since = now() - lastSentAt;
     if (since >= gap) {
       flushPointer();

@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  blendCost,
   CURSOR_TTL_MS,
   cursorIntervalMs,
   EASE_MAX_MS,
@@ -20,6 +21,8 @@ import {
   liveCursors,
   parseLiveMessage,
   sameAnchor,
+  SEND_CEILING_MS,
+  sendFloorMs,
   trimAnchor,
 } from './protocol';
 
@@ -126,6 +129,50 @@ describe('ordering', () => {
     // timestamp — and a cursor kept alive by retransmissions is a cursor that outlives its owner.
     expect(isNewer(held, 5)).toBe(false);
     expect(isNewer(undefined, 1)).toBe(true);
+  });
+});
+
+describe('backing off when the transport is struggling', () => {
+  it('blends each measurement rather than lurching to the latest', () => {
+    // One slow send is normal. A rate that jumped on each one would be its own kind of stutter.
+    const first = blendCost(0, { ok: true, ms: 40 });
+    expect(first).toBe(40);
+    const after = blendCost(first, { ok: true, ms: 400 });
+    expect(after).toBeGreaterThan(40);
+    expect(after).toBeLessThan(400);
+  });
+
+  it('counts a failure as the worst case, and lets success bring it back down', () => {
+    /*
+      A failure says the executor is stalled or gone, which is the strongest evidence available that
+      sending more will not help. It is not permanent: the next few successes blend it away.
+    */
+    const failed = blendCost(50, { ok: false, ms: 5 });
+    expect(failed).toBeGreaterThan(50);
+    let cost = failed;
+    for (let i = 0; i < 20; i += 1) cost = blendCost(cost, { ok: true, ms: 30 });
+    expect(Math.round(cost)).toBe(30);
+  });
+
+  it('never asks for a gap longer than the ceiling', () => {
+    // A cursor arriving twice a second is still a cursor. Backing off without limit would answer a
+    // stalled executor by switching the feature off, which is worse and looks identical to broken.
+    expect(sendFloorMs(60_000)).toBe(SEND_CEILING_MS);
+  });
+
+  it('asks for nothing at all until something has been measured', () => {
+    /*
+      Absent results mean "no idea", not "fine". With no measurement the ladder decides alone, which is
+      exactly the behaviour this replaced — so a transport that cannot report is no worse off than before.
+    */
+    expect(sendFloorMs(0)).toBe(0);
+    expect(sendFloorMs(Number.NaN)).toBe(0);
+  });
+
+  it('asks for the cost itself, because sending faster than that only queues', () => {
+    // If the executor takes this long to accept a broadcast, publishing more often cannot make anything
+    // arrive sooner. It can only lengthen a queue shared with everything else on the node.
+    expect(sendFloorMs(500)).toBe(500);
   });
 });
 
