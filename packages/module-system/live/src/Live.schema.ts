@@ -208,18 +208,22 @@ export const fakeCursorControls: SchemaNode = {
   props: { gap: '100', ay: 'center', pointerEvents: 'auto' },
   children: [
     /*
-      The glyph is what makes this readable, and it was missing.
+      The glyph is what makes this readable, and it carries the triple's own tooltip.
 
       Two `−  N  +` triples sit side by side in the bar — this one and the call module's fake
-      participants — and until each carried an icon they were indistinguishable, so the only way to tell
-      which was which was to hover one and read a tooltip about the thing you had failed to identify.
-      No tooltip on the icon itself: the pair either side already name what they step.
+      participants — and until each carried an icon they were indistinguishable. The icon is what tells
+      them apart, so the icon is what a pointer looking for an explanation lands on. It used to be on
+      the number, which is the one part somebody is *reading* rather than interrogating, and a tooltip
+      over it covers the value it is explaining.
 
-      No leading divider either, which this used to draw. The two dev triples read as ONE group, and the
-      call module's own draws the single rule in front of it; a second rule here would cut the group in
-      half. What separates the two triples is the bar's own gap against the tighter one inside each.
+      No rule here, and none inside the other triple either: the region they sit in draws its own
+      separators, so neither has to know whether it happens to be first.
     */
-    { type: 'we-icon', props: { name: 'cursor-click', size: 'sm', color: 'text-faint' } },
+    {
+      type: 'we-tooltip',
+      props: { content: 'Synthetic cursors — development only', placement: 'bottom' },
+      children: [{ type: 'we-icon', props: { name: 'cursor-click', size: 'sm', color: 'text-faint' } }],
+    },
     {
       type: 'we-tooltip',
       props: { content: 'One fewer synthetic cursor', placement: 'bottom' },
@@ -240,15 +244,9 @@ export const fakeCursorControls: SchemaNode = {
       ],
     },
     {
-      type: 'we-tooltip',
-      props: { content: 'Synthetic cursors — development only', placement: 'bottom' },
-      children: [
-        {
-          type: 'we-text',
-          props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
-          children: [{ type: 'we-number', props: { value: { $: 'modules.live.fakeCursorCount' } } }],
-        },
-      ],
+      type: 'we-text',
+      props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
+      children: [{ type: 'we-number', props: { value: { $: 'modules.live.fakeCursorCount' } } }],
     },
     {
       type: 'we-tooltip',

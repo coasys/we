@@ -977,22 +977,21 @@ const devPeerControls: SchemaNode = {
   props: { gap: '100', ay: 'center' },
   children: [
     /*
-      One rule for the whole development group, drawn here because this triple leads it.
-
-      Whatever else is contributed to `CALL_DEV_ANCHOR` follows immediately and draws no rule of its
-      own, so the group is bracketed once rather than cut into pieces. What separates one triple from
-      the next is the bar's own gap against the tighter one inside each.
-    */
-    { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
-    /*
-      The glyph, without which this is unreadable.
+      The glyph, without which this is unreadable, and where the triple's own tooltip lives.
 
       There is a second `−  N  +` immediately after it and the two were indistinguishable: identical
-      minus, number and plus, so telling them apart meant hovering one to read a tooltip about the
-      thing you had not been able to identify. No tooltip on the icon: the buttons either side already
-      say what they step.
+      minus, number and plus. The icon is what tells them apart, so the icon is what a pointer looking
+      for an explanation lands on — the number is the one part of the triple somebody is *reading*
+      rather than interrogating, and a tooltip over it covers the value it explains.
+
+      No rule here. The region draws its own separators, so a contributed triple never has to know
+      whether it happens to be first.
     */
-    { type: 'we-icon', props: { name: 'users', size: 'sm', color: 'text-faint' } },
+    {
+      type: 'we-tooltip',
+      props: { content: 'Fake participants — development only', placement: 'bottom' },
+      children: [{ type: 'we-icon', props: { name: 'users', size: 'sm', color: 'text-faint' } }],
+    },
     {
       type: 'we-tooltip',
       props: { content: 'One fewer fake participant', placement: 'bottom' },
@@ -1013,15 +1012,9 @@ const devPeerControls: SchemaNode = {
       ],
     },
     {
-      type: 'we-tooltip',
-      props: { content: 'Fake participants — development only', placement: 'bottom' },
-      children: [
-        {
-          type: 'we-text',
-          props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
-          children: [{ type: 'we-number', props: { value: { $: 'modules.call.fakePeerCount' } } }],
-        },
-      ],
+      type: 'we-text',
+      props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
+      children: [{ type: 'we-number', props: { value: { $: 'modules.call.fakePeerCount' } } }],
     },
     {
       type: 'we-tooltip',
@@ -1659,8 +1652,28 @@ const bar: SchemaNode = {
                       condition: { $: 'sessionStore.devTools' },
                       then: {
                         type: 'Row',
+                        /*
+                          The region owns its separators, rather than each triple drawing its own.
+
+                          Two reasons. A contributed fragment cannot know whether it is first, so a rule
+                          drawn inside one is either missing or doubled depending on what else is
+                          installed. And a rule inside a triple sits against the triple's own tight gap,
+                          which reads as the icon being jammed against it; here each rule gets the bar's
+                          own gap on both sides.
+
+                          One rule in front of the contributed region rather than one between every
+                          contribution, since a slot renders its contributions in order and nothing can
+                          be interleaved between them. With one contributor that is exactly right, and
+                          with more it is a region of harnesses behind a single rule, which is still the
+                          truth about them.
+                        */
                         props: { gap: '200', ay: 'center' },
-                        children: [devPeerControls, { type: '$slot', props: { anchor: CALL_DEV_ANCHOR } }],
+                        children: [
+                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                          devPeerControls,
+                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                          { type: '$slot', props: { anchor: CALL_DEV_ANCHOR } },
+                        ],
                       },
                     },
                   },

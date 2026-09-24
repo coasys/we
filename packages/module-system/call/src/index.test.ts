@@ -303,13 +303,17 @@ describe('how the bar reads left to right', () => {
       Adjacency is the point, and it is the reason the region exists rather than an `order` in the
       control region: contributions land at a single point, so this module's triple could never be
       threaded in between another module's controls.
+
+      A rule, this module's triple, a rule, then whatever else is contributed. The region draws both
+      separators itself: a rule inside a contributed fragment is either missing or doubled depending on
+      what else is installed, and sits against that fragment's own tight gap rather than the bar's.
     */
-    expect(children).toHaveLength(2);
-    expect(walk(children[0]).some((node) => props(node).name === 'users')).toBe(true);
-    expect(children[1].type).toBe('$slot');
+    expect(children.map((child) => child.type)).toEqual(['we-divider', 'Row', 'we-divider', '$slot']);
+    expect(walk(children[1]).some((node) => props(node).name === 'users')).toBe(true);
+    expect(props(children[3]).anchor).toBe('call-dev');
   });
 
-  it('brackets the development group with one rule, and names its counter with a glyph', () => {
+  it('draws no rule inside the triple, and hangs its tooltip on the glyph', () => {
     const group = walk(row()).find(
       (node) =>
         node.type === 'Row' &&
@@ -317,14 +321,24 @@ describe('how the bar reads left to right', () => {
           (child) => child?.type === '$slot' && props(child).anchor === 'call-dev',
         ),
     ) as SchemaNode;
-    const triple = ((group.children ?? []) as SchemaNode[])[0];
-    const marks = walk(triple);
+    const triple = ((group.children ?? []) as SchemaNode[])[1];
 
-    // One rule in front of the group, not one per triple: a second would cut in half the group whose
-    // whole purpose is to read as one.
-    expect(marks.filter((node) => node.type === 'we-divider')).toHaveLength(1);
-    // And a glyph, without which it is indistinguishable from the triple that follows it.
-    expect(marks.some((node) => props(node).name === 'users')).toBe(true);
+    // The separators belong to the region, so the triple carries none of its own.
+    expect(walk(triple).filter((node) => node.type === 'we-divider')).toEqual([]);
+
+    /*
+      The tooltip explaining what this counts sits on the icon, not on the number.
+
+      The icon is the only part that says which of the two triples this is, so it is what a pointer
+      looking for an explanation lands on. The number is the part somebody is reading, and a tooltip
+      over it covers the value it is explaining.
+    */
+    const glyph = walk(triple).find((node) => props(node).name === 'users') as SchemaNode;
+    const holder = lineage(triple, glyph)?.find((step) => step.type === 'we-tooltip');
+    expect(props(holder).content).toBe('Fake participants — development only');
+
+    const number = walk(triple).find((node) => node.type === 'we-number') as SchemaNode;
+    expect(lineage(triple, number)?.some((step) => step.type === 'we-tooltip')).toBe(false);
   });
 
   it('declares the development region only in a build that has one', () => {
