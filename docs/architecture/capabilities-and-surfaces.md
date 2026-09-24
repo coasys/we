@@ -37,8 +37,8 @@ Work down the list and stop at the first that fits.
 the contract, and `@we/module-transcribe`'s is the largest store in the repo. "It has a lot of
 state" is not an argument for the host. Nor is "it needs a device" or "it needs the model": those
 are **kernels** (`packages/module-system/shared/src/kernels.ts`), which a module asks for by name
-in its manifest and the host hands to its store — `records`, `presence`, `ephemeral`, `media`,
-`peerConnection`, `transcription`, `languageModel`, `interpretation`, `secrets`. A capability
+in its manifest and the host hands to its store — `records`, `presence`, `view`, `ephemeral`,
+`media`, `peerConnection`, `transcription`, `languageModel`, `interpretation`, `secrets`. A capability
 that is only a kernel plus a declaration is a module.
 
 **Neither does how core it feels.** Calls are as central to WE as anything and are a module, because
@@ -55,6 +55,24 @@ because the host itself calls it: the shell reports whether the node is capable,
 its targets, and `DatasetStore` gathers the turns. Move that configuration into the space and those
 calls go away — at which point interpretation could legitimately be a processor module. Its home
 follows from where the configuration lands, not from taste.
+
+### When two capabilities seem to need each other
+
+Three things it can be, and it is always one of them. The rule that forbids a module depending on a
+module is what forces the question, and answering it has produced better structure every time:
+
+1. **A port is missing.** The capability is really the backend's, and both modules want it. WebRTC is
+   the case: the call module owns the peer connections, so nothing else can carry data between agents,
+   and the answer is a port in `@we/backend-shared` plus a kernel — not code moving sideways into
+   another module.
+2. **A medium is missing.** They want to _meet_, and there is nowhere to do it. Live cursors wanted to
+   know where somebody is looking; the answer was the `view` kernel, not a reference to whatever
+   module happened to know.
+3. **One of them is a library.** They share an algorithm rather than a capability, and it belongs in a
+   package both import at build time — which is packaging, not a runtime dependency, and is already
+   how the globe family works.
+
+If it is none of the three, the dependency is probably real and the two are one capability.
 
 ## Capabilities meet in a medium, never in each other
 
@@ -223,6 +241,25 @@ dock frame, which is itself chrome and needs `host-layout` members the template 
   a string and cares about nothing else, so a host group is additive with no migration; it is unbuilt
   because it would have no members until interpretation is a module, and a declaration nothing reads
   is the globe's catalogue again.
+- **Intents.** The one case medium composition genuinely cannot serve: "I want _somebody_ to do X",
+  where observing is not enough. A polls card wanting to start a call about the poll, a canvas wanting
+  to gather a card into whatever holds gathered things. That is not a dependency on the call module —
+  it is a request that some installed capability handles — and the shape is `contributes.intents`
+  handlers with declared payloads, an emit path from a fragment and from `deps`, and host resolution
+  (one handler runs, several offer a chooser, none is reported). It is what commands are in VS Code
+  and intents are in Android, and it is the biggest single lever on composability here. Unbuilt
+  because nothing in the repo has yet wanted one badly enough to pin the shape down, and an
+  extension point with no consumer is the globe's catalogue again.
+- **Declared record kinds.** `type: 'call'` on an activity now has a declaration to check against;
+  `kind: 'call'` on a collection does not. A module cannot say "I produce collections of this kind" or
+  "I consume them", so two capabilities agreeing about a record agree by copying each other's guesses —
+  and an unmatched consumer fails as silence, which is the failure this codebase keeps meeting.
+- **A vocabulary rung.** The globe family shares packages at build time and it works, but nothing
+  names it as a legitimate way for two modules to agree on a shape. Naming it is most of what stops
+  the next author reaching for a runtime dependency instead.
+- **Soft `uses`.** A module declaring which others it works better with, for the install screen and
+  the linter only — never a requirement and never a runtime call. It would let a settings screen say
+  "polls works with calls" without turning a toggle into a dependency graph.
 - **Space presets.** A space's setup is already a bundle of records — template, theme, enabled
   modules and views, shapes, signal types — with no name, so every space is assembled by hand. Seed
   is to deployment as preset would be to space. Worth naming once wires exist and not before.

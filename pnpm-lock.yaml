@@ -446,6 +446,9 @@ importers:
       '@we/module-graph':
         specifier: workspace:*
         version: link:../module-system/graph
+      '@we/module-live':
+        specifier: workspace:*
+        version: link:../module-system/live
       '@we/module-notes':
         specifier: workspace:*
         version: link:../module-system/notes
