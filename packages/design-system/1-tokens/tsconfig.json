@@ -1,11 +1,12 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "declarationDir": "dist",
-    "moduleResolution": "node"
+    // The generator script and the font test read this package off disk. TypeScript 6 defaults `types`
+    // to [] rather than auto-loading every @types package, so node has to be named.
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src", "tests", "scripts", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

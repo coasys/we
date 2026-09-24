@@ -241,7 +241,7 @@ describe('missing models', () => {
 
   const withPaths = (targetClass: string): [string, StoredShape] => [
     targetClass,
-    { paths: new Set(['we://x']), propHints: new Map() },
+    { paths: new Set(['we://x']), pathCounts: new Map(), propHints: new Map() },
   ];
 
   it('reports a class the perspective has never had', async () => {

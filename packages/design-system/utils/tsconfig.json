@@ -1,11 +1,10 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     // Tests read fixtures from disk.
     "types": ["node"],
     "jsx": "preserve",
-    "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src", "*.config.ts"]
 }

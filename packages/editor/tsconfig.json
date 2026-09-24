@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "jsx": "preserve",
@@ -10,6 +10,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src"],
+  "include": ["src", "tests", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

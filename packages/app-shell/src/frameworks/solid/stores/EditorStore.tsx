@@ -485,7 +485,9 @@ export function EditorStoreProvider(props: ParentProps) {
         where: { id: sessionId },
         include: { messages: { order: { createdAt: 'ASC' } } },
       });
-      return ((fresh?.messages ?? []) as ChatMessage[]) ?? [];
+      // One fallback, not two: the inner `?? []` already makes this non-nullish, so the outer one was
+      // unreachable. TypeScript 6 reports that (TS2869) where 5 accepted it in silence.
+      return (fresh?.messages ?? []) as ChatMessage[];
     } catch (err) {
       console.error('Failed to read messages for session', sessionId, err);
       return [];

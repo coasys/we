@@ -37,7 +37,7 @@
     "@we/schema-kit": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
   "we": {

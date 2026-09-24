@@ -1,8 +1,8 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
 
     /* Bundler mode */
     "allowImportingTsExtensions": true,
@@ -18,12 +18,11 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Path aliases */
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../../packages/app-shell/src/shared/*"],
       "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "scripts", "*.config.ts", "../../packages/app-shell/src/shared/global.d.ts"]
 }

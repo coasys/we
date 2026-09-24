@@ -1,14 +1,13 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "declarationMap": true,
     "outDir": "dist",
-    "rootDir": "src",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "types": ["node"]
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "include": ["src", "tests", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

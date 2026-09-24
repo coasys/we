@@ -1,5 +1,5 @@
 {
-  "extends": "../../../../tsconfig.json",
+  "extends": "../../../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "jsx": "preserve",
@@ -9,6 +9,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
