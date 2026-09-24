@@ -15,6 +15,7 @@
  * every bundled module; a testing package importing them all would invert the dependency direction the
  * contract packages exist to keep straight.
  */
+import { activateSeedModules } from '@shared/registries/bundledModules';
 import { bundledModules } from '@shared/registries/bundledModules.generated';
 import { createModuleStoreDeps, HOST_KERNELS } from '@shared/registries/moduleHostServices';
 import { checkModuleCompatibility, KERNEL_NAMES, lintModule } from '@we/module-shared';
@@ -97,5 +98,41 @@ describe('what this host says it implements', () => {
   it('names only kernels the contract knows', () => {
     // A typo here is the same silent refusal as an omission, from the other direction.
     for (const name of HOST_KERNELS) expect(KERNEL_NAMES).toContain(name);
+  });
+});
+
+describe('a module the seed asked for and the host refused', () => {
+  /**
+   * That it is *said out loud*, in the line somebody reads.
+   *
+   * The registry already warned per refusal and that was not enough: the boot summary listed only what
+   * started, so a refused module read as a healthy boot with a feature mysteriously absent. This is the
+   * cheap half of the fix — the expensive half is the compatibility test above, which stops it happening.
+   */
+  it('is reported, with the reason, rather than left to a warning further up the console', () => {
+    const outcome = activateSeedModules(
+      ['needy'],
+      { components: {} },
+      { backend: 'ad4m', framework: 'solid', kernels: ['records'] },
+      {
+        register: (definition, hostProfile) => {
+          const checked = checkModuleCompatibility(definition, hostProfile);
+          return { registered: checked.compatible, problems: checked.problems };
+        },
+      },
+      {
+        needy: () => ({
+          manifest: { id: 'needy', name: 'Needy', requires: { kernels: ['view'] } },
+        }),
+      },
+    );
+
+    expect(outcome.refused).toEqual([
+      { id: 'needy', problems: expect.arrayContaining([expect.stringContaining('view')]) },
+    ]);
+    // Reported rather than thrown, and not counted as activated — a deployment naming a module it does
+    // not ship is a configuration mistake, not a reason to fail boot.
+    expect(outcome.activated).toEqual([]);
+    expect(outcome.missing).toEqual([]);
   });
 });
