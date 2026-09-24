@@ -81,7 +81,18 @@ export const liveModule: ModuleDefinition = defineModule({
       { anchor: 'call-controls', node: wheelButton, order: 21 },
       { anchor: 'call-status', node: driverStrip, order: 10 },
       { anchor: 'call-status', node: problemStrip, order: 11 },
-      ...(devCursorsAvailable ? [{ anchor: 'call-controls', node: fakeCursorControls, order: 22 }] : []),
+      /*
+        The development region, not the control region.
+
+        A harness triple belongs beside the other harness triple and after everything a shipped build
+        has, so the bar a user gets and the bar a developer gets differ by one trailing group rather
+        than by a control wedged into the middle of the real ones. Contributions land at a single
+        point, so being in the same region as the other triple is the only way to be next to it.
+
+        The anchor is a literal, like every other anchor named here: naming the region is not the same
+        as depending on whoever provides it, and a region nobody provides renders nothing.
+      */
+      ...(devCursorsAvailable ? [{ anchor: 'call-dev', node: fakeCursorControls, order: 20 }] : []),
     ],
 
     /**

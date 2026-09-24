@@ -252,6 +252,25 @@ const BAR_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as 
 export const CALL_CONTROLS_ANCHOR = 'call-controls';
 
 /**
+ * Where development-only controls go: a region at the END of the bar, after everything shipped.
+ *
+ * A separate region from `CALL_CONTROLS_ANCHOR` rather than a high `order` within it, because the two
+ * differ in a way an order cannot express. A contributed *control* is part of the bar a user gets and
+ * belongs among the others; a contributed *harness* is absent from a shipped build entirely, and the
+ * thing worth being able to see at a glance is that what a developer is looking at differs from what
+ * everybody else gets by one trailing group and nothing else.
+ *
+ * It also puts the harness triples next to each other, which no ordering could: contributions from one
+ * module land at a single point, so this module's own fake-participant triple cannot be threaded in
+ * between another module's controls. Two identical-looking counters separated by the fold button was
+ * the state this replaced.
+ *
+ * Declared, and marked, only in a development build — see `anchors` — so a production bundle carries
+ * neither the region nor anything that could reach it.
+ */
+export const CALL_DEV_ANCHOR = 'call-dev';
+
+/**
  * A second extension point, under the bar rather than inside it — for chrome that *reports* rather
  * than chrome you press.
  *
@@ -957,7 +976,23 @@ const devPeerControls: SchemaNode = {
   type: 'Row',
   props: { gap: '100', ay: 'center' },
   children: [
+    /*
+      One rule for the whole development group, drawn here because this triple leads it.
+
+      Whatever else is contributed to `CALL_DEV_ANCHOR` follows immediately and draws no rule of its
+      own, so the group is bracketed once rather than cut into pieces. What separates one triple from
+      the next is the bar's own gap against the tighter one inside each.
+    */
     { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+    /*
+      The glyph, without which this is unreadable.
+
+      There is a second `−  N  +` immediately after it and the two were indistinguishable: identical
+      minus, number and plus, so telling them apart meant hovering one to read a tooltip about the
+      thing you had not been able to identify. No tooltip on the icon: the buttons either side already
+      say what they step.
+    */
+    { type: 'we-icon', props: { name: 'users', size: 'sm', color: 'text-faint' } },
     {
       type: 'we-tooltip',
       props: { content: 'One fewer fake participant', placement: 'bottom' },
@@ -1571,7 +1606,6 @@ const bar: SchemaNode = {
               — see `moreMenu` — and a control that exists only below 640px is a control most people
               never find.
             */
-            moreMenu,
             /*
           Show/hide sits with the devices, not with the call.
 
@@ -1581,25 +1615,6 @@ const bar: SchemaNode = {
           microphone, your camera, your screen, your transcript, and whether you are looking at the
           video. Everything right of it is the call itself — who is in it, and how much room it has.
         */
-            /*
-              Development only, and absent rather than inert in a production build — see
-              `devPeerControls`. Placed with the things you do to your own machine rather than with
-              the call itself, which is what the divider below separates: how many fake participants
-              you are looking at is a property of your session, not of the call.
-
-              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
-              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
-              developer looking at what a user sees loses these on the press rather than on the next
-              reload, and gets them back the same way.
-            */
-            ...(devPeersAvailable
-              ? [
-                  {
-                    type: '$if',
-                    props: { condition: { $: 'sessionStore.devTools' }, then: devPeerControls },
-                  },
-                ]
-              : []),
             /*
               Solo — the spotlight with the stage to itself.
 
@@ -1613,6 +1628,44 @@ const bar: SchemaNode = {
               props: { condition: { $: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
             }),
             whenRoomy(mediaToggle(STAGE)),
+            /*
+              The fold, after the controls it folds.
+
+              It was above the show/hide toggle, which put it between that toggle and the contributed
+              controls; since `STAGE` is one of the things it swallows when the row is compact, sitting
+              after it means the button occupies the place its own contents just left. The row reads the
+              same in either state either way, which was the original point.
+            */
+            moreMenu,
+            /*
+              Development only, and last, which is the whole arrangement in one line: a shipped bar and
+              a developer's bar differ by this trailing group and nothing else. Absent rather than inert
+              in a production build — see `devPeerControls` and `CALL_DEV_ANCHOR`.
+
+              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
+              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
+              developer looking at what a user sees loses these on the press rather than on the next
+              reload, and gets them back the same way.
+
+              The region takes other modules' harnesses too, and they draw no rule of their own: this
+              triple leads the group and brackets it once. The `$if` covers them as well, so the switch
+              puts away every harness in the bar rather than only this module's.
+            */
+            ...(devPeersAvailable
+              ? [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'sessionStore.devTools' },
+                      then: {
+                        type: 'Row',
+                        props: { gap: '200', ay: 'center' },
+                        children: [devPeerControls, { type: '$slot', props: { anchor: CALL_DEV_ANCHOR } }],
+                      },
+                    },
+                  },
+                ]
+              : []),
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
             // that already, and left alone against `md` it would have been half.
@@ -1936,7 +1989,7 @@ export const callModule = defineModule({
 
     // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
     // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
-    anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
+    anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR, ...(devPeersAvailable ? [CALL_DEV_ANCHOR] : [])],
 
     /*
       Drawn by the host's module rail. A launcher of its own rather than a panel's button, because

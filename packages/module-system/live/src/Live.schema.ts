@@ -207,7 +207,19 @@ export const fakeCursorControls: SchemaNode = {
   type: 'Row',
   props: { gap: '100', ay: 'center', pointerEvents: 'auto' },
   children: [
-    { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+    /*
+      The glyph is what makes this readable, and it was missing.
+
+      Two `−  N  +` triples sit side by side in the bar — this one and the call module's fake
+      participants — and until each carried an icon they were indistinguishable, so the only way to tell
+      which was which was to hover one and read a tooltip about the thing you had failed to identify.
+      No tooltip on the icon itself: the pair either side already name what they step.
+
+      No leading divider either, which this used to draw. The two dev triples read as ONE group, and the
+      call module's own draws the single rule in front of it; a second rule here would cut the group in
+      half. What separates the two triples is the bar's own gap against the tighter one inside each.
+    */
+    { type: 'we-icon', props: { name: 'cursor-click', size: 'sm', color: 'text-faint' } },
     {
       type: 'we-tooltip',
       props: { content: 'One fewer synthetic cursor', placement: 'bottom' },
