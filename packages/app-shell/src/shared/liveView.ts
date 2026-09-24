@@ -171,7 +171,7 @@ export function pointForAnchor(
     if (!anchor.record) return null;
     // Attribute selectors need the value escaped: a record id is a uri in some backends, and a
     // stray quote or bracket turns a lookup into a thrown `SyntaxError` inside a pointer handler.
-    const marker = root.querySelector(`[${RECORD_ATTR}="${cssEscape(anchor.record)}"]`);
+    const marker = markerFor(anchor.record, root);
     if (!marker) return null;
     const box = boxOf(marker);
     if (!box) return null;
@@ -193,6 +193,69 @@ export function pointForAnchor(
  * not a valid instance of CSS` — under jsdom certainly, and by specification anywhere. The thrown
  * version of this sat inside a pointer handler, which is the worst place for it.
  */
+/**
+ * The element standing for a record on this screen, or null.
+ *
+ * One place, because the escaping is not optional: a record id is a uri in some backends, and a stray
+ * quote or bracket turns a lookup into a thrown `SyntaxError` inside a pointer handler.
+ */
+export function markerFor(record: string, root: ParentNode = document): Element | null {
+  if (!record) return null;
+  return root.querySelector(`[${RECORD_ATTR}="${cssEscape(record)}"]`);
+}
+
+/**
+ * What to scroll to put a record where a driver had it, and by how much.
+ *
+ * ## Why the window is the wrong answer
+ *
+ * A scroll anchor used to be applied with `window.scrollBy`, which works only where the content
+ * scrolls the page. Half of what a person reads in WE does not: a transcript scrolls inside its panel, a
+ * board column scrolls inside itself, a thread scrolls inside a card. Following somebody reading a
+ * transcript therefore did nothing at all, silently, because the window had nothing to scroll.
+ *
+ * So the scroller is the record's own nearest scrollable ancestor, and the window is the fallback rather
+ * than the assumption.
+ *
+ * ## Why the target edge differs
+ *
+ * An anchor means "this record was at the top of what I could see, scrolled past by this fraction of its
+ * own height". For the page, the top of what you can see is the top of the content box. For a nested
+ * scroller it is that element's own top edge, which is where the record has to end up.
+ *
+ * Returns the delta rather than performing the scroll, so the arithmetic can be tested without a layout.
+ */
+export function scrollPlan(
+  marker: Element,
+  at: { y: number },
+  content: { y: number },
+): { scroller: Element | null; top: number } {
+  const scroller = scrollerFor(marker);
+  const edge = scroller ? scroller.getBoundingClientRect().top : content.y;
+  return { scroller, top: at.y - edge };
+}
+
+/**
+ * The nearest ancestor that actually scrolls, or null for the window.
+ *
+ * Both halves are needed. An element can declare `overflow: auto` and have nothing to scroll, in which
+ * case scrolling it is a no-op and the page was meant; and an element can have overflowing content with
+ * `overflow: visible`, in which case it is the page that scrolls. So the test is a scrolling overflow
+ * *and* something to scroll.
+ */
+export function scrollerFor(element: Element): Element | null {
+  let node: Element | null = element.parentElement;
+  const root = element.ownerDocument?.documentElement;
+  while (node && node !== root && node !== element.ownerDocument?.body) {
+    const style = element.ownerDocument?.defaultView?.getComputedStyle(node);
+    const overflow = `${style?.overflowY ?? ''} ${style?.overflow ?? ''}`;
+    const scrolls = /auto|scroll|overlay/.test(overflow);
+    if (scrolls && node.scrollHeight > node.clientHeight) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function cssEscape(value: string): string {
   const css = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
   if (typeof css?.escape === 'function') return css.escape(value);

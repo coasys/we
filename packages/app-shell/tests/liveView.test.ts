@@ -13,6 +13,7 @@ import {
   composeFrame,
   createLiveViewState,
   currentPointer,
+  markerFor,
   placementIn,
   pointForAnchor,
   REGION_FRESH_MS,
@@ -21,6 +22,8 @@ import {
   requestRegion,
   routeSurface,
   scrollAnchor,
+  scrollerFor,
+  scrollPlan,
 } from '@shared/liveView';
 import { RECORD_ATTR } from '@we/design-utils';
 import type { LiveAnchor } from '@we/module-shared';
@@ -196,6 +199,82 @@ describe('the scroll anchor', () => {
 
   it('answers nothing when there are no records to anchor to', () => {
     expect(scrollAnchor(CONTENT)).toBeUndefined();
+  });
+});
+
+describe('what a scroll anchor scrolls', () => {
+  /** A scrollable box: a scrolling overflow AND something to scroll, since either alone is not one. */
+  function scroller(box: { x: number; y: number; width: number; height: number }, content: number): HTMLElement {
+    const el = boxed(box);
+    el.style.overflowY = 'auto';
+    Object.defineProperty(el, 'clientHeight', { value: box.height, configurable: true });
+    Object.defineProperty(el, 'scrollHeight', { value: content, configurable: true });
+    return el;
+  }
+
+  it('scrolls the record’s own container, not the window', () => {
+    /*
+      The case that silently did nothing. Half of what a person reads in WE does not scroll the page: a
+      transcript scrolls inside its panel, a column inside itself, a thread inside a card. `window.scrollBy`
+      was the whole implementation, so following somebody reading any of those scrolled nothing at all.
+    */
+    const panel = scroller({ x: 0, y: 100, width: 300, height: 400 }, 2_000);
+    const card = boxed({ x: 0, y: 260, width: 300, height: 80 });
+    card.setAttribute(RECORD_ATTR, 'utterance-7');
+    panel.append(card);
+    document.body.append(panel);
+
+    const plan = scrollPlan(card, { y: 260 }, { y: 0 });
+    expect(plan.scroller).toBe(panel);
+    // Measured to the PANEL's top edge, because that is where the top of what you can see is inside it.
+    expect(plan.top).toBe(160);
+  });
+
+  it('falls back to the window for content that scrolls the page', () => {
+    const card = boxed({ x: 0, y: 500, width: 600, height: 100 });
+    card.setAttribute(RECORD_ATTR, 'post-9');
+    document.body.append(card);
+
+    const plan = scrollPlan(card, { y: 500 }, { y: 56 });
+    // Null means the window, and the target is the content box's own top rather than an element's.
+    expect(plan.scroller).toBeNull();
+    expect(plan.top).toBe(444);
+  });
+
+  it('ignores a container that declares a scrolling overflow but has nothing to scroll', () => {
+    /*
+      Both halves of the test matter. Scrolling such a box is a no-op, so believing it would swallow the
+      scroll and leave the follower where they were — the same silent nothing, one layer along.
+    */
+    const box = scroller({ x: 0, y: 0, width: 300, height: 400 }, 400);
+    const card = boxed({ x: 0, y: 40, width: 300, height: 80 });
+    card.setAttribute(RECORD_ATTR, 'post-1');
+    box.append(card);
+    document.body.append(box);
+
+    expect(scrollerFor(card)).toBeNull();
+  });
+
+  it('ignores a container with overflowing content that does not scroll', () => {
+    // Overflowing with `overflow: visible` is the page scrolling, not the box.
+    const box = boxed({ x: 0, y: 0, width: 300, height: 400 });
+    Object.defineProperty(box, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(box, 'scrollHeight', { value: 3_000, configurable: true });
+    const card = boxed({ x: 0, y: 40, width: 300, height: 80 });
+    card.setAttribute(RECORD_ATTR, 'post-2');
+    box.append(card);
+    document.body.append(box);
+
+    expect(scrollerFor(card)).toBeNull();
+  });
+
+  it('finds a record by an id that would break a selector', () => {
+    // A record id is a uri in some backends; a stray quote turns a lookup into a thrown SyntaxError.
+    const card = boxed({ x: 0, y: 0, width: 10, height: 10 });
+    card.setAttribute(RECORD_ATTR, 'we://node/"odd"');
+    document.body.append(card);
+    expect(markerFor('we://node/"odd"')).toBe(card);
+    expect(markerFor('')).toBeNull();
   });
 });
 

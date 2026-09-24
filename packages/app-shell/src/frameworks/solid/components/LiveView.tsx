@@ -31,6 +31,7 @@ import {
   canvasSurface,
   composeFrame,
   liveView as state,
+  markerFor,
   notifyLiveViewChanged,
   onLiveViewChanged,
   placementIn,
@@ -39,6 +40,7 @@ import {
   reportPointer,
   requestRegion,
   routeSurface,
+  scrollPlan,
 } from '@shared/liveView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { chromeBag } from '@shared/registries/templateBag';
@@ -293,9 +295,20 @@ export function LiveViewHost() {
    */
   function scrollToAnchor(anchor: { record: string; offset: number }) {
     const box = content();
+    const marker = markerFor(anchor.record);
+    if (!marker) return;
     const at = pointForAnchor({ surface: '', kind: 'record', record: anchor.record, x: 0, y: anchor.offset }, box);
     if (!at) return;
-    window.scrollBy({ top: at.y - box.y, behavior: 'auto' });
+    /*
+      The record's own scroller, with the window as the fallback rather than the assumption.
+
+      `window.scrollBy` was the whole implementation and it does nothing at all where the content does not
+      scroll the page — a transcript in its panel, a column on a board, a thread inside a card. Following
+      somebody reading any of those silently did nothing, because the window had nothing to scroll.
+    */
+    const plan = scrollPlan(marker, at, box);
+    if (plan.scroller) plan.scroller.scrollBy({ top: plan.top, behavior: 'auto' });
+    else window.scrollBy({ top: plan.top, behavior: 'auto' });
   }
 
   // Merged with the registry half in `moduleHostServices`, which owns the kernel a module sees.
