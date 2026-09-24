@@ -15,7 +15,7 @@
  * it arrives through presence and the `view` kernel, and nothing here names `modules.call`. The
  * capability this cooperates with most closely is the one it knows least about.
  */
-import type { Activity, LiveAnchor, LiveDecoration, ModuleStoreDeps, Peer, ViewFrame } from '@we/module-shared';
+import type { Activity, LiveAnchor, LiveDecoration, ModuleStoreDeps, Peer } from '@we/module-shared';
 
 import {
   devCursorAnchors,
@@ -639,6 +639,3 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 }
 
 export type LiveStore = ReturnType<typeof createLiveStore>;
-
-/** Exported for the tests, which drive the publish decision without waiting out a timer. */
-export type { HeldCursor, LiveAnchor, ViewFrame };
