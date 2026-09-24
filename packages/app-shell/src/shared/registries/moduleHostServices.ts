@@ -153,6 +153,35 @@ export interface ModuleHostServices {
 const services: ModuleHostServices = {};
 
 /**
+ * A signal every late-bound accessor reads, so an effect over one is never born dead.
+ *
+ * ## The failure this exists for
+ *
+ * A module store is built before the host stores publish their slices, so at construction
+ * `services.dataset` is `undefined` and `() => services.dataset?.() ?? null` reads **nothing
+ * reactive**. A module doing the obvious thing —
+ *
+ * ```ts
+ * effect(() => attach(deps.dataset?.() ?? null));
+ * ```
+ *
+ * gets an effect whose first run tracks zero dependencies, which Solid therefore never runs again.
+ * The module is handed `null` once, for ever. Nothing throws, nothing warns, and the feature simply
+ * does not exist — which is how the live module shipped with no controls on the rail at all: its
+ * availability was derived from a transport that had never been opened, because the effect that would
+ * have opened it ran before there was a dataset to open one for.
+ *
+ * Reading the revision inside every forwarding closure means the closure always touches *a* signal,
+ * so the effect has at least one dependency however early it runs. Bumping it after every
+ * `provideModuleHostServices` re-runs those effects against the slice that has just arrived.
+ *
+ * The alternative — telling module authors not to use `effect` over a service — is a rule nobody can
+ * see they have broken.
+ */
+let readServicesRevision: (() => void) | null = null;
+let bumpServicesRevision: (() => void) | null = null;
+
+/**
  * Publish a slice of host services to registered modules.
  *
  * Merges rather than replaces, because the slices arrive from different stores at different times.
@@ -161,6 +190,8 @@ const services: ModuleHostServices = {};
  */
 export function provideModuleHostServices(slice: ModuleHostServices): () => void {
   Object.assign(services, slice);
+  // After the assignment, so an effect re-running here sees the slice rather than the frame before it.
+  bumpServicesRevision?.();
   const mine = Object.entries(slice) as [keyof ModuleHostServices, unknown][];
   return () => {
     for (const [key, value] of mine) {
@@ -172,6 +203,8 @@ export function provideModuleHostServices(slice: ModuleHostServices): () => void
 /** Test seam: drop everything between cases so one test's bindings cannot leak into the next. */
 export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
+  readServicesRevision = null;
+  bumpServicesRevision = null;
   publishedMedia = null;
   mediaListeners.clear();
   copiedInListeners.clear();
@@ -496,6 +529,25 @@ export function createModuleStoreDeps(framework: {
     // `secrets` is built per module by the registry, which knows the module's group.
   };
 
+  /*
+    Created on the first call, with the host's own signal, so it lives in the same reactive graph as
+    the effects that will read it through the closures below.
+  */
+  if (!readServicesRevision) {
+    const [revision, setRevision] = framework.signal(0);
+    let count = 0;
+    readServicesRevision = () => void revision();
+    bumpServicesRevision = () => setRevision(++count);
+  }
+
+  /** Read the revision, then the service — see {@link readServicesRevision}. */
+  const tracked = <T>(read: () => T): (() => T) => {
+    return () => {
+      readServicesRevision?.();
+      return read();
+    };
+  };
+
   return {
     signal: framework.signal,
     effect: framework.effect,
@@ -504,11 +556,11 @@ export function createModuleStoreDeps(framework: {
     state: ((accessor: unknown, _doc: string) => (typeof accessor === 'function' ? accessor : () => accessor)) as never,
     action: ((fn: unknown) => fn) as never,
 
-    dataset: () => services.dataset?.() ?? null,
-    datasetUri: () => services.datasetUri?.() ?? null,
-    callOnScreen: () => services.callOnScreen?.() ?? null,
-    datasetRefKey: () => services.datasetRefKey?.() ?? '',
-    selfId: () => services.selfId?.() ?? null,
+    dataset: tracked(() => services.dataset?.() ?? null),
+    datasetUri: tracked(() => services.datasetUri?.() ?? null),
+    callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
+    datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
+    selfId: tracked(() => services.selfId?.() ?? null),
     notify: (tone, message) => services.notify?.(tone, message),
     datasets: {
       get: (uri) => services.datasets?.get(uri),

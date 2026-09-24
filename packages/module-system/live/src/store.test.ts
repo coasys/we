@@ -7,6 +7,7 @@
  * cost. Whose messages to act on. What happens when the person you are following goes away. And that
  * switching off says so rather than leaving everybody to a three-second timeout.
  */
+import type { ModuleStoreDeps } from '@we/module-shared';
 import { buildStore, fakeDeps, fakeEphemeral, fakePresence, fakeView } from '@we/module-testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,7 +26,7 @@ const WORLD = { surface: 'canvas:c1', kind: 'world' as const, x: 10, y: 20 };
  * `buildStore` hands the definition only the kernels its manifest names, exactly as the registry does —
  * so a manifest that forgot one fails here rather than passing and degrading in the app.
  */
-function setup(options: { settings?: Record<string, boolean>; dataset?: unknown } = {}) {
+function setup(options: { settings?: Record<string, boolean>; dataset?: unknown; shared?: boolean } = {}) {
   const wire = fakeEphemeral({ self: ME });
   const presence = fakePresence({ self: ME });
   const view = fakeView({ frame: { path: '/space/a/canvas' } });
@@ -35,6 +36,11 @@ function setup(options: { settings?: Record<string, boolean>; dataset?: unknown 
   const deps = fakeDeps({
     selfId: () => ME,
     dataset: () => (options.dataset === undefined ? (wire.dataset as never) : (options.dataset as never)),
+    /*
+      A shared space has a global uri and a personal one does not, which is what the module asks to
+      decide whether it can be live at all — see `shared` in the store. `false` here is a personal space.
+    */
+    datasetUri: () => (options.shared === false ? null : 'neighbourhood://test-space'),
     settings: () => options.settings ?? {},
     identities: { get: (did) => identities.get(did), fetch: () => {} },
     notify: (tone, message) => void notified.push({ tone, message }),
@@ -54,6 +60,67 @@ const published = (wire: ReturnType<typeof fakeEphemeral>) =>
 
 beforeEach(() => {
   vi.useRealTimers();
+});
+
+describe('a host whose services arrive after the store is built', () => {
+  /**
+   * The failure that produced this: nothing on the rail at all.
+   *
+   * A module store is built before the host publishes its dataset, so `deps.dataset?.()` reads nothing
+   * reactive at construction — and an effect whose first run tracks no dependencies is one the
+   * framework never runs again. Anything the module derived from that effect having fired was therefore
+   * wrong for ever, silently.
+   *
+   * `moduleHostServices` now bumps a revision every closure reads, which fixes the class of bug for
+   * every module. This is the module's own half: availability is asked of the *space*, and the channel
+   * is opened on demand as well as from the effect, so the feature works even where the effect is dead.
+   */
+  const lateHost = (overrides: Partial<ModuleStoreDeps> = {}) =>
+    fakeDeps({
+      // An effect that runs once and is never re-run — which is precisely what Solid does with a first
+      // run that touched no signal.
+      effect: (fn) => fn(),
+      ...overrides,
+    });
+
+  it('offers its controls even though the effect ran before there was a dataset', () => {
+    const wire = fakeEphemeral({ self: ME });
+    let dataset: unknown = null;
+    const store = buildStore(
+      liveModule,
+      lateHost({
+        selfId: () => ME,
+        dataset: () => dataset as never,
+        datasetUri: () => (dataset ? 'neighbourhood://test-space' : null),
+        kernels: { presence: fakePresence({ self: ME }).kernel, ephemeral: wire.port, view: fakeView().kernel },
+      }),
+    ) as unknown as LiveStore;
+
+    // The dataset arrives after construction, and nothing re-runs the effect.
+    dataset = wire.dataset;
+    expect(store.canShareCursors()).toBe(true);
+    expect(store.canTakeWheel()).toBe(true);
+  });
+
+  it('opens the channel on the press, since nothing else will have', () => {
+    const wire = fakeEphemeral({ self: ME });
+    let dataset: unknown = null;
+    const store = buildStore(
+      liveModule,
+      lateHost({
+        selfId: () => ME,
+        dataset: () => dataset as never,
+        datasetUri: () => (dataset ? 'neighbourhood://test-space' : null),
+        kernels: { presence: fakePresence({ self: ME }).kernel, ephemeral: wire.port, view: fakeView().kernel },
+      }),
+    ) as unknown as LiveStore;
+
+    dataset = wire.dataset;
+    expect(wire.sent()).toEqual([]);
+    store.toggleCursors();
+    // The warm-up publish proves a channel was opened by the press rather than at construction.
+    expect(wire.sent().length).toBeGreaterThan(0);
+  });
 });
 
 describe('what a fresh store leaves running', () => {
@@ -225,18 +292,23 @@ describe('receiving a peer’s cursor', () => {
 describe('a space with no transport', () => {
   it('stops offering the controls rather than offering ones that do nothing', () => {
     /*
-      A personal space is synced with nobody, so the port answers `null` and there is nobody to be live
-      to — while the *kernel* is present exactly as it is anywhere else. Asking the kernel rather than
-      the scope is what put a cursor button on the rail in every personal space, doing nothing when
-      pressed. The rail gates its launcher on these, so this is what takes it off.
+      A personal space is synced with nobody, so there is nobody to be live to — while the ephemeral
+      *kernel* is present exactly as it is anywhere else. Asking the kernel rather than the space is
+      what put a cursor button on the rail in every personal space, doing nothing when pressed.
+
+      Asked as "does this space have a global uri", which is the same fact the transport would report
+      one step later — and answerable on the first read, where anything derived from a lifecycle has a
+      window in which it is wrong. The rail reads availability inside that window.
     */
-    const { store } = setup({ dataset: null });
+    const { store } = setup({ shared: false, dataset: null });
     expect(store.canShareCursors()).toBe(false);
     expect(store.canDrive()).toBe(false);
+    expect(store.canTakeWheel()).toBe(false);
+    expect(store.canFollow()).toBe(false);
   });
 
   it('degrades rather than throwing if something asks anyway', () => {
-    const { store } = setup({ dataset: null });
+    const { store } = setup({ shared: false, dataset: null });
     // A module must survive a kernel that answers no — a store is built before boot finishes, and a
     // schema written against another deployment may name an action this one cannot honour.
     expect(() => store.toggleCursors()).not.toThrow();

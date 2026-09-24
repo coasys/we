@@ -68,16 +68,6 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   const [followingDid, setFollowingDid] = signal('');
   /** Why something could not be done, as a sentence to show. */
   const [problem, setProblem] = signal('');
-  /**
-   * Whether a transport actually opened for the space on screen.
-   *
-   * Not the same question as "does this host implement the ephemeral kernel", which is what this used
-   * to ask — and the difference is a control offered where it cannot work. A personal space is synced
-   * with nobody, so the port answers `null` and there is nobody to be live to; the kernel is present
-   * all the same. Reading the kernel put a cursor button on the rail in every personal space, which
-   * would have done nothing at all when pressed.
-   */
-  const [wired, setWired] = signal(false);
   /** Synthetic cursors, and the clock that moves them. Development only — see `devCursors.ts`. */
   const [fakeCount, setFakeCount] = signal(readDevCursorCount());
   const [fakeTick, setFakeTick] = signal(0);
@@ -95,6 +85,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   let viewTimer: ReturnType<typeof setInterval> | null = null;
   let channel: { publish: (payload: unknown) => void } | null = null;
   let detach: (() => void) | null = null;
+  /** The handle the channel is open on, so attaching twice for the same space does nothing. */
+  let attachedTo: unknown;
   /** The path this agent was last *sent* to, so their own navigation can be told from a driver's. */
   let appliedPath = '';
 
@@ -163,14 +155,39 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    * page two people are looking at together, and a cursor in a space nobody is in is pure cost. That
    * is a different decision from a call, which pins its space open because presence *is* its roster.
    */
+  /**
+   * Whether this space can carry live traffic at all — asked without opening anything.
+   *
+   * A shared space has a global uri and a personal one does not, which is the same fact the transport
+   * would report one step later. Asking it this way rather than reading whether a channel happens to be
+   * open is what makes the answer true on the first read: a module store is built before the host
+   * publishes its dataset, so anything derived from a *lifecycle* has a window where it is wrong, and
+   * the rail reads availability inside that window.
+   */
+  const shared = () => Boolean(deps.datasetUri?.());
+
+  /**
+   * Open the channel for the space on screen if it is not open already.
+   *
+   * Called from the effect *and* from the two actions, because a module cannot rely on an effect over a
+   * late-bound service having ever run — see `moduleHostServices`' revision signal for the failure, of
+   * which this is the belt to its braces. Idempotent on the same handle, so calling it on every press
+   * costs a comparison.
+   */
+  function ensureAttached(): void {
+    const handle = deps.dataset?.() ?? null;
+    if (handle === attachedTo && channel) return;
+    attach(handle);
+  }
+
   function attach(handle: unknown): void {
+    attachedTo = handle;
     detach?.();
     detach = null;
     channel = null;
     held.clear();
     bumpCursors();
 
-    setWired(false);
     const scope = handle && ephemeral ? ephemeral(handle as never) : null;
     // A personal space has no neighbourhood, so there is nobody to signal. Degrade deliberately: the
     // switch stops being offered rather than being offered and doing nothing.
@@ -199,7 +216,6 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
     const stop = live.onMessage((from, payload) => receive(from, payload));
     channel = live;
-    setWired(true);
     detach = () => {
       stop();
       scope.dispose();
@@ -359,6 +375,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       setProblem('Driving is switched off in this space.');
       return;
     }
+    ensureAttached();
     stopFollowing();
     setDriving(true);
     setActivity({ type: 'driving', since: now() });
@@ -384,6 +401,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
   /** Follow whoever has the wheel. Nothing to do where nobody has it. */
   const follow = () => {
+    ensureAttached();
     const driver = driverPeer();
     if (!driver) return;
     if (driving()) releaseWheel();
@@ -438,6 +456,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       setProblem('Live cursors are switched off in this space.');
       return;
     }
+    ensureAttached();
     const next = !cursorsOn();
     setCursorsOn(next);
     setProblem('');
@@ -459,7 +478,14 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
   // ── Wiring ─────────────────────────────────────────────────────────────────
 
-  effect?.(() => attach(deps.dataset?.() ?? null));
+  /*
+    Re-scope as the space changes — and harmless if it never fires, which on a host without the
+    services revision signal is exactly what happens. The actions call `ensureAttached` themselves.
+  */
+  effect?.(() => {
+    deps.dataset?.();
+    ensureAttached();
+  });
 
   /**
    * Follow the rate ladder as peers come and go.
@@ -601,7 +627,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     cursorsOn: state(cursorsOn, 'Whether this agent’s pointer is shared, and other people’s shown.'),
     /** Whether cursors can be offered here at all — a space or a member may refuse them. */
     canShareCursors: state(
-      () => cursorsAllowed() && wired() && Boolean(view),
+      () => cursorsAllowed() && shared() && Boolean(view),
       'Whether live cursors are possible here — false in a space with no transport, or where they are switched off.',
     ),
     /** How many peers have their cursors on. What a readout counts. */
@@ -628,9 +654,9 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       return driver ? nameOf(driver.agentId) || 'Someone' : '';
     }, 'The name of whoever is driving, or empty when nobody is.'),
     canDrive: state(
-      // `wired` too: driving publishes view frames over the same channel, so a space with no transport
+      // `shared` too: driving publishes view frames over the same channel, so a space with no transport
       // can no more be driven than it can show a cursor.
-      () => drivingAllowed() && wired() && Boolean(view && presence),
+      () => drivingAllowed() && shared() && Boolean(view && presence),
       'Whether taking the wheel is possible here.',
     ),
     /**
@@ -642,12 +668,12 @@ export function createLiveStore(deps: ModuleStoreDeps) {
      * would be a control whose label is wrong half the time.
      */
     canTakeWheel: state(
-      () => drivingAllowed() && wired() && Boolean(view && presence) && (driving() || !driverPeer()),
+      () => drivingAllowed() && shared() && Boolean(view && presence) && (driving() || !driverPeer()),
       'Whether the wheel is free to take, or already this agent’s.',
     ),
     /** Whether somebody else has the wheel, so following is what is on offer. */
     canFollow: state(
-      () => drivingAllowed() && wired() && Boolean(view && presence) && !driving() && Boolean(driverPeer()),
+      () => drivingAllowed() && shared() && Boolean(view && presence) && !driving() && Boolean(driverPeer()),
       'Whether somebody else is driving, so this agent could follow them.',
     ),
     following: state(following, 'Whether this agent is following somebody’s screen.'),

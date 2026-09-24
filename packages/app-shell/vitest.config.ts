@@ -55,6 +55,9 @@ const SOLID_TESTS = [
   // real tree — the DOM is the subject, and the frame maths is what a live cursor is right or
   // silently wrong by.
   'tests/liveView.test.ts',
+  // Drives real Solid effects, which is the whole subject: the failure is what a framework does with
+  // an effect whose first run tracked nothing, and the node project's SSR build never re-runs one.
+  'tests/moduleServiceBinding.test.ts',
 ];
 
 export default defineConfig({
