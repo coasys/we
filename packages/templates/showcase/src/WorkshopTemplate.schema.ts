@@ -3483,7 +3483,7 @@ const canvas: SchemaNode = {
         pathway wants to notice. Faint rather than absent, because a tree with every line at full
         strength is a tangle and the shape has to be what the eye follows first.
       */
-      ...TREE_EDGE_RULES,
+      TREE_EDGE_RULES,
     ],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',

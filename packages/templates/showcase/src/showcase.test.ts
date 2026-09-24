@@ -2164,8 +2164,14 @@ describe('the workshop’s tree', () => {
       decision pathway wants to notice. Faint rather than absent, or the shape is lost in the tangle.
     */
     expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
-    expect(canvas).toContain('"opacity":0.25');
-    expect(canvas).toContain('"curve":"step"');
+    expect(canvas).toContain('opacity: 0.25');
+    expect(canvas).toContain("curve: 'step'");
+    /*
+      One element answering a LIST of rules, which the graph flattens — the same shape the key's lens
+      rules use. A rule that is always present with a clause matching nothing would work and is worse:
+      an inert rule is one more thing a reader of the style list has to work out is inert.
+    */
+    expect(canvas).toContain('] : []');
   });
 
   it('offers the unset spine as a placeholder and a button, never as a prepended row', () => {

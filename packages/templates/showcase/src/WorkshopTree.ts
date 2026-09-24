@@ -201,17 +201,13 @@ export const TREE_CARD_STYLE = {
  * Faint rather than absent because a tree with every other line at full strength is a tangle, and the
  * lines that make the shape have to be the ones the eye follows first.
  */
-export const TREE_EDGE_RULES = [
-  {
-    when: { $: `${TREE_ON} ? { 'data.relationshipTypeId': { not: local.spine } } : { 'data.__none': true }` },
-    style: { opacity: 0.25, dashed: true, arrow: 'none' },
-  },
-  {
-    when: { $: `${TREE_ON} ? { 'data.relationshipTypeId': local.spine } : { 'data.__none': true }` },
-    // Right angles, which is what a reader follows down a rank rather than across a curve.
-    style: { curve: 'step' },
-  },
-];
+export const TREE_EDGE_RULES: SchemaProp = {
+  $:
+    `${TREE_ON} ? [{ when: { 'data.relationshipTypeId': { not: local.spine } },` +
+    ` style: { opacity: 0.25, dashed: true, arrow: 'none' } },` +
+    // Right angles along the spine, which is what a reader follows down a rank rather than across a curve.
+    ` { when: { 'data.relationshipTypeId': local.spine }, style: { curve: 'step' } }] : []`,
+};
 
 /**
  * The strip: the mode, and — once in it — what the shape is made of.
