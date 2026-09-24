@@ -1226,6 +1226,11 @@ export const contextData: ContextData = {
           optional: true,
         },
         {
+          name: 'onNodeArrange',
+          type: '((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; x: number; y: number; }) => void)',
+          optional: true,
+        },
+        {
           name: 'onNodeResize',
           type: '((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)',
           optional: true,
@@ -2391,6 +2396,7 @@ export const contextData: ContextData = {
         'anchorOnCanvas',
         'rerouteOnCanvas',
         'retargetOnCanvas',
+        'arrangeOnTree',
         'setCardStyle',
         'previewCardStyle',
         'setTypeColor',

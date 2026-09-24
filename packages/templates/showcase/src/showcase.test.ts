@@ -626,8 +626,14 @@ describe('the workshop template’s call selection', () => {
     // Said in the key, which carries every reason a card is off the canvas, and nowhere else: a chip
     // over the corner spoke for one of the three and stood beside the panel already saying it.
     expect(json).not.toContain('Pending acceptance hidden');
-    // Parked in slots a card fits, and pinned where it is drawn when kept.
-    expect(json).toContain('"layout":{"type":"manual","options":{"size":{"width":180,"height":135}');
+    /*
+      Parked in slots a card fits, and pinned where it is drawn when kept.
+
+      Inside the layout expression now, because the canvas has a second reading — see `WorkshopTree`.
+      Asserted as the branch rather than as the whole prop: what matters is that the freeform side is
+      still `manual` with a card-sized slot, which is what stopped new suggestions arriving overlapping.
+    */
+    expect(json).toContain(`{ type: 'manual', options: { size: { width: 180, height: 135 }`);
     expect(json).toContain(
       `"$action":"recordStore.placeOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
     );
@@ -791,7 +797,9 @@ describe('the workshop template’s call selection', () => {
       chrome is the workshop's panels — so Shift and Ctrl/Cmd are the whole gesture, which is what
       every other canvas people use has taught them anyway.
     */
-    expect(json).toContain('"marquee-select"');
+    // In the freeform branch of the behaviours expression. Dropped in the tree, where a rectangle
+    // over an arrangement nobody chose would select a set with no meaning.
+    expect(json).toContain("'marquee-select'");
 
     // The canvas has always received drops and could never be dragged from, so nothing on it could
     // reach the Pocket — which is the one thing that carries between spaces.
@@ -1205,7 +1213,10 @@ describe('the workshop’s key', () => {
 
     expect(canvas).toContain(`${NO_LENS} ? [{ style: { color: { from: 'data.canvasColor' } } }] : []`);
     expect(canvas).not.toContain('"color":{"from":"data.canvasColor"}');
-    expect(canvas).toContain('"width":{"from":"data.canvasWidth"},"height":{"from":"data.canvasHeight"}');
+    // Still a plain rule, and now a rule that answers differently in the tree, where every card is
+    // given one box — see `TREE_CARD_STYLE`. The card's own size is the freeform branch of it.
+    expect(canvas).toContain("{ from: 'data.canvasWidth' }");
+    expect(canvas).toContain("{ from: 'data.canvasHeight' }");
   });
 
   it('scopes its contents to the canvas without scoping the panel', () => {
@@ -1438,9 +1449,8 @@ describe('the workshop’s key', () => {
     // Picking a colour turns the lenses off, so the pick is visible.
     expect(canvas).toContain(`"args":["${LENS_PARAM}","none"]`);
     // And the shape and scale a card was given show whatever lens is on.
-    expect(canvas).toContain(
-      '"cardShape":{"from":"data.canvasCardShape"},"contentScale":{"from":"data.canvasContentScale"}',
-    );
+    expect(canvas).toContain("{ from: 'data.canvasCardShape' }");
+    expect(canvas).toContain("{ from: 'data.canvasContentScale' }");
   });
 });
 
@@ -1459,7 +1469,7 @@ describe('the workshop’s canvas', () => {
       the canvas and the point — and then switched to the chosen model, since the first opens on
       whichever is offered first. Nothing is written until the form is submitted.
     */
-    expect(canvas).toContain('"canvas-double-click"');
+    expect(canvas).toContain("'canvas-double-click'");
     // Only with a call on screen: every choice writes against it, so without one the chooser offered
     // a list of things that could only fail.
     expect(canvas).toContain(
@@ -1494,7 +1504,7 @@ describe('the workshop’s canvas', () => {
   });
 
   it('opens a note in the composer on a double-click, and only a note', () => {
-    expect(canvas).toContain('"node-double-click"');
+    expect(canvas).toContain("'node-double-click'");
     expect(canvas).toContain(`"onNodeDoubleClick":{"$if":{"condition":{"$":"event.recordType == 'CollectionBlock'"}`);
     expect(canvas).toContain('"$action":"spaceStore.updatePost","args":[{"$":"note.id"},{"$":"arg"}]');
     expect(canvas).toContain("local.inspectingType == 'CollectionBlock'");
@@ -2043,5 +2053,126 @@ describe('folding a card on the canvas', () => {
     */
     expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
     expect(canvas).toContain('{"$":"event"}]');
+  });
+});
+
+/**
+ * Reading the canvas as a tree.
+ *
+ * The failures worth guarding are the ones that leave a control looking like it works. A mode nothing
+ * on screen can turn off; an order the picker names and the layout does not obey; a weight fetched on
+ * every canvas whether or not anything reads it; a gesture that writes a coordinate while the layout
+ * is deriving one.
+ */
+describe('the workshop’s tree', () => {
+  const workshop = showcase.workshopTemplate as Schema;
+  const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+  it('keeps the reading in the address, and the card size on the device', () => {
+    /*
+      Two different questions. Send somebody a link and they should see the shape you are looking at —
+      so the mode, the spine and the order are view state. How large the cards are is about the screen
+      somebody is sitting at, so a link that shrank the recipient's cards would impose a decision that
+      was never about them.
+    */
+    expect(canvas).toContain('"treeMode":{"type":"boolean","initial":false,"syncParam":{"name":"tree","push":true}}');
+    expect(canvas).toContain('"spine":{"type":"string","initial":"","syncParam":"spine"}');
+    expect(canvas).toContain('"order":{"type":"string","initial":"date","syncParam":"order"}');
+    expect(canvas).toContain('"cardSize":{"type":"string","initial":"md","persist":"workshop.treeCardSize"}');
+  });
+
+  it('puts the only way out of the mode on screen rather than in a panel', () => {
+    /*
+      The engine's own rule: a state the layout obeys has to be visible and reversible. A panel can be
+      closed, and a reader who closed it would be left in a mode with nothing offering the way back.
+    */
+    expect(canvas).toContain('"$toggleLocal":"treeMode"');
+    expect(canvas).toContain('"position":"absolute"');
+    // And the strip's box is positioned against the route rather than whatever ancestor happens to be
+    // above it — without which "the canvas's own corner" is somewhere else entirely.
+    expect(canvas).toContain('"position":"relative"');
+  });
+
+  it('swaps the layout rather than the graph', () => {
+    /*
+      One `GraphView`, one expression. Two of them would unmount one and mount the other on every
+      switch, throwing away the selection, the camera and every card's identity — and with it the
+      travel, which is what makes the switch read as one movement over one set of cards.
+    */
+    expect(canvas).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+    expect(canvas).toContain("{ type: 'manual', options: { size: { width: 180, height: 135 }");
+    // One layout prop, so there is exactly one place the mode is read.
+    expect(canvas.match(/"layout":/g)).toHaveLength(1);
+  });
+
+  it('orders siblings by the thing the picker names', () => {
+    // Three genuinely different questions — what came first, what we most agree on, what we mean to do
+    // about it — and the third is the one the other two cannot answer.
+    expect(canvas).toContain("local.order == 'manual' ? 'canvasRank'");
+    expect(canvas).toContain("'weight'");
+    expect(canvas).toContain("'createdAt'");
+    // Strongest first, oldest first: the two read in opposite directions and both are what people mean.
+    expect(canvas).toContain("? 'desc' : 'asc'");
+  });
+
+  it('fetches the reactions only when something reads them', () => {
+    /*
+      Hydrating every card's reactions on a canvas nobody is ranking is a projection paid for on every
+      load and every refresh, for a number nothing draws. `null` is what the seed reads as "weigh
+      nothing", and a change here reloads the seed — correctly, since unlike `pending` it changes what
+      is fetched.
+    */
+    expect(canvas).toContain('"weigh":{"$":"(local.order == \'signal\' && local.signalType) ? { signalTypeId:');
+    // The community's own aggregate, passed through rather than re-derived. A second copy of that rule
+    // is the copy that falls behind, and nothing on screen would say why an order looked wrong.
+    expect(canvas).toContain('aggregate: find(local.treeSignalTypes, { id: local.signalType }).aggregate');
+    // Muted authors left out, as they are on every other reaction surface here.
+    expect(canvas).toContain('excludeAuthors: spaceStore.mutedDids');
+  });
+
+  it('writes a structure where the layout derives the position, and a coordinate where it does not', () => {
+    /*
+      The same gesture means two different things, so there are two handlers rather than one that
+      guesses. `arrangeOnTree` carries the spine, and has to: what makes a parent a parent is this
+      community's vocabulary and this reader's choice, neither of which a store can know.
+    */
+    expect(canvas).toContain('"onNodeArrange":{"$action":"recordStore.arrangeOnTree"');
+    expect(canvas).toContain('{"$":"local.spine"}');
+    expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
+  });
+
+  it('swaps the gesture rather than listing both', () => {
+    // Both claim a press on a card, so listing the two would have whichever came first win — and the
+    // winner would be the wrong one in one of the two modes.
+    expect(canvas).toContain("'arrange-nodes'");
+    expect(canvas).toContain("{ type: 'drag-node', options: { pin: true } }");
+    // `select` stays ahead of both: it does not claim the press, and it needs to see it.
+    expect(canvas).toContain("'select', 'arrange-nodes'");
+  });
+
+  it('gives every card one box in the tree, and its own on the canvas', () => {
+    // A rank reads as significance, so cards at the sizes somebody chose while arranging a wall would
+    // claim an importance the data does not support.
+    expect(canvas).toContain("local.treeMode ? ((local.cardSize == 'sm'");
+    expect(canvas).toContain("{ from: 'data.canvasWidth' }");
+  });
+
+  it('draws the connections it is not following, faintly', () => {
+    /*
+      The honest counterpart of placing each card under one parent: the second claim is still true and
+      still drawn, and a connection of another kind entirely is exactly what a reader following a
+      decision pathway wants to notice. Faint rather than absent, or the shape is lost in the tangle.
+    */
+    expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+    expect(canvas).toContain('"opacity":0.25');
+    expect(canvas).toContain('"curve":"step"');
+  });
+
+  it('offers the unset spine as a placeholder and a button, never as a prepended row', () => {
+    // A schema cannot prepend to a list: two lists in a template literal evaluate to a string, so the
+    // select would render empty. Guarded globally as well, and stated here where the temptation was.
+    expect(canvas).toContain('"placeholder":"Any connection"');
+    expect(canvas).toContain('"$setLocal":"spine","value":""');
+    expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id })');
   });
 });

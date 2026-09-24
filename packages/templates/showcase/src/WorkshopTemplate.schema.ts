@@ -114,6 +114,16 @@ import {
   PLAIN_FILL,
   TYPE_STYLES_QUERY,
 } from './WorkshopKey.ts';
+import {
+  TREE_BEHAVIOURS,
+  TREE_CARD_STYLE,
+  TREE_EDGE_RULES,
+  TREE_LAYOUT,
+  TREE_LOCALS,
+  TREE_QUERIES,
+  TREE_WEIGH,
+  treeStrip,
+} from './WorkshopTree.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -3335,6 +3345,15 @@ const canvas: SchemaNode = {
           open.
         */
         counts: ['signals', 'comments'],
+        /*
+          What each card weighs, when the tree is ordered by a reaction — see `WorkshopTree`.
+
+          `null` the rest of the time, which the seed reads as "weigh nothing": the reactions are
+          hydrated only where a weight is actually being read, so the ordinary canvas pays one
+          projection less. A change here reloads the seed, correctly — unlike `pending` and `hidden`,
+          this changes what is *fetched*.
+        */
+        weigh: TREE_WEIGH,
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
@@ -3344,10 +3363,7 @@ const canvas: SchemaNode = {
       narrower than a card, which is why new suggestions arrived overlapping — and clear of the cards
       already on the canvas, including one somebody resized.
     */
-    layout: {
-      type: 'manual',
-      options: { size: { width: 180, height: 135 }, widthField: 'canvasWidth', heightField: 'canvasHeight' },
-    },
+    layout: TREE_LAYOUT,
     nodeStyle: [
       {
         /*
@@ -3388,18 +3404,16 @@ const canvas: SchemaNode = {
       ...lensNodeRules(),
       // The card's own size, always — a box somebody dragged out is a fact about the card whatever
       // lens is on. Its colour is above, where the lenses decide whether it shows.
-      {
-        style: {
-          width: { from: 'data.canvasWidth' },
-          height: { from: 'data.canvasHeight' },
-          // The card's own outline and how large its content is drawn — set from its header, kept
-          // on its placement, and shown whatever lens is on: neither is a colour.
-          cardShape: { from: 'data.canvasCardShape' },
-          contentScale: { from: 'data.canvasContentScale' },
-          // Which card is in front where two overlap — a fact about the arrangement, like its size.
-          z: { from: 'data.canvasZ' },
-        },
-      },
+      /*
+        The card's own box on the canvas — and one uniform box in the tree.
+
+        Uniform is the decision that makes a tree readable: a rank reads as significance, so cards at
+        the sizes somebody chose while arranging a wall would claim an importance the data does not
+        support, and the widest card on a row would look like the answer whatever its weight. Colour
+        survives, because here colour is meaning; so do the counts, which are what say why an order is
+        the order it is. See `TREE_CARD_STYLE`.
+      */
+      { style: TREE_CARD_STYLE },
       /*
         Last, so it survives the card's own colour: a suggestion is faded whatever shade it is.
 
@@ -3436,26 +3450,7 @@ const canvas: SchemaNode = {
       unambiguous. Nothing else changes: they end in the same `edgeCreate`, so `onEdgeCreate` below
       is unchanged.
     */
-    behaviours: [
-      // The two halves of a double-click: on a note it opens, on empty canvas it asks what to make.
-      'node-double-click',
-      'canvas-double-click',
-      /*
-        Sweep a rectangle to select several cards, before `pan-zoom` claims the background press.
-
-        Not armed here, unlike the canvas view's: this canvas has no toolbar of its own — its chrome
-        is the workshop's panels — so there is nowhere to put a mode toggle that would not be a new
-        control competing with the call for the top of the screen. Shift and Ctrl/Cmd reach it,
-        which is what every other canvas people use has taught them, and a plain drag goes on
-        panning.
-      */
-      'marquee-select',
-      'select',
-      { type: 'drag-node', options: { pin: true } },
-      // Last, because it is the background fallback — listed earlier it claims the press `select`
-      // needs to see, and clicking empty canvas silently stops clearing the selection.
-      'pan-zoom',
-    ],
+    behaviours: TREE_BEHAVIOURS,
     /*
       The lines, in the colour the community set — the key's third canvas row.
 
@@ -3479,6 +3474,16 @@ const canvas: SchemaNode = {
         when: { type: 'fold-bundle' },
         style: { curve: 'straight', arrow: 'target', width: 3, dashed: true, showLabel: true, color: { $: LINK_FILL } },
       },
+      /*
+        In the tree: right angles along the spine, and everything else faint — see `TREE_EDGE_RULES`.
+
+        The faint half is the honest counterpart of placing each card under one parent. A card related
+        to two others by the spine sits under one of them, and the other claim is still true and still
+        drawn; a connection of an entirely different kind is exactly what a reader following a decision
+        pathway wants to notice. Faint rather than absent, because a tree with every line at full
+        strength is a tangle and the shape has to be what the eye follows first.
+      */
+      ...TREE_EDGE_RULES,
     ],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
@@ -3603,6 +3608,20 @@ const canvas: SchemaNode = {
       a fold a way of hiding things rather than of tidying them.
     */
     onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [CALL, { $: 'event' }] },
+    /*
+      The same gesture in the tree, where what a drag means is different.
+
+      On the canvas a drag writes a coordinate, because the position IS the data. In the tree the
+      layout derives the position, so a drag writes the structure the layout reads: a card dropped on
+      another becomes its child, dropped beside one it is reordered there, dropped in the unconnected
+      zone it comes out of its tree. The behaviour reports which of the three, and the store decides
+      what each means — including the refusals, since only something that knows which connection is
+      the spine can tell that a drop would put a card inside itself.
+
+      The spine goes with it, and has to: what makes a parent a parent is this community's own
+      vocabulary and this reader's current choice, neither of which a store can know.
+    */
+    onNodeArrange: { $action: 'recordStore.arrangeOnTree', args: [CALL, { $: 'local.spine' }, { $: 'event' }] },
     onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CALL, { $: 'event' }] },
     /*
       Routing a line by hand, written back — and binding these is what puts the handles on one.
@@ -3996,7 +4015,9 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     A flex-grown item has a definite used height, so the percentage inside it resolves. This is the
     chain the graph view in `templates/views` uses, and the one the panels above already use.
   */
-  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden' },
+  // `position: relative` so the reading strip can sit over the canvas's own corner rather than over
+  // whatever positioned ancestor happens to be above this route.
+  props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden', position: 'relative' },
   /*
     `syncParam`, so the inspector panel can read what the canvas selected — see `onNodeClick`.
 
@@ -4010,6 +4031,10 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     inspectingType: { type: 'string', initial: '', syncParam: 'cardType' },
     // Making things and opening notes — see `WorkshopCards`.
     ...CARD_LOCALS,
+    // How the canvas is being read: freeform or a tree, and what the tree is made of — see
+    // `WorkshopTree`. Declared here rather than on the graph, because the strip that sets them is a
+    // sibling of it and a local is only readable from below where it is declared.
+    ...TREE_LOCALS,
   },
   /*
     The space's key, which the canvas builds its colour rules from — see `lensNodeRules`.
@@ -4018,7 +4043,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     route is rendered through its own pass with nothing inherited, so a query hoisted to the root
     would validate and then resolve to nothing here. Each of the three pages declares its own.
   */
-  $queries: { typeStyles: TYPE_STYLES_QUERY },
+  $queries: { typeStyles: TYPE_STYLES_QUERY, ...TREE_QUERIES },
   /*
     The canvas itself, always — never a placeholder standing in front of it.
 
@@ -4045,6 +4070,9 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
   */
   children: [
     canvas,
+    // How the canvas is read: the mode, and what the tree is made of. Over the canvas's own corner
+    // rather than in a panel, because a panel can be closed and this is the only way out of the mode.
+    treeStrip(),
     /*
       Where a connection is actually written down.
 
