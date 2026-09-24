@@ -253,6 +253,87 @@ export function sendFloorMs(cost: number): number {
   return Math.min(SEND_CEILING_MS, Math.round(cost));
 }
 
+/**
+ * How long after being moved somewhere a surface is allowed to settle before its position is believed.
+ *
+ * Applying a region does not put the camera exactly where the region asked: the follower's box is a
+ * different shape, so the region is *fitted* to it and the visible rectangle that comes back differs by
+ * the aspect ratio. Until that has happened there is nothing to compare a later movement against.
+ */
+export const SETTLE_MS = 400;
+
+/**
+ * Whether two visible rectangles are the same place, within a tolerance.
+ *
+ * Proportional rather than absolute, because the same drift means something quite different on a canvas
+ * zoomed right in and one zoomed right out. The tolerance exists at all because a fitted region is
+ * arrived at by arithmetic on measured boxes, so it is never bit-identical twice.
+ */
+export function sameRegion(
+  a: { x: number; y: number; width: number; height: number } | undefined,
+  b: { x: number; y: number; width: number; height: number } | undefined,
+  tolerance = 0.02,
+): boolean {
+  if (!a || !b) return a === b;
+  const span = Math.max(a.width, b.width, 1);
+  const rise = Math.max(a.height, b.height, 1);
+  return (
+    Math.abs(a.x - b.x) <= span * tolerance &&
+    Math.abs(a.y - b.y) <= rise * tolerance &&
+    Math.abs(a.width - b.width) <= span * tolerance &&
+    Math.abs(a.height - b.height) <= rise * tolerance
+  );
+}
+
+/** What a follower's surface looked like when it last came to rest, and when that was. */
+export interface FollowWatch {
+  region?: { x: number; y: number; width: number; height: number };
+  /** The record a scroll anchor named, or empty. */
+  anchor: string;
+  /** When the last frame was applied. A surface is not believed until {@link SETTLE_MS} after it. */
+  at: number;
+}
+
+/** Why a follower stopped following, in the words the release message is built from. */
+export type FollowRelease = 'navigated' | 'moved' | 'scrolled';
+
+/**
+ * Whether the view this follower is looking at moved because *they* moved it.
+ *
+ * Pure, and separate from the effect that calls it, because every interesting case is a sequence —
+ * apply, settle, move — and a store effect under the test fakes runs exactly once. The logic that decides
+ * whether somebody has stopped following cannot be the part that is untestable.
+ *
+ * Returns the next watch state along with the verdict, so the caller holds no rules of its own.
+ */
+export function followRelease(
+  frame: { path: string; region?: FollowWatch['region']; anchor?: { record: string } },
+  watch: FollowWatch,
+  appliedPath: string,
+  nowMs: number,
+): { release?: FollowRelease; watch: FollowWatch } {
+  // Leaving the page is unambiguous and needs no settling: the driver sent this agent to a path, and the
+  // path is no longer that one.
+  if (appliedPath && frame.path !== appliedPath) return { release: 'navigated', watch };
+
+  const anchor = frame.anchor?.record ?? '';
+  /*
+    Still settling, or nothing recorded yet. Applying a region FITS it to this screen's box, so what comes
+    back is never the rectangle that was asked for — believing the request would read every successful
+    apply as a movement by the follower and release instantly.
+  */
+  if (nowMs - watch.at < SETTLE_MS || (!watch.region && !watch.anchor)) {
+    return { watch: { region: frame.region, anchor, at: watch.at } };
+  }
+  if (frame.region && !sameRegion(frame.region, watch.region)) return { release: 'moved', watch };
+  /*
+    A change of *record*, never of offset. Content arriving above the viewport moves an offset with nobody
+    touching anything, and a wrongly dropped follow is confusing in a way a slightly sticky one is not.
+  */
+  if (anchor && watch.anchor && anchor !== watch.anchor) return { release: 'scrolled', watch };
+  return { watch };
+}
+
 export function cursorIntervalMs(watchers: number): number {
   if (watchers <= 4) return 80;
   if (watchers <= 8) return 160;

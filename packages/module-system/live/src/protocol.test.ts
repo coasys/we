@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import type { FollowWatch } from './protocol';
 import {
   blendCost,
   CURSOR_TTL_MS,
@@ -15,6 +16,7 @@ import {
   EASE_MAX_MS,
   EASE_MIN_MS,
   easeMsFor,
+  followRelease,
   type HeldCursor,
   isNewer,
   LIVE_PROTOCOL_VERSION,
@@ -23,6 +25,7 @@ import {
   sameAnchor,
   SEND_CEILING_MS,
   sendFloorMs,
+  SETTLE_MS,
   trimAnchor,
 } from './protocol';
 
@@ -129,6 +132,78 @@ describe('ordering', () => {
     // timestamp — and a cursor kept alive by retransmissions is a cursor that outlives its owner.
     expect(isNewer(held, 5)).toBe(false);
     expect(isNewer(undefined, 1)).toBe(true);
+  });
+});
+
+describe('when a follower has stopped following', () => {
+  const REGION = { x: 0, y: 0, width: 1000, height: 600 };
+  const fresh = (at = 0): FollowWatch => ({ anchor: '', at });
+
+  it('releases the moment this agent goes to another page', () => {
+    // Unambiguous, and needs no settling: the driver sent them to a path and the path is not that one.
+    const { release } = followRelease({ path: '/space/a/kanban' }, fresh(), '/space/a/canvas', 10_000);
+    expect(release).toBe('navigated');
+  });
+
+  it('does not read the apply itself as the follower moving', () => {
+    /*
+      The failure this shape exists to avoid. Applying a region FITS it to this screen's box, so the
+      rectangle that comes back is never the one that was asked for — comparing against the request would
+      release on every successful apply, instantly, and following would be unusable.
+    */
+    const applied = fresh(1_000);
+    const fitted = { x: 0, y: -40, width: 1000, height: 680 };
+    const first = followRelease({ path: '/p', region: fitted }, applied, '/p', 1_050);
+    expect(first.release).toBeUndefined();
+    // And what came back is what later movement is judged against, rather than what was requested.
+    expect(first.watch.region).toEqual(fitted);
+  });
+
+  it('releases once the view moves after it has settled', () => {
+    const settled = { region: REGION, anchor: '', at: 1_000 };
+    const panned = { x: 400, y: 0, width: 1000, height: 600 };
+    const { release } = followRelease({ path: '/p', region: panned }, settled, '/p', 2_000);
+
+    /*
+      This used to be ignored, on the grounds that a follower is free to pan because the driver's next
+      frame brings them back. That freedom was not real: a driver republishes every couple of seconds, so
+      a follower who panned was dragged back within two and could examine nothing. Being yanked mid-look is
+      worse than stopping politely, because there is nothing to press to make it stop.
+    */
+    expect(release).toBe('moved');
+  });
+
+  it('tolerates the drift a fitted region arrives with', () => {
+    // A fitted region is arithmetic over measured boxes, so it is never bit-identical twice. Releasing on
+    // that would drop follow for nobody's action at all.
+    const settled = { region: REGION, anchor: '', at: 1_000 };
+    const jitter = { x: 2, y: -1, width: 1_001, height: 599 };
+    expect(followRelease({ path: '/p', region: jitter }, settled, '/p', 2_000).release).toBeUndefined();
+  });
+
+  it('releases on a scroll that reaches a different record', () => {
+    const settled = { anchor: 'utterance-3', at: 1_000 };
+    const scrolled = { path: '/p', anchor: { record: 'utterance-40' } };
+    expect(followRelease(scrolled, settled, '/p', 2_000).release).toBe('scrolled');
+  });
+
+  it('ignores a scroll offset moving under the same record', () => {
+    /*
+      A change of record, never of offset. Content arriving above the viewport moves an offset with nobody
+      touching anything, and a wrongly dropped follow is confusing in a way a slightly sticky one is not.
+    */
+    const settled = { anchor: 'utterance-3', at: 1_000 };
+    const shifted = { path: '/p', anchor: { record: 'utterance-3' } };
+    expect(followRelease(shifted, settled, '/p', 2_000).release).toBeUndefined();
+  });
+
+  it('holds its peace inside the settle window, however far the view has moved', () => {
+    // The camera is still arriving where the apply put it. Judging it now would judge the apply.
+    const settled = { region: REGION, anchor: '', at: 1_000 };
+    const elsewhere = { x: 9_000, y: 9_000, width: 200, height: 100 };
+    const verdict = followRelease({ path: '/p', region: elsewhere }, settled, '/p', 1_000 + SETTLE_MS - 1);
+    expect(verdict.release).toBeUndefined();
+    expect(verdict.watch.region).toEqual(elsewhere);
   });
 });
 

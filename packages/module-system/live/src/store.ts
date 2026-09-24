@@ -24,11 +24,13 @@ import {
   readDevCursorCount,
   writeDevCursorCount,
 } from './devCursors';
+import type { FollowRelease, FollowWatch } from './protocol';
 import {
   blendCost,
   CURSOR_TTL_MS,
   cursorIntervalMs,
   easeMsFor,
+  followRelease,
   type HeldCursor,
   isNewer,
   LIVE_PROTOCOL_VERSION,
@@ -131,8 +133,24 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    * a channel that is coping.
    */
   let publishCost = 0;
+  /**
+   * Where this agent's surface came to rest after the last frame was applied to it, and when.
+   *
+   * The pair is what tells a follower's own movement from the movement following put there. The *settled*
+   * region rather than the one that was asked for, because applying a region fits it to this screen's box
+   * and the rectangle that comes back differs from the request by the aspect ratio — comparing against
+   * the request would call every successful apply a movement by the follower.
+   */
+  let watch: FollowWatch = { anchor: '', at: 0 };
 
   const now = () => Date.now();
+
+  /** What a follower is told when their own movement released them, by which movement it was. */
+  const RELEASE_MESSAGE: Record<FollowRelease, string> = {
+    navigated: 'Stopped following — you went somewhere else.',
+    moved: 'Stopped following — you moved the view.',
+    scrolled: 'Stopped following — you scrolled away.',
+  };
 
   // ── What the settings permit ────────────────────────────────────────────────
 
@@ -379,6 +397,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     // A view is worth acting on only from the person this agent chose to follow.
     if (message.kind === 'view' && followingDid() && from === followingDid()) {
       appliedPath = message.frame.path;
+      // Nothing to compare against until the surface has settled where this put it — see `followRelease`.
+      watch = { anchor: '', at: now() };
       view?.apply(message.frame);
     }
   }
@@ -731,18 +751,37 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   const stopDecorating = view?.decorate(marks);
 
   /**
-   * Stop following when this agent navigates somewhere themselves.
+   * Stop following when this agent moves their own view: to another page, or around the one they are on.
    *
-   * The path, and only the path: a follower is free to pan and look around, and the driver's next
-   * frame brings them back, which is what following means. Going to a different *page* is not looking
-   * around — it is leaving — so it releases.
+   * ## Why panning releases now, where it used to be ignored
+   *
+   * The rule was "the path, and only the path", on the grounds that a follower is free to pan and look
+   * around because the driver's next frame brings them back. That freedom was not real. A driver
+   * republishes every couple of seconds, so a follower who panned was dragged back within two seconds
+   * and could not examine anything — and being yanked mid-look is worse than a feature that stops
+   * politely, because there is nothing to press to make it stop happening. Looking somewhere else is
+   * leaving, whether it is a different page or a different corner of this one.
+   *
+   * ## Why it compares against where the surface settled
+   *
+   * Applying a region fits it to this screen's box, so the rectangle that comes back is never the one
+   * that was asked for. Comparing against the request would read every successful apply as a movement by
+   * the follower and release immediately. So the first position seen after an apply is recorded as the
+   * settled one, within a short window, and only a change *after* that window counts as this agent.
+   *
+   * Scrolling releases on a change of *record*, not of offset. A reflow above the viewport moves an
+   * offset without anybody touching anything, and a wrongly dropped follow is confusing in a way a
+   * slightly sticky one is not.
    */
   effect?.(() => {
     const frame = view?.frame();
     if (!frame || !followingDid()) return;
-    if (!appliedPath || frame.path === appliedPath) return;
+
+    const verdict = followRelease(frame, watch, appliedPath, now());
+    watch = verdict.watch;
+    if (!verdict.release) return;
     stopFollowing();
-    notify?.('success', 'Stopped following.');
+    notify?.('success', RELEASE_MESSAGE[verdict.release]);
   });
 
   /**
