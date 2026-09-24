@@ -25,19 +25,26 @@
  * incantation: the loop this exists for is changing the count and watching the screen, and leaving the
  * app to do it breaks exactly that loop. Being on screen is also what stops it being silently left on.
  *
+ * ## The count does not survive a reload, and that is the opposite of the call module
+ *
+ * `devPeers` keeps its count in `localStorage`, deliberately, so it survives the reloads a developer
+ * does while iterating on the call stage. The same choice here was a trap, because the control and the
+ * marks do not live in the same place: the `−  N  +` is in the call bar, and the cursors draw over
+ * whatever is on screen. So a count of three survived a reload, three cursors appeared at login, and
+ * there was no control anywhere to remove them until somebody started a call.
+ *
+ * In memory, a reload is the way out. The cost is re-pressing `+` after one, which is cheap — cursor
+ * rendering is judged live rather than across reloads, so there is nothing to carry over.
+ *
  * ## Why it cannot reach production
  *
- * The same three gates the call module's synthetic participants use, for the same reasons.
  * `import.meta.env.DEV` decides whether any of it exists — read once at module scope, so a production
- * build contributes no node and carries no callable action rather than an inert one. `localStorage` is
- * where the count lives, so it survives the reloads a developer does while iterating and no shipped
- * build sets it. And `devToolsEnabled` is the live switch, so somebody checking what a user sees loses
- * these along with every other developer affordance.
+ * build contributes no node and carries no callable action rather than an inert one. And
+ * `devToolsEnabled` is the live switch, so somebody checking what a user sees loses these along with
+ * every other developer affordance.
  */
 import type { LiveAnchor, LiveDecoration } from '@we/module-shared';
 import { devToolsEnabled } from '@we/module-shared';
-
-const STORAGE_KEY = 'we.live.fakeCursors';
 
 /** More than this is a stray keypress rather than a test. */
 const MAX = 24;
@@ -66,18 +73,17 @@ function visible(): boolean {
   return devToolsEnabled(DEV_BUILD);
 }
 
+/** The count for this page, in memory — see the note above on why it does not persist. */
+let count = 0;
+
 export function readDevCursorCount(): number {
-  if (!visible() || typeof localStorage === 'undefined') return 0;
-  return clampCount(Number(localStorage.getItem(STORAGE_KEY)));
+  return visible() ? count : 0;
 }
 
-/** Remember the count across the reloads a developer does while iterating. */
-export function writeDevCursorCount(count: number): number {
-  const next = clampCount(count);
-  if (!devCursorsAvailable || typeof localStorage === 'undefined') return next;
-  if (next === 0) localStorage.removeItem(STORAGE_KEY);
-  else localStorage.setItem(STORAGE_KEY, String(next));
-  return next;
+/** Set the count, clamped. Returns what it became. */
+export function writeDevCursorCount(next: number): number {
+  count = clampCount(next);
+  return count;
 }
 
 function clampCount(raw: number): number {

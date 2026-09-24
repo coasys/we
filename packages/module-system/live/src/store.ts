@@ -202,6 +202,14 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
   function attach(handle: unknown): void {
     attachedTo = handle;
+    /*
+      A change of space clears the synthetic cursors.
+
+      They are summoned to look at one screen, and carrying them to the next is the same trap the
+      persisted count was: the control that removes them is in the call bar, so cursors that follow you
+      into a space with no call running cannot be turned off at all.
+    */
+    if (devCursorsAvailable && fakeCount() > 0) setFakes(0);
     detach?.();
     detach = null;
     cursorChannel = null;

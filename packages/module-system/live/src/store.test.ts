@@ -11,6 +11,7 @@ import type { ModuleStoreDeps } from '@we/module-shared';
 import { buildStore, fakeDeps, fakeEphemeral, fakePresence, fakeView } from '@we/module-testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { writeDevCursorCount } from './devCursors';
 import { liveModule } from './index';
 import { LIVE_PROTOCOL_VERSION } from './protocol';
 import type { LiveStore } from './store';
@@ -72,6 +73,9 @@ const tagsOf = (wire: ReturnType<typeof fakeEphemeral>, kind: string) =>
 
 beforeEach(() => {
   vi.useRealTimers();
+  // The harness count is page-global now rather than per store — one page, one set of fake cursors —
+  // so a test that summons some has to put them away or the next one inherits them.
+  writeDevCursorCount(0);
 });
 
 describe('a host whose services arrive after the store is built', () => {

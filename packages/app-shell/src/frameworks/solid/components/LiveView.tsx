@@ -60,7 +60,32 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-j
  * exists — see `liveView` for why that is the ordinary case and not a race.
  */
 const [registered, setRegistered] = createSignal(0);
-const bumpRegistered = () => setRegistered(registered() + 1);
+
+/**
+ * Bump it, from anywhere, safely.
+ *
+ * Two rules, and breaking either froze the whole app.
+ *
+ * **Never read while writing.** `setRegistered(registered() + 1)` reads inside whatever scope called it
+ * — so a computation that also reads `registered` gained a dependency on a signal it had just written,
+ * re-ran, wrote again, and recursed until the stack went. `markDownstream` all the way down, and the
+ * only visible symptom was a frozen tab. The updater form reads nothing.
+ *
+ * **Never write synchronously into somebody else's computation.** A registration can arrive while a memo
+ * is mid-flight — a canvas registering as the graph first reads its decorations — and a synchronous
+ * write there invalidates that memo from inside itself. Deferred to a microtask it is an ordinary
+ * update: the memo finishes, then re-runs once. Coalesced, so a burst of registrations costs one.
+ */
+let bumpQueued = false;
+function bumpRegistered(): void {
+  if (bumpQueued) return;
+  bumpQueued = true;
+  queueMicrotask(() => {
+    bumpQueued = false;
+    setRegistered((n) => n + 1);
+  });
+}
+
 onLiveViewChanged(bumpRegistered);
 
 /**
@@ -101,6 +126,8 @@ export function registerLiveCanvas(canvasId: string) {
       const surface = state.surfaces.get(key);
       if (!surface) return;
       surface.region = region;
+      // Updater form, for the reason `bumpRegistered` gives: a read here would make whatever scope is
+      // running depend on a signal it just wrote.
       setCameras((n) => n + 1);
     },
     dispose: () => {

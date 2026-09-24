@@ -30,7 +30,7 @@ import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import type { RenderProps } from '@we/schema-solid';
 import { RenderSchema } from '@we/schema-solid';
 import { fillForSemantic } from '@we/template-kit';
-import { createComputed, createMemo, type JSX, onCleanup, Show } from 'solid-js';
+import { createComputed, createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
@@ -349,15 +349,34 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    * Register with the live-view host for as long as this graph is showing one canvas.
    *
    * Re-registered when the canvas changes, which is what keeps the surface key honest: a graph whose
-   * template switches canvas is a different shared coordinate space, and marks addressed to the old
-   * one must stop being drawn rather than being placed in the new one's units.
+   * template switches canvas is a different shared coordinate space, and marks addressed to the old one
+   * must stop being drawn rather than being placed in the new one's units.
+   *
+   * ## An effect, emphatically not a memo
+   *
+   * This was a memo, and a memo is computed *lazily* — on first read, inside whatever computation
+   * happened to read it. That read was the graph's own decorations memo, which also depends on the
+   * registry's version signal. So registering bumped a signal from inside a computation that depends on
+   * it, which invalidated that computation from within itself, which registered again: `markDownstream`
+   * recursion until the stack went, and a frozen tab with no clue but a stack of one repeated frame. It
+   * bit hardest on a space change, where the canvas id changes and the whole cycle starts again.
+   *
+   * An effect runs in the effects queue, outside anybody's tracking scope, so the write is an ordinary
+   * update. The result goes in a signal because a value is still wanted downstream.
    */
-  const live = createMemo(() => {
+  const [live, setLive] = createSignal<ReturnType<typeof registerLiveCanvas> | null>(null);
+  createEffect(() => {
     const id = canvasId();
-    if (!id) return null;
+    if (!id) {
+      setLive(null);
+      return;
+    }
     const surface = registerLiveCanvas(id);
-    onCleanup(() => surface.dispose());
-    return surface;
+    setLive(surface);
+    onCleanup(() => {
+      surface.dispose();
+      setLive(null);
+    });
   });
 
   const host: GraphViewProps['host'] = {

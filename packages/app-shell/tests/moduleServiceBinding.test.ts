@@ -21,13 +21,14 @@
  * queues effects rather than running them inline, so every assertion here waits a microtask; asserting
  * synchronously reads the frame before the queue is flushed and fails whether or not the fix works.
  */
-import { allMarks, liveView, reportPointer } from '@shared/liveView';
+import { allMarks, liveView, notifyLiveViewChanged, reportPointer } from '@shared/liveView';
 import {
   createModuleStoreDeps,
   provideModuleHostServices,
   resetModuleHostServices,
 } from '@shared/registries/moduleHostServices';
-import { createEffect, createRoot, createSignal } from 'solid-js';
+import { liveSurfaceMarks } from '@solid/components/LiveView';
+import { createEffect, createMemo, createRoot, createSignal } from 'solid-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
 afterEach(() => {
@@ -170,5 +171,45 @@ describe('a module registering before any component exists', () => {
     // honestly and do nothing — which a module must survive, since it is the boot window every time.
     expect(deps.kernels.view!.frame()).toEqual({ path: '' });
     expect(() => deps.kernels.view!.apply({ path: '/somewhere' })).not.toThrow();
+  });
+});
+
+describe('registering from inside a computation', () => {
+  /**
+   * The failure that froze the tab: `markDownstream` recursion until the stack went.
+   *
+   * The registry's version signal was bumped by reading it and writing the sum. Called from inside a
+   * computation — a canvas registering itself as the graph first read its decorations — that scope then
+   * depended on a signal it had just written, so it re-ran, wrote again, and recursed. The only visible
+   * symptom was a hung page and a stack of one repeated frame, and it bit hardest on a space change,
+   * where the canvas id changes and the cycle restarts.
+   *
+   * Driven through a real Solid memo, because the bug is entirely about what the framework does with a
+   * write that lands inside a tracking scope.
+   */
+  it('does not re-enter a computation that reads what it writes', async () => {
+    const held = createRoot((disposer) => {
+      let runs = 0;
+      const marks = createMemo(() => {
+        runs += 1;
+        if (runs > 50) return 0;
+        /*
+          Both halves of the hazard in one computation, on every run: read through `liveSurfaceMarks`,
+          which reads the registry's version signal, and notify the registry, which bumps it. That is
+          exactly what `GraphHost` did — `registerLiveCanvas` mutated the surface map and notified on
+          each computation of the memo that the graph's decorations were read through.
+        */
+        const seen = liveSurfaceMarks('canvas:test').length;
+        notifyLiveViewChanged();
+        return seen;
+      });
+      marks();
+      return { disposer, runs: () => runs };
+    });
+
+    await Promise.resolve();
+    // A handful at most — the point is that it terminates. Before the fix this never returned.
+    expect(held.runs()).toBeLessThan(10);
+    held.disposer();
   });
 });
