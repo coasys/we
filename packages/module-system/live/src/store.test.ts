@@ -146,22 +146,27 @@ describe('what a fresh store leaves running', () => {
     spy.mockRestore();
   });
 
-  it('runs the publish timer only once there is somebody to publish to', () => {
+  it('never starts an interval at all, because the pointer drives the rate', () => {
+    /*
+      There used to be one, started by an effect on the watcher count — and that effect read the
+      presence kernel, which is late-bound, so its first run tracked nothing and it never ran again.
+      The rate stayed at whatever the count was when the switch was thrown: zero, if the other agent
+      had not announced their cursors yet. Two people with cursors on and neither ever sending one.
+
+      The kernel is tracked now and the effect would work. This asserts the stronger thing — that there
+      is no timer to start, so nothing can fail to start it.
+    */
     const started: unknown[] = [];
     const spy = vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: never, ms: never) => {
       started.push(ms);
       return 0 as never;
     }) as never);
 
-    const { store, presence } = setup();
-    // Switched on with nobody watching: still nothing to send, so still nothing ticking.
-    store.toggleCursors();
-    expect(started).toEqual([]);
-
+    const { store, presence, view } = setup();
     presence.publish(ANA, { type: 'live', cursors: true });
     store.toggleCursors();
-    store.toggleCursors();
-    expect(started.length).toBeGreaterThan(0);
+    view.move(WORLD);
+    expect(started).toEqual([]);
     spy.mockRestore();
   });
 });
@@ -209,25 +214,51 @@ describe('publishing a pointer', () => {
     expect(published(wire)).toEqual([]);
   });
 
-  it('sends the latest position once a peer is watching, and stops when it stops moving', async () => {
+  it('sends the first move at once, and the last one after the window', async () => {
     const { store, view, wire, presence } = setup();
     presence.publish(ANA, { type: 'live', cursors: true });
     store.toggleCursors();
 
     view.move({ ...WORLD, x: 1 });
+    // The leading edge: a cursor appears the instant it moves rather than a ladder-period later, which
+    // is the half an interval could not give.
+    let sent = published(wire).filter((p) => p.kind === 'cursor');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].at).toMatchObject({ x: 1 });
+
+    // Three more inside the window collapse into one trailing send, carrying the *last* position — the
+    // one that matters, since it is where somebody stopped pointing.
     view.move({ ...WORLD, x: 2 });
+    view.move({ ...WORLD, x: 3 });
+    view.move({ ...WORLD, x: 4 });
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const sent = published(wire).filter((p) => p.kind === 'cursor');
-    // One message for two moves inside a window, carrying the *last* position — the one that matters,
-    // since it is where somebody stopped pointing.
-    expect(sent).toHaveLength(1);
-    expect(sent[0].at).toMatchObject({ x: 2 });
+    sent = published(wire).filter((p) => p.kind === 'cursor');
+    expect(sent).toHaveLength(2);
+    expect(sent[1].at).toMatchObject({ x: 4 });
 
     const before = published(wire).length;
     await new Promise((resolve) => setTimeout(resolve, 200));
     // A still pointer is not news.
     expect(published(wire).length).toBe(before);
+  });
+
+  it('sends nothing at all until somebody is watching, then sends on the next move', async () => {
+    const { store, view, wire, presence } = setup();
+    store.toggleCursors();
+    view.move({ ...WORLD, x: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    // One person in a space costs nothing.
+    expect(published(wire).filter((p) => p.kind === 'cursor')).toEqual([]);
+
+    /*
+      The peer announces their cursors *after* this agent switched theirs on, which is the ordinary
+      order and the case that used to fail for ever: the rate was decided once, at the switch, and
+      nothing revisited it. Now the rate is read per move, so the next move simply sends.
+    */
+    presence.publish(ANA, { type: 'live', cursors: true });
+    view.move({ ...WORLD, x: 2 });
+    expect(published(wire).filter((p) => p.kind === 'cursor')).toHaveLength(1);
   });
 });
 

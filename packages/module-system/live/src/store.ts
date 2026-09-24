@@ -80,7 +80,10 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   /** The latest position from the host, waiting for the next publish window. */
   let pendingAt: LiveAnchor | null = null;
   let seq = 0;
-  let publishTimer: ReturnType<typeof setInterval> | null = null;
+  /** When a position last went out, for the throttle in {@link schedulePublish}. */
+  let lastSentAt = 0;
+  /** The one pending send inside a throttle window — never more than one. */
+  let trailingTimer: ReturnType<typeof setTimeout> | null = null;
   let expiryTimer: ReturnType<typeof setInterval> | null = null;
   let viewTimer: ReturnType<typeof setInterval> | null = null;
   let channel: { publish: (payload: unknown) => void } | null = null;
@@ -266,34 +269,52 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   /**
    * Send the pointer if it has moved and there is somebody to send it to.
    *
-   * Called on a timer rather than on every move, and the timer's period is what the rate ladder
-   * decides — see `cursorIntervalMs`. Holding the latest position and sending it on the tick is what
-   * makes the rate a rate: sending on the move and throttling would drop the *last* position of a
-   * gesture, which is the one that matters, since it is where somebody stopped pointing.
+   * The rate lives in {@link schedulePublish}, not here: this is the send, and it is safe to call as
+   * often as anybody likes.
    */
   function flushPointer(): void {
     if (!cursorsOn() || !cursorsAllowed()) return;
     if (!watchers().length) return;
     if (sameAnchor(pendingAt, publishedAt)) return;
     publishedAt = pendingAt;
+    lastSentAt = now();
     publish({ kind: 'cursor', at: pendingAt });
   }
 
   /**
-   * Run the publish timer at the rate the ladder picks — and only while there is anything to publish.
+   * Publish at the rate the ladder picks, driven by the pointer itself.
    *
-   * The gate is the same condition `flushPointer` checks, moved up to the timer, which is strictly
-   * better: a store is constructed once per app whether or not anybody switches cursors on, so a timer
-   * started regardless is one every session pays for a feature most sessions never use. It is also a
-   * live handle that keeps a Node process alive, and `generate-context` builds every module's store —
-   * which is how an unconditional interval here turned the build into a hang with every file already
-   * written.
+   * ## Why this is not an interval any more
+   *
+   * It was: a `setInterval` at the ladder's period, started by an effect on the watcher count. That
+   * effect read the presence kernel, which is late-bound, so its first run tracked nothing and it never
+   * ran again — the rate stayed at whatever the count was when the switch was thrown, and if the other
+   * agent had not announced their cursors yet that was **zero, for the rest of the session**. Two people
+   * with cursors on, neither ever sending one. The kernel is tracked now and the effect would work; this
+   * removes the dependency altogether, which is the better answer to "a timer that must be started or
+   * the feature is silently absent".
+   *
+   * ## Leading edge, then a trailing edge
+   *
+   * A move with nothing sent recently goes out **immediately**, so a cursor appears the instant it
+   * moves rather than up to a ladder-period later. Within the period, one timeout is armed for the
+   * remainder — which is what stops a gesture losing its *last* position, the one that matters, since
+   * it is where somebody stopped pointing. At most one is ever armed, and it re-reads the latest
+   * position when it fires, so a flurry of moves costs one send.
    */
-  function retime(watching: number): void {
-    if (publishTimer) clearInterval(publishTimer);
-    publishTimer = null;
-    if (!cursorsOn() || !cursorsAllowed() || watching <= 0) return;
-    publishTimer = setInterval(flushPointer, cursorIntervalMs(watching));
+  function schedulePublish(): void {
+    if (!cursorsOn() || !cursorsAllowed()) return;
+    const gap = cursorIntervalMs(watchers().length);
+    const since = now() - lastSentAt;
+    if (since >= gap) {
+      flushPointer();
+      return;
+    }
+    if (trailingTimer) return;
+    trailingTimer = setTimeout(() => {
+      trailingTimer = null;
+      flushPointer();
+    }, gap - since);
   }
 
   // ── What to draw ───────────────────────────────────────────────────────────
@@ -460,8 +481,6 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     const next = !cursorsOn();
     setCursorsOn(next);
     setProblem('');
-    // The switch is half of what decides whether the publish timer runs at all — see `retime`.
-    retime(watchers().length);
     if (next) {
       setActivity({ type: 'live', cursors: true });
     } else {
@@ -486,15 +505,6 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     deps.dataset?.();
     ensureAttached();
   });
-
-  /**
-   * Follow the rate ladder as peers come and go.
-   *
-   * The count is read and passed in rather than read inside `retime`, so the dependency is visible
-   * here: this effect exists *because* of the count, and a `retime()` that read it for itself would
-   * look like an effect with no reason to re-run.
-   */
-  effect?.(() => retime(watchers().length));
 
   /**
    * Drop cursors nobody has heard about — while there are any to drop.
@@ -557,6 +567,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
   const stopPointer = view?.onPointer((at) => {
     pendingAt = at ? trimAnchor(at) : null;
+    // Published from the move rather than from a clock — see `schedulePublish`.
+    schedulePublish();
   });
 
   const stopDecorating = view?.decorate(marks);
@@ -613,7 +625,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     if (fakeTimer) clearInterval(fakeTimer);
     stopPointer?.();
     stopDecorating?.();
-    if (publishTimer) clearInterval(publishTimer);
+    if (trailingTimer) clearTimeout(trailingTimer);
     stopExpiry();
     stopViewRepeat();
     if (cursorsOn()) presence?.clearActivity('live');

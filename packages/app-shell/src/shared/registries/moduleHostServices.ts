@@ -182,6 +182,20 @@ let readServicesRevision: (() => void) | null = null;
 let bumpServicesRevision: (() => void) | null = null;
 
 /**
+ * Read the revision, then the service — see {@link readServicesRevision}.
+ *
+ * At module scope rather than inside `createModuleStoreDeps`, because the kernels are built above it and
+ * need it just as much: `presence.peers` is a reactive read, and an effect over it before presence is
+ * bound is the same dead effect as one over `dataset`.
+ */
+function tracked<T>(read: () => T): () => T {
+  return () => {
+    readServicesRevision?.();
+    return read();
+  };
+}
+
+/**
  * Publish a slice of host services to registered modules.
  *
  * Merges rather than replaces, because the slices arrive from different stores at different times.
@@ -341,8 +355,9 @@ export function createModuleStoreDeps(framework: {
 
     // Forwarded rather than captured: a module store is built before the personal space has been found.
     agentData: {
-      ready: () => services.agentData?.ready() ?? false,
-      refKey: () => services.agentData?.refKey() ?? '',
+      // Reactive reads, so they are tracked for the reason `dataset` is — see `readServicesRevision`.
+      ready: tracked(() => services.agentData?.ready() ?? false),
+      refKey: tracked(() => services.agentData?.refKey() ?? ''),
       create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
       find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
       update: async (entity, id, fields) => {
@@ -355,7 +370,15 @@ export function createModuleStoreDeps(framework: {
     },
 
     presence: {
-      peers: () => services.presence?.peers() ?? [],
+      /*
+        Tracked, and this is the one that cost a debugging session.
+
+        `peers` is a reactive read — every module that cares who is here puts it in an effect or a memo
+        — and an effect reading it before `services.presence` is bound tracks nothing, so it never runs
+        again. The live module's publish rate was derived that way and stayed at "nobody is watching"
+        for the life of the session, so it never sent a cursor at all.
+      */
+      peers: tracked(() => services.presence?.peers() ?? []),
       setActivity: (activity) => services.presence?.setActivity(activity),
       clearActivity: (type, id) => services.presence?.clearActivity(type, id),
     },
@@ -552,14 +575,6 @@ export function createModuleStoreDeps(framework: {
     readServicesRevision = () => void revision();
     bumpServicesRevision = () => setRevision(++count);
   }
-
-  /** Read the revision, then the service — see {@link readServicesRevision}. */
-  const tracked = <T>(read: () => T): (() => T) => {
-    return () => {
-      readServicesRevision?.();
-      return read();
-    };
-  };
 
   return {
     signal: framework.signal,
