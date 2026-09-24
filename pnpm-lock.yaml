@@ -539,6 +539,9 @@ importers:
       '@we/module-graph':
         specifier: workspace:*
         version: link:../module-system/graph
+      '@we/module-live':
+        specifier: workspace:*
+        version: link:../module-system/live
       '@we/module-notes':
         specifier: workspace:*
         version: link:../module-system/notes
@@ -1500,6 +1503,37 @@ importers:
       '@we/module-shared':
         specifier: workspace:*
         version: link:../shared
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(happy-dom@20.12.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/module-system/live:
+    dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@we/module-testing':
+        specifier: workspace:*
+        version: link:../testing
+      '@we/schema-kit':
+        specifier: workspace:*
+        version: link:../../schema-system/kit
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
