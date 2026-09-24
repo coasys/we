@@ -3616,11 +3616,13 @@ export const contextData: ContextData = {
       capabilities: ['kernel:presence', 'kernel:ephemeral', 'kernel:view', 'slot:call-controls', 'slot:call-status'],
       members: [
         { name: 'canDrive', kind: 'state', doc: 'Whether taking the wheel is possible here.' },
+        { name: 'canFollow', kind: 'state', doc: 'Whether somebody else is driving, so this agent could follow them.' },
         {
           name: 'canShareCursors',
           kind: 'state',
           doc: 'Whether live cursors are possible here — false in a space with no transport, or where they are switched off.',
         },
+        { name: 'canTakeWheel', kind: 'state', doc: 'Whether the wheel is free to take, or already this agent’s.' },
         { name: 'cursorsOn', kind: 'state', doc: 'Whether this agent’s pointer is shared, and other people’s shown.' },
         { name: 'dismissProblem', kind: 'action', doc: 'Dismiss the problem message.' },
         { name: 'driverName', kind: 'state', doc: 'The name of whoever is driving, or empty when nobody is.' },
@@ -3633,6 +3635,11 @@ export const contextData: ContextData = {
         { name: 'releaseWheel', kind: 'action', doc: 'Give up the wheel.' },
         { name: 'takeWheel', kind: 'action', doc: 'Take the wheel, so anybody who opts in follows this screen.' },
         { name: 'toggleCursors', kind: 'action', doc: 'Share this agent’s pointer and show other people’s, or stop.' },
+        {
+          name: 'toggleFollow',
+          kind: 'action',
+          doc: 'Follow whoever has the wheel, or stop — whichever this press means.',
+        },
         { name: 'toggleWheel', kind: 'action', doc: 'Take the wheel, or give it up — whichever this press means.' },
         { name: 'unfollow', kind: 'action', doc: 'Stop following.' },
         { name: 'watching', kind: 'state', doc: 'How many other people here have live cursors on.' },
@@ -3642,6 +3649,7 @@ export const contextData: ContextData = {
       launchers: [
         { key: 'live:cursors', label: 'Share your pointer' },
         { key: 'live:wheel', label: 'Take the wheel' },
+        { key: 'live:follow', label: 'Follow the driver' },
       ],
       settings: [
         {

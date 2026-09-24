@@ -402,6 +402,14 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   const unfollow = () => stopFollowing();
 
   /**
+   * Follow, or stop — whichever this press means.
+   *
+   * The same shape `toggleWheel` has, and for the same reason: a schema cannot choose between two
+   * handlers, so the state question is answered where the state is.
+   */
+  const toggleFollow = () => (following() ? stopFollowing() : follow());
+
+  /**
    * Whether this agent is following somebody, **derived** rather than remembered.
    *
    * `followingDid` is the choice; this is whether the choice still means anything. Deriving it is what
@@ -625,6 +633,23 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       () => drivingAllowed() && wired() && Boolean(view && presence),
       'Whether taking the wheel is possible here.',
     ),
+    /**
+     * Whether the wheel is this agent's to take — free, or already theirs.
+     *
+     * Paired with `canFollow` below, and the two are mutually exclusive by construction. That is what
+     * lets the rail offer exactly one button at a time: taking a wheel somebody else is holding is a
+     * different act from following them, and a single control that silently did one or the other
+     * would be a control whose label is wrong half the time.
+     */
+    canTakeWheel: state(
+      () => drivingAllowed() && wired() && Boolean(view && presence) && (driving() || !driverPeer()),
+      'Whether the wheel is free to take, or already this agent’s.',
+    ),
+    /** Whether somebody else has the wheel, so following is what is on offer. */
+    canFollow: state(
+      () => drivingAllowed() && wired() && Boolean(view && presence) && !driving() && Boolean(driverPeer()),
+      'Whether somebody else is driving, so this agent could follow them.',
+    ),
     following: state(following, 'Whether this agent is following somebody’s screen.'),
     followingName: state(
       () => (following() ? nameOf(followingDid()) || 'Someone' : ''),
@@ -653,6 +678,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     toggleWheel: action(toggleWheel, 'Take the wheel, or give it up — whichever this press means.'),
     follow: action(follow, 'Follow whoever has the wheel.'),
     unfollow: action(unfollow, 'Stop following.'),
+    toggleFollow: action(toggleFollow, 'Follow whoever has the wheel, or stop — whichever this press means.'),
     dismissProblem: action(() => setProblem(''), 'Dismiss the problem message.'),
   };
 }

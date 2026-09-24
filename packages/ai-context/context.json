@@ -8141,9 +8141,19 @@
           "doc": "Whether taking the wheel is possible here."
         },
         {
+          "name": "canFollow",
+          "kind": "state",
+          "doc": "Whether somebody else is driving, so this agent could follow them."
+        },
+        {
           "name": "canShareCursors",
           "kind": "state",
           "doc": "Whether live cursors are possible here — false in a space with no transport, or where they are switched off."
+        },
+        {
+          "name": "canTakeWheel",
+          "kind": "state",
+          "doc": "Whether the wheel is free to take, or already this agent’s."
         },
         {
           "name": "cursorsOn",
@@ -8206,6 +8216,11 @@
           "doc": "Share this agent’s pointer and show other people’s, or stop."
         },
         {
+          "name": "toggleFollow",
+          "kind": "action",
+          "doc": "Follow whoever has the wheel, or stop — whichever this press means."
+        },
+        {
           "name": "toggleWheel",
           "kind": "action",
           "doc": "Take the wheel, or give it up — whichever this press means."
@@ -8241,6 +8256,10 @@
         {
           "key": "live:wheel",
           "label": "Take the wheel"
+        },
+        {
+          "key": "live:follow",
+          "label": "Follow the driver"
         }
       ],
       "settings": [

@@ -3388,7 +3388,9 @@ See each other’s cursors, and follow one person’s screen.
 Needs: kernels presence, ephemeral, view.
 - State (read in an expression as `modules.live.<name>`):
   - canDrive — Whether taking the wheel is possible here.
+  - canFollow — Whether somebody else is driving, so this agent could follow them.
   - canShareCursors — Whether live cursors are possible here — false in a space with no transport, or where they are switched off.
+  - canTakeWheel — Whether the wheel is free to take, or already this agent’s.
   - cursorsOn — Whether this agent’s pointer is shared, and other people’s shown.
   - driverName — The name of whoever is driving, or empty when nobody is.
   - driving — Whether this agent has the wheel.
@@ -3403,6 +3405,7 @@ Needs: kernels presence, ephemeral, view.
   - releaseWheel — Give up the wheel.
   - takeWheel — Take the wheel, so anybody who opts in follows this screen.
   - toggleCursors — Share this agent’s pointer and show other people’s, or stop.
+  - toggleFollow — Follow whoever has the wheel, or stop — whichever this press means.
   - toggleWheel — Take the wheel, or give it up — whichever this press means.
   - unfollow — Stop following.
 - Parts: `live.cursorToggle`, `live.wheelButton`, `live.driverStrip`

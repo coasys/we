@@ -283,6 +283,49 @@ describe('the wheel', () => {
   });
 });
 
+describe('which of the two the rail offers', () => {
+  it('offers the wheel while it is free, and following once somebody has it', () => {
+    const { store, presence } = setup();
+    // Nobody driving: taking it is the only sensible act.
+    expect(store.canTakeWheel()).toBe(true);
+    expect(store.canFollow()).toBe(false);
+
+    presence.publish(ANA, { type: 'driving', since: 1 });
+    // Somebody else has it: taking one they are holding is a different act from following them, and a
+    // single button that silently did one or the other would be wrong half the time it was shown.
+    expect(store.canTakeWheel()).toBe(false);
+    expect(store.canFollow()).toBe(true);
+  });
+
+  it('keeps offering the wheel to whoever is holding it, so it can be given up', () => {
+    const { store } = setup();
+    store.takeWheel();
+    expect(store.canTakeWheel()).toBe(true);
+    expect(store.canFollow()).toBe(false);
+  });
+
+  it('never offers both at once', () => {
+    const { store, presence } = setup();
+    for (const step of [
+      () => {},
+      () => presence.publish(ANA, { type: 'driving', since: 1 }),
+      () => store.takeWheel(),
+    ]) {
+      step();
+      expect(store.canTakeWheel() && store.canFollow()).toBe(false);
+    }
+  });
+
+  it('follows and stops from one action', () => {
+    const { store, presence } = setup();
+    presence.publish(ANA, { type: 'driving', since: 1 });
+    store.toggleFollow();
+    expect(store.following()).toBe(true);
+    store.toggleFollow();
+    expect(store.following()).toBe(false);
+  });
+});
+
 describe('following', () => {
   it('applies frames from the driver, and only from the driver', () => {
     const { store, presence, wire, view } = setup();

@@ -120,7 +120,29 @@ export const liveModule: ModuleDefinition = defineModule({
         activeLabel: 'Give up the wheel',
         action: 'toggleWheel',
         activeWhen: 'driving',
-        availableWhen: 'canDrive',
+        // Only while the wheel is free or already this agent's — see `canTakeWheel`. Taking one
+        // somebody else is holding is a different act, and it is the button below.
+        availableWhen: 'canTakeWheel',
+      },
+      /*
+        The other side of it: somebody else is driving, so what is on offer is following them.
+
+        A second launcher rather than a third meaning for the one above, because a launcher has one
+        label and one action: a button reading "Take the wheel" that actually followed somebody would
+        be wrong half the time it was shown. `canTakeWheel` and `canFollow` are mutually exclusive, so
+        exactly one of the two is ever on the rail.
+
+        This is the entry point the call bar's status strip provides during a call, and it exists here
+        for the reason the wheel does — the bar is not there unless somebody is talking.
+      */
+      {
+        key: 'follow',
+        icon: 'eye',
+        label: 'Follow the driver',
+        activeLabel: 'Stop following',
+        action: 'toggleFollow',
+        activeWhen: 'following',
+        availableWhen: 'canFollow',
       },
     ],
 
