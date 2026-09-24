@@ -173,10 +173,27 @@ const OUTWARD: Record<EdgeSide, readonly [number, number]> = {
  * whatever a peer wrote — this is a shared, writable data layer — and a bad one reaching the router
  * would land the edge at `NaN`, which draws nothing and reports nothing.
  */
-export function anchorsOf(data: Record<string, unknown> | undefined): EdgeAnchors {
+export function anchorsOf(data: Record<string, unknown> | undefined, fallback?: EdgeAnchors): EdgeAnchors {
   const side = (value: unknown): EdgeSide | undefined =>
     value === 'n' || value === 'e' || value === 's' || value === 'w' ? value : undefined;
-  return { source: side(data?.sourceAnchor), target: side(data?.targetAnchor) };
+  /*
+    `fallback` is a style rule's answer, behind whatever the edge itself carries.
+
+    That order rather than the other way round because the two are facts at different scales: a rule says
+    how a whole arrangement hangs its lines, and a stored anchor is one canvas's tidying of one
+    connection. The narrower fact wins, exactly as a card's own colour sits in front of its type's.
+
+    Resolved through one function so the precedence has one implementation. The router draws the line and
+    the renderer places the grips along it, and a second copy of this rule is how the handles came to sit
+    at the old endpoints while the line moved.
+  */
+  // Both sides go through `side`, not only the stored one. A template is JSON and untyped at runtime,
+  // so a rule saying `'up'` is exactly as possible as a peer writing it — and the consequence is the
+  // same: an edge routed to `NaN`, which draws nothing and reports nothing.
+  return {
+    source: side(data?.sourceAnchor) ?? side(fallback?.source),
+    target: side(data?.targetAnchor) ?? side(fallback?.target),
+  };
 }
 
 /**

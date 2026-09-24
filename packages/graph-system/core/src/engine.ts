@@ -349,6 +349,17 @@ export class GraphEngine {
   private travelTimer?: ReturnType<typeof setTimeout>;
   /** The duration the travel in flight was asked for. Zero means nothing is travelling. */
   private travelDuration = 0;
+  /**
+   * The camera's own travel, alongside the cards'.
+   *
+   * Without it a switch that refits reads as the cards *vanishing and flying in from the edge*: the fit
+   * jumps the camera to frame where the new arrangement will be, while every card is still standing in
+   * the old one — which is now off screen. Both were behaving correctly and the result was neither.
+   *
+   * So the camera goes where the cards go, over the same duration and on the same curve, and the switch
+   * is one movement. Absent when nothing was refitted, which is most relayouts.
+   */
+  private travelCamera?: { from: { x: number; y: number; zoom: number }; to: { x: number; y: number; zoom: number } };
   /** Areas the current layout asked to have drawn behind the nodes — see {@link getLayoutRegions}. */
   private layoutRegions: LayoutRegion[] = [];
 
@@ -857,6 +868,7 @@ export class GraphEngine {
     if (this.watchTimer) clearTimeout(this.watchTimer);
     if (this.foldTimer) clearTimeout(this.foldTimer);
     if (this.travelTimer) clearTimeout(this.travelTimer);
+    this.travelCamera = undefined;
     // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
     // from a backend subscription, which is the shape of leak that only shows up as a slow app.
     for (const stop of this.watchers.values()) stop();
@@ -1540,7 +1552,13 @@ export class GraphEngine {
       switch into a layout that needs more room would settle with half the graph off screen — and the
       reader would have watched it go there.
     */
-    if (fit && !this.fitToContent()) this.pendingFit = true;
+    /*
+      Where the camera was before the fit, so it can travel there too — see {@link travelCamera}.
+      Captured unconditionally and cheaply, because whether the fit happened is only known after it.
+    */
+    const cameraFrom = { ...this.viewport.get() };
+    const fitted = fit ? this.fitToContent() : false;
+    if (fit && !fitted) this.pendingFit = true;
 
     /*
       Then the travel, which walks the moving cards back to where they were standing. Everything below
@@ -1548,6 +1566,11 @@ export class GraphEngine {
       would leave every card pickable at a place it has not reached yet.
     */
     this.beginTravel(before, travel);
+    /*
+      And the camera with them, but only where there is something to travel: a fit that did not happen
+      has nowhere to go, and a fit with no travel should land immediately, as it always did.
+    */
+    if (fitted && this.travelAnim.size) this.beginCameraTravel(cameraFrom);
     this.reindex();
     this.routeEdges();
     this.notify('positions');
@@ -1624,6 +1647,36 @@ export class GraphEngine {
     if (!this.travelAnim.size) this.travelDuration = 0;
   }
 
+  /**
+   * Send the camera back where it was, so it can travel to the fit rather than jumping to it.
+   *
+   * The fit has already been applied, which is what makes this possible at all: the viewport's own
+   * `fit` answers with a camera rather than a number, so the only way to know where it lands is to let
+   * it land and read it back.
+   *
+   * Nothing to do when the fit did not actually move the camera — switching between two arrangements
+   * that happen to frame identically, which is common on a small graph.
+   */
+  private beginCameraTravel(from: { x: number; y: number; zoom: number }): void {
+    const now = this.viewport.get();
+    const to = { x: now.x, y: now.y, zoom: now.zoom };
+    if (from.x === to.x && from.y === to.y && from.zoom === to.zoom) return;
+    this.travelCamera = { from: { x: from.x, y: from.y, zoom: from.zoom }, to };
+    this.viewport.set(this.travelCamera.from);
+    this.notify('viewport');
+  }
+
+  /**
+   * Stop the camera travelling, and leave it where it is.
+   *
+   * Called wherever the reader takes hold of the view — a pan, a zoom. Without it the tween keeps
+   * writing the camera every frame and the gesture is fought for the rest of the travel, which reads as
+   * a canvas that will not be moved rather than as two writers.
+   */
+  private stopCameraTravel(): void {
+    this.travelCamera = undefined;
+  }
+
   /** One frame of the walk: move what is moving, and land what has arrived. */
   private stepTravel(): void {
     if (this.travelTimer) {
@@ -1632,12 +1685,21 @@ export class GraphEngine {
     }
     const now = Date.now();
     let running = false;
+    /*
+      One clock for the cards and the camera.
+
+      Read from whichever card is furthest along rather than kept separately, so the two cannot drift:
+      a camera on its own timer that finished a frame early would settle the view while the cards were
+      still arriving, which is the judder this exists to avoid.
+    */
+    let progress = 1;
 
     for (const [id, anim] of this.travelAnim) {
       const t = this.travelDuration > 0 ? Math.min(1, (now - anim.started) / this.travelDuration) : 1;
       // Cubic ease-out, matching the fold: most of the distance early, so the eye catches which way a
       // card went before it has to track where it stops.
       const eased = 1 - (1 - t) ** 3;
+      progress = Math.min(progress, eased);
       if (t >= 1) {
         this.travelAnim.delete(id);
         // The layout's own answer, flags included — a pinned card is still pinned once it gets there.
@@ -1650,6 +1712,29 @@ export class GraphEngine {
         x: anim.from.x + (anim.to.x - anim.from.x) * eased,
         y: anim.from.y + (anim.to.y - anim.from.y) * eased,
       });
+    }
+
+    /*
+      The camera, on the cards' own curve and clock — see {@link travelCamera}.
+
+      Zoom is interpolated **geometrically** rather than linearly, because zoom is a ratio: stepping it
+      by equal amounts makes the second half of a zoom-out crawl and the first half lurch, where equal
+      ratios read as one steady movement. The same reason `pan-zoom` multiplies rather than adds.
+    */
+    const camera = this.travelCamera;
+    if (camera) {
+      const { from, to } = camera;
+      this.viewport.set({
+        x: from.x + (to.x - from.x) * progress,
+        y: from.y + (to.y - from.y) * progress,
+        zoom: from.zoom * (to.zoom / from.zoom) ** progress,
+      });
+      if (!running) {
+        // Landed exactly, rather than on whatever the last interpolation came to.
+        this.viewport.set(to);
+        this.travelCamera = undefined;
+      }
+      this.notify('viewport');
     }
 
     this.reindex();
@@ -1926,7 +2011,10 @@ export class GraphEngine {
         // Where a connection leaves and arrives, when somebody has said. Off the edge's own data, so
         // whatever loaded it decides — the canvas seed reads them from an `EdgeRoute` — with any
         // overlay in front, which is how a drag previews and how a write holds until it lands.
-        const anchors = anchorsOf({ ...edge.data, ...patch });
+        const anchors = anchorsOf(
+          { ...edge.data, ...patch },
+          { source: style.sourceAnchor, target: style.targetAnchor },
+        );
         // No node at a loose end, so nothing to stand off from: the line reaches the pointer itself.
         const targetNode = looseTo ? undefined : this.store.node(targetId);
         const sourceNode = looseFrom ? undefined : this.store.node(sourceId);
@@ -2296,10 +2384,13 @@ export class GraphEngine {
         return at ? { x: at.x, y: at.y } : null;
       },
       pan: (dx, dy) => {
+        // The reader owns the view now — see {@link stopCameraTravel}.
+        this.stopCameraTravel();
         this.viewport.pan(dx, dy);
         this.notify('viewport');
       },
       zoomAt: (at, factor) => {
+        this.stopCameraTravel();
         this.viewport.zoomAt(at, factor);
         this.notify('viewport');
       },

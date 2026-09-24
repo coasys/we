@@ -2176,6 +2176,14 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
     expect(canvas).toContain('opacity: 0.25');
     /*
+      And every child is met at its own top, from its parent's bottom.
+
+      Left to the geometry a parent's three children get three different-looking relationships — the
+      outer two are attached at their left and right edges, only the middle one at its top — when they
+      are the same relationship, and in a tree the arrangement is what says so.
+    */
+    expect(canvas).toContain("sourceAnchor: 's', targetAnchor: 'n'");
+    /*
       And the spine keeps the canvas's own curve. Switching the line style as well as the arrangement
       makes the mode read as a different drawing rather than as the same cards seen another way, which
       is the one thing a mode of the canvas should not do.
@@ -2187,6 +2195,16 @@ describe('the workshop’s tree', () => {
       an inert rule is one more thing a reader of the style list has to work out is inert.
     */
     expect(canvas).toContain('] : []');
+  });
+
+  it('animates the switch and not the controls', () => {
+    /*
+      A `reveal` on the picker group animates its width, and the strip wraps — so the group growing
+      through the available width pushed the last control onto a second line and pulled it back, and the
+      strip visibly doubled in height and shrank again during the one moment that already has every card
+      moving. The mode switch is the animation.
+    */
+    expect(canvas).not.toContain('"axis":"inline"');
   });
 
   it('offers the unset spine as a placeholder and a button, never as a prepended row', () => {

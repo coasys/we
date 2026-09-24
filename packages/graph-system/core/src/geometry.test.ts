@@ -943,3 +943,21 @@ describe('attaching to a card’s outline', () => {
     expect(route.to.x).toBeCloseTo(355, 5);
   });
 });
+
+describe('anchorsOf — a rule behind an edge’s own', () => {
+  it('takes a style rule’s sides where the edge carries none', () => {
+    // What makes a tree's children all hang off the bottom of their parent rather than each taking
+    // whichever side the geometry happened to prefer.
+    expect(anchorsOf({}, { source: 's', target: 'n' })).toEqual({ source: 's', target: 'n' });
+  });
+
+  it('lets the edge’s own anchor win, because one canvas’s tidying is the narrower fact', () => {
+    expect(anchorsOf({ sourceAnchor: 'e' }, { source: 's', target: 'n' })).toEqual({ source: 'e', target: 'n' });
+  });
+
+  it('ignores rubbish in either, rather than routing an edge to NaN', () => {
+    // A stored value is whatever a peer wrote; a rule is whatever a template wrote. Both are input.
+    expect(anchorsOf({ sourceAnchor: 'sideways' }, { source: 's' })).toEqual({ source: 's', target: undefined });
+    expect(anchorsOf({}, { source: 'up' as never })).toEqual({ source: undefined, target: undefined });
+  });
+});

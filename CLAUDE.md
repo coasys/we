@@ -1636,8 +1636,8 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - sortDirection: "asc" | "desc" — Default "asc", which is what a date wants.
   - tiebreakBy: string — The second key, used only where the first ties. Default "createdAt". Not decoration: two cards on the same number of votes otherwise swap places whenever anything else in the space changes, which reads as the map being unstable.
   - card: { width: number; height: number } — The box every card is allotted — uniform on purpose, since ranks read as significance and cards at the sizes somebody chose on a freeform canvas would claim some the data does not support. What a card is DRAWN as is a style rule.
-  - siblingGap: number — Clear space between two cards side by side.
-  - levelGap: number — Clear space between one rank and the next.
+  - siblingGap: number — Clear space between two cards side by side. Defaults to a share of the card's WIDTH, so a reader switching to large cards gets room to match — a constant is comfortable at one card size and reads as cards touching at another.
+  - levelGap: number — Clear space between one rank and the next. A share of the card's HEIGHT, and a larger share than the sibling gap: a rank is read along, so its cards belong together, where the vertical gap is what the lines live in and has to be legible on its own.
   - treeGap: number — Clear space between one tree and the next. Default three sibling gaps.
   - unattached: "right" | "bottom" — Where cards on no tree go. Default "right"; "bottom" suits a narrow screen.
   - unattachedColumns: number — How many cards wide that zone is. Default 3.
@@ -1663,6 +1663,8 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 
 - `curve` — Edge style — the shape a connection is drawn with. "smooth" (default) leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "straight" is a direct line, right when the layout is already doing the talking. "arc" bows to one side, for a graph dense enough that lines need telling apart by shape. "step" turns at right angles, for containment and org charts where the eye follows a rank. Two nodes related in both directions are always separated — shifted sideways, or crossed at different points — so picking a shape never hides a relationship.
   - Example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`
+- `sourceAnchor / targetAnchor` — Edge style — which side of each node the line leaves and arrives on ("n", "e", "s", "w"). Normally derived from where the two nodes are, which is right on a canvas, where a line between two cards somebody placed should take the shortest sensible path. It is wrong wherever the ARRANGEMENT carries the meaning: in a downward tree a parent's children sit below it and spread sideways, so the geometry attaches the outer ones to their left and right edges and only the middle one to its top — three children, three different-looking relationships, when they are the same relationship. A rule, so an edge's own stored anchors still win: those are one canvas's tidying of one connection, which is the narrower fact.
+  - Example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n" } }]`
 - `arrow` — Edge style — which ends carry an arrowhead. "target" (default) points at the thing being related to; "both" for a mutual relationship drawn as one line; "none" when the relation has no direction worth showing. The head scales with the line's width, and the line stops short of it rather than running underneath.
   - Example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`
 - `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a canvas. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.

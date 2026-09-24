@@ -17,7 +17,7 @@
  * with components.
  */
 import type { GraphNode, GraphValue } from './graph';
-import type { EdgeCurve } from './layout';
+import type { EdgeCurve, EdgeSide } from './layout';
 
 /** Operators a match clause may use against a node/edge field. Mirrors the schema system's `$filter`. */
 export interface MatchOperators {
@@ -198,6 +198,22 @@ export interface EdgeStyle {
   scaleWithZoom?: boolean;
   showLabel?: boolean;
   labelColor?: string;
+  /**
+   * Which side of each node the line leaves and arrives on — see {@link EdgeSide}.
+   *
+   * Normally derived from where the two nodes are, which is right on a canvas: a line between two cards
+   * somebody placed should take the shortest sensible path. It is wrong wherever the *arrangement*
+   * carries the meaning. In a downward tree a parent's children sit below it and spread sideways, so the
+   * geometry attaches the outer ones to their left and right edges while the middle one gets its top —
+   * three children, three different-looking relationships, when they are the same relationship.
+   * `{ sourceAnchor: 's', targetAnchor: 'n' }` says "these hang off the bottom" and the rank reads as one.
+   *
+   * A rule, so it is behind an edge's own stored anchors rather than in front of them: those are one
+   * canvas's tidying of one connection, which is the more specific fact, exactly as a card's own colour
+   * sits in front of its type's.
+   */
+  sourceAnchor?: EdgeSide;
+  targetAnchor?: EdgeSide;
 }
 
 /** One rule: match, then apply. A rule with no `when` is the base style. */

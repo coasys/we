@@ -211,7 +211,17 @@ export const TREE_CARD_STYLE = {
  */
 export const TREE_EDGE_RULES: SchemaProp = {
   $:
-    `${TREE_ON} ? [{ when: { 'data.relationshipTypeId': { not: local.spine } },` +
+    `${TREE_ON} ? [` +
+    /*
+      Every child hangs off the bottom of its parent and is met at its own top.
+
+      Left to the geometry, a parent's three children get three different-looking relationships: the
+      outer two spread sideways far enough that their left and right edges are the shortest path, and
+      only the middle one is met at its top. They are the same relationship, and in a tree the
+      arrangement is what carries that — so the rank has to read as one thing.
+    */
+    `{ style: { sourceAnchor: 's', targetAnchor: 'n' } },` +
+    ` { when: { 'data.relationshipTypeId': { not: local.spine } },` +
     ` style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []`,
 };
 
@@ -298,10 +308,15 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
         type: '$if',
         props: {
           condition: { $: TREE_ON },
-          enterTransition: [
-            { type: 'reveal', axis: 'inline', duration: 200 },
-            { type: 'fade', duration: 150 },
-          ],
+          /*
+            No transition on the pickers, and that is a fix rather than an omission.
+
+            A `reveal` on the inline axis animates the group's width from nothing to its natural size —
+            and the strip wraps, so a group growing through the available width pushes the last control
+            onto a second line and then pulls it back. The strip visibly doubled in height and shrank
+            again, in the middle of the one moment that already has every card moving. The mode switch
+            is the animation; its controls should simply be there.
+          */
           then: {
             type: 'Row',
             props: { gap: '200', ay: 'center', wrap: true },

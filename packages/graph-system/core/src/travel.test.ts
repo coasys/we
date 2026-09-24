@@ -315,3 +315,98 @@ describe('switching away from a canvas', () => {
     expect(xOf(engine, 'b')).toBe(510);
   });
 });
+
+/**
+ * The camera travels with the cards.
+ *
+ * Without this the switch reads as the cards *vanishing and flying in from the edge of the screen*, and
+ * both halves are behaving correctly: the fit jumps the camera to frame where the new arrangement will
+ * be, while every card is still standing in the old one — which that camera no longer shows. Nothing is
+ * broken anywhere, and the result is neither movement.
+ */
+describe('layout travel — the camera', () => {
+  /** Two layouts a long way apart, so a fit between them genuinely has to move. */
+  const far = {
+    near: () => ({
+      id: 'near',
+      init(input: { nodes: { id: string }[] }) {
+        return { positions: new Map(input.nodes.map((n, i) => [n.id, { x: i * 40, y: 0 }])) };
+      },
+    }),
+    away: () => ({
+      id: 'away',
+      init(input: { nodes: { id: string }[] }) {
+        return { positions: new Map(input.nodes.map((n, i) => [n.id, { x: 9000 + i * 40, y: 6000 }])) };
+      },
+    }),
+  };
+
+  async function started() {
+    const registry = new PluginRegistry({ seeds: [seedOf(['a', 'b'])], expanders: [], layouts: far });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'near' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    return engine;
+  }
+
+  it('moves the camera over the travel rather than jumping it before the cards set off', async () => {
+    const engine = await started();
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'away' } });
+    engine.relayout({ fit: true, travel: 400 });
+
+    /*
+      The first frame is the whole bug. The cards are still at the old arrangement, so the camera has to
+      be too — a camera already at the destination shows an empty region and the cards arrive into it
+      from off screen.
+    */
+    const first = engine.viewport.get();
+    const card = engine.getPositions().get('a')!;
+    const onScreen = { x: card.x * first.zoom + first.x, y: card.y * first.zoom + first.y };
+    expect(onScreen.x).toBeGreaterThan(-200);
+    expect(onScreen.x).toBeLessThan(1000);
+    expect(onScreen.y).toBeGreaterThan(-200);
+    expect(onScreen.y).toBeLessThan(800);
+
+    await vi.advanceTimersByTimeAsync(600);
+
+    // And it arrives framing the cards it followed.
+    const settled = engine.viewport.get();
+    const landed = engine.getPositions().get('a')!;
+    const after = { x: landed.x * settled.zoom + settled.x, y: landed.y * settled.zoom + settled.y };
+    expect(after.x).toBeGreaterThan(-200);
+    expect(after.x).toBeLessThan(1000);
+    expect(after.y).toBeGreaterThan(-200);
+    expect(after.y).toBeLessThan(800);
+  });
+
+  it('hands the view over to a pan rather than fighting it for the rest of the travel', async () => {
+    const engine = await started();
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'away' } });
+    engine.relayout({ fit: true, travel: 400 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    const behaviour = engine.behaviourContext();
+    behaviour.pan(120, 0);
+    const grabbed = engine.viewport.get().x;
+    await vi.advanceTimersByTimeAsync(600);
+
+    // Where the reader left it. A tween still running would have overwritten this on the next frame.
+    expect(engine.viewport.get().x).toBe(grabbed);
+  });
+
+  it('lands the camera immediately when there is no travel, exactly as a fit always did', async () => {
+    const engine = await started();
+    const before = engine.viewport.get();
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'away' } });
+    engine.relayout({ fit: true });
+
+    expect(engine.viewport.get().x).not.toBe(before.x);
+  });
+});

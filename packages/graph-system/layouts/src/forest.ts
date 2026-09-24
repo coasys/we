@@ -96,9 +96,9 @@ export interface ForestLayoutOptions {
    * carry. What a card is *drawn* as is a style rule's business; this is the room it is allotted.
    */
   card?: { width: number; height: number };
-  /** Clear space between two cards side by side. */
+  /** Clear space between two cards side by side. Defaults to a share of the card's width. */
   siblingGap?: number;
-  /** Clear space between the bottom of one rank and the top of the next. */
+  /** Clear space between the bottom of one rank and the top of the next. A share of the card's height. */
   levelGap?: number;
   /** Clear space between one tree and the next. Defaults to three sibling gaps. */
   treeGap?: number;
@@ -113,10 +113,21 @@ export interface ForestLayoutOptions {
   unattachedLabel?: string;
 }
 
+/**
+ * The gaps, as fractions of the card rather than as pixels.
+ *
+ * A constant gap is wrong at every card size but one: 28px between 120-wide cards is comfortable and
+ * between 260-wide cards it reads as a row of cards touching. And the reader chooses the card size —
+ * it is the tree's one reading preference — so a fixed number is wrong on purpose a third of the time.
+ *
+ * Sideways is the tighter of the two because a rank is read *along*, and the cards in it belong
+ * together; the vertical gap is where the lines live and has to be legible on its own, which is why it
+ * is a larger share of a smaller dimension.
+ */
+const GAP_OF_CARD = { sibling: 0.34, level: 0.62 };
+
 const DEFAULTS = {
   card: { width: 160, height: 120 },
-  siblingGap: 28,
-  levelGap: 56,
   unattached: 'right' as UnattachedPlacement,
   unattachedColumns: 3,
   unattachedLabel: 'Unconnected',
@@ -156,8 +167,10 @@ function compareValues(a: GraphValue | undefined, b: GraphValue | undefined, des
 export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
   const options = { ...DEFAULTS, ...(rawOptions as ForestLayoutOptions) };
   const card = options.card ?? DEFAULTS.card;
-  const siblingGap = options.siblingGap ?? DEFAULTS.siblingGap;
-  const levelGap = options.levelGap ?? DEFAULTS.levelGap;
+  // Derived from the card unless asked for, so a reader switching to large cards gets room to match
+  // rather than a tree whose cards have grown into each other. See `GAP_OF_CARD`.
+  const siblingGap = options.siblingGap ?? Math.round(card.width * GAP_OF_CARD.sibling);
+  const levelGap = options.levelGap ?? Math.round(card.height * GAP_OF_CARD.level);
   const treeGap = options.treeGap ?? siblingGap * 3;
   const descending = options.sortDirection === 'desc';
   /** One rank to the next, centre to centre — the card plus the clear space under it. */

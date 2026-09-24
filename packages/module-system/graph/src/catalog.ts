@@ -216,8 +216,18 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'The box every card is allotted — uniform on purpose, since ranks read as significance and cards at the sizes somebody chose on a freeform canvas would claim some the data does not support. What a card is DRAWN as is a style rule.',
         },
-        { name: 'siblingGap', type: 'number', description: 'Clear space between two cards side by side.' },
-        { name: 'levelGap', type: 'number', description: 'Clear space between one rank and the next.' },
+        {
+          name: 'siblingGap',
+          type: 'number',
+          description:
+            "Clear space between two cards side by side. Defaults to a share of the card's WIDTH, so a reader switching to large cards gets room to match — a constant is comfortable at one card size and reads as cards touching at another.",
+        },
+        {
+          name: 'levelGap',
+          type: 'number',
+          description:
+            "Clear space between one rank and the next. A share of the card's HEIGHT, and a larger share than the sibling gap: a rank is read along, so its cards belong together, where the vertical gap is what the lines live in and has to be legible on its own.",
+        },
         {
           name: 'treeGap',
           type: 'number',
@@ -287,6 +297,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       description:
         'Edge style — the shape a connection is drawn with. "smooth" (default) leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "straight" is a direct line, right when the layout is already doing the talking. "arc" bows to one side, for a graph dense enough that lines need telling apart by shape. "step" turns at right angles, for containment and org charts where the eye follows a rank. Two nodes related in both directions are always separated — shifted sideways, or crossed at different points — so picking a shape never hides a relationship.',
       example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`,
+    },
+    {
+      id: 'sourceAnchor / targetAnchor',
+      category: 'style',
+      description:
+        'Edge style — which side of each node the line leaves and arrives on ("n", "e", "s", "w"). Normally derived from where the two nodes are, which is right on a canvas, where a line between two cards somebody placed should take the shortest sensible path. It is wrong wherever the ARRANGEMENT carries the meaning: in a downward tree a parent\'s children sit below it and spread sideways, so the geometry attaches the outer ones to their left and right edges and only the middle one to its top — three children, three different-looking relationships, when they are the same relationship. A rule, so an edge\'s own stored anchors still win: those are one canvas\'s tidying of one connection, which is the narrower fact.',
+      example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n" } }]`,
     },
     {
       id: 'arrow',
