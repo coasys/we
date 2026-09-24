@@ -91,21 +91,35 @@ function clampCount(raw: number): number {
 }
 
 /**
- * Where a synthetic cursor is at this moment, given the frame this agent is looking at.
+ * Where a synthetic cursor is at step `step`, given the frame this agent is looking at.
  *
  * **Moving**, on circles of different radii and speeds, because the whole point is watching several
  * eased elements travel at once — a still cursor exercises the transition not at all, and a set of them
  * moving in step would hide the thing most likely to be wrong, which is one mark's transform being
  * applied to another. Each takes a different period so they visibly separate.
  *
+ * ## A step counter, not a clock
+ *
+ * This took `Date.now()`, which made the position a function of *when it was asked* rather than of how
+ * far the animation had got — so every unrelated recompute moved every cursor. Recomputes are not rare:
+ * the marks are rebuilt whenever anything they read changes, and one of those is the content box, which
+ * changes on every pointer move while a panel is being dragged. The marks then moved at pointer rate
+ * while their 90ms easing restarted from wherever it had reached, which reads as jitter in place with no
+ * progress at all until the drag ends.
+ *
+ * Driven by a counter, a recompute with the same step returns the identical position, so the transform
+ * string does not change and nothing restarts. The animation advances only when the tick does.
+ *
  * In the surface this agent is on, so they land wherever real ones would: world units on a canvas,
  * fractions of the content box otherwise. A fraction is kept inside 0.1–0.9 so none of them sits under
  * the chrome at an edge.
  */
-export function devCursorAnchors(count: number, surface: string, kind: LiveAnchor['kind'], now: number): LiveAnchor[] {
+export function devCursorAnchors(count: number, surface: string, kind: LiveAnchor['kind'], step: number): LiveAnchor[] {
   if (count <= 0) return [];
   return Array.from({ length: count }, (_, index) => {
-    const phase = now / (1_400 + index * 260) + index;
+    // Radians per tick, a little different per cursor so they separate rather than travel in formation.
+    // At the tick's 100ms, the slowest takes about four seconds to come round.
+    const phase = step * (0.16 - index * 0.012) + index;
     const wobble = { x: Math.cos(phase), y: Math.sin(phase) };
     if (kind === 'world') {
       const radius = 90 + index * 26;

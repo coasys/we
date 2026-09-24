@@ -537,6 +537,57 @@ describe('the synthetic cursors', () => {
   const harness = (store: LiveStore) =>
     store as unknown as { fakeCursorCount: () => number; addFakeCursor: () => void; removeFakeCursor: () => void };
 
+  /**
+   * Put this agent in a call, as the call module's own presence activity does.
+   *
+   * The fakes are drawn only while one is running, because the `−  N  +` that manages them lives in the
+   * call bar — marks that outlive the call outlive the only control that removes them.
+   */
+  const joinCall = (presence: ReturnType<typeof fakePresence>) => presence.publish(ME, { type: 'call', id: 'call:1' });
+
+  it('draws nothing at all outside a call, however many were summoned', () => {
+    const { store, view, presence } = setup();
+    joinCall(presence);
+    harness(store).addFakeCursor();
+    expect(view.decorations()).toHaveLength(1);
+
+    /*
+      The call ends and they go with it. The control that removes them is in the call bar, so cursors that
+      carried on afterwards could not be turned off at all — which is what testing found, twice.
+    */
+    presence.leave(ME);
+    expect(view.decorations()).toEqual([]);
+  });
+
+  it('stands still while the clock moves, and moves only when its own tick does', () => {
+    /*
+      The position is a function of the tick this store counts, not of the wall clock. It used to be
+      `Date.now()`, which looked like animation and was really a recompute leak: `fakeMarks` reads the
+      surface, the surface reads the content box, and the content box changes on every pointer move while
+      a panel is being dragged. So the marks jumped at pointer rate while their 90ms easing restarted from
+      wherever it had got to — jitter in place, for as long as the drag lasted.
+
+      Fake timers go up BEFORE the store is built, so the tick's interval is one this test can drive.
+    */
+    vi.useFakeTimers();
+    try {
+      const { store, view, presence } = setup();
+      joinCall(presence);
+      harness(store).addFakeCursor();
+      const before = view.decorations()[0].at;
+
+      // Five seconds of wall clock with no tick in it. Nothing moves.
+      vi.setSystemTime(Date.now() + 5_000);
+      expect(view.decorations()[0].at).toEqual(before);
+
+      // And it is not simply frozen: the tick is what carries it.
+      vi.advanceTimersByTime(200);
+      expect(view.decorations()[0].at).not.toEqual(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('draws nothing until asked', () => {
     const { store, view } = setup();
     expect(harness(store).fakeCursorCount()).toBe(0);
@@ -544,7 +595,8 @@ describe('the synthetic cursors', () => {
   });
 
   it('draws without the live switch, because that is what a harness is for', () => {
-    const { store, view } = setup();
+    const { store, view, presence } = setup();
+    joinCall(presence);
     harness(store).addFakeCursor();
     harness(store).addFakeCursor();
 
@@ -560,7 +612,8 @@ describe('the synthetic cursors', () => {
   });
 
   it('sits in the surface this agent is on, or nowhere', () => {
-    const { store, view } = setup();
+    const { store, view, presence } = setup();
+    joinCall(presence);
     harness(store).addFakeCursor();
     expect(view.decorations()[0].at.surface).toBe('route:/space/a/canvas');
 
@@ -571,7 +624,8 @@ describe('the synthetic cursors', () => {
   });
 
   it('counts down again, and stops drawing at zero', () => {
-    const { store, view } = setup();
+    const { store, view, presence } = setup();
+    joinCall(presence);
     harness(store).addFakeCursor();
     harness(store).removeFakeCursor();
     expect(harness(store).fakeCursorCount()).toBe(0);
@@ -579,7 +633,8 @@ describe('the synthetic cursors', () => {
   });
 
   it('draws alongside real cursors rather than instead of them', () => {
-    const { store, view, wire } = setup();
+    const { store, view, wire, presence } = setup();
+    joinCall(presence);
     store.toggleCursors();
     wire.agent(ANA).channel('live').publish({ v: LIVE_PROTOCOL_VERSION, seq: 1, kind: 'cursor', at: WORLD });
     harness(store).addFakeCursor();

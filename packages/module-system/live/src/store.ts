@@ -177,6 +177,23 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
   const nameOf = (did: string) => identities?.get(did)?.name ?? '';
 
+  /**
+   * Whether this agent is in a call, read off their own presence.
+   *
+   * The `call` activity is a shape the call module declares in `contributes.activities`, so this is the
+   * medium doing its job rather than a guess — the same way transcription finds the live call. Nothing
+   * here names `modules.call`, and a deployment without calls simply never sees one.
+   *
+   * Self, not peers: `peers()` includes this agent, which is what makes the question answerable at all.
+   */
+  const inCall = (): boolean => {
+    const me = selfId?.();
+    if (!me) return false;
+    return (presence?.peers() ?? []).some(
+      (peer) => peer.agentId === me && Boolean(peer.activities?.some((activity) => activity.type === 'call')),
+    );
+  };
+
   // ── The transport ──────────────────────────────────────────────────────────
 
   /**
@@ -430,12 +447,20 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     if (!devCursorsAvailable) return [];
     const count = fakeCount();
     if (count <= 0) return [];
-    fakeTick();
-    const frame = view?.frame();
-    const surface = frame?.surface ?? '';
+    /*
+      Only while a call is running.
+
+      The `−  N  +` that manages these lives in the call bar, so marks that outlive the call outlive the
+      only control that removes them. Asked of presence rather than of the call module: this agent's own
+      `call` activity is a shape that module declares, which is how capabilities are meant to read each
+      other, and it means nothing here names `modules.call`.
+    */
+    if (!inCall()) return [];
+    const surface = view?.frame()?.surface ?? '';
     if (!surface) return [];
+    // The tick, not the clock — see `devCursorAnchors` for why a recompute must not move anything.
     return devCursorMarks(
-      devCursorAnchors(count, surface, surface.startsWith('canvas:') ? 'world' : 'viewport', now()),
+      devCursorAnchors(count, surface, surface.startsWith('canvas:') ? 'world' : 'viewport', fakeTick()),
     );
   }
 
