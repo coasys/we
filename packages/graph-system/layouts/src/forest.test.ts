@@ -200,6 +200,21 @@ describe('forest layout — the spine', () => {
     expect(result.regions?.[0]?.label).toBe('Unconnected · 1');
   });
 
+  it('follows every connection when the spine names no value, as a picker on "any kind" does', () => {
+    /*
+      The bug this guards made the whole mode look broken: a spine of `value: ''` read literally matches
+      only lines whose kind is the empty string, so every card came out in the unconnected zone — with
+      the picker showing "Any connection" and the layout following none of them.
+    */
+    const result = run([node('a'), node('b')], [edge('a', 'b', { relationshipTypeId: 'supports' })], {
+      spine: { field: 'data.relationshipTypeId', value: '' },
+    });
+
+    expect(yOf(result, 'b')).toBe(150);
+    expect(result.regions).toBeUndefined();
+    expect(result.warnings).toBeUndefined();
+  });
+
   it('says so when nothing matched the spine, rather than drawing a field of loose cards in silence', () => {
     const result = run([node('a'), node('b')], [edge('a', 'b', { relationshipTypeId: 'mentions' })], {
       spine: { field: 'data.relationshipTypeId', value: 'supports' },

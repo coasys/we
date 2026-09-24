@@ -2175,7 +2175,12 @@ describe('the workshop’s tree', () => {
     */
     expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
     expect(canvas).toContain('opacity: 0.25');
-    expect(canvas).toContain("curve: 'step'");
+    /*
+      And the spine keeps the canvas's own curve. Switching the line style as well as the arrangement
+      makes the mode read as a different drawing rather than as the same cards seen another way, which
+      is the one thing a mode of the canvas should not do.
+    */
+    expect(canvas).not.toContain("curve: 'step'");
     /*
       One element answering a LIST of rules, which the graph flattens — the same shape the key's lens
       rules use. A rule that is always present with a clause matching nothing would work and is worse:

@@ -200,13 +200,19 @@ export const TREE_CARD_STYLE = {
  *
  * Faint rather than absent because a tree with every other line at full strength is a tangle, and the
  * lines that make the shape have to be the ones the eye follows first.
+ *
+ * ## The spine keeps the canvas's own curve
+ *
+ * It was drawn with right angles here, on the reasoning that a reader follows a rank down an elbow
+ * rather than across a curve. That is true of an org chart and wrong of this: the shape is the same
+ * shape either way, and switching the line style as well as the arrangement makes the mode read as a
+ * different *drawing* rather than as the same cards seen another way — which is the one thing a mode of
+ * the canvas should not do. A line style is worth offering later, on its own, for both modes.
  */
 export const TREE_EDGE_RULES: SchemaProp = {
   $:
     `${TREE_ON} ? [{ when: { 'data.relationshipTypeId': { not: local.spine } },` +
-    ` style: { opacity: 0.25, dashed: true, arrow: 'none' } },` +
-    // Right angles along the spine, which is what a reader follows down a rank rather than across a curve.
-    ` { when: { 'data.relationshipTypeId': local.spine }, style: { curve: 'step' } }] : []`,
+    ` style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []`,
 };
 
 /**

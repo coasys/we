@@ -1064,3 +1064,21 @@ describe('canvas seed — weighing', () => {
     expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toBeUndefined();
   });
 });
+
+describe('canvas seed — what a card carries for ordering', () => {
+  it('lets a record\'s own timestamp reach the card, so "oldest first" has something to order by', async () => {
+    /*
+      `createdAt` lives on the record rather than in any model's declared properties, so the scalar
+      allowlist dropped it — and a layout told to order siblings by it fell silently back to sorting by
+      address, which is stable, meaningless, and indistinguishable from working.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', createdAt: '2026-03-04T10:00:00Z' }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1' }, ctx);
+
+    expect(nodes[0].data?.createdAt).toBe('2026-03-04T10:00:00Z');
+  });
+});

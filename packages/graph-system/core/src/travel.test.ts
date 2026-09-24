@@ -216,3 +216,102 @@ describe('layout travel', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+/**
+ * Switching away from a layout that reads positions from the data.
+ *
+ * `manual` marks every position `fixed`, because on a canvas a coordinate IS the data and a ticking
+ * layout must not move it. Every deriving layout then reads `previous.fixed` as "the user pinned
+ * this, leave it alone" — `keepFixed` in the deterministic layouts, `fx`/`fy` in force — so switching
+ * from a canvas to a tree kept every card exactly where it was and the switch did nothing at all.
+ *
+ * Nothing about that is visible from inside either layout: each is behaving exactly as documented. The
+ * two meanings of `fixed` only collide at the boundary, which is the engine's.
+ */
+describe('switching away from a canvas', () => {
+  /** `manual` in miniature: reads a coordinate off the node, and marks it fixed as the real one does. */
+  const fromData = () => ({
+    id: 'manual',
+    derivesPositions: false,
+    init(input: { nodes: { id: string; data?: Record<string, unknown> }[] }) {
+      return {
+        positions: new Map(
+          input.nodes.map((node) => [
+            node.id,
+            { x: Number(node.data?.x) || 0, y: Number(node.data?.y) || 0, fixed: true },
+          ]),
+        ),
+      };
+    },
+  });
+
+  /** A deriving layout that honours a pin, exactly as `forest`, `tree`, `grid` and `force` all do. */
+  const derived = () => ({
+    id: 'derived',
+    init(input: {
+      nodes: { id: string }[];
+      previous?: ReadonlyMap<string, { x: number; y: number; fixed?: boolean }>;
+    }) {
+      const positions = new Map(input.nodes.map((node, i) => [node.id, { x: 500 + i * 10, y: 500 }]));
+      for (const [id, was] of input.previous ?? []) if (was.fixed && positions.has(id)) positions.set(id, was);
+      return { positions };
+    },
+  });
+
+  const placed: SeedSource = {
+    id: 'placed',
+    async seed() {
+      return {
+        nodes: [
+          { id: 'a', kind: 'entity' as const, type: 'Thing', data: { x: 11, y: 22 } },
+          { id: 'b', kind: 'entity' as const, type: 'Thing', data: { x: 33, y: 44 } },
+        ],
+        edges: [],
+      };
+    },
+  };
+
+  async function canvas() {
+    const registry = new PluginRegistry({
+      seeds: [placed],
+      expanders: [],
+      layouts: { manual: fromData, derived },
+    });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'placed' }, layout: { type: 'manual' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    return engine;
+  }
+
+  it('lets the new layout place the cards, rather than every one of them staying put', async () => {
+    const engine = await canvas();
+    expect(xOf(engine, 'a')).toBe(11);
+
+    engine.setSpec({ seeds: { source: 'placed' }, layout: { type: 'derived' } });
+    engine.relayout();
+
+    // The whole of what the reader sees: the arrangement changes.
+    expect(xOf(engine, 'a')).toBe(500);
+    expect(xOf(engine, 'b')).toBe(510);
+  });
+
+  it('still holds a card the reader actually pinned', async () => {
+    /*
+      The distinction that makes the fix correct rather than a blunt clearing: `fixed` from a layout
+      that does not derive positions is bookkeeping, and `fixed` from a person pressing pin is an
+      instruction. Only the engine can tell them apart, which is why it answers here.
+    */
+    const engine = await canvas();
+    engine.pin('a', { x: 77, y: 88 });
+
+    engine.setSpec({ seeds: { source: 'placed' }, layout: { type: 'derived' } });
+    engine.relayout();
+
+    expect(engine.getPositions().get('a')).toMatchObject({ x: 77, y: 88 });
+    expect(xOf(engine, 'b')).toBe(510);
+  });
+});

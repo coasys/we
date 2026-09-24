@@ -1422,7 +1422,7 @@ export class GraphEngine {
       */
       nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
       edges: [...this.store.edges()],
-      previous: this.positions,
+      previous: this.warmStart(),
       containment: this.containment(),
       viewport: { width: width || 800, height: height || 600 },
       ...(width && height ? { visible: this.visibleWorldRect() } : {}),
@@ -1554,6 +1554,31 @@ export class GraphEngine {
     if (this.travelAnim.size && !this.travelTimer && !this.disposed) {
       this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
     }
+  }
+
+  /**
+   * The positions handed to a layout as its warm start — with `fixed` meaning what the protocol says.
+   *
+   * `Placement.fixed` is documented as "the user pinned it and the layout must not move it", and every
+   * deriving layout honours it: the deterministic ones through `keepFixed`, force through `fx`/`fy`.
+   * But `manual` marks **every** position fixed, and is right to — on a canvas a coordinate *is* the
+   * data, and a ticking layout must not move it.
+   *
+   * Those are two different meanings of one flag, and they collide the moment a reader switches from a
+   * canvas to a tree: every card counted as pinned, so the new layout kept all of them and the switch
+   * did nothing at all. Nothing about that is visible from inside either layout — each behaves exactly
+   * as documented — so it can only be answered here, at the boundary that is the engine's.
+   *
+   * A pin is {@link pinnedIds}, written by `pin` and `setPinned` and by nothing else. The coordinate a
+   * layout read out of the data is still handed over, because a warm start is the whole point of
+   * `previous`; it simply stops claiming to be an instruction.
+   */
+  private warmStart(): ReadonlyMap<string, Placement> {
+    const warm = new Map<string, Placement>();
+    for (const [id, at] of this.positions) {
+      warm.set(id, this.pinnedIds.has(id) ? { x: at.x, y: at.y, fixed: true } : { x: at.x, y: at.y });
+    }
+    return warm;
   }
 
   /**

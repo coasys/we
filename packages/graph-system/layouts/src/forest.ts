@@ -174,7 +174,15 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
 
       // ─── The spine ─────────────────────────────────────────────────────────
 
-      const spine = options.spine;
+      /*
+        A selector with no value names nothing, which is never what anybody means by one.
+
+        `{ field: 'data.relationshipTypeId', value: '' }` is what a template produces the moment its
+        spine picker is on "any kind" — and read literally it matches only lines whose kind is the empty
+        string, so *every* card came out unconnected. Treated as absent instead, which is the house rule
+        for an empty value everywhere else in WE and the only reading of it that is any use.
+      */
+      const spine = options.spine?.field && options.spine.value !== '' ? options.spine : undefined;
       /** Parent → children and child → parents, from the matching edges only. */
       const childrenOf = new Map<string, string[]>();
       const parentsOf = new Map<string, string[]>();
