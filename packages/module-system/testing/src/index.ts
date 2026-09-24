@@ -17,17 +17,22 @@
  * expect(lintModule(myModule).problems).toEqual([]);
  * ```
  */
-import type { Activity, Peer } from '@we/backend-shared';
+import type { Activity, EphemeralPort, Peer } from '@we/backend-shared';
+import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
 import type {
   AgentDataKernel,
   ComposedDocument,
   CopiedIn,
   DocumentAccess,
+  LiveAnchor,
+  LiveDecoration,
   ModuleDefinition,
   ModuleStoreDeps,
   PresenceKernel,
   RecordQuery,
   RecordsKernel,
+  ViewFrame,
+  ViewKernel,
 } from '@we/module-shared';
 import { lintModule, markAction, markState, storeSurface } from '@we/module-shared';
 
@@ -288,6 +293,127 @@ export function fakePresence(options: { self?: string } = {}) {
     },
     /** Take a peer off the roster — a heartbeat that stopped. */
     leave: (agentId: string) => void peers.delete(agentId),
+  };
+}
+
+/**
+ * A transport two fake agents share, so a test can drive both ends of a protocol.
+ *
+ * Wraps `createInMemoryEphemeralPort` from the backend contract rather than reimplementing it, which
+ * is the point: that port is the reference implementation every backend copies, so a protocol tested
+ * against it is tested against the shape the real one has to satisfy. What this adds is the two
+ * things a module test needs and the reference does not provide — a second agent to talk to, and a
+ * dataset handle to scope by.
+ *
+ * ```ts
+ * const wire = fakeEphemeral();
+ * const store = buildStore(liveModule, fakeDeps({ kernels: { ephemeral: wire.port } }));
+ * const them = wire.agent('did:test:ana');
+ * them.channel('live').publish({ … });      // arrives at the store
+ * expect(wire.sent('live')).toHaveLength(1); // what the store published
+ * ```
+ *
+ * Note the reference port's capabilities are deliberately the *opposite* of AD4M's on every axis —
+ * native unicast, at-least-once, no heartbeat needed — so a consumer that only ever ran against this
+ * would have its degraded paths untested. A test about behaviour under loss should say so by driving
+ * `drop` rather than by trusting the default.
+ */
+export function fakeEphemeral(options: { self?: string; dataset?: unknown } = {}) {
+  const self = options.self ?? 'did:test:me';
+  const bus = new InMemoryBus();
+  // One handle stands for one space. Identity is by reference, exactly as the real port keys it.
+  const dataset = (options.dataset ?? { id: 'fake-dataset' }) as never;
+  const sent: { tag: string; payload: unknown; to?: string }[] = [];
+  let dropping = false;
+
+  const portFor = (agentId: string) => createInMemoryEphemeralPort(bus, agentId);
+
+  /**
+   * The module's own port, wrapped so a test can see what it published and refuse to deliver.
+   *
+   * Recording sits here rather than on the bus because "what did the module say" is the question a
+   * protocol test asks, and reading it off a shared medium would also catch whatever the test itself
+   * injected from the other side.
+   */
+  const port: EphemeralPort = (handle) => {
+    const scope = portFor(self)(handle);
+    if (!scope) return null;
+    return {
+      capabilities: scope.capabilities,
+      channel: (tag, opts) => {
+        const channel = scope.channel(tag, opts);
+        return {
+          ...channel,
+          publish: (payload, to) => {
+            sent.push({ tag, payload, to: to?.agentId });
+            if (!dropping) channel.publish(payload, to);
+          },
+        };
+      },
+      dispose: () => scope.dispose(),
+    };
+  };
+
+  return {
+    port,
+    dataset,
+    /** Every message the module published, in order, with the tag it went out on. */
+    sent: (tag?: string) => (tag ? sent.filter((m) => m.tag === tag) : sent),
+    /** Another agent on the same medium, for a test to publish as. */
+    agent: (agentId: string) => {
+      const scope = portFor(agentId)(dataset);
+      if (!scope) throw new Error('fakeEphemeral: the dataset handle has no scope');
+      return scope;
+    },
+    /**
+     * Stop delivering what the module publishes, while still recording it — a lossy transport, which
+     * is the case every protocol here has to survive and the one a fake makes too easy to forget.
+     */
+    drop: (on = true) => void (dropping = on),
+  };
+}
+
+/**
+ * The screen as a test sets it: a pointer and a frame a test moves, and a record of what the module
+ * asked to draw or to go to.
+ *
+ * `decorations()` reads the module's own accessor each time it is called rather than caching, so a
+ * test sees what the host would see on its next read — which is what makes an assertion about a
+ * cursor moving mean anything.
+ */
+export function fakeView(options: { frame?: ViewFrame } = {}) {
+  const pointerListeners = new Set<(at: LiveAnchor | null) => void>();
+  let frame: ViewFrame = options.frame ?? { path: '/' };
+  const applied: ViewFrame[] = [];
+  let read: (() => LiveDecoration[]) | null = null;
+
+  const kernel: ViewKernel = {
+    onPointer: (cb) => {
+      pointerListeners.add(cb);
+      return () => pointerListeners.delete(cb);
+    },
+    frame: () => frame,
+    apply: (next) => void applied.push(next),
+    decorate: (get) => {
+      read = get;
+      return () => void (read = null);
+    },
+  };
+
+  return {
+    kernel,
+    /** Every frame the module asked this agent to be shown — what following somebody does. */
+    applied,
+    /** What the module currently wants drawn, read fresh. Empty when it has registered nothing. */
+    decorations: () => read?.() ?? [],
+    /** Whether the module is asking to draw at all — a registered accessor, however empty. */
+    decorating: () => read !== null,
+    /** Move this agent's pointer, or take it off the screen with `null`. */
+    move: (at: LiveAnchor | null) => {
+      for (const cb of pointerListeners) cb(at);
+    },
+    /** Put this agent somewhere else, as navigating or panning does. */
+    setFrame: (next: ViewFrame) => void (frame = next),
   };
 }
 
