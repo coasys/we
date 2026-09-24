@@ -51,12 +51,24 @@ function setup(options: { settings?: Record<string, boolean>; dataset?: unknown;
   return { store, wire, presence, view, notified, identities };
 }
 
-/** What the fake store publishes, as parsed bodies rather than envelopes. */
+/**
+ * What the store published, across both tags, as bodies rather than envelopes.
+ *
+ * Both, because cursors and views ride separate channels — see `CURSOR_CHANNEL` for why. The warm-up
+ * message on each carries no `kind` and is filtered out.
+ */
 const published = (wire: ReturnType<typeof fakeEphemeral>) =>
   wire
-    .sent('live')
+    .sent()
     .map((message) => message.payload as Record<string, unknown>)
     .filter((payload) => payload.kind !== undefined);
+
+/** Which tag each message went out on, for the separation the coalescing relies on. */
+const tagsOf = (wire: ReturnType<typeof fakeEphemeral>, kind: string) =>
+  wire
+    .sent()
+    .filter((m) => (m.payload as { kind?: string }).kind === kind)
+    .map((m) => m.tag);
 
 beforeEach(() => {
   vi.useRealTimers();
@@ -259,6 +271,43 @@ describe('publishing a pointer', () => {
     presence.publish(ANA, { type: 'live', cursors: true });
     view.move({ ...WORLD, x: 2 });
     expect(published(wire).filter((p) => p.kind === 'cursor')).toHaveLength(1);
+  });
+});
+
+describe('keeping cursors off the view channel', () => {
+  it('sends each kind on its own tag, so neither can displace the other', () => {
+    const { store, view, wire, presence } = setup();
+    presence.publish(ANA, { type: 'live', cursors: true });
+    store.toggleCursors();
+    store.takeWheel();
+    view.move(WORLD);
+
+    /*
+      The transport holds one pending message per *channel*, whatever its kind — so on a single tag a
+      moving pointer displaces the driver's own view frame for as long as it keeps moving, and a
+      follower is never framed while learning nothing, since every cursor arrives perfectly.
+
+      coasys/ad4m#1133 measures broadcasts queueing 12–21s behind unrelated zome calls, which is exactly
+      the window in which a held message is displaced rather than sent.
+    */
+    expect(new Set(tagsOf(wire, 'cursor'))).toEqual(new Set(['live']));
+    expect(new Set(tagsOf(wire, 'view'))).toEqual(new Set(['live-view']));
+  });
+
+  it('receives both, whichever tag they arrive on', () => {
+    const { store, presence, wire, view } = setup();
+    presence.publish(ANA, { type: 'driving', since: 1 });
+    store.toggleCursors();
+    store.follow();
+
+    wire.agent(ANA).channel('live').publish({ v: LIVE_PROTOCOL_VERSION, seq: 1, kind: 'cursor', at: WORLD });
+    wire
+      .agent(ANA)
+      .channel('live-view')
+      .publish({ v: LIVE_PROTOCOL_VERSION, seq: 2, kind: 'view', frame: { path: '/space/a/kanban' } });
+
+    expect(view.decorations()).toHaveLength(1);
+    expect(view.applied.map((f) => f.path)).toEqual(['/space/a/kanban']);
   });
 });
 

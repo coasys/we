@@ -38,8 +38,24 @@ import {
   VIEW_REPEAT_MS,
 } from './protocol';
 
-/** The channel every live message rides. One tag, so one warm-up cost and one subscription. */
-const CHANNEL = 'live';
+/**
+ * Two channels, not one — and the reason is coalescing.
+ *
+ * Both kinds here are last-write-wins, so both want `coalesce: true`. But the transport holds **one**
+ * pending message per channel regardless of kind (see `queued` in the AD4M adapter), so on one tag a
+ * moving pointer displaces the driver's own view frame, over and over, for as long as the pointer keeps
+ * moving. A follower would then never be framed at all — and never learn why, since every cursor was
+ * arriving perfectly.
+ *
+ * That is not a hypothetical. coasys/ad4m#1133 measures telepresence broadcasts queueing 12–21s behind
+ * unrelated zome calls, which is precisely the window in which a held message is displaced rather than
+ * sent. Cursors are frequent and views are rare, so on one tag the rare one always loses.
+ *
+ * Two tags cost a second subscription and a second first-send warm-up. Worth it: the alternative is a
+ * feature that works until somebody moves their mouse.
+ */
+const CURSOR_CHANNEL = 'live';
+const VIEW_CHANNEL = 'live-view';
 
 /** A face on a cursor, looked up by did rather than baked into the mark — see `cursorMark`. */
 export interface LiveFace {
@@ -86,7 +102,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   let trailingTimer: ReturnType<typeof setTimeout> | null = null;
   let expiryTimer: ReturnType<typeof setInterval> | null = null;
   let viewTimer: ReturnType<typeof setInterval> | null = null;
-  let channel: { publish: (payload: unknown) => void } | null = null;
+  let cursorChannel: { publish: (payload: unknown) => void } | null = null;
+  let viewChannel: { publish: (payload: unknown) => void } | null = null;
   let detach: (() => void) | null = null;
   /** The handle the channel is open on, so attaching twice for the same space does nothing. */
   let attachedTo: unknown;
@@ -179,7 +196,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    */
   function ensureAttached(): void {
     const handle = deps.dataset?.() ?? null;
-    if (handle === attachedTo && channel) return;
+    if (handle === attachedTo && cursorChannel) return;
     attach(handle);
   }
 
@@ -187,7 +204,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     attachedTo = handle;
     detach?.();
     detach = null;
-    channel = null;
+    cursorChannel = null;
+    viewChannel = null;
     held.clear();
     bumpCursors();
 
@@ -205,7 +223,8 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       makes, and exactly the one an SDP offer cannot make — which is why the call's channel sets this
       false and this one does not share it.
     */
-    const live = scope.channel(CHANNEL, { coalesce: true });
+    const cursors = scope.channel(CURSOR_CHANNEL, { coalesce: true });
+    const views = scope.channel(VIEW_CHANNEL, { coalesce: true });
 
     /*
       Spend the transport's first-send cost on something that does not matter.
@@ -215,17 +234,29 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       message goes first — so a throwaway goes first, rather than the cursor somebody has just switched
       on and is watching for. It parses to nothing on every peer, which is the whole design.
     */
-    live.publish({ v: LIVE_PROTOCOL_VERSION, warm: true });
+    cursors.publish({ v: LIVE_PROTOCOL_VERSION, warm: true });
+    views.publish({ v: LIVE_PROTOCOL_VERSION, warm: true });
 
-    const stop = live.onMessage((from, payload) => receive(from, payload));
-    channel = live;
+    const stopCursors = cursors.onMessage((from, payload) => receive(from, payload));
+    const stopViews = views.onMessage((from, payload) => receive(from, payload));
+    cursorChannel = cursors;
+    viewChannel = views;
     detach = () => {
-      stop();
+      stopCursors();
+      stopViews();
       scope.dispose();
     };
   }
 
+  /**
+   * Send one message on the channel its kind belongs to.
+   *
+   * `seq` is per sender and shared across both, which is what the receiver's ordering check wants: it
+   * holds one high-water mark per sender for cursors, and a view frame carries its own. Sharing the
+   * counter keeps it monotonic whichever channel a message took.
+   */
   function publish(body: LiveBody): void {
+    const channel = body.kind === 'view' ? viewChannel : cursorChannel;
     if (!channel) return;
     seq += 1;
     channel.publish({ v: LIVE_PROTOCOL_VERSION, seq, ...body });

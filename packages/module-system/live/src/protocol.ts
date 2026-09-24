@@ -172,10 +172,17 @@ export function parseLiveMessage(payload: unknown): LiveMessage | null {
 /**
  * How long a cursor nobody has heard about stays on screen.
  *
- * Long enough to cover a lost message or a stalled executor — this transport's first broadcast after
- * joining a neighbourhood has been measured at eighteen seconds — and short enough that somebody who
- * closed their laptop is gone before you try to talk to them. A deliberate `null` on leaving is the
- * fast path; this is the backstop.
+ * **Deliberately shorter than a known stall, not longer.** coasys/ad4m#1133 measures telepresence
+ * broadcasts queueing 12–21s behind unrelated zome calls on this transport, and the tempting reading is
+ * that a TTL must outlast that so a cursor does not vanish mid-stall. The opposite is right: a cursor
+ * twenty seconds behind is not a cursor, it is a claim about where somebody is pointing that is false.
+ * Three seconds means a stall makes the feature visibly stop — everybody's cursor disappears, together,
+ * and comes back when the transport does — which is honest, and self-explaining in a way that a smoothly
+ * wrong position is not.
+ *
+ * So this is a *freshness* bound rather than a timeout. It is also short enough that somebody who closed
+ * their laptop is gone before you try to talk to them. A deliberate `null` on leaving is the fast path;
+ * this is the backstop.
  */
 export const CURSOR_TTL_MS = 3_000;
 
