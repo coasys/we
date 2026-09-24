@@ -101,6 +101,27 @@ export const liveModule: ModuleDefinition = defineModule({
         activeWhen: 'cursorsOn',
         availableWhen: 'canShareCursors',
       },
+      /*
+        The wheel, on the rail as well as in the call bar.
+
+        Contributed to `call-controls` too, which is where it belongs while a call is running — but the
+        bar only exists while one is, so without this the feature is unreachable unless somebody is
+        talking. That is the same argument the cursor launcher above carries, and it applies harder
+        here: "look at what I am looking at" is most useful when explaining something, which is not the
+        same thing as being in a call.
+
+        `toggleWheel` rather than two entries, for the reason the button gives: only the store can ask
+        which state it is in at the moment of the press.
+      */
+      {
+        key: 'wheel',
+        icon: 'signpost',
+        label: 'Take the wheel',
+        activeLabel: 'Give up the wheel',
+        action: 'toggleWheel',
+        activeWhen: 'driving',
+        availableWhen: 'canDrive',
+      },
     ],
 
     /**

@@ -3639,7 +3639,10 @@ export const contextData: ContextData = {
       ],
       parts: [{ name: 'cursorToggle' }, { name: 'wheelButton' }, { name: 'driverStrip' }],
       panels: [],
-      launchers: [{ key: 'live:cursors', label: 'Share your pointer' }],
+      launchers: [
+        { key: 'live:cursors', label: 'Share your pointer' },
+        { key: 'live:wheel', label: 'Take the wheel' },
+      ],
       settings: [
         {
           key: 'cursors',

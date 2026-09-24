@@ -8237,6 +8237,10 @@
         {
           "key": "live:cursors",
           "label": "Share your pointer"
+        },
+        {
+          "key": "live:wheel",
+          "label": "Take the wheel"
         }
       ],
       "settings": [

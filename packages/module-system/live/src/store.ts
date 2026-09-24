@@ -68,6 +68,16 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   const [followingDid, setFollowingDid] = signal('');
   /** Why something could not be done, as a sentence to show. */
   const [problem, setProblem] = signal('');
+  /**
+   * Whether a transport actually opened for the space on screen.
+   *
+   * Not the same question as "does this host implement the ephemeral kernel", which is what this used
+   * to ask — and the difference is a control offered where it cannot work. A personal space is synced
+   * with nobody, so the port answers `null` and there is nobody to be live to; the kernel is present
+   * all the same. Reading the kernel put a cursor button on the rail in every personal space, which
+   * would have done nothing at all when pressed.
+   */
+  const [wired, setWired] = signal(false);
   /** Synthetic cursors, and the clock that moves them. Development only — see `devCursors.ts`. */
   const [fakeCount, setFakeCount] = signal(readDevCursorCount());
   const [fakeTick, setFakeTick] = signal(0);
@@ -160,7 +170,10 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     held.clear();
     bumpCursors();
 
+    setWired(false);
     const scope = handle && ephemeral ? ephemeral(handle as never) : null;
+    // A personal space has no neighbourhood, so there is nobody to signal. Degrade deliberately: the
+    // switch stops being offered rather than being offered and doing nothing.
     if (!scope) return;
 
     /*
@@ -186,6 +199,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
 
     const stop = live.onMessage((from, payload) => receive(from, payload));
     channel = live;
+    setWired(true);
     detach = () => {
       stop();
       scope.dispose();
@@ -579,7 +593,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     cursorsOn: state(cursorsOn, 'Whether this agent’s pointer is shared, and other people’s shown.'),
     /** Whether cursors can be offered here at all — a space or a member may refuse them. */
     canShareCursors: state(
-      () => cursorsAllowed() && Boolean(ephemeral && view),
+      () => cursorsAllowed() && wired() && Boolean(view),
       'Whether live cursors are possible here — false in a space with no transport, or where they are switched off.',
     ),
     /** How many peers have their cursors on. What a readout counts. */
@@ -605,7 +619,12 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       const driver = driverPeer();
       return driver ? nameOf(driver.agentId) || 'Someone' : '';
     }, 'The name of whoever is driving, or empty when nobody is.'),
-    canDrive: state(() => drivingAllowed() && Boolean(view && presence), 'Whether taking the wheel is possible here.'),
+    canDrive: state(
+      // `wired` too: driving publishes view frames over the same channel, so a space with no transport
+      // can no more be driven than it can show a cursor.
+      () => drivingAllowed() && wired() && Boolean(view && presence),
+      'Whether taking the wheel is possible here.',
+    ),
     following: state(following, 'Whether this agent is following somebody’s screen.'),
     followingName: state(
       () => (following() ? nameOf(followingDid()) || 'Someone' : ''),

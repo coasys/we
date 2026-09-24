@@ -223,13 +223,24 @@ describe('receiving a peer’s cursor', () => {
 });
 
 describe('a space with no transport', () => {
-  it('offers nothing rather than failing', () => {
-    // A personal space is synced with nobody, so `ephemeral` answers null and there is nobody to be
-    // live to. A module must degrade rather than throw — this is that path.
+  it('stops offering the controls rather than offering ones that do nothing', () => {
+    /*
+      A personal space is synced with nobody, so the port answers `null` and there is nobody to be live
+      to — while the *kernel* is present exactly as it is anywhere else. Asking the kernel rather than
+      the scope is what put a cursor button on the rail in every personal space, doing nothing when
+      pressed. The rail gates its launcher on these, so this is what takes it off.
+    */
     const { store } = setup({ dataset: null });
-    expect(store.canShareCursors()).toBe(true);
-    store.toggleCursors();
-    expect(store.cursorsOn()).toBe(true);
+    expect(store.canShareCursors()).toBe(false);
+    expect(store.canDrive()).toBe(false);
+  });
+
+  it('degrades rather than throwing if something asks anyway', () => {
+    const { store } = setup({ dataset: null });
+    // A module must survive a kernel that answers no — a store is built before boot finishes, and a
+    // schema written against another deployment may name an action this one cannot honour.
+    expect(() => store.toggleCursors()).not.toThrow();
+    expect(() => store.takeWheel()).not.toThrow();
     expect(store.faces()).toEqual([]);
   });
 });
