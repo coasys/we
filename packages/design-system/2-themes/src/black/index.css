@@ -9,7 +9,7 @@
   looked like it had been thought about.
 
   Nothing replaces it. `surfaceInverse` is now measured from the page rather than pinned, which lands
-  this theme's tooltip at L 6.7% against a page of 18.7%, and `onInverse` is derived against that.
+  this theme's tooltip at L 9.7% against a page of 18.7%, and `onInverse` is derived against that.
   A theme-level override here would be the same mistake a third time.
 */
 

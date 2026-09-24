@@ -645,15 +645,20 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s elevation', (name) 
  * it: in `dark` the chip landed 0.2 points from the chrome and 0.3 from a sunken well, and in
  * `black` it was lighter than every plane in the theme. Nothing failed, because nothing asked.
  *
- * Six points is the floor rather than the target — the rule in `role.ts` is twelve off the page, and
- * the nearest plane to that is `surfaceSunken` at three and a half below it, so the design leaves
- * eight and a half in every dark theme and seventy-five in a light one. A threshold at the design's
- * own figure would fail on rounding; one this far under it only fires when the relationship has
- * genuinely stopped holding.
+ * Four points is the floor rather than the target, and the arithmetic sets it. The rule in `role.ts`
+ * is nine off the page; the nearest plane to that is `surfaceSunken`, three and a half below the
+ * page, so the design's own margin is five and a half in every dark theme and seventy-five in a
+ * light one. A threshold at the design's figure would fail on rounding, and one far under it would
+ * never fire — four is under the margin and well over the 0.2 points `dark` was shipping, which is
+ * the distance this exists to refuse.
+ *
+ * It moves when the step moves, and that is correct rather than a weakness: the assertion is "the
+ * relationship still holds", and what the relationship *is* lives in `role.ts`. What it must not
+ * become is a number nudged down to accommodate a chip that has drifted back onto the stack.
  */
 describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s tooltip separation', (name) => {
   const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
-  const MINIMUM = 6;
+  const MINIMUM = 4;
 
   const lightness = (r: ThemeRole) => {
     const c = roleColor(r, theme);

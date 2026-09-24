@@ -201,18 +201,21 @@ export const role = {
    *
    * Both polarities want the chip *darker* — a light tooltip in a dark theme was tried and rejected
    * — so there is nothing for a polarity flag to decide. What differs is only the magnitude, and
-   * that is because the page itself has moved: twelve points below the page is the whole rule, with
-   * the upper bound holding light themes at the dark chip they already had (page 100 − 12 would be a
+   * that is because the page itself has moved: nine points below the page is the whole rule, with
+   * the upper bound holding light themes at the dark chip they already had (page 100 − 9 would be a
    * pale grey, which is not a tooltip) and the lower bound keeping a theme that is already near the
    * sRGB floor off literal black.
    *
    * So the bounds are not a fudge around a formula that does not work — they are the two ends of the
    * ramp stating what they need, and the middle term is the relationship. Resolved: light 25.0,
-   * cyberpunk 19.4, dark 16.0, channels 15.1, black 6.7 — every one of them clear of its own chrome.
+   * cyberpunk 22.4, dark 19.0, channels 18.1, black 9.7 — every one of them clear of its own chrome.
    *
-   * Twelve because the whole in-document stack spans seven (chrome 25 → raised 32 in `dark`) and the
-   * largest single step in it is three. A plane that is further from the page than any of the planes
-   * are from each other is one the eye reads as somewhere else, which is the job.
+   * Nine because `chrome` is three below the page, so the chip lands twice as far below the stack as
+   * the stack's own ground is: a step that reads as somewhere else rather than as one more plane.
+   * Twelve was tried first, on the reasoning that the chip should clear the whole spread (chrome 25
+   * → raised 32 in `dark`), and it overshot — a bubble noticeably inkier than anything else on
+   * screen, which draws attention to itself rather than to what it says. The distance only has to
+   * beat the largest in-document step, which is three.
    *
    * `c h` from the page, like every other derived surface, so a theme that tints its neutrals gets a
    * tinted chip for free. That replaces an explicit chroma expression whose taper was baked for
@@ -222,7 +225,7 @@ export const role = {
    * `onInverse` is re-derived against whatever this resolves to (`AUTO_CONTRAST` in `themeStyles`),
    * so the label follows on its own and needs nothing said here.
    */
-  surfaceInverse: 'oklch(from var(--we-role-page) clamp(0.04, calc(l - 0.12), 0.25) c h)',
+  surfaceInverse: 'oklch(from var(--we-role-page) clamp(0.04, calc(l - 0.09), 0.25) c h)',
   /** Default border/divider. */
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
