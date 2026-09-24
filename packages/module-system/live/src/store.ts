@@ -18,6 +18,13 @@
 import type { Activity, LiveAnchor, LiveDecoration, ModuleStoreDeps, Peer, ViewFrame } from '@we/module-shared';
 
 import {
+  devCursorAnchors,
+  devCursorMarks,
+  devCursorsAvailable,
+  readDevCursorCount,
+  writeDevCursorCount,
+} from './devCursors';
+import {
   CURSOR_TTL_MS,
   cursorIntervalMs,
   type HeldCursor,
@@ -61,6 +68,10 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   const [followingDid, setFollowingDid] = signal('');
   /** Why something could not be done, as a sentence to show. */
   const [problem, setProblem] = signal('');
+  /** Synthetic cursors, and the clock that moves them. Development only — see `devCursors.ts`. */
+  const [fakeCount, setFakeCount] = signal(readDevCursorCount());
+  const [fakeTick, setFakeTick] = signal(0);
+  let fakeTimer: ReturnType<typeof setInterval> | null = null;
 
   /** Peers' cursors, by did. A plain map: `cursorVersion` is what makes reading it reactive. */
   const held = new Map<string, HeldCursor>();
@@ -271,8 +282,29 @@ export function createLiveStore(deps: ModuleStoreDeps) {
   const marks = (): LiveDecoration[] => {
     cursorVersion();
     if (!cursorsOn() || !cursorsAllowed()) return [];
-    return [...held].map(([did, cursor]) => cursorMark(did, cursor));
+    const real = [...held].map(([did, cursor]) => cursorMark(did, cursor));
+    return [...real, ...fakeMarks()];
   };
+
+  /**
+   * Synthetic cursors, appended — development only, and nothing in a production build.
+   *
+   * Placed in whichever surface this agent is actually on, so they land where real ones would: world
+   * units on a canvas, fractions of the content box anywhere else. `fakeTick` is what moves them; see
+   * the timer below for why they move at all.
+   */
+  function fakeMarks(): LiveDecoration[] {
+    if (!devCursorsAvailable) return [];
+    const count = fakeCount();
+    if (count <= 0) return [];
+    fakeTick();
+    const frame = view?.frame();
+    const surface = frame?.surface ?? '';
+    if (!surface) return [];
+    return devCursorMarks(
+      devCursorAnchors(count, surface, surface.startsWith('canvas:') ? 'world' : 'viewport', now()),
+    );
+  }
 
   // ── Driving, and following ─────────────────────────────────────────────────
 
@@ -452,7 +484,31 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     if (followingDid() && !following()) stopFollowing();
   });
 
+  /**
+   * Move the synthetic cursors, and only while there are some.
+   *
+   * A timer rather than an animation frame: the marks are read through the decoration accessor, so what
+   * is wanted is a signal changing at roughly the rate a real cursor arrives — which is also the rate
+   * worth judging the transition against. An animation frame would move them at sixty a second and show
+   * a smoothness no real cursor ever has.
+   */
+  const retimeFakes = (count: number) => {
+    if (fakeTimer) clearInterval(fakeTimer);
+    fakeTimer = null;
+    if (!devCursorsAvailable || count <= 0) return;
+    fakeTimer = setInterval(() => setFakeTick(fakeTick() + 1), 100);
+  };
+  if (devCursorsAvailable) retimeFakes(fakeCount());
+
+  const setFakes = (count: number) => {
+    const next = writeDevCursorCount(count);
+    setFakeCount(next);
+    retimeFakes(next);
+    bumpCursors();
+  };
+
   onDispose?.(() => {
+    if (fakeTimer) clearInterval(fakeTimer);
     stopPointer?.();
     stopDecorating?.();
     if (publishTimer) clearInterval(publishTimer);
@@ -502,6 +558,21 @@ export function createLiveStore(deps: ModuleStoreDeps) {
       'The name of whoever this agent is following.',
     ),
     problem: state(problem, 'Why something could not be done, as a sentence to show, or empty.'),
+
+    /*
+      Synthetic cursors, present only in a development build.
+
+      Spread conditionally at *definition* time rather than gated inside the action, so a production
+      bundle has no `addFakeCursor` to call rather than one that does nothing — the same shape the call
+      module's fake participants take.
+    */
+    ...(devCursorsAvailable
+      ? {
+          fakeCursorCount: state(fakeCount, 'How many synthetic cursors are on screen — development only.'),
+          addFakeCursor: action(() => setFakes(fakeCount() + 1), 'One more synthetic cursor.'),
+          removeFakeCursor: action(() => setFakes(fakeCount() - 1), 'One fewer synthetic cursor.'),
+        }
+      : {}),
 
     toggleCursors: action(toggleCursors, 'Share this agent’s pointer and show other people’s, or stop.'),
     takeWheel: action(takeWheel, 'Take the wheel, so anybody who opts in follows this screen.'),

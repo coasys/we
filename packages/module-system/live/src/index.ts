@@ -31,11 +31,12 @@
  */
 import { defineModule, type ModuleDefinition, type ModuleHost } from '@we/module-shared';
 
-import { cursorToggle, driverStrip, problemStrip, wheelButton } from './Live.schema';
+import { devCursorsAvailable } from './devCursors';
+import { cursorToggle, driverStrip, fakeCursorControls, problemStrip, wheelButton } from './Live.schema';
 import { createLiveStore } from './store';
 
 export { CURSOR_TTL_MS, cursorIntervalMs, LIVE_PROTOCOL_VERSION, parseLiveMessage, VIEW_REPEAT_MS } from './protocol';
-export { cursorToggle, driverStrip, problemStrip, wheelButton } from './Live.schema';
+export { cursorToggle, driverStrip, fakeCursorControls, problemStrip, wheelButton } from './Live.schema';
 export { createLiveStore, type LiveFace, type LiveStore } from './store';
 
 export const liveModule: ModuleDefinition = defineModule({
@@ -60,7 +61,13 @@ export const liveModule: ModuleDefinition = defineModule({
      * arrangement. A workshop template with its own chrome places `cursorToggle` beside its own
      * controls; the anchors below are the default for a deployment that arranges nothing.
      */
-    parts: { cursorToggle, wheelButton, driverStrip },
+    parts: {
+      cursorToggle,
+      wheelButton,
+      driverStrip,
+      // Development only, and absent rather than inert in a production bundle — see `devCursors.ts`.
+      ...(devCursorsAvailable ? { fakeCursorControls } : {}),
+    },
 
     /**
      * The default homes: the two anchors the call module opened.
@@ -74,6 +81,7 @@ export const liveModule: ModuleDefinition = defineModule({
       { anchor: 'call-controls', node: wheelButton, order: 21 },
       { anchor: 'call-status', node: driverStrip, order: 10 },
       { anchor: 'call-status', node: problemStrip, order: 11 },
+      ...(devCursorsAvailable ? [{ anchor: 'call-controls', node: fakeCursorControls, order: 22 }] : []),
     ],
 
     /**

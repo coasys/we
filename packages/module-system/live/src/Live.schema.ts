@@ -190,3 +190,64 @@ export const problemStrip: SchemaNode = {
     },
   },
 };
+
+/**
+ * `−  N  +` — how many synthetic cursors are on screen.
+ *
+ * In the bar rather than behind a console incantation, for the reason the call module's fake
+ * participants are: what this is for is changing the count and watching several eased marks travel at
+ * once, and leaving the app to set a `localStorage` key breaks exactly that loop. Being on screen is
+ * also what stops it being silently left on.
+ *
+ * Contributed only in a development build, by a conditional spread at the definition rather than a
+ * `$if` here, so the node does not exist in a production bundle rather than merely rendering nothing in
+ * one.
+ */
+export const fakeCursorControls: SchemaNode = {
+  type: 'Row',
+  props: { gap: '100', ay: 'center', pointerEvents: 'auto' },
+  children: [
+    { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+    {
+      type: 'we-tooltip',
+      props: { content: 'One fewer synthetic cursor', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            square: true,
+            size: 'sm',
+            variant: 'ghost',
+            disabled: { $: '!modules.live.fakeCursorCount' },
+            // Zero-argument: the schema layer has no arithmetic, so "the count minus one" is the
+            // store's to work out.
+            onClick: { $action: 'modules.live.removeFakeCursor' },
+          },
+          children: [{ type: 'we-icon', props: { name: 'minus' } }],
+        },
+      ],
+    },
+    {
+      type: 'we-tooltip',
+      props: { content: 'Synthetic cursors — development only', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
+          children: [{ type: 'we-number', props: { value: { $: 'modules.live.fakeCursorCount' } } }],
+        },
+      ],
+    },
+    {
+      type: 'we-tooltip',
+      props: { content: 'One more synthetic cursor', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          props: { square: true, size: 'sm', variant: 'ghost', onClick: { $action: 'modules.live.addFakeCursor' } },
+          children: [{ type: 'we-icon', props: { name: 'plus' } }],
+        },
+      ],
+    },
+  ],
+};
