@@ -30,6 +30,7 @@
  * type.
  */
 import type { Activity, EphemeralPort, Peer, TranscriptionPort } from '@we/backend-shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 import type { InterpretationKernel } from './interpretation';
 import type { CreateEntityOptions, DatasetTarget } from './module';
@@ -39,6 +40,7 @@ export interface ModuleKernels {
   records: RecordsKernel;
   agentData: AgentDataKernel;
   presence: PresenceKernel;
+  view: ViewKernel;
   ephemeral: EphemeralPort;
   media: MediaKernel;
   peerConnection: PeerConnectionKernel;
@@ -55,6 +57,7 @@ export const KERNEL_NAMES: readonly KernelName[] = [
   'records',
   'agentData',
   'presence',
+  'view',
   'ephemeral',
   'media',
   'peerConnection',
@@ -264,6 +267,178 @@ export interface PresenceKernel {
   /** Publish an activity of this agent's own. */
   setActivity: (activity: Activity) => void;
   clearActivity: (type: string, id?: string) => void;
+}
+
+// ── The screen ──────────────────────────────────────────────────────────────
+
+/**
+ * A point on somebody's screen, in a frame that survives the difference between two screens.
+ *
+ * ## Why not pixels
+ *
+ * The obvious wire format for a cursor is the pixel it is at, and it is wrong in every case that
+ * matters here. Two agents looking at the same space have different window sizes, different panels
+ * docked taking different amounts of room, different zoom on the canvas, and a sidebar one of them
+ * has collapsed. A pixel offset means "somewhere else entirely" on the receiving screen, and the
+ * failure is invisible to whoever sent it: their own cursor is always in the right place.
+ *
+ * So nothing here is a pixel. A point names the **frame** it is in and its coordinates within that
+ * frame, and the receiver resolves it against its own copy of the same frame — or, when it does not
+ * have that frame on screen, draws nothing at all. Drawing nothing is the correct answer and the
+ * reason the route roster exists beside this: a cursor that has vanished is explained by a face
+ * appearing on another route, not by a cursor drawn at a guess.
+ *
+ * ## The three frames, and why exactly three
+ *
+ * - `world` — a canvas's own coordinate space, which is the space its content is *stored* in. Two
+ *   agents at different zoom on the same canvas agree about world units by construction, so this
+ *   needs no correction at all and pans and zooms with the drawing for free.
+ * - `record` — a record's box, plus a fraction of it. What a flow layout has instead of coordinates:
+ *   a kanban column is wherever the columns before it ended, so the only durable thing to measure
+ *   against is the card. Survives a different column width, a different scroll position, and a
+ *   window that wraps its rows differently.
+ * - `viewport` — a fraction of the content box, inside whatever the panels have left. The honest
+ *   fallback for a region with neither a camera nor a record under the pointer, and the only one of
+ *   the three that is approximate.
+ *
+ * A fourth was considered and refused: the DOM path to the element under the pointer. It is precise
+ * and it is a coupling to the rendered tree, so a template that rearranged its own layout would
+ * move every peer's cursor somewhere arbitrary — and a template is data that changes under you.
+ * A record id is the one thing two agents are guaranteed to agree about.
+ */
+export interface LiveAnchor {
+  /**
+   * Which coordinate frame this point is in. A canvas names itself by its own record
+   * (`canvas:<id>`); a route's content box names the path (`route:<path>`). Opaque to a module: the
+   * host stamps it on the way out and matches it on the way in, and a frame nobody on this screen
+   * has is a decoration nobody draws.
+   */
+  surface: string;
+  /** How to read {@link x} and {@link y}. See the three frames above. */
+  kind: 'world' | 'record' | 'viewport';
+  /** World units for `world`; a fraction of the box for `record` and `viewport`. */
+  x: number;
+  y: number;
+  /** The record the fraction is measured against. Only meaningful for `record`. */
+  record?: string;
+}
+
+/**
+ * What somebody is looking at, in enough detail for somebody else to look at the same thing.
+ *
+ * The address **with its query string**, because in WE half of what a page is showing lives there —
+ * which call is on screen, which lens the key is set to, what is folded. A follower sent a bare
+ * pathname would land on the same route showing a different subject, which reads as the driver
+ * having navigated somewhere they did not.
+ */
+export interface ViewFrame {
+  /** The whole address, query included — `/space/abc/canvas?call=xyz&colour=state`. */
+  path: string;
+  /** The surface being looked at, named as {@link LiveAnchor.surface} names it. */
+  surface?: string;
+  /**
+   * For a surface with a camera: the **world rectangle visible**, not the camera's own x, y and zoom.
+   *
+   * The distinction is the whole of whether following works. A follower's panel is a different shape
+   * from the driver's — narrower, because they have the transcript open — so copying a zoom level
+   * shows them a different amount of the canvas, and copying a centre point plus a zoom puts the
+   * thing being pointed at off their screen. Sent as a region, the follower fits it to whatever box
+   * they have, and both of them are looking at the same content.
+   */
+  region?: { x: number; y: number; width: number; height: number };
+  /**
+   * For a scrolling surface: the record nearest the top of what is visible, and how far it is
+   * scrolled past, as a fraction of its own height.
+   *
+   * A scroll offset in pixels is the same mistake as a cursor in pixels one axis along — the
+   * follower's content is a different height, so the same number is a different place in the list.
+   */
+  anchor?: { record: string; offset: number };
+}
+
+/**
+ * Something to draw on somebody else's surface, positioned by the host.
+ *
+ * ## Why the mark is a `SchemaNode`
+ *
+ * A cursor is a picture of a person, and what it looks like is presentation — which in WE is data,
+ * so that a deployment can restyle it and a theme reaches it. The module says *what* to draw and
+ * *where*; the host owns the positioning, which is measurement, and the easing, which is animation.
+ * That split is what keeps this general: the next four things that want to sit on a canvas at a
+ * point — a highlight on a record an extraction pass touched, a comment pin, "two people are reading
+ * this", a laser pointer — are all `{ id, at, node }` and need no new kernel.
+ *
+ * The node is stable while the peer is; only `at` changes as they move, and the host applies that as
+ * a transform on a wrapper it owns rather than re-rendering anything. So a moving cursor costs one
+ * style write per frame, not a schema render.
+ */
+export interface LiveDecoration {
+  /**
+   * Stable for as long as this decoration is the same thing — a peer's agent id for their cursor.
+   * The host keys its wrapper by it, so a peer moving is a transform and not a remount, which is
+   * what makes easing possible at all.
+   */
+  id: string;
+  at: LiveAnchor;
+  /** What to draw. Positioned by its own centre-top, as a pointer is. */
+  node: SchemaNode;
+  /**
+   * Ease toward each new position rather than jumping to it. Default false.
+   *
+   * True for a cursor, false for anything anchored to a record. A cursor arrives at whatever rate
+   * the transport manages — a dozen times a second at best — and drawn without interpolation that
+   * reads as a stuttering jump rather than as a hand moving. A pin on a card is where it is.
+   */
+  ease?: boolean;
+}
+
+/**
+ * The screen this agent is looking at: where their pointer is, what is in view, and what to draw
+ * on top.
+ *
+ * ## Why this is a kernel and not something a module could do itself
+ *
+ * Every question here is measurement or a browser API, which is the one category the contribution
+ * ladder reserves for code — and all of it is the *host's* code specifically, because the answers
+ * live in things a module cannot see: the graph engine's camera, the DOM under the pointer, the
+ * router, and the insets the panels have taken. A module that reached for any of them directly
+ * would be a module that breaks when the shell rearranges, which is the coupling the whole contract
+ * exists to prevent.
+ *
+ * What is left for a module is everything that is actually its own: when to publish, how often, what
+ * a cursor looks like, who is allowed to see it, and what following somebody means.
+ */
+export interface ViewKernel {
+  /**
+   * Called as this agent's pointer moves, with where it is — or `null` when it leaves the window or
+   * moves somewhere no frame can describe. Returns its own unsubscribe.
+   *
+   * A callback rather than a reactive accessor, which is the opposite of how most kernels report
+   * state, for one reason: this changes sixty times a second and nothing downstream wants to re-run
+   * that often. A signal would make every reader a sampler by accident, where a stream lets the one
+   * consumer that cares decide its own rate. The host still coalesces to one report per frame, so a
+   * module is never called more often than the screen changes.
+   */
+  onPointer: (cb: (at: LiveAnchor | null) => void) => () => void;
+  /** What this agent has in view, read reactively. */
+  frame: () => ViewFrame;
+  /**
+   * Show this agent what somebody else has in view: go to the address, then put the surface where
+   * they have it.
+   *
+   * The one action here, and deliberately not a router: a module hands over a frame it was given and
+   * cannot construct an address of its own, which is what keeps `Installing a module never changes
+   * the address space` true of a module that can move somebody between pages.
+   */
+  apply: (frame: ViewFrame) => void;
+  /**
+   * Draw these, wherever their surfaces are on screen. Read reactively, so the host re-reads when
+   * the module's own state changes. Returns its own unsubscribe.
+   *
+   * A decoration whose surface is not on screen is not drawn and is not an error — that is the
+   * ordinary case for a peer on another route.
+   */
+  decorate: (get: () => LiveDecoration[]) => () => void;
 }
 
 /**
