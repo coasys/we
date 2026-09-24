@@ -765,6 +765,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     anchorOnCanvas: action('content'),
     rerouteOnCanvas: action('content'),
     retargetOnCanvas: action('content'),
+    arrangeOnTree: action('content'),
     // Host wiring, both halves of one mechanism: the graph host reads what is pending and reports
     // the rows it read back. A template has no use for either — it writes through the actions above
     // and the optimism is applied for it.

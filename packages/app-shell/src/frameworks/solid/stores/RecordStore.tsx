@@ -527,6 +527,23 @@ export interface RecordStore {
    */
   retargetOnCanvas: (canvas: string, payload: unknown) => Promise<void>;
   /**
+   * Move a card to another place in a tree, from the graph's `onNodeArrange` payload.
+   *
+   * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy: there a drag writes a
+   * coordinate, and here it writes the structure the layout reads. `relationshipTypeId` says which kind
+   * of connection the tree follows — the community's own vocabulary, and the reader's current choice of
+   * spine, neither of which the store can know.
+   *
+   * Dropping a card ON another makes it a child of it; dropping it BESIDE one reorders it there, which
+   * writes a rank on the placement; dropping it in the unconnected area takes it out of its tree.
+   *
+   * Three things it refuses, each with a toast saying why: a drop that would put a card inside itself,
+   * a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is
+   * where that is explicit), and taking out a connection people have commented on or reacted to, since
+   * removing a parental claim means deleting the record and there is no reversible spelling of that.
+   */
+  arrangeOnTree: (canvas: string, relationshipTypeId: string, payload: unknown) => Promise<void>;
+  /**
    * Set one presentation property of one card — or of a whole selection — on one canvas: colour,
    * shape, content scale, rotation, stacking.
    *
@@ -1422,6 +1439,280 @@ export function RecordStoreProvider(props: ParentProps) {
       if (moved) moves.push({ recordId: card.recordId, recordType: card.recordType, ...moved });
     }
     rememberMoves(canvas, moves);
+  }
+
+  /**
+   * How far apart neighbouring ranks are left when a row has to be renumbered — see `Placement.rank`.
+   *
+   * Wide enough that seating a card between two of them is arithmetic rather than a renumbering, for
+   * more insertions into one gap than anybody will make. When it does run out the row is renumbered,
+   * which is correct and merely slower.
+   */
+  const RANK_STEP = 1024;
+
+  /** A connection of the spine kind, as this file reads one back. */
+  interface SpineLink {
+    id: string;
+    source?: string;
+    target?: string;
+    /** The parent's entity name, which a new connection beside this one needs and cannot derive. */
+    sourceType?: string;
+  }
+
+  /**
+   * Every connection of one community-named kind.
+   *
+   * One query rather than three. An arrange has to know the card's own parent, its prospective
+   * parent's children, and where the target sits among them — and asking separately is three round
+   * trips on a gesture that happens when somebody lets go of a mouse.
+   */
+  async function spineLinks(handle: unknown, relationshipTypeId: string): Promise<SpineLink[]> {
+    const rows = (await getEntity(RELATIONSHIP).findAll(
+      handle as never,
+      {
+        where: { relationshipTypeId },
+      } as never,
+    )) as unknown as SpineLink[];
+    return rows.filter((row) => row && typeof row.id === 'string');
+  }
+
+  /**
+   * Whether `candidate` is `card` itself or somewhere under it, walking up the spine.
+   *
+   * The one check the gesture cannot make. `arrange-nodes` reports geometry, and whether one card is
+   * inside another is a question about which relation the hierarchy is — which only this knows. The
+   * `seen` set is not defensive: the connections are shared, last-write-wins data, so a loop is a
+   * state the space can genuinely be in and a walk without one would hang the tab.
+   */
+  function isUnder(candidate: string, card: string, parentOf: Map<string, SpineLink>): boolean {
+    const seen = new Set<string>();
+    let at: string | undefined = candidate;
+    while (at && !seen.has(at)) {
+      if (at === card) return true;
+      seen.add(at);
+      at = parentOf.get(at)?.source;
+    }
+    return false;
+  }
+
+  /**
+   * Take a card out of its tree, unless that would throw away something somebody said.
+   *
+   * There is no reversible spelling of this. A `Relationship` is the parental claim, so removing the
+   * claim means deleting the record — and a deleted record's links go with it, while re-creating one
+   * earns a new id that nothing pointing at the old one can follow. The canvas's undo stack cannot
+   * help: it replays a write, and a re-created connection is a different record.
+   *
+   * So the line is drawn at whether anything would be lost. A connection is a `WeNode`, so it carries
+   * comments and reactions — an argument about the very claim being rearranged — and one that carries
+   * either is refused, with a toast naming the reason and the way to do it deliberately. A connection
+   * nobody has said anything about is deleted, which is the overwhelmingly common case and exactly
+   * what the gesture means.
+   */
+  async function detachSpine(handle: unknown, linkId: string): Promise<boolean> {
+    const Model = getEntity(RELATIONSHIP);
+    const row = (await Model.findOne(
+      handle as never,
+      {
+        where: { id: linkId },
+        include: { $comments: { from: 'comments', count: true }, $signals: { from: 'signals', count: true } },
+      } as never,
+    )) as unknown as { $comments?: number; $signals?: number } | null;
+    if (!row) return false;
+
+    if (Number(row.$comments ?? 0) > 0 || Number(row.$signals ?? 0) > 0) {
+      toastService.info('People have discussed that connection. Select the line itself to remove it.');
+      return false;
+    }
+    await Model.delete(handle as never, linkId);
+    return true;
+  }
+
+  /**
+   * Seat a card among its siblings: one write where there is room, a renumbering where there is not.
+   *
+   * `ordered` is the siblings this card is joining, already without it and already in the order they
+   * are read in — by the ranks they hold, with anything unranked after them. That last part is what
+   * makes the first drag on a canvas that has never been arranged behave sensibly: the row is
+   * renumbered once in the order it was already being read in, and every later drop is a single write.
+   */
+  async function seatAmong(
+    canvas: string,
+    card: string,
+    ordered: { recordId: string; rank: number }[],
+    index: number,
+  ): Promise<void> {
+    const at = Math.max(0, Math.min(index, ordered.length));
+    const before = ordered[at - 1]?.rank;
+    const after = ordered[at]?.rank;
+
+    /*
+      A gap between two ranks takes its midpoint; either end steps outward by a whole step, so a row
+      can be prepended to and appended to indefinitely. An empty row starts at one step in, leaving
+      room in front of the first card.
+
+      The fourth case is a gap that has closed: two ranks a floating-point hair apart, after enough
+      drops into the same place that there is no midpoint left. Then the row is renumbered, which is
+      the slow path and has to exist — without it the arithmetic silently stops moving the card, which
+      reads as the drag having failed.
+    */
+    const midpoint =
+      before !== undefined && after !== undefined
+        ? (before + after) / 2
+        : before !== undefined
+          ? before + RANK_STEP
+          : after !== undefined
+            ? after - RANK_STEP
+            : RANK_STEP;
+
+    if (!(before !== undefined && after !== undefined && (midpoint === before || midpoint === after))) {
+      await stylePlacement(canvas, card, { rank: midpoint });
+      return;
+    }
+
+    const renumbered = [
+      ...ordered.slice(0, at).map((row) => row.recordId),
+      card,
+      ...ordered.slice(at).map((row) => row.recordId),
+    ];
+    for (const [position, recordId] of renumbered.entries()) {
+      await stylePlacement(canvas, recordId, { rank: (position + 1) * RANK_STEP });
+    }
+  }
+
+  /**
+   * Drag a card to another place in a tree, and write what that meant.
+   *
+   * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy. There the position *is*
+   * the data, so a drag writes a coordinate; here the layout derives the position, so a drag writes
+   * the structure the layout reads. `relationshipTypeId` says which kind of connection the tree
+   * follows, which the store cannot know: what makes a parent a parent is the community's own
+   * vocabulary and the reader's current choice of spine.
+   *
+   * ## Reparenting moves the connection rather than replacing it
+   *
+   * A card already under a parent keeps the same `Relationship`, with its source moved — which is
+   * exactly what `retargetOnCanvas` does when somebody drags a connection's end, and it is what keeps
+   * whatever has been said about the connection rather than deleting an argument about the very claim
+   * being rearranged.
+   *
+   * The cost, stated because it is real: the record keeps its original author, so the claim now reads
+   * as that person having connected two things, one of which they did not choose. That is the tradeoff
+   * dragging a connection's end already makes here, and the alternative loses the thread.
+   *
+   * ## Reordering beside a root is not a detach
+   *
+   * Dropping a card beside a tree's own root would make it a root too, which means taking it out of
+   * its tree — and that is the one thing a drop must not do as a side effect. It is refused, with a
+   * toast pointing at the unconnected zone, where the same act is explicit.
+   */
+  async function arrangeOnTree(canvas: string, relationshipTypeId: string, payload: unknown): Promise<void> {
+    const event = (payload ?? {}) as {
+      recordId?: string;
+      recordType?: string;
+      into?: 'child' | 'sibling' | 'loose';
+      targetId?: string;
+      targetType?: string;
+      before?: boolean;
+    };
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !canvas || !relationshipTypeId || !event.recordId || !event.recordType) return;
+    if (event.into !== 'loose' && !event.targetId) return;
+    // A card dropped on itself is a gesture that went nowhere, not a claim about anything.
+    if (event.targetId === event.recordId) return;
+
+    const handle = dataset.handle;
+    const cardId = event.recordId;
+
+    try {
+      const links = await spineLinks(handle, relationshipTypeId);
+      const parentOf = new Map<string, SpineLink>();
+      const childrenOf = new Map<string, string[]>();
+      for (const link of links) {
+        if (typeof link.source !== 'string' || typeof link.target !== 'string') continue;
+        parentOf.set(link.target, link);
+        (childrenOf.get(link.source) ?? childrenOf.set(link.source, []).get(link.source)!).push(link.target);
+      }
+
+      if (event.into === 'loose') {
+        const held = parentOf.get(cardId);
+        // A card dragged around the zone it is already in has nothing to write.
+        if (held) await detachSpine(handle, held.id);
+        return;
+      }
+
+      const targetId = event.targetId!;
+      const parentId = event.into === 'child' ? targetId : (parentOf.get(targetId)?.source ?? '');
+      if (!parentId) {
+        toastService.info('Drop a card in the unconnected area to take it out of its tree.');
+        return;
+      }
+      if (parentId === cardId) return;
+      if (isUnder(parentId, cardId, parentOf)) {
+        toastService.info('That would put a card inside itself.');
+        return;
+      }
+
+      /** The parent's entity name — named by the drop for a `child`, and read off the spine otherwise. */
+      const parentType = event.into === 'child' ? (event.targetType ?? '') : (parentOf.get(targetId)?.sourceType ?? '');
+
+      const held = parentOf.get(cardId);
+      if (held) {
+        if (held.source !== parentId) {
+          await retargetOnCanvas(canvas, {
+            recordId: held.id,
+            recordType: RELATIONSHIP,
+            end: 'source',
+            nodeId: parentId,
+            nodeType: parentType,
+          });
+        }
+      } else {
+        /*
+          Written here rather than through `connectNodesNow`, which mints a connection carrying no kind
+          at all — right for a line somebody draws and then labels, and wrong for this: a connection
+          that is not of the spine kind is invisible to the tree it was just dragged into, so the card
+          would snap straight back to the unconnected zone.
+        */
+        const created = (await getEntity(RELATIONSHIP).create(
+          handle as never,
+          {
+            relationshipTypeId,
+            sourceType: parentType,
+            targetType: event.recordType,
+          } as never,
+        )) as { setSource?: (v: string) => Promise<unknown>; setTarget?: (v: string) => Promise<unknown> };
+        await created.setSource?.(parentId);
+        await created.setTarget?.(cardId);
+      }
+
+      /*
+        The siblings, as the tree reads them: the parent's children without this card, ordered by the
+        ranks their placements hold. A card with no rank yet sorts after the ranked ones, by id, which
+        is stable and is what the renumbering path below then imprints.
+      */
+      const placements = (await Placement.findAll(handle, {
+        parent: { id: canvas, predicate: PREDICATES.CHILDREN },
+      } as Record<string, unknown>)) as unknown as { node?: string; rank?: number }[];
+      const rankOf = new Map<string, number>();
+      for (const row of placements) if (typeof row.node === 'string') rankOf.set(row.node, Number(row.rank) || 0);
+
+      const ordered = (childrenOf.get(parentId) ?? [])
+        .filter((id) => id !== cardId)
+        .map((id) => ({ recordId: id, rank: rankOf.get(id) ?? 0 }))
+        .sort((a, b) => (a.rank || Infinity) - (b.rank || Infinity) || a.recordId.localeCompare(b.recordId));
+
+      /*
+        Where among them. A drop ON a parent says nothing about order, so the card goes last — which is
+        also where a newly connected card belongs. A drop BESIDE a sibling says exactly where.
+      */
+      const beside = ordered.findIndex((row) => row.recordId === targetId);
+      const index = event.into === 'child' || beside < 0 ? ordered.length : beside + (event.before ? 0 : 1);
+      await seatAmong(canvas, cardId, ordered, index);
+    } catch (error) {
+      console.error('RecordStore: arranging a card in a tree failed', error);
+      toastService.error('Could not move that card.');
+    }
   }
 
   /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
@@ -2421,6 +2712,7 @@ export function RecordStoreProvider(props: ParentProps) {
     anchorOnCanvas,
     rerouteOnCanvas,
     retargetOnCanvas,
+    arrangeOnTree,
     setCardStyle,
     setTypeColor,
     setSpaceTypeColor,
