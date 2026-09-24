@@ -33,6 +33,7 @@ import {
   liveView as state,
   notifyLiveViewChanged,
   onLiveViewChanged,
+  placementIn,
   pointForAnchor,
   regionFor,
   reportPointer,
@@ -295,7 +296,7 @@ export function LiveViewHost() {
   // ── The overlay ────────────────────────────────────────────────────────────
 
   /**
-   * The marks this component draws: everything not addressed to a canvas, resolved to a client point.
+   * The marks this component draws: everything not addressed to a canvas, placed inside the layer below.
    *
    * A mark whose frame is not on this screen resolves to nothing and is dropped, which is the ordinary
    * case for a peer looking at another route. Recomputed when the marks change, when the page moves,
@@ -306,11 +307,11 @@ export function LiveViewHost() {
     geometry();
     const here = routeSurface(routeStore.currentPath());
     const box = content();
-    const out: { mark: LiveDecoration; at: { x: number; y: number } }[] = [];
+    const out: { mark: LiveDecoration; at: { left: string; top: string } }[] = [];
     for (const mark of allMarks(state)) {
       if (mark.at.kind === 'world') continue;
       if (mark.at.surface !== here) continue;
-      const at = pointForAnchor(mark.at, box);
+      const at = placementIn(mark.at, box);
       if (at) out.push({ mark, at });
     }
     return out;
@@ -319,19 +320,42 @@ export function LiveViewHost() {
   /** The store bag chrome renders against. Null for the frames before boot finishes. */
   const bag = () => chromeBag();
 
+  /** The content box as the layer wears it, kept in one memo so the four sides cannot disagree. */
+  const box = createMemo(() => {
+    geometry();
+    return content();
+  });
+
   return (
     <Show when={bag() && placed().length > 0}>
       {/*
-        One fixed, click-through layer for every mark.
+        One fixed, click-through layer for every mark — laid exactly over the content box.
 
-        `position: fixed` because the points are client coordinates — which is what `getBoundingClientRect`
-        gives and what stays correct through a nested scroll container, where an absolutely positioned
-        layer would need to know which one it was inside.
+        `position: fixed` because the geometry is in client coordinates, which is what
+        `getBoundingClientRect` gives and what stays correct through a nested scroll container, where an
+        absolutely positioned layer would need to know which one it was inside.
+
+        **Sized to the content box rather than to the window**, and that is load-bearing rather than
+        tidy: it is what lets a viewport-anchored mark be placed at a percentage, so this element absorbs
+        every change to the projection and the mark's own transition is left to carry only the mark's own
+        motion. See `placementIn` for the whole argument.
+
+        No transition here, deliberately. This box must be where the content is *now* — a transition
+        would be the very lag it exists to keep out of the marks. The known cost is a panel *opening*,
+        where the content region slides over its own 300ms and this jumps, so a mark sits a little off
+        for that one transition. Sharing the chrome's transition variable would fix that and lag this
+        layer behind every window resize instead, which is the worse of the two.
+
+        Nothing is clipped: a record-anchored mark inside a panel resolves to a point outside this box
+        and an absolutely positioned child overflows freely, there being no `overflow` to stop it.
       */}
       <div
         style={{
           position: 'fixed',
-          inset: '0',
+          left: `${box().x}px`,
+          top: `${box().y}px`,
+          width: `${box().width}px`,
+          height: `${box().height}px`,
           'pointer-events': 'none',
           // Above the content and below the app's own chrome. A peer's mark must not paint over a
           // panel's titlebar or a modal: a cursor obscuring a control is worse than one clipped.
@@ -356,24 +380,25 @@ export function LiveViewHost() {
               <div
                 style={{
                   position: 'absolute',
-                  left: '0',
-                  top: '0',
-                  transform: `translate(${entry()?.at.x ?? 0}px, ${entry()?.at.y ?? 0}px)`,
+                  left: entry()?.at.left ?? '0',
+                  top: entry()?.at.top ?? '0',
                   /*
                     The same 90ms linear catch-up the canvas uses, for the same reason — see
                     `.we-graph__decoration--eased`. A record-anchored mark is not eased: it is where its
                     card is, and easing it would animate a pin across the screen when a board reorders.
 
-                    **Suspended while a panel is being dragged.** A resize changes the content box on
-                    every pointer move, so every mark measured against it moves too — legitimately, since
-                    a fraction of a smaller box *is* somewhere else. But the updates arrive far faster
-                    than 90ms, so each transition restarts from wherever the last one had got to: the
-                    marks jitter in place and make almost no progress until the drag ends. Tracking
-                    exactly is the honest answer while the geometry is being dragged, and it is what the
-                    shell publishes `dockResizing` for — the content viewport suspends its own
-                    transitions on the same signal.
+                    On `left`/`top` rather than on a transform, because a percentage is what makes this
+                    correct and `translate()` resolves a percentage against the element's own size — which
+                    is zero here, the origin sitting at the pointer's hot point. The cost is that these
+                    are laid out rather than composited; with a handful of absolutely positioned,
+                    zero-sized marks that is not worth trading the correctness for.
+
+                    **Not suspended during a drag**, unlike the version this replaced. A resize no longer
+                    reaches this value at all: the layer above moves and a percentage goes on meaning the
+                    same thing, so there is nothing to suspend and the mark's own motion keeps its easing
+                    for the whole drag. `placementIn` has the argument.
                   */
-                  ...(entry()?.mark.ease && !shellStore.dockResizing() ? { transition: 'transform 90ms linear' } : {}),
+                  ...(entry()?.mark.ease ? { transition: 'left 90ms linear, top 90ms linear' } : {}),
                 }}
               >
                 {drawn}

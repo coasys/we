@@ -109,6 +109,53 @@ export function anchorForPoint(
 }
 
 /**
+ * Where an anchor sits **inside a container laid over the content box** — as CSS, ready for `left`/`top`.
+ *
+ * ## Why this is not `pointForAnchor` with a subtraction
+ *
+ * Because of what it must NOT do. A mark that is eased carries a transition, and a transition
+ * interpolates whatever value changes — so every quantity baked into that value becomes something the
+ * easing animates. Two quite different motions reach a mark:
+ *
+ * - **its own**, as a new position arrives: a peer moved their pointer, or the harness ticked. Arriving
+ *   at about twelve hertz, this is exactly what wants smoothing, and is the only reason `ease` exists.
+ * - **the projection**, as the box the anchor is a fraction *of* changes: a panel is dragged, a lane is
+ *   resized, the window changes. The mark has not moved at all; where that fraction lands has.
+ *
+ * Easing the second one is wrong twice over. It makes a mark lag behind the layout it is pinned to, and
+ * the updates arrive far faster than the transition lasts, so each one restarts from wherever the last
+ * had reached and the mark shakes in place making almost no progress until the drag ends.
+ *
+ * Suspending the easing during a drag — which is what this replaced — trades that for the other half of
+ * the same problem: the mark's *own* motion stops being smoothed too, so the twelve-hertz arrivals
+ * become visible hops for as long as the drag lasts. Better, and still wrong.
+ *
+ * So the two motions are separated instead, and CSS does it for nothing. A **percentage** is the whole
+ * trick: `left: 52%` has a computed value that does not change when its container is resized, so the
+ * painted position follows the box instantly with no transition to fire, while a genuinely new anchor
+ * changes the percentage and is interpolated as before. The container absorbs the projection; the
+ * percentage carries the motion.
+ *
+ * A record-anchored mark is in pixels, because a record's box is not the container and cannot be made
+ * into one. That is sound because such a mark is never eased: it is where its card is.
+ *
+ * `null` on the same terms as `pointForAnchor`.
+ */
+export function placementIn(
+  anchor: LiveAnchor,
+  content: { x: number; y: number; width: number; height: number },
+  root: ParentNode = document,
+): { left: string; top: string } | null {
+  if (anchor.kind === 'viewport') {
+    // Straight through, with no reference to the box at all — which is the point.
+    return { left: `${anchor.x * 100}%`, top: `${anchor.y * 100}%` };
+  }
+  const at = pointForAnchor(anchor, content, root);
+  if (!at) return null;
+  return { left: `${at.x - content.x}px`, top: `${at.y - content.y}px` };
+}
+
+/**
  * Where an anchor lands on *this* screen, in client pixels — the inverse, for drawing.
  *
  * `null` where the frame cannot be resolved: a record that is not on screen, a surface that is not the

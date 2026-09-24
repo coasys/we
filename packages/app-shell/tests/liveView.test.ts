@@ -13,6 +13,7 @@ import {
   composeFrame,
   createLiveViewState,
   currentPointer,
+  placementIn,
   pointForAnchor,
   REGION_FRESH_MS,
   regionFor,
@@ -22,6 +23,7 @@ import {
   scrollAnchor,
 } from '@shared/liveView';
 import { RECORD_ATTR } from '@we/design-utils';
+import type { LiveAnchor } from '@we/module-shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const CONTENT = { x: 0, y: 0, width: 1000, height: 800 };
@@ -126,6 +128,56 @@ describe('anchoring a point', () => {
     document.body.append(card);
     const anchor = { surface: 'route:/x', kind: 'record' as const, record: 'we://node/"odd"', x: 0, y: 0 };
     expect(() => pointForAnchor(anchor, CONTENT)).not.toThrow();
+  });
+});
+
+describe('placing a mark inside the layer', () => {
+  /*
+    The one assertion that keeps the jitter fixed, and the only one that can.
+
+    A resize changes the content box on every pointer move. Whatever part of a mark's position is
+    measured against that box is a value a transition will animate — so with the position in pixels, a
+    drag made every eased mark chase the layout, each transition restarting before it finished, and the
+    mark shook in place. Suspending the easing for the drag swapped that for the other half of the same
+    problem: the mark's own twelve-hertz motion stopped being smoothed and became visible hops.
+
+    A percentage is what separates the two, and it is only correct for as long as the placement does not
+    consult the box. So the test is not "the number is right" — it is that TWO DIFFERENT BOXES GIVE THE
+    SAME ANSWER. Go back to pixels, however carefully, and this fails.
+  */
+  it('places a viewport mark without consulting the box at all', () => {
+    const anchor: LiveAnchor = { surface: routeSurface('/kanban'), kind: 'viewport', x: 0.25, y: 0.5 };
+
+    const wide = placementIn(anchor, { x: 0, y: 0, width: 1000, height: 800 });
+    const narrow = placementIn(anchor, { x: 320, y: 56, width: 400, height: 300 });
+
+    expect(wide).toEqual({ left: '25%', top: '50%' });
+    // The panel has been dragged 320px inboard and the mark's own style has not changed. The layer moved.
+    expect(narrow).toEqual(wide);
+  });
+
+  it('places a record mark in pixels, measured from the layer’s own corner', () => {
+    const card = boxed({ x: 500, y: 300, width: 200, height: 100 });
+    card.setAttribute(RECORD_ATTR, 'post-1');
+    document.body.append(card);
+    const anchor: LiveAnchor = { surface: routeSurface('/k'), kind: 'record', record: 'post-1', x: 0.5, y: 0.5 };
+
+    /*
+      Pixels, because a record's box is not the layer and cannot be made into one. Sound only because
+      such a mark is never eased — it is where its card is — so there is no transition to mislead.
+      Relative to the layer's corner, since the layer is no longer the window.
+    */
+    expect(placementIn(anchor, { x: 320, y: 56, width: 600, height: 700 })).toEqual({ left: '280px', top: '294px' });
+  });
+
+  it('places nothing for a record that is not on this screen', () => {
+    const anchor: LiveAnchor = { surface: routeSurface('/k'), kind: 'record', record: 'elsewhere', x: 0.5, y: 0.5 };
+    expect(placementIn(anchor, CONTENT)).toBeNull();
+  });
+
+  it('places nothing for a canvas mark, which the graph draws itself', () => {
+    const anchor: LiveAnchor = { surface: 'canvas:c1', kind: 'world', x: 40, y: 90 };
+    expect(placementIn(anchor, CONTENT)).toBeNull();
   });
 });
 
