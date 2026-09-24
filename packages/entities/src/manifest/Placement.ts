@@ -93,6 +93,35 @@ export const Placement: CoreEntityDef = {
       color: { type: 'string', predicate: 'we://color', default: '' },
       /** `note`, `square` or `round`. Empty is unset; anything else is ignored by the renderer. */
       cardShape: { type: 'string', predicate: 'we://card_shape', default: '' },
+      /*
+        Where this card sits among its siblings when the canvas is read as a tree.
+
+        ## Why the placement and not the connection
+
+        A structured reading of a canvas orders each parent's children, and somebody dragging one into
+        place is imprinting an order they want. That order could live on the `Relationship` joining the
+        two cards — which would handle a card under two parents correctly, since it would then have two
+        — and it is the wrong home for it anyway: a relationship is a *claim* somebody made, and
+        rearranging a view must not edit somebody else's claim. Ordering is bookkeeping about how this
+        canvas is read, which is exactly what this record already is, and it is per canvas for the same
+        reason the coordinate is: the same card arranged on two canvases is arranged on each.
+
+        ## Why a fraction rather than an index
+
+        Written as a number somebody can land *between* two existing ones, so seating a card in the
+        middle of eleven siblings is one write rather than twelve. Twelve writes is not merely slower:
+        on a shared, last-write-wins canvas two people reordering different parts of the same tree
+        would each rewrite the whole list and one of them would lose work they could see they had done.
+        One record per fact is the same call `MutedAgent` and the coordinate above both make.
+
+        ## Zero is unset, and negatives are ordinary
+
+        Signed, like `rotation` and `z`: a card dropped in front of the first one takes a rank below
+        whatever that one holds, and a fresh canvas has no ranks at all — so the layout falls back to
+        whatever else it was told to order by, which is what makes "by date" the state a canvas starts
+        in rather than a mode somebody has to choose.
+      */
+      rank: { type: 'number', predicate: 'we://rank', default: 0 },
     },
     relations: {
       /**

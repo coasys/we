@@ -264,6 +264,15 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
   number('contentScale', 'canvasContentScale');
   signed('rotation', 'canvasRotation');
   signed('z', 'canvasZ');
+  /*
+    Where the card sits among its siblings when the canvas is read as a tree — see `Placement.rank`.
+
+    Signed, and namespaced like the rest: a community's own model may well have a property called
+    `rank`, and a card silently ordered by something it happens to hold is the same class of bug the
+    prefix exists to prevent. A layout is told which field to order by, so the name it carries here
+    costs nothing.
+  */
+  signed('rank', 'canvasRank');
   text('color', 'canvasColor');
   text('cardShape', 'canvasCardShape');
   return style;

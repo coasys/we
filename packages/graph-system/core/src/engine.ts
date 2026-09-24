@@ -2250,6 +2250,16 @@ export class GraphEngine {
     return {
       hitTest: (at) => this.index.hitTest(at),
       hitTestEdge: (at, tolerance) => this.hitTestEdge(at, tolerance),
+      regionAt: (at) => {
+        // Last one wins, so a region declared later sits in front — the same rule a style rule cascade
+        // follows, and the only sensible answer for a point two regions both claim.
+        let found: string | null = null;
+        for (const region of this.layoutRegions) {
+          const { minX, minY, maxX, maxY } = region.bounds;
+          if (at.x >= minX && at.x <= maxX && at.y >= minY && at.y <= maxY) found = region.id;
+        }
+        return found;
+      },
       select: (ids, mode) => this.select(ids, mode),
       selection: () => this.getSelection(),
       locked: () => this.locked,

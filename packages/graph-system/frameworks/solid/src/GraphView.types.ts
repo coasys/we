@@ -307,6 +307,40 @@ export interface GraphViewProps {
     carried?: { recordId: string; recordType: string; x: number; y: number }[];
   }) => void;
   /**
+   * The user dragged a card to somewhere else in a hierarchy — see the `arrange-nodes` behaviour.
+   *
+   * Binding it is what makes a structured reading of a graph editable rather than merely viewable, and
+   * it pairs with a layout that derives positions (`forest`, `tree`) exactly as `onNodeDragEnd` pairs
+   * with `manual`. Where positions come from the data, a drag means "put the card here"; where the
+   * layout decides them, it means "change what the layout reads".
+   *
+   * Three intents, told apart geometrically so the gesture needs no knowledge of what a parent means
+   * here:
+   *
+   * - `child` — dropped on `targetId`, which becomes its parent.
+   * - `sibling` — dropped in the gap beside `targetId`, at the same level. `before` says which side,
+   *   and the consumer resolves the actual parent from the target, since only it knows which relation
+   *   the hierarchy is.
+   * - `loose` — dropped out of every tree. No target.
+   *
+   * **Nothing is validated against the graph, and it cannot be.** A drop onto a card's own descendant
+   * would make a cycle, and only the consumer knows which relation to walk to find out. So refuse it
+   * there, and say so — the card has already been handed back to the layout, so a refusal that writes
+   * nothing puts it back where it was with no special case.
+   */
+  onNodeArrange?: (payload: {
+    id: string;
+    into: 'child' | 'sibling' | 'loose';
+    recordId: string;
+    recordType: string;
+    targetId?: string;
+    targetType?: string;
+    before?: boolean;
+    /** Where the pointer let go, for a consumer that also wants to keep a position. */
+    x: number;
+    y: number;
+  }) => void;
+  /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
    * Binding it is what puts the handles on screen — a handle that moved and then changed nothing is

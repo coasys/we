@@ -610,6 +610,31 @@ export function GraphView(props: GraphViewProps) {
           });
           break;
         }
+        case 'nodeArrange': {
+          /*
+            Resolved to records here, exactly as `nodeDragEnd` is: a node address is the engine's
+            business and a store writes against record ids. A card that does not stand for a record has
+            nothing to arrange — a property node, a cluster — so the gesture is dropped rather than
+            reported with an empty id, which a store would then write against nothing.
+          */
+          const at = parseAddress(event.node.id);
+          if (at?.kind !== 'entity' || !at.id) break;
+          const target = event.target ? parseAddress(event.target.id) : undefined;
+          // A target that is not a record is the same case one step along: "under that" means nothing
+          // if "that" cannot be named. Treated as a loose drop, which is the safe reading.
+          const named = target?.kind === 'entity' && target.id ? target : undefined;
+          props.onNodeArrange?.({
+            id: event.node.id,
+            into: named || event.into === 'loose' ? event.into : 'loose',
+            recordId: at.id,
+            recordType: at.type ?? '',
+            ...(named ? { targetId: named.id, targetType: named.type ?? '' } : {}),
+            ...(event.before === undefined ? {} : { before: event.before }),
+            x: event.at.x,
+            y: event.at.y,
+          });
+          break;
+        }
         default:
           break;
       }

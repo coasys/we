@@ -2,6 +2,7 @@ import type { BehaviourContext, PointerInput } from '@we/graph-protocol';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  arrangeNodesBehaviour,
   canvasDoubleClickBehaviour,
   connectNodesBehaviour,
   dispatchPointer,
@@ -56,6 +57,9 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
         )
         .map(([id]) => id),
     selectEdge: vi.fn(),
+    // No named zones in the fake's world. `arrange-nodes` asks first, since a drop into one means
+    // something quite different from a drop in open space — the tests that care override it.
+    regionAt: () => null,
   };
   return Object.assign(base, overrides);
 }
@@ -646,5 +650,150 @@ describe('marqueeSelectBehaviour', () => {
     dispatchPointer([marquee, panZoomBehaviour()], 'onPointerDown', input(0, 0), ctx);
     dispatchPointer([marquee, panZoomBehaviour()], 'onPointerMove', input(150, 150), ctx);
     expect(drawn).toHaveLength(1);
+  });
+});
+
+/**
+ * `arrange-nodes`.
+ *
+ * The three intents are geometric, so they can be told apart without knowing what a parent means on a
+ * given graph. Each of the three has a way of being quietly wrong: a reorder read as a reparent, a drop
+ * out of a tree read as a reorder, and a plain click read as a drop that rewrites the structure.
+ */
+describe('arrangeNodesBehaviour', () => {
+  const grab = (behaviour: ReturnType<typeof arrangeNodesBehaviour>, ctx: BehaviourContext) => {
+    behaviour.onPointerDown!(input(100, 100), ctx);
+  };
+  const emitted = (ctx: BehaviourContext) => (ctx.emit as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+
+  it('reads a drop onto another card as making it a child, and draws the line while it is in progress', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    // A line only for this intent — it is the one the geometry cannot show, and a line is what a
+    // relationship looks like everywhere else on the graph.
+    expect(ctx.drawConnection).toHaveBeenCalledWith('n2', { x: 300, y: 100 });
+
+    behaviour.onPointerUp!(input(300, 100), ctx);
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({ type: 'nodeArrange', into: 'child', target: { id: 'n2' } });
+  });
+
+  it('reads a drop in the gap beside a card as a reorder, and says which side', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour({ band: 40 });
+
+    grab(behaviour, ctx);
+    // Level with n2 and clear of it: between its neighbours rather than onto it.
+    behaviour.onPointerMove!(input(250, 100), ctx);
+    behaviour.onPointerUp!(input(250, 100), ctx);
+
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({
+      type: 'nodeArrange',
+      into: 'sibling',
+      target: { id: 'n2' },
+      before: true,
+    });
+  });
+
+  it('draws no line for a reorder, so the two intents are told apart before the drop', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour({ band: 40 });
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(250, 100), ctx);
+
+    expect(ctx.drawConnection).toHaveBeenCalledWith(null, { x: 250, y: 100 });
+  });
+
+  it('reads a drop past every card as loose rather than guessing a sibling', () => {
+    // A reorder means "between these two". A pointer a long way down an empty rank is not saying that
+    // about a card two screens away — it is saying nothing, and guessing is how a card ends up
+    // somewhere the reader did not put it.
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour({ band: 40, reach: 50 });
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(900, 100), ctx);
+    behaviour.onPointerUp!(input(900, 100), ctx);
+
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({ type: 'nodeArrange', into: 'loose' });
+    expect(emitted(ctx).at(-1)?.[0]).not.toHaveProperty('target');
+  });
+
+  it('reads a drop into a named zone as loose, even though the zone is full of cards', () => {
+    /*
+      The `forest`'s unconnected zone is cards at similar heights, so without asking about regions a
+      drop into it reads as a reorder — the exact opposite of what dragging a card out of a tree means.
+    */
+    const ctx = fakeContext({ regionAt: () => 'forest:unattached' });
+    const behaviour = arrangeNodesBehaviour({ band: 40 });
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    behaviour.onPointerUp!(input(300, 100), ctx);
+
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({ type: 'nodeArrange', into: 'loose' });
+  });
+
+  it('lets a press that went nowhere fall through, so a card can still be selected', () => {
+    // `select` is listed after this one and would otherwise never see a press on a card at all.
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    expect(behaviour.onPointerUp!(input(100, 100), ctx)).toBeUndefined();
+    expect(emitted(ctx)).toHaveLength(0);
+  });
+
+  it('hands the card back to the layout on release, whatever the drop meant', () => {
+    /*
+      Nothing is written here, so the card has to be governed by the arrangement again — and the
+      arrangement is about to change under it. Left pinned, a card whose reparent the consumer refuses
+      would sit in the gap it was dropped in for the life of the page, looking as though it had worked.
+    */
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    behaviour.onPointerUp!(input(300, 100), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledWith('n1', null);
+  });
+
+  it('refuses to start at all on a locked graph', () => {
+    const ctx = fakeContext({ locked: () => true });
+    const behaviour = arrangeNodesBehaviour();
+
+    expect(behaviour.onPointerDown!(input(100, 100), ctx)).toBeUndefined();
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    expect(ctx.pin).not.toHaveBeenCalled();
+  });
+
+  it('gives up when the button is no longer held', () => {
+    // The pointer left the window, or something upstream swallowed the release.
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(200, 100, { buttons: 0 }), ctx);
+    behaviour.onPointerUp!(input(200, 100), ctx);
+
+    expect(emitted(ctx)).toHaveLength(0);
+  });
+
+  it('never makes a card the child of itself', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    // Back where it started, over its own card.
+    behaviour.onPointerMove!(input(105, 100), ctx);
+    behaviour.onPointerUp!(input(105, 100), ctx);
+
+    const event = emitted(ctx).at(-1)?.[0] as { target?: { id: string } };
+    expect(event.target?.id).not.toBe('n1');
   });
 });

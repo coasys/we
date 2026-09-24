@@ -229,6 +229,7 @@ export interface PlacementRecord extends RecordInstance {
   z: number;
   color: string;
   cardShape: string;
+  rank: number;
   node?: string;
 }
 
