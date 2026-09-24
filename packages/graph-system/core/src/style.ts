@@ -303,7 +303,7 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
   if (node.unresolved) {
     visual.opacity = visual.opacity ?? 0.45;
     visual.borderWidth = visual.borderWidth ?? 1;
-    visual.borderColor = visual.borderColor ?? 'neutral-400';
+    visual.borderColor = visual.borderColor ?? 'border-strong';
   }
   return visual;
 }

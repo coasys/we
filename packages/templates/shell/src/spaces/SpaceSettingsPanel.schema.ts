@@ -53,7 +53,7 @@ import { spaceIdentity, spaceSettingsBody } from './SpaceSettings.ts';
  */
 const noSpaceOpen: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['No space open'] },
     {

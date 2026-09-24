@@ -117,7 +117,7 @@ const pageHeader: SchemaNode = {
  */
 const notAWeSpaceNotice: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['Nothing to configure yet'] },
     {
@@ -335,7 +335,7 @@ const communitySection: SchemaNode = {
     condition: { $: 'space.canAdminister' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       $localState: {
         editName: { type: 'string', initial: { $: 'space.name' } },
         editDescription: { type: 'string', initial: { $: 'space.description' } },
@@ -458,7 +458,7 @@ const shareSection: SchemaNode = {
     condition: { $: 'space.shareLink' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       children: [
         {
           type: 'Column',
@@ -488,7 +488,7 @@ const shareSection: SchemaNode = {
                 minWidth: '0',
                 truncate: true,
                 p: '200',
-                bg: 'surface-sunken',
+                bg: 'surface',
                 r: '200',
               },
               children: [{ $: 'space.shareLink' }],
@@ -538,7 +538,7 @@ const shareSection: SchemaNode = {
                         minWidth: '0',
                         truncate: true,
                         p: '200',
-                        bg: 'surface-sunken',
+                        bg: 'surface',
                         r: '200',
                       },
                       children: [{ $: 'space.guestLink' }],
@@ -579,7 +579,7 @@ const shareSection: SchemaNode = {
  */
 const personalAppearanceSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -710,7 +710,7 @@ const moduleRow: SchemaNode = {
 
 const modulesSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -806,7 +806,7 @@ const moduleSettingsSection: SchemaNode = {
     condition: { $: 'count(spaceStore.spaceModuleSettings)' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       children: [
         {
           type: '$each',
@@ -928,7 +928,7 @@ const moduleSettingsSection: SchemaNode = {
  */
 const autoInterpretSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Row',
@@ -998,7 +998,7 @@ const autoInterpretSection: SchemaNode = {
  */
 const threadModeSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Row',
@@ -1062,7 +1062,7 @@ const threadModeSection: SchemaNode = {
  */
 const extractionTargetsSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',

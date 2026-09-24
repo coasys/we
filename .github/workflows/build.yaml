@@ -302,3 +302,21 @@ jobs:
       # it on the way in.
       - name: Validate schemas
         run: pnpm validate:schemas
+
+      # The same shape of gap one layer along: a colour that typechecks, validates and renders,
+      # and is wrong in a way only a walk of the composed tree can see.
+      #
+      # `audit:roles` reports a scale position where a role belongs — in a template, and since
+      # September 2026 in the TypeScript and SCSS every template is rendered *through*. A step is
+      # invisible to the contrast corrections at apply time, so nothing else measures it, ever.
+      #
+      # `audit:surfaces` reports a `surface-sunken` that is invisible against its ground. Both were
+      # on-demand reports that nobody ran; both are at zero, which is the moment to gate them.
+      #
+      # Here rather than in Lint because they import and walk the real composed schema trees, which
+      # needs the build — the same reason schema validation is in this job.
+      - name: Audit roles
+        run: pnpm audit:roles
+
+      - name: Audit surfaces
+        run: pnpm audit:surfaces

@@ -40,7 +40,7 @@ export function AiPanel() {
       */
       width="100%"
       height="100%"
-      borderLeft={`1px solid ${tokenVar('color', 'ui-200')}`}
+      borderLeft={`1px solid ${tokenVar('color', 'border')}`}
       data-testid="chat-panel"
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
@@ -71,7 +71,7 @@ export function AiPanel() {
         here; the model is the node's now, configured once in settings for every AI surface.
       */}
       <Show when={!session.assistantAvailable()}>
-        <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
+        <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'border')}`} flexShrink="0">
           <we-text fontSize="300" fontWeight="600" color="text">
             No language model
           </we-text>
@@ -88,7 +88,7 @@ export function AiPanel() {
           ay="center"
           gap="100"
           px="300"
-          borderBottom={`1px solid ${tokenVar('color', 'neutral-200')}`}
+          borderBottom={`1px solid ${tokenVar('color', 'border')}`}
           flexShrink="0"
           overflowX="auto"
         >
@@ -102,7 +102,7 @@ export function AiPanel() {
                   rt="400"
                   px="12px"
                   height="32px"
-                  bg={isActive() ? 'neutral-200' : 'neutral-100'}
+                  bg={isActive() ? 'surface' : 'surface-sunken'}
                   cursor="pointer"
                   whiteSpace="nowrap"
                   flexShrink="0"
@@ -110,7 +110,7 @@ export function AiPanel() {
                   <we-text
                     fontSize="300"
                     prop:fontWeight={isActive() ? '600' : '400'}
-                    color={isActive() ? 'neutral-900' : 'neutral-700'}
+                    color={isActive() ? 'text' : 'text-muted'}
                     onClick={() => session.switchSession(chat.id)}
                     cursor="pointer"
                   >
@@ -152,7 +152,7 @@ export function AiPanel() {
       </Column>
 
       {/* Input area */}
-      <Row ay="end" gap="200" p="400" borderTop={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
+      <Row ay="end" gap="200" p="400" borderTop={`1px solid ${tokenVar('color', 'border')}`} flexShrink="0">
         {/*
           `autoGrow` + `submitOnEnter` rather than a hand-rolled key handler and a guessed
           `maxHeight`. Both were written here first and are now the primitive's, which is also what
@@ -248,7 +248,7 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
       r="400"
       gap="300"
       p={isUser() ? '300' : '0'}
-      bg={isUser() ? 'primary-200' : 'neutral-25'}
+      bg={isUser() ? 'accent-muted' : 'surface'}
       maxWidth={isUser() ? '90%' : '100%'}
       alignSelf={isUser() ? 'flex-end' : 'flex-start'}
     >

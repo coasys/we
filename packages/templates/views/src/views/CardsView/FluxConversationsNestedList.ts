@@ -92,7 +92,9 @@ const subgroupMessagesList: SchemaNode = {
           children: [
             {
               type: 'Column',
-              props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+              // `surface`: these sit inside the subgroup card below, which is itself sunken, so a
+              // second well was the same colour as the first and every message read as one block.
+              props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
               children: [
                 agentByline({ did: { $: 'msg.author' }, timestamp: { $: 'msg.timestamp' } }),
                 { type: 'we-html', props: { color: 'text', content: { $: 'msg.body' } } },

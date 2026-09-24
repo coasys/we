@@ -88,13 +88,13 @@ const templatesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "template.isDefault ? 'surface-sunken' : 'transparent'" },
+                bg: { $: "template.isDefault ? 'accent-muted' : 'transparent'" },
               },
               children: [
                 // Template icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'template.icon' }, size: '20px' } },
                     {
@@ -251,7 +251,7 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -297,7 +297,7 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -348,13 +348,13 @@ const themesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "theme.isDefault ? 'surface-sunken' : 'transparent'" },
+                bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" },
               },
               children: [
                 // Theme icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'theme.icon' }, size: '20px' } },
                     {
@@ -481,7 +481,7 @@ function moduleRow(control: SchemaNode): SchemaNode {
       ax: 'between',
       gap: '300',
       p: '300',
-      bg: 'surface-sunken',
+      bg: 'surface',
       r: '300',
       border: '1px solid border',
     },
@@ -573,7 +573,7 @@ const agentModuleSettingsSection: SchemaNode = {
                 gap: '400',
                 ay: 'center',
                 p: '400',
-                bg: 'surface-sunken',
+                bg: 'surface',
                 r: '300',
                 border: '1px solid border',
               },
@@ -899,7 +899,7 @@ const developerSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },

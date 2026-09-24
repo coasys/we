@@ -86,7 +86,7 @@ export const screenSourcePrompt: SchemaNode = {
                             width: '100%',
                             height: '124px',
                             r: 'media',
-                            bg: 'surface-sunken',
+                            bg: 'surface',
                           },
                         },
                         {

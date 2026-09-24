@@ -10,6 +10,8 @@
     "check:source-consumers": "node scripts/check-source-consumers.mjs",
     "check:we-props": "node scripts/check-we-props.mjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",
+    "audit:roles": "pnpm --filter @we/schema-shared role-audit",
+    "audit:surfaces": "pnpm --filter @we/schema-shared surface-audit",
     "create-module": "node scripts/create-module.mjs",
     "prepare": "pnpm --filter @we/cli run bootstrap && husky && node scripts/install-merge-driver.mjs",
     "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && pnpm store prune",

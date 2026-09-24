@@ -413,9 +413,11 @@ function HueSwatch(props: { hue: number }) {
         width: '20px',
         height: '20px',
         'border-radius': '50%',
+        // role-audit: palette — a preview of the hue being chosen, so it IS the raw value. The rest
+        // of this panel is ordinary chrome and stays on roles.
         background: `hsl(${props.hue} 60% 50%)`,
         'flex-shrink': '0',
-        border: `1px solid ${tokenVar('color', 'neutral-200')}`,
+        border: `1px solid ${tokenVar('color', 'border')}`,
       }}
     />
   );
@@ -480,7 +482,7 @@ function CollapsibleSection(props: {
     if (props.openOn?.()) setOpen(true);
   });
   return (
-    <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
+    <Column borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="0">
       {/*
         A real `<button>`, not a `Row` carrying an `onClick`: the row silently loses the keyboard
         activation and the role, and there is nowhere to put `aria-expanded`. The caret is `xs`,
@@ -1312,7 +1314,7 @@ export function ThemePanel() {
         <we-scroll-area flex="1">
           <Column gap="0" p="400">
             {/* ── Name + icon ── */}
-            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="400" mb="0">
+            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="400" mb="0">
               <SectionLabel>Theme name</SectionLabel>
               <Row gap="200" ay="center">
                 <we-icon-picker
@@ -1382,7 +1384,7 @@ export function ThemePanel() {
                 state, which is the same import that is not available.
               */
               bg="page"
-              borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
+              borderBottom={`1px solid ${tokenVar('color', 'border')}`}
               pb="300"
               pt="300"
             >

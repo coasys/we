@@ -97,7 +97,7 @@ export function CountMark(props: CountMarkProps) {
       styles={props.styles}
       ay="center"
       gap={gap()}
-      color={props.mine ? 'primary-500' : 'neutral-300'}
+      color={props.mine ? 'accent-text' : 'control-surface'}
       hoverProps={{ color: props.mine ? 'primary-500' : 'neutral-400' }}
     >
       {/*

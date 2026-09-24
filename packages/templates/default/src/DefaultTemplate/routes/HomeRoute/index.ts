@@ -48,9 +48,9 @@ export const homeRoute: RouteSchema = {
                       type: 'Card',
                       props: {
                         ax: 'center',
-                        bg: 'surface-sunken',
+                        bg: 'surface',
                         width: '160px',
-                        styles: { cursor: 'pointer' },
+                        cursor: 'pointer',
                         onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
                       },
                       children: [
@@ -68,12 +68,11 @@ export const homeRoute: RouteSchema = {
                             variant: 'body',
                             fontWeight: 'medium',
                             textAlign: 'center',
-                            styles: {
-                              overflow: 'hidden',
-                              'text-overflow': 'ellipsis',
-                              'white-space': 'nowrap',
-                              'max-width': '140px',
-                            },
+                            // `truncate` is the three declarations this used to spell out by hand,
+                            // and it writes them on the part that holds the text rather than on the
+                            // host, which is where `text-overflow` has to be to do anything.
+                            truncate: true,
+                            maxWidth: '140px',
                           },
                           children: [{ $: 'space.name' }],
                         },
@@ -96,7 +95,7 @@ export const homeRoute: RouteSchema = {
             condition: { $: '!count(spaceStore.orderedSidebarItems)' },
             then: {
               type: 'Card',
-              props: { ax: 'center', bg: 'surface-sunken', width: '100%' },
+              props: { ax: 'center', bg: 'surface', width: '100%' },
               children: [
                 // Inside a card that has its own flow, so it does not claim the height a page-level
                 // gate does.

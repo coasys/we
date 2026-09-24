@@ -351,7 +351,11 @@ export const captureMeter: SchemaNode = {
             position: 'relative',
             height: '8px',
             width: '100%',
-            bg: 'surface-sunken',
+            // `control-surface` — the role for a meter's trough, and the one that works here. The
+            // panel's own frame is `chrome`, which a well sits within half a lightness point of in
+            // a light theme, so the track was invisible until it had something in it. Same fact the
+            // extraction chips ran into further down this file.
+            bg: 'control-surface',
             r: 'pill',
             overflow: 'hidden',
           },

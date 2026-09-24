@@ -187,7 +187,7 @@ const noteCard: SchemaNode = {
   children: [
     {
       type: 'Column',
-      props: { bg: 'surface-sunken', r: '300', p: '300', gap: '200', width: '100%' },
+      props: { bg: 'surface', r: '300', p: '300', gap: '200', width: '100%' },
       $queries: {
         shares: { entity: 'NoteShare', where: { noteId: { $: 'note.id' } }, dataset: PERSONAL },
       },

@@ -129,7 +129,7 @@ const itemRow: SchemaNode = {
   children: [
     {
       type: 'Row',
-      props: { bg: 'surface-sunken', r: '300', p: '300', gap: '300', ay: 'center', width: '100%' },
+      props: { bg: 'surface', r: '300', p: '300', gap: '300', ay: 'center', width: '100%' },
       children: [
         {
           // The picture where the snapshot has one, the icon where it does not. The same choice the

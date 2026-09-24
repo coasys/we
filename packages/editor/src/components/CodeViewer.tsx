@@ -69,7 +69,7 @@ export function CodeViewer(props: CodeViewerProps) {
         gap="200"
         px="400"
         py="200"
-        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+        borderBottom={`1px solid ${tokenVar('color', 'border')}`}
         flexShrink="0"
       >
         <Show

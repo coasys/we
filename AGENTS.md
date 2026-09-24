@@ -1903,8 +1903,8 @@ the item is never asked to be narrower than its content in the first place.
 | bgImageTint | ColorValue | Color bgImage fades toward as bgImageOpacity decreases (default: the element's own `bg`, or neutral-0) — only meaningful with bgImageOpacity |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
-| border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
-| borderColor | ColorValue | Border color (token, e.g. "neutral-200", "primary-500") |
+| border | string | Border shorthand (e.g. "1px solid border" — color tokens are resolved) |
+| borderColor | ColorValue | Border color (token, e.g. "border", "border-strong") |
 | borderTop | string | Top border shorthand (color tokens resolved) |
 | borderRight | string | Right border shorthand (color tokens resolved) |
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
@@ -1995,7 +1995,7 @@ min-content — so under it the long string still pushes its container wider tha
 
 `we-text` variants (set via the `variant` prop) bundle typography presets. Always pair with a semantic `tag` prop for correct HTML structure:
 body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
-Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="neutral-400"` explicitly.
+Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="text-muted"` explicitly.
 
 ### State
 
@@ -3803,10 +3803,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "text-faint" } },
         {
           "type": "we-text",
-          "props": { "color": "textFaint", "textAlign": "center" },
+          "props": { "color": "text-faint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -4334,7 +4334,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
 ```json
 {
   "type": "Card",
-  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
+  "props": { "bg": "surface", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -4360,7 +4360,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accent-text" } },
         {
           "type": "Column",
           "props": { "gap": "100" },
@@ -4928,6 +4928,16 @@ it gives consistently styled scrollbars across themes.
 **Token values:** Use `tokenVar` from `@we/design-utils` when you need a token value
 inside a `style={{}}` object. Prefer DS props directly where possible.
 
+**Name a colour ROLE, in code as well as in a schema.** `tokenVar('color', 'text-muted')`, not
+`tokenVar('color', 'neutral-600')` — a step is invisible to the contrast corrections at apply time
+wherever it is written, and `tokenVar` accepts a role name directly. `pnpm audit:roles` covers the
+TypeScript and SCSS as well as the schemas, and gates CI.
+
+Note what `tokenVar` does with a name it does not know: it warns in development and returns
+`var(--we-color-<name>)` anyway, so a typo or an invented family compiles to a variable nothing
+declares and the declaration is dropped. The element paints nothing, which reads as a design
+decision rather than a bug.
+
 Raw inline styles and hardcoded CSS variable strings (`var(--we-color-neutral-400)`)
 are a signal that a DS prop or primitive is being missed — check before reaching for
 `style={{}}`.
@@ -5104,8 +5114,8 @@ tree** rather than grepping source, which is the only way to attribute a node th
 another package contributed:
 
 ```sh
-pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
-pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+pnpm audit:roles                               # a scale position where a role belongs
+pnpm audit:surfaces                            # a surface-sunken invisible against its ground
 pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via `title`
 pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
 ```
@@ -5113,6 +5123,28 @@ pnpm --filter @we/schema-shared query-audit    # queries that read a growing lis
 Run them after any template, view or fragment change. A `neutral-600` label is invisible to the
 whole contrast layer — never measured against what is behind it — so `role-audit` is the only thing
 that will report it.
+
+**The first two gate CI**, so a scale position or an invisible well fails the build rather than
+waiting to be noticed. Both are at zero; keep them there.
+
+`role-audit` has a **code half** as well, which the root script runs by default: paths after
+`--code` are scanned textually rather than imported, because a colour in a `style={{}}`, an
+`.scss` rule or a CodeMirror theme is a string in a file and there is no tree to walk. It reads
+four spellings — `var(--we-color-<hue>-<step>)`, `tokenVar('color', '<hue>-<step>')`, a DS prop in
+TSX (`color="neutral-800"`), and a raw hex or `rgb()` next to a property that paints — plus a name
+handed to `tokenVar` that is **no colour at all**, which compiles to a variable nothing declares and
+paints nothing. Four of the editor's dividers were `ui-200`, a ramp that has never existed.
+
+A genuine palette is exempt, with its reason, in one of two places: `CODE_PALETTES` for a whole file
+(syntax highlighting, a WebGL scene, a theme's own definitions) or a `role-audit: palette` marker in
+the comment above the line, for a file that is mostly chrome and has one swatch. The reasons print on
+every run. `EditorOverlay` is the case worth reading: its annotation colours are fixed on purpose,
+because they are drawn over the template being edited in whatever theme its author is choosing.
+
+`surface-audit` judges a well by what is behind it rather than by the roles table's wording, which
+is looser than the ramp. `surface-sunken` is derived from `page`, so a trough on the page is right;
+on `chrome` it is half a lightness point away and **inverts** between light and dark, and on another
+`surface-sunken` there is no difference at all. Those two fail.
 
 `query-audit` is the one whose findings are invisible in development and expensive in a real space.
 A `$query` with no `limit` re-reads, re-hydrates and re-fingerprints every row of its entity on

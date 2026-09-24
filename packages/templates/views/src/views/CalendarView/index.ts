@@ -95,7 +95,9 @@ const monthPicker: SchemaNode = {
         zIndex: 20,
         width: '260px',
         gap: '200',
-        bg: 'surface-sunken',
+        // A popover with a shadow, floating over the month grid — and the grid is itself sunken, so
+        // this was the same colour as what it floated over. `surface-raised` is the role for it.
+        bg: 'surface-raised',
         border: '1px solid border',
         r: '400',
         p: '300',
@@ -297,7 +299,7 @@ const monthGrid: SchemaNode = {
     // ── The days ─────────────────────────────────────────────────────────────
     {
       type: 'Row',
-      props: { width: '100%', gap: '100', styles: { 'flex-wrap': 'wrap' } },
+      props: { width: '100%', gap: '100', wrap: true },
       children: [
         {
           type: '$each',
@@ -329,7 +331,10 @@ const monthGrid: SchemaNode = {
                 // tint are one decision and were written as a role and a step.
                 border: { $: "cell.date == local.day ? '1px solid accent' : '1px solid transparent'" },
                 hoverProps: {
-                  bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken'" },
+                  // `surface-sunken-hover`, not `surface-sunken`: the month grid this cell sits in
+                  // is itself sunken, so hovering to the same role was no hover at all. That role
+                  // exists for exactly this — a well lifted, rather than a surface pressed.
+                  bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken-hover'" },
                 },
                 /*
                   Clicking the selected day again clears the selection.
