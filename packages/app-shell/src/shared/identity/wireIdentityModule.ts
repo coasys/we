@@ -265,6 +265,7 @@ export async function wireIdentityModule(config: IdentityRpcConfig, agentDid: st
         width: 280,
         margin: 2,
         errorCorrectionLevel: 'M',
+        // role-audit: palette — a QR code must stay black on white to scan, whatever the theme.
         color: { dark: '#000000', light: '#ffffff' },
       });
 
