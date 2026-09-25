@@ -13,6 +13,9 @@
  *   --svg                 Produce SVG via foreignObject instead of PNG
  *   --wait <ms>           Settle time after boot (default: 1500)
  *   --port <n>            Local server port (default: auto)
+ *   --bare                Render the template alone, without the app shell around it
+ *   --route <path>        Route to render (default: /); with --bare, picks one of the template's routes
+ *   --full-page           Capture the whole scrollable page, not only the viewport
  */
 
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -51,16 +54,31 @@ interface RenderArgs {
   svg: boolean;
   wait: number;
   port: number;
+  bare: boolean;
+  route: string;
+  fullPage: boolean;
 }
 
 function parseArgs(argv: string[]): RenderArgs {
-  const args: Partial<RenderArgs> & { width: number; height: number; scale: number; wait: number; port: number } = {
+  const args: Partial<RenderArgs> & {
+    width: number;
+    height: number;
+    scale: number;
+    wait: number;
+    port: number;
+    bare: boolean;
+    route: string;
+    fullPage: boolean;
+  } = {
     width: 1440,
     height: 900,
     scale: 2,
     svg: false,
     wait: 1500,
     port: 0,
+    bare: false,
+    route: '/',
+    fullPage: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -82,6 +100,9 @@ function parseArgs(argv: string[]): RenderArgs {
     else if (arg === '--png') args.svg = false;
     else if (arg === '--wait') args.wait = Number(next());
     else if (arg === '--port') args.port = Number(next());
+    else if (arg === '--bare') args.bare = true;
+    else if (arg === '--route') args.route = next();
+    else if (arg === '--full-page') args.fullPage = true;
     else if (!arg.startsWith('-') && !args.templatePath) args.templatePath = arg;
   }
 
@@ -95,7 +116,10 @@ function parseArgs(argv: string[]): RenderArgs {
         '  --viewport <WxH>      Viewport size (default: 1440x900)\n' +
         '  --scale <n>           Device pixel ratio (default: 2)\n' +
         '  --svg                 SVG output via foreignObject\n' +
-        '  --wait <ms>           Wait after boot (default: 1500)',
+        '  --wait <ms>           Wait after boot (default: 1500)\n' +
+        '  --bare                Render the template alone, without the app shell\n' +
+        '  --route <path>        Route to render (default: /)\n' +
+        '  --full-page           Capture the whole scrollable page',
     );
     process.exit(1);
   }
@@ -247,8 +271,9 @@ async function render(args: RenderArgs): Promise<void> {
       });
       page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
-      const params = new URLSearchParams({ templateUrl: `${base}/__cli_template__`, route: '/' });
+      const params = new URLSearchParams({ templateUrl: `${base}/__cli_template__`, route: args.route });
       if (args.fixture) params.set('fixture', args.fixture);
+      if (args.bare) params.set('bare', '1');
 
       await page.goto(`${base}/?${params}`, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => (window as unknown as Record<string, unknown>).__wePreview !== undefined, {
@@ -266,11 +291,11 @@ async function render(args: RenderArgs): Promise<void> {
       if (args.svg) {
         await writeFile(outputPath, await captureSvg(page, args.width, args.height), 'utf-8');
       } else {
-        await page.screenshot({ path: outputPath });
+        await page.screenshot({ path: outputPath, fullPage: args.fullPage });
       }
 
       console.log(`\ntemplate  ${template.id}`);
-      console.log(`fixture   ${args.fixture ?? '(default)'}`);
+      console.log(`fixture   ${args.bare ? '(bare: no shell)' : (args.fixture ?? '(default)')}`);
       console.log(`viewport  ${args.width}x${args.height} @${args.scale}x`);
       console.log(`output    ${outputPath}`);
       if (info?.path) console.log(`route     ${info.path}`);

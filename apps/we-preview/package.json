@@ -19,6 +19,7 @@
     "@we/backend-shared": "workspace:*",
     "@we/components": "workspace:*",
     "@we/entities": "workspace:*",
+    "@we/schema-solid": "workspace:*",
     "@we/template-fixtures": "workspace:*",
     "solid-js": "^1.9.15"
   },
