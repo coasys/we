@@ -1,8 +1,23 @@
 /* @refresh reload */
 import '@we/app-shell/shared/index.scss';
 
-import { PlatformProvider, StoreProvider, TemplateProvider, type WeSeedFile } from '@we/app-shell/solid';
+import {
+  componentRegistry,
+  PlatformProvider,
+  StoreProvider,
+  TemplateProvider,
+  templateRegistry,
+  type WeSeedFile,
+} from '@we/app-shell/solid';
 import { ToastContainer } from '@we/components/solid';
+import {
+  buildValidationContext,
+  contextData,
+  validateSemantic,
+  validateStructure,
+  type ValidationError,
+} from '@we/schema-shared';
+import { RenderSchema } from '@we/schema-solid';
 import { datasetIdFor, pathFor } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
 
@@ -10,6 +25,67 @@ import rootSeed from '../../../we-seed.json';
 import { inMemoryConnector, requestedFixture } from './platform/inMemoryConnector';
 import { previewPlatform } from './platform/previewPlatform';
 import { PreviewBootstrap } from './PreviewBootstrap';
+
+const params = new URLSearchParams(window.location.search);
+const templateUrl = params.get('templateUrl');
+let externalTemplate: ExternalTemplate | undefined;
+if (templateUrl) {
+  const res = await fetch(templateUrl);
+  if (res.ok) {
+    externalTemplate = (await res.json()) as ExternalTemplate;
+    const id = externalTemplate.id || 'cli-external';
+    (templateRegistry as Record<string, unknown>)[id] = externalTemplate;
+    (window as unknown as Record<string, unknown>).__externalTemplateId = id;
+    reportSchemaFindings(externalTemplate);
+  }
+}
+
+/**
+ * WE's own verdict on an injected template, as console warnings — which `we-render` already relays
+ * under "problems".
+ *
+ * The renderer forgives much of what these checks catch: a spacing step the scale lacks renders no
+ * space rather than an error. A render alone cannot show that, and the author reading it is often
+ * an agent that only has the picture.
+ */
+function reportSchemaFindings(template: unknown): void {
+  const warn = (f: ValidationError) => console.warn(`schema ${f.severity} at ${f.path || '(root)'}: ${f.message}`);
+  let structural: ValidationError[] = [];
+  try {
+    structural = validateStructure(template).errors;
+    // Semantic findings go first because they are specific. The checks assume a well-formed tree and
+    // can throw on a malformed one, which must not cost the render.
+    validateSemantic(template, buildValidationContext(contextData)).errors.forEach(warn);
+  } catch (error) {
+    console.warn(`schema check failed: ${(error as Error).message}`);
+  }
+  // zod reports a bad value once per union branch it failed, all at one path: keep the first.
+  structural.filter((f, i) => structural.findIndex((g) => g.path === f.path) === i).forEach(warn);
+}
+
+type SchemaNode = { type?: string; props?: Record<string, unknown>; children?: unknown[]; [key: string]: unknown };
+type ExternalTemplate = SchemaNode & { id?: string; routes?: Array<SchemaNode & { path?: string }> };
+
+/**
+ * The template alone, with no shell around it: `?bare=1`.
+ *
+ * The full host mounts a template as a space's content, inside the sidebar and the module rail, and
+ * that content area is a query container — so a template cannot even paint over the chrome with a
+ * fixed-position root. A mockup of a screen that is not a space (an onboarding step, an account
+ * page) needs the viewport to itself. Bare mode renders the template's root with its `$routes` slot
+ * replaced by the one route asked for (`?route=`, default `/`), through the same renderer and the
+ * same component registry as the app, inside a surface as the app provides, over empty stores —
+ * which is what a static mockup reads.
+ */
+function bareNode(template: ExternalTemplate, path: string): SchemaNode {
+  const route = template.routes?.find((r) => r.path === path) ?? template.routes?.[0];
+  const { routes: _routes, id: _id, schemaVersion: _v, meta: _meta, ...root } = template;
+  const swap = (children: unknown[] | undefined): unknown[] | undefined =>
+    children?.map((child) =>
+      child && typeof child === 'object' && (child as SchemaNode).type === '$routes' ? route : child,
+    );
+  return route ? { ...root, children: swap(root.children) } : root;
+}
 
 /**
  * The deployment this host runs, derived from the root seed rather than declared beside it.
@@ -37,6 +113,7 @@ const previewSeed: WeSeedFile = {
 };
 
 const fixture = requestedFixture();
+const routeOverride = new URLSearchParams(window.location.search).get('route');
 
 /**
  * The root, composed rather than the packaged `<App/>`.
@@ -45,15 +122,40 @@ const fixture = requestedFixture();
  * lets {@link PreviewBootstrap} sit *inside* the store scope, which it has to, because selecting the
  * fixture's dataset and route is store work. See its docstring for why a URL cannot do it.
  */
-render(
-  () => (
-    <PlatformProvider seed={previewSeed} platform={previewPlatform} backend={inMemoryConnector}>
-      <StoreProvider>
-        <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={pathFor(fixture)} />
-        <TemplateProvider />
-        <ToastContainer />
-      </StoreProvider>
-    </PlatformProvider>
-  ),
-  document.getElementById('root')!,
-);
+const bare = params.get('bare') === '1' && externalTemplate !== undefined;
+
+if (bare) {
+  const path = routeOverride ?? '/';
+  // The app pins html/body/#root to the viewport and scrolls inside; a mockup should grow with its
+  // content, so a full-page capture shows the whole screen.
+  const release = document.createElement('style');
+  release.textContent =
+    'html, body, #root { height: auto !important; min-height: 100%; overflow: visible !important; }';
+  document.head.appendChild(release);
+  render(
+    () => (
+      <RenderSchema
+        // The host's surface, as the full app puts one wherever it mounts a schema tree — without it
+        // no `*UpProps` tier would ever match, and every render would be the phone layout.
+        node={{ type: '$surface', children: [bareNode(externalTemplate!, path)] } as never}
+        stores={{}}
+        registry={componentRegistry}
+      />
+    ),
+    document.getElementById('root')!,
+  );
+  (window as unknown as Record<string, unknown>).__wePreview = { templateId: externalTemplate!.id, path, bare: true };
+} else {
+  render(
+    () => (
+      <PlatformProvider seed={previewSeed} platform={previewPlatform} backend={inMemoryConnector}>
+        <StoreProvider>
+          <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={routeOverride ?? pathFor(fixture)} />
+          <TemplateProvider />
+          <ToastContainer />
+        </StoreProvider>
+      </PlatformProvider>
+    ),
+    document.getElementById('root')!,
+  );
+}
