@@ -301,7 +301,10 @@ async function render(args: RenderArgs): Promise<void> {
       if (info?.path) console.log(`route     ${info.path}`);
       if (problems.length) {
         console.log('\nproblems:');
-        for (const p of [...new Set(problems)].slice(0, 15)) console.log(`  ${p.slice(0, 160)}`);
+        // Errors first: the preview logs its schema warnings before it renders, so they would otherwise fill the list.
+        const unique = [...new Set(problems)].sort((a, b) => +a.startsWith('warning') - +b.startsWith('warning'));
+        for (const p of unique.slice(0, 15)) console.log(`  ${p.slice(0, 160)}`);
+        if (unique.length > 15) console.log(`  … and ${unique.length - 15} more`);
       }
 
       await page.close();

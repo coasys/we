@@ -10,7 +10,13 @@ import {
   type WeSeedFile,
 } from '@we/app-shell/solid';
 import { ToastContainer } from '@we/components/solid';
-import { buildValidationContext, contextData, validateSemantic, validateStructure } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  contextData,
+  validateSemantic,
+  validateStructure,
+  type ValidationError,
+} from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { datasetIdFor, pathFor } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
@@ -43,11 +49,18 @@ if (templateUrl) {
  * an agent that only has the picture.
  */
 function reportSchemaFindings(template: unknown): void {
-  const findings = [
-    ...validateStructure(template).errors,
-    ...validateSemantic(template, buildValidationContext(contextData)).errors,
-  ];
-  for (const f of findings) console.warn(`schema ${f.severity} at ${f.path || '(root)'}: ${f.message}`);
+  const warn = (f: ValidationError) => console.warn(`schema ${f.severity} at ${f.path || '(root)'}: ${f.message}`);
+  let structural: ValidationError[] = [];
+  try {
+    structural = validateStructure(template).errors;
+    // Semantic findings go first because they are specific. The checks assume a well-formed tree and
+    // can throw on a malformed one, which must not cost the render.
+    validateSemantic(template, buildValidationContext(contextData)).errors.forEach(warn);
+  } catch (error) {
+    console.warn(`schema check failed: ${(error as Error).message}`);
+  }
+  // zod reports a bad value once per union branch it failed, all at one path: keep the first.
+  structural.filter((f, i) => structural.findIndex((g) => g.path === f.path) === i).forEach(warn);
 }
 
 type SchemaNode = { type?: string; props?: Record<string, unknown>; children?: unknown[]; [key: string]: unknown };
