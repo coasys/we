@@ -61,6 +61,7 @@
     "@we/module-call": "workspace:*",
     "@we/module-globe": "workspace:*",
     "@we/module-graph": "workspace:*",
+    "@we/module-identity": "workspace:*",
     "@we/module-live": "workspace:*",
     "@we/module-notes": "workspace:*",
     "@we/module-pocket": "workspace:*",
@@ -81,6 +82,7 @@
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
     "lib0": "^0.2.117",
+    "qrcode": "^1.5.4",
     "solid-js": "^1.9.15",
     "three": "^0.185.1",
     "y-protocols": "^1.0.7",
@@ -89,6 +91,7 @@
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
     "@types/node": "^26.4.0",
+    "@types/qrcode": "^1.5.6",
     "@types/three": "^0.185.4",
     "@vitest/coverage-v8": "^4.1.11",
     "@we/backend-inmemory": "workspace:*",

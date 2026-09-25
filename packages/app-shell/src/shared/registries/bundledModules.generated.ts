@@ -10,6 +10,7 @@
 import { createModule as module_call } from '@we/module-call';
 import { createModule as module_globe } from '@we/module-globe';
 import { createModule as module_graph } from '@we/module-graph';
+import { createModule as module_identity } from '@we/module-identity';
 import { createModule as module_live } from '@we/module-live';
 import { createModule as module_notes } from '@we/module-notes';
 import { createModule as module_pocket } from '@we/module-pocket';
@@ -25,5 +26,6 @@ export const bundledModules: Record<string, (host: ModuleHost) => ModuleDefiniti
   notes: module_notes,
   globe: module_globe,
   graph: module_graph,
+  identity: module_identity,
   polls: module_polls,
 };
