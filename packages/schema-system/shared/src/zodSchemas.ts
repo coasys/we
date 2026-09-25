@@ -79,6 +79,11 @@ const themeOverridesShape = {
 
 const zThemeOverrides = z.object(themeOverridesShape).strict();
 
+// `satisfies` checks each schema is no wider than its key's type. This checks the reverse, so a value
+// added to a union there (a fifth `shadowIntensity`) is a type error here rather than a refused theme.
+type _EveryThemeParses = Accepts<z.input<typeof zThemeOverrides>, ThemeOverrides>;
+type Accepts<Schema, T extends Schema> = T;
+
 // --- Token shape Zod schemas ---
 // Each matches the corresponding TypeScript type in types.ts.
 // Tried before the generic z.record() fallback in zSchemaProp so that
