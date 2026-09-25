@@ -214,6 +214,20 @@ export interface EdgeStyle {
    */
   sourceAnchor?: EdgeSide;
   targetAnchor?: EdgeSide;
+  /**
+   * Ignore what one canvas has tidied about this connection — its stored anchors and the points it is bent
+   * through — and draw it as the rules say.
+   *
+   * The precedence above is right on a canvas and wrong wherever the ARRANGEMENT is what carries the
+   * meaning. In a tree every child hangs off its parent's underside and is met at its own top, and that
+   * uniformity is the whole of what makes a rank readable — so a line somebody once pulled to a card's left
+   * side, or bent around something that is no longer in the way, is one card disagreeing with the shape for
+   * a reason that belonged to a different reading of the same records.
+   *
+   * Nothing is unwritten. The route is still stored, still the canvas's, and comes back the moment the
+   * arrangement that reads it does.
+   */
+  ignoreRoute?: boolean;
 }
 
 /** One rule: match, then apply. A rule with no `when` is the base style. */
@@ -344,12 +358,14 @@ const ROUND_STEPS = 24;
  *
  * Minimal point counts rather than a dense resampling of everything, which is the other decision worth
  * stating: the outline is read per frame by four things (the clip, the two text-flow floats and the
- * selection ring), and one of those does real geometry per point.
+ * selection ring), and one of those does real geometry per point. `blendOutlines` sizes itself to the pair
+ * accordingly — a diamond becoming a square is described in eight directions where a circle becoming a note
+ * takes forty.
  *
- * Measured, at the widest pair here: blending and stringifying a 24-point outline for 200 cards costs
- * 0.6 ms a frame, and a 4-point one 0.08 ms. So the JavaScript is free at any card count a canvas
- * holds, and what is left to watch is the browser's own cost for that many changing `clip-path`s — the
- * reason a dense resampling would be a different proposition rather than a slower version of this one.
+ * Measured, blending and stringifying for 200 cards: 0.12 ms a frame for that eight, 0.36 for a
+ * twenty-four, 0.84 for the forty. So the JavaScript is free at any card count a canvas holds, and what is
+ * left to watch is the browser's own cost for that many changing `clip-path`s — which is the reason a dense
+ * resampling of everything would be a different proposition rather than a slower version of this one.
  */
 /**
  * How much of a note's corner is rounded, as a fraction of its box, and in how many steps.

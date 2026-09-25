@@ -30,7 +30,7 @@ import type {
 } from '@we/graph-protocol';
 import { morphOutline } from '@we/graph-protocol';
 
-import { blendOutlines, matchedOutlines, normaliseCurve } from './geometry';
+import { blendOutlines, normaliseCurve } from './geometry';
 
 /** Normalised metric output, by metric id then node id. Produced by the algorithms package. */
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
@@ -383,7 +383,6 @@ export function blendVisual(from: NodeVisual, to: NodeVisual, t: number): NodeVi
   const toShape = to.cardShape ?? 'note';
   if (fromShape === toShape) return blended;
 
-  const [a, b] = matchedOutlines(morphOutline(fromShape), morphOutline(toShape));
-  blended.morph = { outline: blendOutlines(a, b, at), from: fromShape, at };
+  blended.morph = { outline: blendOutlines(morphOutline(fromShape), morphOutline(toShape), at), from: fromShape, at };
   return blended;
 }

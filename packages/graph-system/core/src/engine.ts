@@ -1706,12 +1706,26 @@ export class GraphEngine {
    */
   private beginTravel(before: ReadonlyMap<string, Placement>, travel?: number): void {
     const asked = Math.max(0, travel ?? 0);
-    // Claimed here whether or not a travel starts: a styling nobody travelled away from is not a
-    // styling anything should later be seen returning from.
-    const armed = this.priorNodeStyle;
-    const armedEdges = this.priorEdgeStyle;
-    this.priorNodeStyle = undefined;
-    this.priorEdgeStyle = undefined;
+    /*
+      Claimed only by a travel, and this is the fix for a morph that stopped happening every few switches.
+
+      `setSpec` is called several times for one change — the seeds effect, the layout effect, the style
+      effect — and only the FIRST of them sees the styling change, so only the first arms. Consumed by any
+      relayout, the arm was routinely eaten before the travelling one got to it: a subscription landing, an
+      optimistic write, an expansion, or `refresh` reconciling all relayout without travel, and by the time
+      the layout effect swapped the spec again the rules were already installed and there was nothing left
+      to arm. The positions still travelled and the shapes jumped, intermittently, depending on what
+      happened to land in between.
+
+      A relayout with no travel says nothing about styling. What says the styling has settled is
+      `refreshHitAreas`, which is the other half of this claim.
+    */
+    const armed = asked > 0 ? this.priorNodeStyle : undefined;
+    const armedEdges = asked > 0 ? this.priorEdgeStyle : undefined;
+    if (asked > 0) {
+      this.priorNodeStyle = undefined;
+      this.priorEdgeStyle = undefined;
+    }
     // Carried over, so a re-aim keeps the speed and the deadline the reader's action set rather than
     // restarting the clock on every frame a live query happens to land on.
     const started = new Map([...this.travelAnim].map(([id, anim]) => [id, anim.started]));
@@ -1793,12 +1807,14 @@ export class GraphEngine {
       const now = { from: this.positions.get(sourceId), to: this.positions.get(targetId) };
       if (!was.from || !was.to || !now.from || !now.to) continue;
 
-      const data = { ...edge.data, ...patch };
       const sides = (rules: EdgeStyleRules | undefined) => {
         const style = resolveStyle(edge, rules);
         return {
           curve: normaliseCurve(style.curve as string | undefined),
-          anchors: anchorsOf(data, { source: style.sourceAnchor, target: style.targetAnchor }),
+          anchors: anchorsOf(this.routeData(edge, patch, style.ignoreRoute === true), {
+            source: style.sourceAnchor,
+            target: style.targetAnchor,
+          }),
         };
       };
       // Nothing set aside means the styling did not change, so the rules the lines are leaving are the
@@ -2272,11 +2288,10 @@ export class GraphEngine {
         const style = resolveStyle(edge, this.spec.edgeStyle);
         // Where a connection leaves and arrives, when somebody has said. Off the edge's own data, so
         // whatever loaded it decides — the canvas seed reads them from an `EdgeRoute` — with any
-        // overlay in front, which is how a drag previews and how a write holds until it lands.
-        const anchors = anchorsOf(
-          { ...edge.data, ...patch },
-          { source: style.sourceAnchor, target: style.targetAnchor },
-        );
+        // overlay in front, which is how a drag previews and how a write holds until it lands. Unless the
+        // rules say to ignore one canvas's tidying, which is what makes a tree's ranks uniform.
+        const routed = this.routeData(edge, patch, style.ignoreRoute === true);
+        const anchors = anchorsOf(routed, { source: style.sourceAnchor, target: style.targetAnchor });
         // No node at a loose end, so nothing to stand off from: the line reaches the pointer itself.
         const targetNode = looseTo ? undefined : this.store.node(targetId);
         const sourceNode = looseFrom ? undefined : this.store.node(sourceId);
@@ -2313,7 +2328,7 @@ export class GraphEngine {
           { source: looseFrom ? undefined : anchors.source, target: looseTo ? undefined : anchors.target },
           // Stored in the edge's own frame, so a bend keeps its proportions when either card moves —
           // see `EdgeWaypoint`. Converted here, where both centres are in hand.
-          waypointsOf({ ...edge.data, ...patch }).map((point) => waypointToWorld(point, from, to)),
+          waypointsOf(routed).map((point) => waypointToWorld(point, from, to)),
           /*
             Where this end is *part way to* being anchored — see `travelFacing`.
 
@@ -2335,6 +2350,21 @@ export class GraphEngine {
         if (edge.type !== FOLD_BUNDLE) this.edgeBoxes.set(edge.id, edgeBounds(geometry));
       });
     }
+  }
+
+  /**
+   * What an edge carries about its own route — or nothing, where the rules say to ignore it.
+   *
+   * One function, because the router draws the line and {@link planFacings} works out where its ends are
+   * sweeping from, and a second copy of this rule is how the sweep would come to start at a side the line
+   * was never drawn on. See `EdgeStyle.ignoreRoute`.
+   */
+  private routeData(
+    edge: GraphEdge,
+    patch: Record<string, GraphValue> | undefined,
+    ignore: boolean,
+  ): Record<string, unknown> | undefined {
+    return ignore ? undefined : { ...edge.data, ...patch };
   }
 
   /**

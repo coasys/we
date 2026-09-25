@@ -1062,84 +1062,111 @@ export function edgeBounds(geometry: EdgeGeometry): { minX: number; minY: number
 export type Outline = readonly (readonly [number, number])[];
 
 /**
- * Two outlines of equal length, aligned so the blend between them travels as little as possible.
+ * Directions a blend describes itself in beyond the two shapes' own corners.
  *
- * Blending polygons needs two things a table of shapes does not give you: the same number of points,
- * and a sensible idea of which point becomes which.
- *
- * **Equal length, by splitting edges.** The shorter outline gains points at the midpoints of its
- * longest edges until the counts match, which leaves the shape it describes *identical* — a triangle
- * with a point added halfway along its base is the same triangle. Splitting the longest edge each time
- * spreads the new points where there is most room, so the correspondence stays even.
- *
- * **Alignment, by trying every rotation.** Both tables are clockwise, so the only freedom left is where
- * each one starts, and the naive answer — index 0 to index 0 — is what makes a morph look like a shape
- * being stirred rather than becoming another shape. A triangle's apex should travel to the nearest
- * corner of a box, not to whichever the table happens to list first. Sixteen points is 256 comparisons,
- * once per pair of shapes rather than per frame, so the good answer is affordable.
- *
- * Deliberately not reversal: a clockwise outline blended against an anticlockwise one turns inside out
- * on the way, and every table here is clockwise by construction.
+ * Small on purpose. The corners come from the shapes themselves — see {@link directionsFor} — so this only
+ * has to keep the angular gaps from getting wide, and eight at forty-five degrees already coincides with
+ * every axis and diagonal. It is a floor, not the sampling.
  */
-export function matchedOutlines(from: Outline, to: Outline): [Outline, Outline] {
-  const grown = subdivideTo(from, to.length);
-  const shrunk = subdivideTo(to, from.length);
-  const a = grown.length >= shrunk.length ? grown : from;
-  const b = shrunk.length >= grown.length ? shrunk : to;
-  return [a, alignTo(a, b)];
-}
+const MORPH_FILL = 8;
 
-/** Split the longest edge, repeatedly, until the outline has `count` points. Fewer is a no-op. */
-function subdivideTo(outline: Outline, count: number): Outline {
-  if (outline.length >= count || outline.length < 2) return outline;
-  const points = outline.map((p) => [p[0], p[1]] as [number, number]);
-  while (points.length < count) {
-    let longest = 0;
-    let best = -1;
-    for (let i = 0; i < points.length; i += 1) {
-      const next = points[(i + 1) % points.length];
-      const span = Math.hypot(next[0] - points[i][0], next[1] - points[i][1]);
-      // Ties break on the earlier edge, so the same pair of shapes always matches the same way.
-      if (span > longest + 1e-9) {
-        longest = span;
-        best = i;
-      }
-    }
-    if (best < 0) break;
-    const here = points[best];
-    const next = points[(best + 1) % points.length];
-    points.splice(best + 1, 0, [(here[0] + next[0]) / 2, (here[1] + next[1]) / 2]);
-  }
-  return points;
-}
+/** Clockwise from straight up, the convention the whole shape table is written in. */
+const MORPH_START = -Math.PI / 2;
+const TURN = Math.PI * 2;
 
-/** The rotation of `b` whose points sit closest to `a`'s, index for index. */
-function alignTo(a: Outline, b: Outline): Outline {
-  if (a.length !== b.length || b.length < 2) return b;
-  let bestOffset = 0;
-  let bestCost = Infinity;
-  for (let offset = 0; offset < b.length; offset += 1) {
-    let cost = 0;
-    for (let i = 0; i < a.length; i += 1) {
-      const p = b[(i + offset) % b.length];
-      cost += (p[0] - a[i][0]) ** 2 + (p[1] - a[i][1]) ** 2;
-    }
-    if (cost < bestCost - 1e-12) {
-      bestCost = cost;
-      bestOffset = offset;
-    }
-  }
-  return bestOffset === 0 ? b : b.map((_, i) => b[(i + bestOffset) % b.length]);
+/**
+ * One outline part-way between two, sampled by direction rather than matched point for point.
+ *
+ * **Which point becomes which is the whole problem, and this makes it not a question.** Both outlines are
+ * measured along the same set of directions out of the box's centre and the two distances are lerped, so a
+ * diamond's top vertex becomes whatever the note has straight above its centre — by construction, with no
+ * correspondence to find.
+ *
+ * It replaced exactly that: pad the shorter outline out to the longer one's length by splitting its longest
+ * edges, then try every rotation for the cheapest total travel. A reasonable algorithm, and fine while both
+ * shapes had four points; it fell apart the moment one of them had twenty. A rounded note's points cluster
+ * at its corners, a diamond padded to match spreads its new points evenly along its straight edges, so
+ * vertices mapped to edge midpoints and the card went through a lumpy many-sided thing on the way.
+ *
+ * **It assumes the shapes are convex**, which every one in the table is: a ray out of the centre leaves a
+ * convex outline exactly once, so one distance per direction describes it completely. A star would come out
+ * as its inner hull, and would want a matched-point blend back with a correspondence somebody chose.
+ */
+export function blendOutlines(from: Outline, to: Outline, t: number): Outline {
+  const at = Math.min(1, Math.max(0, t));
+  // Per frame this is a lerp and two multiplies per direction. Everything that needed a ray cast against
+  // the two outlines was answered once, for the pair — see `directionsFor`.
+  return directionsFor(from, to).map(({ ux, uy, a, b }) => {
+    const r = a + (b - a) * at;
+    return [0.5 + ux * r, 0.5 + uy * r] as const;
+  });
 }
 
 /**
- * One outline part-way between two, which must already be matched — see {@link matchedOutlines}.
+ * The directions a pair of shapes is blended along: both of their corners, plus a coarse fill.
  *
- * Straight lerp per point. Nothing cleverer is warranted for these shapes: they are convex, they are
- * all inscribed in the same box, and the blend is on screen for a few hundred milliseconds.
+ * Taking the corners from the shapes is what makes the ends of a blend **exact** rather than approximate.
+ * Between two neighbouring directions neither outline turns — no vertex of either lies in the gap, by
+ * construction — so the chord between two points on a straight edge *is* that edge, and at `t` of 0 or 1
+ * the result is the original shape rather than a polygon that resembles it. Sampled at fixed angles instead,
+ * a corner between two of them is a corner the chord crosses: measured at 1.6% of the card on a pentagon,
+ * and doubling the sample count only took it to 0.8%, because the loss is at sharp vertices rather than
+ * spread around the outline.
+ *
+ * It also sizes itself to the pair. A diamond becoming a square is eight directions; a circle becoming a
+ * note is forty.
+ *
+ * **Cached with the two distances along each of them**, which is the difference between this being free and
+ * being the most expensive thing on the canvas: a ray cast against both outlines per direction per card per
+ * frame measured 4 ms a frame for two hundred cards, where the pair's own answer never changes and a frame
+ * only needs the lerp. The tables are module-level constants and there are at most forty-nine pairs of
+ * them, so a weak map keyed by both is a cache with nothing to evict.
  */
-export function blendOutlines(from: Outline, to: Outline, t: number): Outline {
-  if (from.length !== to.length) return to;
-  const at = Math.min(1, Math.max(0, t));
-  return to.map((p, i) => [from[i][0] + (p[0] - from[i][0]) * at, from[i][1] + (p[1] - from[i][1]) * at] as const);
+interface Sampled {
+  ux: number;
+  uy: number;
+  /** How far the outline being left reaches this way, and the one being arrived at. */
+  a: number;
+  b: number;
+}
+
+const directionCache = new WeakMap<object, WeakMap<object, Sampled[]>>();
+
+function directionsFor(from: Outline, to: Outline): Sampled[] {
+  let byTo = directionCache.get(from);
+  if (!byTo) {
+    byTo = new WeakMap();
+    directionCache.set(from, byTo);
+  }
+  const cached = byTo.get(to);
+  if (cached) return cached;
+
+  // Measured as a turn clockwise from straight up, so sorting them puts the outline in the order every
+  // consumer of one expects.
+  const turned = (angle: number) => (((angle - MORPH_START) % TURN) + TURN) % TURN;
+  const found: number[] = [];
+  const add = (angle: number) => {
+    const spun = turned(angle);
+    if (!found.some((other) => Math.abs(other - spun) < 1e-6)) found.push(spun);
+  };
+  for (let i = 0; i < MORPH_FILL; i += 1) add(MORPH_START + (i / MORPH_FILL) * TURN);
+  for (const [x, y] of [...from, ...to]) add(Math.atan2(y - 0.5, x - 0.5));
+  found.sort((a, b) => a - b);
+
+  const sampled = found.map((spun) => {
+    const angle = MORPH_START + spun;
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    return { ux, uy, a: radiusAt(from, ux, uy), b: radiusAt(to, ux, uy) };
+  });
+  byTo.set(to, sampled);
+  return sampled;
+}
+
+/** How far an outline reaches from the box's centre along one direction, in fractions of the box. */
+function radiusAt(outline: Outline, ux: number, uy: number): number {
+  const reach = polygonReach(ux, uy, outline, 0.5, 0.5);
+  // A closed outline containing its own centre always answers; half a box is the honest fallback if one
+  // somehow does not, since that is the box's own edge.
+  return Number.isFinite(reach) ? reach : 0.5;
 }

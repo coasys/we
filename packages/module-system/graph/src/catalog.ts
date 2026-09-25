@@ -306,6 +306,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n" } }]`,
     },
     {
+      id: 'ignoreRoute',
+      category: 'style',
+      description:
+        "Edge style — ignore what one canvas has tidied about this connection, its stored anchors and the points it is bent through, and draw it as the rules say. The usual precedence is the other way round, and that is right on a canvas: a line somebody pulled to a card's left side is a decision about that connection, narrower than any rule. It is wrong wherever the ARRANGEMENT carries the meaning. In a tree every child hangs off its parent's underside and is met at its own top, and that uniformity is what makes a rank readable — so one line bending around something that is no longer in the way is a card disagreeing with the shape for a reason that belonged to a different reading of the same records. Nothing is unwritten: the route is still stored, still the canvas's, and comes back the moment an arrangement that reads it does.",
+      example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n", "ignoreRoute": true } }]`,
+    },
+    {
       id: 'arrow',
       category: 'style',
       description:

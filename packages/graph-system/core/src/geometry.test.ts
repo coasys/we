@@ -18,7 +18,6 @@ import {
   facingOf,
   fractionAlong,
   groupByEndpoints,
-  matchedOutlines,
   normaliseCurve,
   type Outline,
   pointAlong,
@@ -973,59 +972,88 @@ describe('morphing one card shape into another', () => {
   const triangle = morphOutline('triangle');
   const hexagon = morphOutline('hexagon');
   const circle = morphOutline('round');
+  const diamond = morphOutline('diamond');
+  const shapes = [box, triangle, hexagon, circle, diamond, morphOutline('pentagon'), morphOutline('square')];
 
   /** Every point inside the unit box, which is the space a silhouette is declared in. */
   const inTheBox = (outline: Outline) =>
     outline.every(([x, y]) => x >= -1e-9 && x <= 1 + 1e-9 && y >= -1e-9 && y <= 1 + 1e-9);
 
-  it('gives two outlines the same number of points', () => {
-    const [a, b] = matchedOutlines(triangle, box);
-    expect(a).toHaveLength(b.length);
-    expect(a.length).toBeGreaterThanOrEqual(box.length);
-  });
+  /** How far an outline reaches from the centre along one direction — what the blend is built from. */
+  const reach = (outline: Outline, angle: number) => {
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    let nearest = Infinity;
+    for (let i = 0; i < outline.length; i += 1) {
+      const [ax, ay] = outline[i];
+      const [bx, by] = outline[(i + 1) % outline.length];
+      const px = ax - 0.5;
+      const py = ay - 0.5;
+      const ex = bx - ax;
+      const ey = by - ay;
+      const denominator = ux * ey - uy * ex;
+      if (Math.abs(denominator) < 1e-12) continue;
+      const along = (px * ey - py * ex) / denominator;
+      const across = (px * uy - py * ux) / denominator;
+      if (along > 0 && across >= -1e-9 && across <= 1 + 1e-9) nearest = Math.min(nearest, along);
+    }
+    return nearest;
+  };
 
-  it('leaves the shape it describes unchanged when it adds points', () => {
+  /** Arbitrary directions, deliberately not the ones anything samples at. */
+  const anywhere = [-1.37, -0.41, 0.19, 0.93, 1.66, 2.41, 3.02, -2.2];
+
+  it('is EXACTLY the shape it started from at 0, and the one it is going to at 1', () => {
     /*
-      A triangle with a point added halfway along its base is the same triangle. If that were not true
-      the card would jump at the start of a morph, which is exactly what the morph exists to avoid.
+      Not merely close, and at any angle rather than only at the ones it sampled. The directions come from
+      the two shapes' own corners, so no vertex of either falls between two of them — and between two
+      directions where neither outline turns, the chord *is* the edge. Which is the property that makes a
+      morph continuous at both of its ends rather than starting and finishing with a small pop.
+
+      Measured by reach, because the blend is not the same LIST of points as the table's four or twenty. It is
+      the same shape, which is the thing that has to be true.
     */
-    const [grown] = matchedOutlines(triangle, hexagon);
-    expect(grown).toHaveLength(hexagon.length);
-    // Every original vertex survives, and every added point lies on an original edge.
-    for (const vertex of triangle) {
-      expect(grown.some(([x, y]) => Math.hypot(x - vertex[0], y - vertex[1]) < 1e-9)).toBe(true);
-    }
-    for (const [x, y] of grown) {
-      const onAnEdge = triangle.some((from, i) => {
-        const to = triangle[(i + 1) % triangle.length];
-        const cross = (to[0] - from[0]) * (y - from[1]) - (to[1] - from[1]) * (x - from[0]);
-        const along = (x - from[0]) * (to[0] - from[0]) + (y - from[1]) * (to[1] - from[1]);
-        const span = (to[0] - from[0]) ** 2 + (to[1] - from[1]) ** 2;
-        return Math.abs(cross) < 1e-9 && along >= -1e-9 && along <= span + 1e-9;
-      });
-      expect(onAnEdge).toBe(true);
+    for (const pair of [
+      [triangle, hexagon],
+      [diamond, box],
+      [circle, morphOutline('square')],
+      [morphOutline('pentagon'), triangle],
+    ] as const) {
+      for (const angle of anywhere) {
+        expect(reach(blendOutlines(pair[0], pair[1], 0), angle)).toBeCloseTo(reach(pair[0], angle), 6);
+        expect(reach(blendOutlines(pair[0], pair[1], 1), angle)).toBeCloseTo(reach(pair[1], angle), 6);
+      }
     }
   });
 
-  it('aligns the two so the blend travels as little as it can', () => {
+  it('describes a plain pair in few directions and a curved one in more', () => {
     /*
-      The naive index-0-to-index-0 pairing is what makes a morph look like a shape being stirred. A
-      triangle's apex belongs on the nearest corner of a box, not on whichever corner the table lists
-      first — so the aligned pairing must cost no more than any rotation of it.
+      It sizes itself to the shapes rather than to a constant. Worth pinning because the outline is read per
+      frame by the clip, both text floats and the selection ring, so what it costs is what it is long.
     */
-    const [a, b] = matchedOutlines(triangle, box);
-    const cost = (other: Outline) =>
-      a.reduce((sum, p, i) => sum + (other[i][0] - p[0]) ** 2 + (other[i][1] - p[1]) ** 2, 0);
-    const chosen = cost(b);
-    for (let offset = 1; offset < b.length; offset += 1) {
-      expect(chosen).toBeLessThanOrEqual(cost(b.map((_, i) => b[(i + offset) % b.length])) + 1e-9);
-    }
+    expect(blendOutlines(diamond, morphOutline('square'), 0.5)).toHaveLength(8);
+    expect(blendOutlines(circle, box, 0.5).length).toBeGreaterThan(30);
   });
 
-  it('is the shape it started from at 0 and the one it is going to at 1', () => {
-    const [a, b] = matchedOutlines(triangle, hexagon);
-    expect(blendOutlines(a, b, 0)).toEqual(a.map(([x, y]) => [x, y]));
-    expect(blendOutlines(a, b, 1)).toEqual(b.map(([x, y]) => [x, y]));
+  it('goes straight there, without passing through a shape that is neither', () => {
+    /*
+      The regression this replaced an algorithm over. Matching two outlines point for point needs a
+      correspondence, and the one that was derived — pad the shorter out by splitting its longest edges,
+      then rotate for least total travel — sent a diamond's vertices to the middles of a rounded note's
+      edges, so the card went through a lumpy many-sided thing on the way. Reported as exactly that.
+
+      Blending by direction cannot do it: along any one direction the reach moves monotonically from the one
+      shape's to the other's, so no intermediate outline reaches past both of them anywhere.
+    */
+    for (const angle of [-Math.PI / 2, -1, 0, 0.7, Math.PI / 2, 2.5, Math.PI, 4]) {
+      const low = Math.min(reach(diamond, angle), reach(box, angle)) - 1e-9;
+      const high = Math.max(reach(diamond, angle), reach(box, angle)) + 1e-9;
+      for (const t of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+        const between = reach(blendOutlines(diamond, box, t), angle);
+        expect(between).toBeGreaterThanOrEqual(low);
+        expect(between).toBeLessThanOrEqual(high);
+      }
+    }
   });
 
   it('stays inside the card at every step, for every pair of shapes', () => {
@@ -1033,37 +1061,38 @@ describe('morphing one card shape into another', () => {
       A blend that left the box would draw a card clipped by its own container, and every consumer of an
       outline — the clip, the two floats, the ring, the attach point — assumes 0..1.
     */
-    const shapes = [box, triangle, hexagon, circle, morphOutline('diamond'), morphOutline('pentagon')];
     for (const from of shapes) {
       for (const to of shapes) {
-        const [a, b] = matchedOutlines(from, to);
         for (const t of [0, 0.1, 0.5, 0.9, 1]) {
-          expect(inTheBox(blendOutlines(a, b, t))).toBe(true);
+          expect(inTheBox(blendOutlines(from, to, t))).toBe(true);
         }
       }
     }
   });
 
-  it('matches the same pair the same way every time', () => {
-    // A morph that chose a different correspondence on each run would make the same switch look
-    // different each time, which reads as the graph being unstable.
-    const once = matchedOutlines(circle, triangle);
-    for (let run = 0; run < 3; run += 1) expect(matchedOutlines(circle, triangle)).toEqual(once);
+  it('keeps every corner of every shape, so a square stays square and a diamond stays pointed', () => {
+    for (const shape of shapes) {
+      const outline = blendOutlines(shape, shape, 0);
+      expect(Math.min(...outline.map(([x]) => x))).toBeCloseTo(0, 6);
+      expect(Math.max(...outline.map(([x]) => x))).toBeCloseTo(1, 6);
+      expect(Math.min(...outline.map(([, y]) => y))).toBeCloseTo(0, 6);
+      expect(Math.max(...outline.map(([, y]) => y))).toBeCloseTo(1, 6);
+    }
   });
 
-  it('answers with the destination rather than throwing on a mismatched blend', () => {
-    // Belt and braces: a caller that forgot to match cannot make the card vanish.
-    expect(blendOutlines(triangle, box, 0.5)).toEqual(box);
+  it('answers the same way every time', () => {
+    // A morph that described itself differently on each run would make the same switch look different each
+    // time, which reads as the graph being unstable.
+    const once = blendOutlines(circle, triangle, 0.4);
+    for (let run = 0; run < 3; run += 1) expect(blendOutlines(circle, triangle, 0.4)).toEqual(once);
+  });
+
+  it('clamps rather than extrapolating past either end', () => {
+    expect(blendOutlines(triangle, box, 1.5)).toEqual(blendOutlines(triangle, box, 1));
+    expect(blendOutlines(triangle, box, -0.5)).toEqual(blendOutlines(triangle, box, 0));
   });
 });
 
-/**
- * A facing is one direction out of a node, and four of them happen to have names.
- *
- * The distinction this pins is what makes an anchor *changing* animatable at all: nothing downstream of
- * `facingOf` knows about sides, so a direction half-way between two of them is as routable as either,
- * and the attach point it produces is on the real outline rather than somewhere between two sides.
- */
 describe('facingOf', () => {
   const at = (x: number, y: number) => ({ x, y });
 
@@ -1162,8 +1191,7 @@ describe('an edge meeting a shape mid-morph', () => {
       up, at the next resolution down.
     */
     const half = { halfWidth: 90, halfHeight: 60 };
-    const [from, to] = matchedOutlines(morphOutline('triangle'), morphOutline('note'));
-    const blended = blendOutlines(from, to, 0.5);
+    const blended = blendOutlines(morphOutline('triangle'), morphOutline('note'), 0.5);
 
     // Straight down the middle from below, where a triangle's apex is at the top and a note's edge is
     // the full half-height: the blend has to land between the two.
@@ -1250,9 +1278,8 @@ describe('the note a shape blends into', () => {
   it('keeps a diamond blending into a note inside the note', () => {
     // The pair the report was about. Every intermediate outline has to stay within the box it is clipped
     // in, or the corner rounding has bought a card that spills past its own edge.
-    const [from, to] = matchedOutlines(morphOutline('diamond'), morphOutline('note'));
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
-      for (const [x, y] of blendOutlines(from, to, t)) {
+      for (const [x, y] of blendOutlines(morphOutline('diamond'), morphOutline('note'), t)) {
         expect(x).toBeGreaterThanOrEqual(-1e-9);
         expect(x).toBeLessThanOrEqual(1 + 1e-9);
         expect(y).toBeGreaterThanOrEqual(-1e-9);

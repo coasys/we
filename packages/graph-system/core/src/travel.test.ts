@@ -864,6 +864,35 @@ describe('a rearrangement and a restyling in one flush', () => {
     expect(midway).toBeLessThan(300);
   });
 
+  it('survives a relayout that lands in between, which is what stopped it every few switches', async () => {
+    /*
+      The reported symptom: after a few switches the shapes stop animating and jump, while the positions
+      keep travelling.
+
+      One change calls `setSpec` several times — the seeds effect, the layout effect, the style effect —
+      and only the FIRST sees the styling change, so only the first arms. Anything that relayouts in
+      between then ate the arm, and there are several: a subscription landing, an optimistic write, an
+      expansion, a reconcile. By the time the travelling relayout arrived the rules were already installed,
+      so there was nothing to re-arm, and the morph was silently skipped.
+
+      Rehearsed here in that order: arm, relayout with no travel, swap the same spec in again, then travel.
+    */
+    const engine = await started(spec('left', 100));
+    const wide = spec('right', 300).nodeStyle;
+
+    engine.setSpec({ ...spec('left', 300), nodeStyle: wide });
+    // A subscription landing, in the gap. It rearranges nothing and says nothing about styling.
+    engine.relayout({});
+    // And the layout effect, swapping in a spec whose rules are already the ones in force.
+    engine.setSpec({ ...spec('right', 300), nodeStyle: wide });
+    engine.relayout({ travel: 400 });
+
+    await vi.advanceTimersByTimeAsync(200);
+    const midway = engine.visualOf(nodes()[0]).width!;
+    expect(midway).toBeGreaterThan(100);
+    expect(midway).toBeLessThan(300);
+  });
+
   it('lets go of a styling that nothing is travelling away from', async () => {
     const engine = await started(spec('left', 100));
     // One array, handed over twice. `setSpec` arms on the rules CHANGING, so a fresh copy of the same
@@ -881,5 +910,124 @@ describe('a rearrangement and a restyling in one flush', () => {
     engine.relayout({ travel: 400 });
     await vi.advanceTimersByTimeAsync(200);
     expect(engine.visualOf(nodes()[0]).width).toBe(300);
+  });
+});
+
+/**
+ * One canvas's tidying of one connection, and the arrangement that should not read it.
+ *
+ * A stored anchor beats a style rule, which is right on a canvas: somebody pulled that line to that side of
+ * that card, and no rule about a whole arrangement is a better answer than a decision about the thing
+ * itself. In a tree it is the wrong way round — every child hangs off its parent's underside and is met at
+ * its own top, and that uniformity is the whole of what makes a rank readable.
+ */
+describe('ignoring a stored route', () => {
+  const bent = (): SeedSource => ({
+    id: 'test',
+    async seed() {
+      return {
+        nodes: ['a', 'b'].map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+        edges: [
+          {
+            id: 'a->b',
+            source: 'a',
+            target: 'b',
+            type: 'rel',
+            // What a canvas stores when somebody tidies a line: a side for one end, and a bend.
+            data: { targetAnchor: 'e', waypoints: JSON.stringify([{ along: 0.5, across: 0.4 }]) },
+          },
+        ],
+      };
+    },
+  });
+
+  const grid = {
+    down: () => ({
+      id: 'down',
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, i) => [node.id, { x: 0, y: i * 600 }])),
+      }),
+    }),
+    // The same pair, further apart, so a switch between the two has something to travel across.
+    far: () => ({
+      id: 'far',
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, i) => [node.id, { x: 0, y: i * 1200 }])),
+      }),
+    }),
+  };
+
+  async function engineWith(ignoreRoute: boolean, layout = 'down') {
+    const registry = new PluginRegistry({ seeds: [bent()], expanders: [], layouts: grid });
+    const engine = new GraphEngine({
+      spec: {
+        seeds: { source: 'test' },
+        layout: { type: layout },
+        nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+        edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute } }] as never,
+      },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    return engine;
+  }
+
+  it('honours the stored anchor and the bend by default', async () => {
+    const engine = await engineWith(false);
+    const geometry = engine.getEdgeGeometry().get('a->b')!;
+    const at = engine.getPositions().get('b')!;
+
+    // The stored 'e' wins over the rule's 'n': the line arrives at the card's right-hand side.
+    expect(geometry.to.x - at.x).toBeGreaterThan(80);
+    expect(Math.abs(geometry.to.y - at.y)).toBeLessThan(1);
+    // And the bend is drawn, which a waypointed route says by routing through segments.
+    expect(geometry.segments).toBeDefined();
+  });
+
+  it('draws the rule instead when the rules say to', async () => {
+    const engine = await engineWith(true);
+    const geometry = engine.getEdgeGeometry().get('a->b')!;
+    const at = engine.getPositions().get('b')!;
+
+    // The rule's 'n': met at the top, dead centre, like every other child of every other parent.
+    expect(Math.abs(geometry.to.x - at.x)).toBeLessThan(1);
+    expect(geometry.to.y - at.y).toBeLessThan(-60);
+    // And no bend: one curve shape for the whole rank.
+    expect(geometry.segments).toBeUndefined();
+    expect(geometry.curve).toBe('smooth');
+  });
+
+  it('sweeps from the side the line was actually drawn on', async () => {
+    /*
+      The half that is easy to get wrong. The sweep's starting direction comes from the styling the lines are
+      LEAVING, so it has to honour that styling's answer about stored routes too — which is why one function
+      resolves it for both the router and the plan. Read from the rule instead, the first frame would be the
+      top and the line would jump there before easing anywhere.
+    */
+    const engine = await engineWith(false);
+    const side = (e: GraphEngine) => e.getEdgeGeometry().get('a->b')!.to.x - e.getPositions().get('b')!.x;
+    expect(side(engine)).toBeGreaterThan(80);
+
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'far' },
+      nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+      edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }] as never,
+    });
+    engine.relayout({ travel: 400 });
+
+    // The first frame is still the card's right-hand side, where the line has been all along.
+    expect(side(engine)).toBeGreaterThan(80);
+
+    // And it arrives at the top, having been somewhere in between on the way.
+    const seen: number[] = [];
+    for (let step = 0; step < 14; step += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      seen.push(side(engine));
+    }
+    expect(seen[seen.length - 1]).toBeCloseTo(0);
+    expect(seen.some((x) => x > 5 && x < 80)).toBe(true);
   });
 });
