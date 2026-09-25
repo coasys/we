@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { sanitiseCss } from './sanitiseCss';
+import { fetchesRemotely, sanitiseCss } from './sanitiseCss';
 
 const SCOPE = "[data-we-theme-scope='x']";
 
@@ -37,6 +37,14 @@ describe('the network, which is the exfiltration channel', () => {
     const { css } = sanitiseCss('.a { background: url(data:image/png;base64,AA), url(https://attacker.example/x) }');
     expect(css).not.toContain('attacker.example');
     expect(css).not.toContain('data:image/png');
+  });
+
+  it('counts an image-set as fetching when a bare-string candidate is remote, beside a data URI', () => {
+    // Tested on the value: jsdom drops image-set() while parsing, which a browser does not.
+    expect(fetchesRemotely('image-set("https://attacker.example/x.png" 1x, url(data:image/png;base64,AA) 2x)')).toBe(
+      true,
+    );
+    expect(fetchesRemotely('url(data:image/png;base64,AA)')).toBe(false);
   });
 
   it('drops @import, which changes the theme after you reviewed it', () => {

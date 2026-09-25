@@ -73,14 +73,18 @@ export interface SanitiseCssResult {
 
 /** Values that reach the network. `data:` is allowed — it is bytes, not a request. */
 const FETCHING_VALUE = /(^|[^a-z-])(url\s*\(|image-set\s*\(|-webkit-image-set\s*\()/i;
-const DATA_URI_ONLY = /url\s*\(\s*['"]?data:/i;
+const DATA_URL = /url\s*\(\s*(['"]?)data:[^)]*\1\s*\)/gi;
 
-function fetchesRemotely(value: string): boolean {
-  if (!FETCHING_VALUE.test(value)) return false;
-  // A declaration may hold several `url()`s; every one of them has to be a data URI.
-  const urls = value.match(/url\s*\([^)]*\)/gi) ?? [];
-  if (!urls.length) return true;
-  return urls.some((url) => !DATA_URI_ONLY.test(url));
+/**
+ * Whether a CSS value would make a request. Exported for theme parameters, which become custom
+ * properties without passing through a stylesheet.
+ *
+ * Data URLs are removed first and whatever fetches in the rest counts. Checking only the `url()`s,
+ * as this once did, passed `image-set("https://…" 1x, url(data:…) 2x)`: `image-set()` takes a bare
+ * string as a URL too, so its only `url()` being a data URL said nothing about the request.
+ */
+export function fetchesRemotely(value: string): boolean {
+  return FETCHING_VALUE.test(value.replace(DATA_URL, ''));
 }
 
 /**
