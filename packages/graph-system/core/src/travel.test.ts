@@ -634,6 +634,19 @@ describe('anchor travel', () => {
         positions: new Map(input.nodes.map((node, i) => [node.id, { x: 0, y: i * 600 }])),
       }),
     }),
+    // The same pair as near neighbours — a card and its parent a rank apart, rather than half a screen.
+    near: () => ({
+      id: 'near',
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, i) => [node.id, { x: i * 300, y: 0 }])),
+      }),
+    }),
+    under: () => ({
+      id: 'under',
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, i) => [node.id, { x: 0, y: i * 300 }])),
+      }),
+    }),
   };
 
   const CARD = [{ style: { shape: 'card' as const, width: 180 } }];
@@ -723,6 +736,52 @@ describe('anchor travel', () => {
     expect(landed.y).toBeLessThan(0);
   });
 
+  it('keeps the whole curve continuous, not only its endpoint', async () => {
+    /*
+      The control point, which is where a curve's *shape* lives. A sweep that moved the attachment smoothly
+      while the tangent jumped would satisfy every other test here and still read as the line snapping, so
+      this watches the thing the reader actually sees.
+
+      The reach's own discontinuity — the boolean that says which axis the span is measured on, which flips
+      as a card crosses the diagonal — is too small to separate from the travel's own motion at this scale,
+      and is pinned directly in `geometry.test.ts` instead. What this catches is the facing.
+    */
+    /*
+      Close together, which is where the jump is worth seeing. The spans between the two ATTACH points are
+      each shorter than the span between the centres by the cards' own reach on that axis — by 192 across
+      and 146 down for this card — so the two disagree most, in proportion, when the cards are near
+      neighbours. Which is the ordinary case in a tree.
+    */
+    const engine = await twoCards('near');
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'under' }, nodeStyle: CARD as never });
+    engine.relayout({ travel: 400 });
+
+    const controls: { x: number; y: number }[] = [];
+    for (let step = 0; step < 14; step += 1) {
+      const geometry = engine.getEdgeGeometry().get('a->b')!;
+      const at = engine.getPositions().get('b')!;
+      // Relative to the card, so the card's own travel is not counted as a change of shape.
+      controls.push({ x: geometry.control2!.x - at.x, y: geometry.control2!.y - at.y });
+      await vi.advanceTimersByTimeAsync(40);
+    }
+
+    /*
+      A SPIKE, judged against its NEIGHBOURS.
+
+      Neither a fixed threshold nor a ratio to the average would do. The travel eases out, so the first
+      frame legitimately moves this control a quarter of the way and the last barely at all — a single
+      number judges the curve rather than the discontinuity, and the average is dominated by the fast
+      start. A flip is a frame out of line with the frames either side of it, which is scale-free and
+      survives the easing.
+    */
+    const steps = controls.slice(1).map((point, i) => Math.hypot(point.x - controls[i].x, point.y - controls[i].y));
+    const spike = steps.reduce((most, step, i) => {
+      const neighbours = Math.max(steps[i - 1] ?? 0, steps[i + 1] ?? 0);
+      return neighbours > 0 ? Math.max(most, step / neighbours) : most;
+    }, 0);
+    expect(spike).toBeLessThan(2.5);
+  });
+
   it('is continuous into the ordinary derivation at the end', async () => {
     const engine = await twoCards('across');
     engine.setSpec({
@@ -742,19 +801,35 @@ describe('anchor travel', () => {
     expect(swept.y).toBeCloseTo(offset(settled).y);
   });
 
-  it('sweeps nothing when the rearrangement repins nothing', async () => {
+  it('sweeps a side nobody pinned, because that is the one that jumps', async () => {
+    /*
+      No anchors anywhere — the derived side alone, which follows a boolean: is this span mostly
+      horizontal. A card travelling from beside its parent to below it crosses the diagonal, and the
+      boolean flips in one frame, so the attachment leapt from the card's side to its top. On a shape with
+      a far corner — a diamond, where the two are a long way apart — that reads as the arrowhead jumping
+      off the card and back on.
+
+      So this asserts the *continuity*, frame by frame, rather than any one position: nothing in the sweep
+      may turn faster than the sweep itself.
+      */
     const engine = await twoCards('across');
     engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'down' }, nodeStyle: CARD as never });
     engine.relayout({ travel: 400 });
-    await vi.advanceTimersByTimeAsync(200);
 
-    /*
-      The derived side follows the arrangement on its own — the cards are now one above the other, so the
-      line meets the top — and interpolating toward an answer that was never pinned would be a sweep
-      nobody asked for. Mid-travel the end is on a side, not between two.
-      */
-    const at = offset(engine);
-    expect(Math.abs(at.x) < 1 || Math.abs(at.y) < 1).toBe(true);
+    const angles: number[] = [];
+    for (let step = 0; step < 14; step += 1) {
+      const at = offset(engine);
+      angles.push(Math.atan2(at.y, at.x));
+      await vi.advanceTimersByTimeAsync(40);
+    }
+
+    const worst = angles.slice(1).reduce((most, angle, i) => {
+      const step = Math.abs(Math.atan2(Math.sin(angle - angles[i]), Math.cos(angle - angles[i])));
+      return Math.max(most, step);
+    }, 0);
+    // A quarter turn is the whole of this sweep, so a single frame taking more than a third of it is the
+    // boolean flipping rather than the facing turning.
+    expect(worst).toBeLessThan(Math.PI / 6);
   });
 });
 

@@ -1189,3 +1189,75 @@ describe('an edge meeting a shape mid-morph', () => {
     expect(midMorph.to.y).toBeCloseTo(60);
   });
 });
+
+describe('the diagonal a span crosses', () => {
+  const box = { halfWidth: 90, halfHeight: 67.5, gap: 6 };
+  /** How far the arriving tangent stands off the attachment — the curve's shape, in one number. */
+  const tangent = (to: { x: number; y: number }) => {
+    const route = routeEdge('e', { x: 0, y: 0 }, to, 'smooth', 0, box, 0);
+    return Math.hypot(route.control2!.x - route.to.x, route.control2!.y - route.to.y);
+  };
+
+  it("does not change the curve's shape as the span crosses it", () => {
+    /*
+      The tangent is half the span, and which axis "the span" means used to be a boolean: mostly
+      horizontal, or mostly vertical. A card travelling from beside its parent to below it crosses that
+      line, and the two answers are NOT equal there — each is measured between the attach points, which
+      are shorter than the span between the centres by the card's own reach on that axis, and those two
+      reaches differ. So the boolean flipping changed the whole curve in one frame.
+
+      Two spans a unit either side of the diagonal, and the shape has to be the same on both.
+    */
+    const justHorizontal = tangent({ x: 300, y: 299 });
+    const justVertical = tangent({ x: 299, y: 300 });
+
+    expect(justVertical).toBeCloseTo(justHorizontal, 0);
+  });
+
+  it('still measures the longer axis, which is what the boolean was for', () => {
+    // A span four times as wide as it is tall takes its tangent from the width, not from the height.
+    const wide = tangent({ x: 800, y: 200 });
+    const tall = tangent({ x: 200, y: 800 });
+
+    expect(wide).toBeGreaterThan(200);
+    expect(tall).toBeGreaterThan(200);
+    // And a long span reaches further than a short one, which is the property the halving exists for.
+    expect(tangent({ x: 1600, y: 200 })).toBeGreaterThan(wide);
+  });
+});
+
+describe('the note a shape blends into', () => {
+  it('has a rounded corner, so the corner is round for the whole blend', () => {
+    /*
+      The pop this exists to remove: a card is *clipped* to the blended polygon, so a note drawn as four
+      sharp corners keeps its radius all the way and cannot show it — the polygon cuts the rounded region
+      off — and the radius arrives in one step at the very end, when the clip stops cutting. A rounded
+      polygon is round throughout.
+    */
+    const note = morphOutline('note');
+    // Its extremes still reach the box on every side: a rounded box is a box, not an inset one.
+    expect(Math.min(...note.map(([x]) => x))).toBeCloseTo(0);
+    expect(Math.max(...note.map(([x]) => x))).toBeCloseTo(1);
+    expect(Math.min(...note.map(([, y]) => y))).toBeCloseTo(0);
+    expect(Math.max(...note.map(([, y]) => y))).toBeCloseTo(1);
+    // And no point sits in a box corner, which is what "rounded" means here.
+    expect(note.some(([x, y]) => x < 0.02 && y < 0.02)).toBe(false);
+
+    // A square keeps its corners — that is the whole of what choosing it over a note says.
+    expect(morphOutline('square')).toContainEqual([0, 0]);
+  });
+
+  it('keeps a diamond blending into a note inside the note', () => {
+    // The pair the report was about. Every intermediate outline has to stay within the box it is clipped
+    // in, or the corner rounding has bought a card that spills past its own edge.
+    const [from, to] = matchedOutlines(morphOutline('diamond'), morphOutline('note'));
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      for (const [x, y] of blendOutlines(from, to, t)) {
+        expect(x).toBeGreaterThanOrEqual(-1e-9);
+        expect(x).toBeLessThanOrEqual(1 + 1e-9);
+        expect(y).toBeGreaterThanOrEqual(-1e-9);
+        expect(y).toBeLessThanOrEqual(1 + 1e-9);
+      }
+    }
+  });
+});

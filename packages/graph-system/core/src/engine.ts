@@ -261,6 +261,17 @@ interface Sweep {
   delta: number;
 }
 
+/**
+ * A styling that has been replaced, boxed.
+ *
+ * So that "replaced by nothing" is a different answer from "not replaced". Held bare, a graph whose spec
+ * gained its first edge rules blended from those same rules — the outgoing value being absent read as
+ * nothing having changed — and the lines snapped while every card eased.
+ */
+interface Replaced<T> {
+  rules: T | undefined;
+}
+
 export class GraphEngine {
   readonly store = new GraphStore();
   readonly expansion = new ExpansionState();
@@ -385,11 +396,11 @@ export class GraphEngine {
    * the rules it is leaving are kept. Armed by a {@link setSpec} that changes the styling and consumed
    * by the travel that follows it, so a rearrangement with no restyling behind it blends nothing.
    */
-  private travelStyle?: NodeStyleRules;
+  private travelStyle?: Replaced<NodeStyleRules>;
   /** The styling a travel would come from, set aside by `setSpec` until a travel claims it. */
-  private priorNodeStyle?: NodeStyleRules;
+  private priorNodeStyle?: Replaced<NodeStyleRules>;
   /** The same, for the edges — which is where a *repinned anchor* comes from. See {@link travelFacing}. */
-  private priorEdgeStyle?: EdgeStyleRules;
+  private priorEdgeStyle?: Replaced<EdgeStyleRules>;
   /**
    * The sweep each end of each edge is making, while a travel is in flight: a start angle and the signed
    * turn to the end of it.
@@ -588,8 +599,8 @@ export class GraphEngine {
    * rather than acted on, because a restyling with no rearrangement behind it should morph nothing.
    */
   setSpec(spec: GraphSpec): void {
-    if (spec.nodeStyle !== this.spec.nodeStyle) this.priorNodeStyle = this.spec.nodeStyle;
-    if (spec.edgeStyle !== this.spec.edgeStyle) this.priorEdgeStyle = this.spec.edgeStyle;
+    if (spec.nodeStyle !== this.spec.nodeStyle) this.priorNodeStyle = { rules: this.spec.nodeStyle };
+    if (spec.edgeStyle !== this.spec.edgeStyle) this.priorEdgeStyle = { rules: this.spec.edgeStyle };
     this.spec = spec;
   }
 
@@ -1757,15 +1768,21 @@ export class GraphEngine {
    * aside — by the time a travel is asked for, the rules the lines are leaving are gone. The *new* one
    * comes from where the layout has put them and the rules now in force.
    *
-   * Ends that are not turning are left out, which is the ordinary case: most rearrangements repin
-   * nothing, and a map with no entries costs the router a lookup that misses.
+   * **Every end gets one, including the ones that are not turning.** That looks like waste and is the
+   * point: an end with no plan falls back to the live derivation, and the live derivation reads a boolean
+   * — is this span mostly horizontal — that flips the moment a card travelling from beside its parent to
+   * below it crosses the diagonal. So an end whose start and finish agree could still jump to the side
+   * half-way and jump back, which is exactly what it was reported as. A plan holds it steady instead, and
+   * a zero turn lands where it started.
+   *
+   * Which is also why this runs for every travel rather than only for one that restyles. The flip has
+   * nothing to do with styling; it is the cards moving.
    */
   private planFacings(
     before: ReadonlyMap<string, Placement>,
-    priorEdgeStyle: EdgeStyleRules | undefined,
+    priorEdgeStyle: Replaced<EdgeStyleRules> | undefined,
   ): Map<string, { source?: Sweep; target?: Sweep }> {
     const planned = new Map<string, { source?: Sweep; target?: Sweep }>();
-    if (!priorEdgeStyle && !this.spec.edgeStyle) return planned;
 
     for (const edge of [...this.store.edges(), ...this.fold.bundles]) {
       const patch = this.edgeOverlay.get(edge.id);
@@ -1784,7 +1801,9 @@ export class GraphEngine {
           anchors: anchorsOf(data, { source: style.sourceAnchor, target: style.targetAnchor }),
         };
       };
-      const then = sides(priorEdgeStyle);
+      // Nothing set aside means the styling did not change, so the rules the lines are leaving are the
+      // rules they are arriving under — the positions are what is moving.
+      const then = sides(priorEdgeStyle ? priorEdgeStyle.rules : this.spec.edgeStyle);
       const next = sides(this.spec.edgeStyle);
 
       const sweep = (end: 'source' | 'target'): Sweep | undefined => {
@@ -1806,7 +1825,7 @@ export class GraphEngine {
         const near = other(now as never);
         const centre = own(now as never);
         const delta = turnBetween(a0, a1, Math.atan2(near.y - centre.y, near.x - centre.x));
-        return Math.abs(delta) < 1e-6 ? undefined : { from: a0, delta };
+        return { from: a0, delta };
       };
 
       const source = sweep('source');
@@ -2118,7 +2137,7 @@ export class GraphEngine {
     const node = this.overlaid(rawNode);
     const to = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), metrics);
     if (!this.travelStyle || this.travelProgress >= 1) return to;
-    const from = nodeVisual(node, resolveStyle(node, this.travelStyle), metrics);
+    const from = nodeVisual(node, resolveStyle(node, this.travelStyle.rules), metrics);
     return blendVisual(from, to, this.travelProgress);
   }
 

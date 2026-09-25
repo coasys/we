@@ -351,14 +351,43 @@ const ROUND_STEPS = 24;
  * holds, and what is left to watch is the browser's own cost for that many changing `clip-path`s — the
  * reason a dense resampling would be a different proposition rather than a slower version of this one.
  */
+/**
+ * How much of a note's corner is rounded, as a fraction of its box, and in how many steps.
+ *
+ * A note's real corners come from a radius token in pixels, so a fraction is an approximation — of a
+ * length that also varies with the card. It is the right approximation anyway, and for a reason worth
+ * stating, because the alternative (four sharp corners) is not neutral: **a polygon has the corners it
+ * is given for the whole of the blend**, and a card is *clipped* to it. A note drawn with four sharp
+ * corners keeps its radius the whole way and cannot show it, because the polygon cuts the rounded region
+ * off — so the radius appears in one step at the end, exactly when the clip stops cutting. Rounding the
+ * polygon instead lets the corner be round throughout, which is what it looks like it should do.
+ *
+ * A twelfth of the box is close to the radius token at the card sizes this is seen at, and four steps is
+ * enough that it reads as a curve rather than as a chamfer.
+ */
+const NOTE_CORNER = 1 / 12;
+const CORNER_STEPS = 4;
+
+/** One corner of a rounded box, as points, turning from `fromAngle` a quarter turn clockwise. */
+function noteCorner(cx: number, cy: number, fromAngle: number): (readonly [number, number])[] {
+  return Array.from({ length: CORNER_STEPS + 1 }, (_, i) => {
+    const angle = fromAngle + (i / CORNER_STEPS) * (Math.PI / 2);
+    return [cx + NOTE_CORNER * Math.cos(angle), cy + NOTE_CORNER * Math.sin(angle)] as const;
+  });
+}
+
 export const MORPH_OUTLINES: Record<CardShape, readonly (readonly [number, number])[]> = {
-  // A box, clockwise from the top-left. What a note borrows, radius and all, for the duration.
+  /*
+    A rounded box, clockwise from the top-left corner's start — see `NOTE_CORNER` for why it is rounded
+    rather than the four points a box would take.
+  */
   note: [
-    [0, 0],
-    [1, 0],
-    [1, 1],
-    [0, 1],
+    ...noteCorner(NOTE_CORNER, NOTE_CORNER, Math.PI),
+    ...noteCorner(1 - NOTE_CORNER, NOTE_CORNER, -Math.PI / 2),
+    ...noteCorner(1 - NOTE_CORNER, 1 - NOTE_CORNER, 0),
+    ...noteCorner(NOTE_CORNER, 1 - NOTE_CORNER, Math.PI / 2),
   ],
+  // Square keeps its four, because its corners are the point of choosing it over a note.
   square: [
     [0, 0],
     [1, 0],

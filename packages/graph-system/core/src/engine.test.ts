@@ -1330,10 +1330,10 @@ describe('data overlay', () => {
       Spaced out, because the claim below is about a *border*.
 
       The shared fixture puts its nodes ten units apart, which for cards a hundred wide is two cards on
-      top of each other — and an attachment can never stop short of a border that is past the other
-      node's own centre, so the router clamps both widths to the same point and the assertion passes or
-      fails for a reason that has nothing to do with the overlay. Half a screen apart, the widths differ
-      by exactly the 150 units the overlay adds.
+      top of each other — so the line "stopping short of the border" of the wider one lands well behind
+      the card it came from, and the assertion is true of a configuration where none of it means
+      anything. Half a screen apart it measures the thing it says: the widths differ by exactly the 150
+      units the overlay adds.
     */
     const spaced = {
       grid: () => ({

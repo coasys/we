@@ -600,20 +600,27 @@ function midpointOf(points: Point[]): Point {
  * them. This function's whole job is the *distance*: how far along that direction the outline is, plus
  * the standoff. Which is why a facing between two sides needs nothing added here — walking a rotating
  * ray out of the centre traces the real outline, corners and all, and can never land inside the node.
+ *
+ * `chord` says the direction IS the line between the two centres, which only a `straight` or an `arc`
+ * with nothing overruling it can be. It is the one case that needs the guard below, because it is the
+ * one case where overshooting the outline means landing past the other node rather than beside it.
  */
-function attachPoint(from: Point, to: Point, clearance: number | EdgeClearance, facing: Facing): Point {
+function attachPoint(from: Point, to: Point, clearance: number | EdgeClearance, facing: Facing, chord = false): Point {
   const { halfWidth, halfHeight } = clearanceOf(clearance);
   if (halfWidth <= 0 && halfHeight <= 0) return to;
   const gap = typeof clearance === 'number' ? 0 : (clearance.gap ?? 0);
   const reach = reachAlong(facing[0], facing[1], clearance) + gap;
   const point = { x: to.x + facing[0] * reach, y: to.y + facing[1] * reach };
+  if (!chord) return point;
   /*
-    Never past the other end's centre.
+    Its own centre rather than past the other end: two overlapping cards would otherwise put this end
+    behind the node it came from.
 
-    Two overlapping cards would otherwise put this end behind the node it came from, which reads as the
-    arrowhead having escaped. Asked of every facing rather than only of the chord, where it started: the
-    rule is about the two nodes being closer than one of them is wide, and nothing about that depends on
-    what chose the direction.
+    Deliberately NOT asked of a facing that is being swept. The guard is a snap — beyond the other
+    centre, fall back to this node's own — and a snap inside a movement is a jump waiting for two cards
+    to pass close to one another, which on a rearrangement they do. Along the chord there is nothing
+    moving the direction, so the only way to reach it is to drag two cards together, where it has always
+    been the behaviour.
   */
   const distance = Math.hypot(from.x - to.x, from.y - to.y);
   if (distance === 0) return to;
@@ -701,8 +708,12 @@ export function routeEdge(
   const facingTo = facing.target ?? facingOf(from, to, curve, horizontal, anchors.target);
   // The same question at the other end — see `sourceClearance`. Roles swapped, axis not.
   const facingFrom = facing.source ?? facingOf(to, from, curve, horizontal, anchors.source);
-  const end = attachPoint(from, to, clearance, facingTo);
-  const begin = attachPoint(to, from, sourceClearance, facingFrom);
+  // Along the chord only where the chord is what decided the direction — see `attachPoint`.
+  const travelsChord = curve === 'straight' || curve === 'arc';
+  const chordTo = travelsChord && !facing.target && !anchors.target;
+  const chordFrom = travelsChord && !facing.source && !anchors.source;
+  const end = attachPoint(from, to, clearance, facingTo, chordTo);
+  const begin = attachPoint(to, from, sourceClearance, facingFrom, chordFrom);
 
   if (waypoints.length) {
     /*
@@ -798,7 +809,18 @@ export function routeEdge(
       left is a curve that departs upward and arrives from the left, which is the shape an anchor is
       asking for and the reason it cannot be one shared axis any more.
     */
-    const reach = Math.abs(horizontal ? finish.x - start.x : finish.y - start.y) / 2;
+    /*
+      Half the span, on whichever axis it is longer on — measured between the points the curve actually
+      runs between rather than chosen by the axis the *centres* mostly run along.
+
+      Those two agree everywhere except close to the diagonal, and near the diagonal the choice was a
+      discontinuity: `horizontal` is a boolean derived per frame, so a card travelling from beside its
+      parent to below it crosses the moment it flips, and the reach jumped from half one span to half the
+      other. On screen that is the whole curve changing shape in one frame, part way through a movement
+      that is otherwise smooth — which is exactly what it was reported as. A maximum of the two is
+      continuous, and equals what the axis choice gave wherever the two differ by anything worth seeing.
+    */
+    const reach = Math.max(Math.abs(finish.x - start.x), Math.abs(finish.y - start.y)) / 2;
     /*
       The tangent at each end IS that end's facing — see `facingOf`, which is the one place the two used
       to be derived separately. Arriving along the inward direction is also what keeps the arrowhead
