@@ -1163,8 +1163,16 @@ export function GraphView(props: GraphViewProps) {
     return next;
   });
 
-  // Restyling re-sizes hit areas but must never re-run a query or move a node, so it updates the spec
-  // and reindexes rather than restarting or re-laying out.
+  /*
+    Restyling re-sizes hit areas but must never re-run a query or move a node, so it updates the spec and
+    reindexes rather than restarting or re-laying out.
+
+    **Declared after the layout effect above, and that is load-bearing.** A mode that rearranges the
+    cards and restyles them together fires both in one flush, and the travel blends the card boxes and
+    the line anchors from the styling it is leaving — which `refreshHitAreas` lets go of, since its
+    meaning is "the styling changed and nothing is moving". Run first, it would discard what the travel
+    was about to blend from. See `GraphEngine.refreshHitAreas`.
+  */
   createEffect((previous: string | undefined) => {
     const next = JSON.stringify([props.nodeStyle ?? [], props.edgeStyle ?? []]);
     if (previous !== undefined && previous !== next) {

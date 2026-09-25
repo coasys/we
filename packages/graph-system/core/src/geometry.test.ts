@@ -15,6 +15,7 @@ import {
   bowOffsets,
   distanceToEdge,
   endOf,
+  facingOf,
   fractionAlong,
   groupByEndpoints,
   matchedOutlines,
@@ -24,6 +25,7 @@ import {
   routeEdge,
   routesAlike,
   trimToRadius,
+  turnBetween,
   waypointFromWorld,
   waypointsOf,
   waypointToWorld,
@@ -1052,5 +1054,138 @@ describe('morphing one card shape into another', () => {
   it('answers with the destination rather than throwing on a mismatched blend', () => {
     // Belt and braces: a caller that forgot to match cannot make the card vanish.
     expect(blendOutlines(triangle, box, 0.5)).toEqual(box);
+  });
+});
+
+/**
+ * A facing is one direction out of a node, and four of them happen to have names.
+ *
+ * The distinction this pins is what makes an anchor *changing* animatable at all: nothing downstream of
+ * `facingOf` knows about sides, so a direction half-way between two of them is as routable as either,
+ * and the attach point it produces is on the real outline rather than somewhere between two sides.
+ */
+describe('facingOf', () => {
+  const at = (x: number, y: number) => ({ x, y });
+
+  it('is the side, where somebody named one', () => {
+    expect(facingOf(at(0, 0), at(400, 0), 'smooth', true, 'n')).toEqual([0, -1]);
+    expect(facingOf(at(0, 0), at(400, 0), 'smooth', true, 'w')).toEqual([-1, 0]);
+  });
+
+  it('faces the way the curve arrives, where nobody did', () => {
+    // Mostly horizontal and running rightwards, so the target is met on its west side.
+    expect(facingOf(at(0, 0), at(400, 0), 'smooth', true, undefined)).toEqual([-1, 0]);
+    // The same span read the other way: the source faces east, toward the target.
+    expect(facingOf(at(400, 0), at(0, 0), 'smooth', true, undefined)).toEqual([1, 0]);
+    // Mostly vertical: the axis decides, not how tall the node is.
+    expect(facingOf(at(0, 0), at(0, 400), 'smooth', false, undefined)).toEqual([0, -1]);
+  });
+
+  it('faces along the chord for the shapes that travel it', () => {
+    const facing = facingOf(at(0, 0), at(300, 400), 'straight', true, undefined);
+    expect(facing[0]).toBeCloseTo(-0.6);
+    expect(facing[1]).toBeCloseTo(-0.8);
+  });
+});
+
+describe('turnBetween', () => {
+  const deg = (value: number) => (value * Math.PI) / 180;
+
+  it('goes the short way round', () => {
+    expect(turnBetween(deg(170), deg(-170))).toBeCloseTo(deg(20));
+    expect(turnBetween(deg(-170), deg(170))).toBeCloseTo(deg(-20));
+    expect(turnBetween(0, deg(90))).toBeCloseTo(deg(90));
+  });
+
+  it('breaks a half-turn toward the side it is pointed at', () => {
+    /*
+      Half a turn is the one case where "short" says nothing, and the choice is still visible: one way
+      sweeps the attach point round the front of the card and the other round the back. Callers hand it
+      the direction the rest of the line lies in.
+    */
+    expect(turnBetween(0, Math.PI, deg(-90))).toBeCloseTo(-Math.PI);
+    expect(turnBetween(0, Math.PI, deg(90))).toBeCloseTo(Math.PI);
+  });
+
+  it('answers with no turn for two directions that are the same', () => {
+    expect(turnBetween(deg(45), deg(45))).toBeCloseTo(0);
+  });
+});
+
+describe('a facing between two sides', () => {
+  const box = { halfWidth: 100, halfHeight: 40 };
+
+  it('attaches on the outline, wherever the direction points', () => {
+    // 45° out of a 200×80 box: the ray leaves through the top rather than the side, because the box is
+    // wider than it is tall — which is the whole reason the reach is asked along a direction rather
+    // than taken as a radius.
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 400, y: 0 }, 'smooth', 0, box, 0, {}, [], {
+      target: [-Math.SQRT1_2, -Math.SQRT1_2],
+    });
+
+    // The ray leaves 40 units out on both axes, which is the half-height — not the 71 a radius of the
+    // card's longest side would have given.
+    expect(route.to).toEqual({ x: 360, y: -40 });
+  });
+
+  it('arrives pointing at the node it is attached to', () => {
+    /*
+      What keeps the arrowhead aimed at the card while the facing sweeps. The marker orients to the
+      path's tangent, and a cubic's tangent at its end runs from its second control point — so the
+      control has to stand off along the facing, and the arrival is the reverse of that: inward.
+    */
+    const facing: readonly [number, number] = [-Math.SQRT1_2, -Math.SQRT1_2];
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 400, y: 0 }, 'smooth', 0, box, 0, {}, [], { target: facing });
+
+    const tangent = { x: route.to.x - route.control2!.x, y: route.to.y - route.control2!.y };
+    const length = Math.hypot(tangent.x, tangent.y);
+    expect(tangent.x / length).toBeCloseTo(-facing[0]);
+    expect(tangent.y / length).toBeCloseTo(-facing[1]);
+  });
+
+  it('overrules the side, which is what lets a repinned anchor be crossed rather than jumped', () => {
+    const pinned = routeEdge('e', { x: 0, y: 0 }, { x: 400, y: 0 }, 'smooth', 0, box, 0, { target: 'n' });
+    const swept = routeEdge('e', { x: 0, y: 0 }, { x: 400, y: 0 }, 'smooth', 0, box, 0, { target: 'n' }, [], {
+      target: [-1, 0],
+    });
+
+    expect(pinned.to).toEqual({ x: 400, y: -40 });
+    expect(swept.to).toEqual({ x: 300, y: 0 });
+  });
+});
+
+describe('an edge meeting a shape mid-morph', () => {
+  it('meets the blended outline rather than the shape it is becoming', () => {
+    /*
+      A triangle easing into a note is drawn as neither for the length of the change, so a line that met
+      the note would sit inside the card it points at — the same error `shape` was added to fix one level
+      up, at the next resolution down.
+    */
+    const half = { halfWidth: 90, halfHeight: 60 };
+    const [from, to] = matchedOutlines(morphOutline('triangle'), morphOutline('note'));
+    const blended = blendOutlines(from, to, 0.5);
+
+    // Straight down the middle from below, where a triangle's apex is at the top and a note's edge is
+    // the full half-height: the blend has to land between the two.
+    const asNote = routeEdge('e', { x: 0, y: 500 }, { x: 0, y: 0 }, 'smooth', 0, { ...half, shape: 'note' }, 0);
+    const asTriangle = routeEdge('e', { x: 0, y: 500 }, { x: 0, y: 0 }, 'smooth', 0, { ...half, shape: 'triangle' }, 0);
+    const midMorph = routeEdge('e', { x: 0, y: 500 }, { x: 0, y: 0 }, 'smooth', 0, {
+      ...half,
+      shape: 'note',
+      outline: blended,
+    });
+
+    expect(asNote.to.y).toBeCloseTo(60);
+    // A triangle's base is its bottom edge, so from below it is met at the same place; the sides are
+    // where the two differ, which is what the third reading below measures.
+    const across = (clearance: Parameters<typeof routeEdge>[5]) =>
+      routeEdge('e', { x: 500, y: 0 }, { x: 0, y: 0 }, 'smooth', 0, clearance, 0).to.x;
+    expect(across({ ...half, shape: 'note' })).toBeCloseTo(90);
+    expect(across({ ...half, shape: 'triangle' })).toBeCloseTo(45);
+    const blendedAcross = across({ ...half, shape: 'note', outline: blended });
+    expect(blendedAcross).toBeGreaterThan(45);
+    expect(blendedAcross).toBeLessThan(90);
+    expect(asTriangle.to.y).toBeCloseTo(60);
+    expect(midMorph.to.y).toBeCloseTo(60);
   });
 });

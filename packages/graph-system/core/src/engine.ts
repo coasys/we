@@ -12,6 +12,7 @@ import type {
   Bounds,
   CardShape,
   EdgeGeometry,
+  EdgeStyleRules,
   ExpandDirection,
   ExpanderContext,
   GraphEdge,
@@ -37,13 +38,18 @@ import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, woul
 import type { EdgeClearance } from './geometry';
 import {
   anchorsOf,
+  angleOf,
   bowOffsets,
   distanceToEdge,
   edgeBounds,
   endOf,
+  type Facing,
+  facingAt,
+  facingOf,
   groupByEndpoints,
   normaliseCurve,
   routeEdge,
+  turnBetween,
   waypointsOf,
   waypointToWorld,
 } from './geometry';
@@ -243,6 +249,18 @@ function watchKey(target: WatchTarget): string {
   ]);
 }
 
+/**
+ * One end of one edge turning from the direction it was drawn at to the one it is going to.
+ *
+ * An angle and a signed turn, rather than two angles: the *way round* is a decision that has to be made
+ * once, because re-deriving "the short way" against a destination that is itself drifting can reverse
+ * mid-sweep — and a reversing arrowhead reads as a bug in a way a slightly longer swing does not.
+ */
+interface Sweep {
+  from: number;
+  delta: number;
+}
+
 export class GraphEngine {
   readonly store = new GraphStore();
   readonly expansion = new ExpansionState();
@@ -370,6 +388,23 @@ export class GraphEngine {
   private travelStyle?: NodeStyleRules;
   /** The styling a travel would come from, set aside by `setSpec` until a travel claims it. */
   private priorNodeStyle?: NodeStyleRules;
+  /** The same, for the edges — which is where a *repinned anchor* comes from. See {@link travelFacing}. */
+  private priorEdgeStyle?: EdgeStyleRules;
+  /**
+   * The sweep each end of each edge is making, while a travel is in flight: a start angle and the signed
+   * turn to the end of it.
+   *
+   * An anchor is one of four sides, and a rearrangement that repins one has to cross the directions in
+   * between or the arrowhead teleports across the card. Held as a *rotation* rather than as two points
+   * because the point is not the thing that is continuous: a ray swept out of the node's centre traces
+   * the real outline — along the side, round the corner, along the next — where two points lerped
+   * cross the card's interior, which is precisely the arrowhead disappearing behind it.
+   *
+   * Planned once, in {@link beginTravel}, rather than resolved per frame: the final positions are
+   * already known there, so the plan lands exactly on what the ordinary path answers at the end and
+   * there is no jump at either edge of the movement.
+   */
+  private travelFacing = new Map<string, { source?: Sweep; target?: Sweep }>();
   /**
    * The camera's own travel, alongside the cards'.
    *
@@ -554,6 +589,7 @@ export class GraphEngine {
    */
   setSpec(spec: GraphSpec): void {
     if (spec.nodeStyle !== this.spec.nodeStyle) this.priorNodeStyle = this.spec.nodeStyle;
+    if (spec.edgeStyle !== this.spec.edgeStyle) this.priorEdgeStyle = this.spec.edgeStyle;
     this.spec = spec;
   }
 
@@ -1662,7 +1698,9 @@ export class GraphEngine {
     // Claimed here whether or not a travel starts: a styling nobody travelled away from is not a
     // styling anything should later be seen returning from.
     const armed = this.priorNodeStyle;
+    const armedEdges = this.priorEdgeStyle;
     this.priorNodeStyle = undefined;
+    this.priorEdgeStyle = undefined;
     // Carried over, so a re-aim keeps the speed and the deadline the reader's action set rather than
     // restarting the clock on every frame a live query happens to land on.
     const started = new Map([...this.travelAnim].map(([id, anim]) => [id, anim.started]));
@@ -1672,6 +1710,13 @@ export class GraphEngine {
       this.settleShapes();
       return;
     }
+
+    /*
+      Planned before the rewind below, because it needs both arrangements: `this.positions` still holds
+      what the layout answered, and the loop is about to write the old coordinates back over it.
+    */
+    const planned =
+      asked > 0 ? this.planFacings(before, armedEdges) : new Map<string, { source?: Sweep; target?: Sweep }>();
 
     const now = Date.now();
     for (const [id, to] of this.positions) {
@@ -1700,7 +1745,75 @@ export class GraphEngine {
     if (asked > 0) {
       this.travelStyle = armed;
       this.travelProgress = 0;
+      this.travelFacing = planned;
     }
+  }
+
+  /**
+   * Work out the sweep each end of each edge makes across this rearrangement.
+   *
+   * Two arrangements and two stylings, compared once. The *old* facing comes from where the cards were
+   * and the rules they were drawn under, which is why `setSpec` has to set the outgoing edge styling
+   * aside — by the time a travel is asked for, the rules the lines are leaving are gone. The *new* one
+   * comes from where the layout has put them and the rules now in force.
+   *
+   * Ends that are not turning are left out, which is the ordinary case: most rearrangements repin
+   * nothing, and a map with no entries costs the router a lookup that misses.
+   */
+  private planFacings(
+    before: ReadonlyMap<string, Placement>,
+    priorEdgeStyle: EdgeStyleRules | undefined,
+  ): Map<string, { source?: Sweep; target?: Sweep }> {
+    const planned = new Map<string, { source?: Sweep; target?: Sweep }>();
+    if (!priorEdgeStyle && !this.spec.edgeStyle) return planned;
+
+    for (const edge of [...this.store.edges(), ...this.fold.bundles]) {
+      const patch = this.edgeOverlay.get(edge.id);
+      const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
+      const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
+      // A loose end follows the pointer and has no side to be on, so there is nothing to sweep.
+      const was = { from: before.get(sourceId), to: before.get(targetId) };
+      const now = { from: this.positions.get(sourceId), to: this.positions.get(targetId) };
+      if (!was.from || !was.to || !now.from || !now.to) continue;
+
+      const data = { ...edge.data, ...patch };
+      const sides = (rules: EdgeStyleRules | undefined) => {
+        const style = resolveStyle(edge, rules);
+        return {
+          curve: normaliseCurve(style.curve as string | undefined),
+          anchors: anchorsOf(data, { source: style.sourceAnchor, target: style.targetAnchor }),
+        };
+      };
+      const then = sides(priorEdgeStyle);
+      const next = sides(this.spec.edgeStyle);
+
+      const sweep = (end: 'source' | 'target'): Sweep | undefined => {
+        if (end === 'source' ? looseFrom : looseTo) return undefined;
+        // Roles as the router takes them: the end being attached to, and the other one.
+        const own = (at: { from: Point; to: Point }) => (end === 'target' ? at.to : at.from);
+        const other = (at: { from: Point; to: Point }) => (end === 'target' ? at.from : at.to);
+        const axis = (at: { from: Point; to: Point }) => Math.abs(at.to.x - at.from.x) >= Math.abs(at.to.y - at.from.y);
+        const a0 = angleOf(
+          facingOf(other(was as never), own(was as never), then.curve, axis(was as never), then.anchors[end]),
+        );
+        const a1 = angleOf(
+          facingOf(other(now as never), own(now as never), next.curve, axis(now as never), next.anchors[end]),
+        );
+        /*
+          Toward the near side at exactly half a turn — the direction the rest of the line already lies
+          in, so an ambiguous swing goes round the front of the card rather than behind it.
+        */
+        const near = other(now as never);
+        const centre = own(now as never);
+        const delta = turnBetween(a0, a1, Math.atan2(near.y - centre.y, near.x - centre.x));
+        return Math.abs(delta) < 1e-6 ? undefined : { from: a0, delta };
+      };
+
+      const source = sweep('source');
+      const target = sweep('target');
+      if (source || target) planned.set(edge.id, { source, target });
+    }
+    return planned;
   }
 
   /**
@@ -1712,6 +1825,7 @@ export class GraphEngine {
    */
   private settleShapes(): void {
     this.travelStyle = undefined;
+    this.travelFacing.clear();
     this.travelProgress = 1;
   }
 
@@ -2023,6 +2137,7 @@ export class GraphEngine {
     halfWidth?: number;
     halfHeight?: number;
     shape?: CardShape;
+    outline?: readonly (readonly [number, number])[];
     z?: number;
   } {
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
@@ -2044,6 +2159,9 @@ export class GraphEngine {
         halfWidth: visual.width / 2,
         halfHeight: visual.height / 2,
         shape: visual.cardShape,
+        // Mid-morph the name is the shape the card is *becoming*, so the blend has to travel with it or
+        // a line meets the note a triangle has not turned into yet. See `EdgeClearance.outline`.
+        ...(visual.morph ? { outline: visual.morph.outline } : {}),
         ...z,
       };
     }
@@ -2084,6 +2202,7 @@ export class GraphEngine {
       halfWidth: area.halfWidth * scale,
       halfHeight: area.halfHeight * scale,
       shape: area.shape,
+      outline: area.outline,
       gap,
     };
   }
@@ -2176,6 +2295,14 @@ export class GraphEngine {
           // Stored in the edge's own frame, so a bend keeps its proportions when either card moves —
           // see `EdgeWaypoint`. Converted here, where both centres are in hand.
           waypointsOf({ ...edge.data, ...patch }).map((point) => waypointToWorld(point, from, to)),
+          /*
+            Where this end is *part way to* being anchored — see `travelFacing`.
+
+            A direction rather than a side, so the attach point walks the card's own outline round to the
+            new side and the arrowhead keeps pointing at the centre the whole way. Empty for every edge
+            whose ends are not turning, which is every edge on most rearrangements.
+          */
+          this.sweptFacing(edge.id),
         );
         this.edgeGeometry.set(edge.id, geometry);
         /*
@@ -2189,6 +2316,20 @@ export class GraphEngine {
         if (edge.type !== FOLD_BUNDLE) this.edgeBoxes.set(edge.id, edgeBounds(geometry));
       });
     }
+  }
+
+  /**
+   * How far round each end of one edge has swept, as directions the router can attach along.
+   *
+   * Empty once the travel settles, which is what hands the ends back to the ordinary derivation: the
+   * plan was made against the final positions, so the last frame of the sweep and the first frame
+   * without it are the same direction.
+   */
+  private sweptFacing(id: string): { source?: Facing; target?: Facing } {
+    const sweep = this.travelFacing.get(id);
+    if (!sweep || this.travelProgress >= 1) return {};
+    const at = (one: Sweep | undefined) => (one ? facingAt(one.from + one.delta * this.travelProgress) : undefined);
+    return { source: at(sweep.source), target: at(sweep.target) };
   }
 
   /**
@@ -2266,8 +2407,25 @@ export class GraphEngine {
    *
    * Public because the radius comes from `nodeStyle`, and a renderer may change styling without
    * anything moving — at which point the index is holding areas sized by the old rules.
+   *
+   * **Ask for the travel first.** A caller changing the arrangement and the styling together does both
+   * — a rearrangement needs `relayout`, a restyling needs this — and the order matters, because this is
+   * also where a styling that nothing travelled away from is let go of. Called first it would let go of
+   * the very styling the travel was about to blend from, and the cards and lines would snap while their
+   * positions eased. There is a test for that order.
    */
   refreshHitAreas(): void {
+    /*
+      Nothing is travelling, so the styling this one replaced has been drawn and is over.
+
+      Left armed it would be claimed by whatever rearrangement came next, which is a card easing out of a
+      box it left an action ago and a line sweeping off a side nobody has been looking at. `beginTravel`
+      makes the same claim for the case where a travel does follow; this is the other half.
+    */
+    if (!this.isTravelling()) {
+      this.priorNodeStyle = undefined;
+      this.priorEdgeStyle = undefined;
+    }
     this.recomputeMetrics();
     this.reindex();
     // Node size decides where an edge stops, and the edge's own shape decides how it gets there, so a

@@ -1326,13 +1326,33 @@ describe('data overlay', () => {
   });
 
   it('re-routes the edges that meet an overlaid node', async () => {
-    const engine = await canvasEngine();
+    /*
+      Spaced out, because the claim below is about a *border*.
+
+      The shared fixture puts its nodes ten units apart, which for cards a hundred wide is two cards on
+      top of each other — and an attachment can never stop short of a border that is past the other
+      node's own centre, so the router clamps both widths to the same point and the assertion passes or
+      fails for a reason that has nothing to do with the overlay. Half a screen apart, the widths differ
+      by exactly the 150 units the overlay adds.
+    */
+    const spaced = {
+      grid: () => ({
+        id: 'grid',
+        init: (input: { nodes: { id: string }[] }) => ({
+          positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * 600, y: 0 }])),
+        }),
+      }),
+    };
+    const registry = new PluginRegistry({ seeds: [twoCards], expanders: [], layouts: spaced });
+    const engine = engineWith({ seeds: { source: 'two' }, layout: { type: 'grid' }, nodeStyle: cardStyle }, registry);
+    await engine.start();
     const before = engine.getEdgeGeometry().get('a->b');
 
     engine.setDataOverlay(new Map([['b', { canvasWidth: 400 }]]));
 
     // The line stops short of the node's border, so a wider target ends the edge sooner.
     expect(engine.getEdgeGeometry().get('a->b')?.to).not.toEqual(before?.to);
+    expect(engine.getEdgeGeometry().get('a->b')!.to.x).toBeCloseTo(before!.to.x - 150);
   });
 
   it('leaves the node the seeds returned alone', async () => {

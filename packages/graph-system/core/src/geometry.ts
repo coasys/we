@@ -62,6 +62,15 @@ export interface EdgeClearance {
    */
   shape?: CardShape;
   /**
+   * The outline itself, in the same fractions of the box, where a node is mid-morph between two
+   * shapes — see `MORPH_OUTLINES`.
+   *
+   * It beats `shape`, which names one of the two and is therefore the *destination* while a card is
+   * still being drawn as the blend. Without this an edge meets the note a triangle is becoming for
+   * the whole of the change: a small error, and the same one `shape` exists to fix one level up.
+   */
+  outline?: readonly (readonly [number, number])[];
+  /**
    * How far *beyond* the outline to stop, in world units.
    *
    * The end an arrowhead points at wants a few pixels so the head lands against the card rather
@@ -94,6 +103,16 @@ function reachAlong(ux: number, uy: number, clearance: number | EdgeClearance): 
   if (typeof clearance === 'number') return clearance;
   const { halfWidth, halfHeight, shape } = clearance;
   if (halfWidth <= 0 && halfHeight <= 0) return 0;
+
+  /*
+    A blend in progress beats the name of either shape, including the exact ellipse below: mid-morph a
+    round card is not an ellipse, and meeting the one it is *becoming* is what put the line 40px inside
+    a card that was still being drawn as a circle.
+  */
+  if (clearance.outline) {
+    const reach = polygonReach(ux, uy, clearance.outline, halfWidth, halfHeight);
+    if (Number.isFinite(reach)) return reach;
+  }
 
   // A round card is the ellipse inscribed in its box — exact by formula, where a polygon of it would
   // be an approximation of something already known.
@@ -153,8 +172,18 @@ function polygonReach(
   return nearest;
 }
 
+/**
+ * Which way one end of an edge faces, out of its node — a unit vector.
+ *
+ * The router's own currency for "where does this end attach", and the reason a side letter reaches no
+ * further than {@link facingOf}. Everything downstream — the reach along the outline, the standoff, the
+ * tangent the curve arrives on — is already a function of a direction, so the four sides are simply
+ * four of the directions there are, and a direction *between* two of them is as routable as either.
+ */
+export type Facing = readonly [number, number];
+
 /** Which way a side faces, as a unit vector out of the node. See {@link EdgeSide}. */
-const OUTWARD: Record<EdgeSide, readonly [number, number]> = {
+const OUTWARD: Record<EdgeSide, Facing> = {
   n: [0, -1],
   e: [1, 0],
   s: [0, 1],
@@ -376,16 +405,62 @@ function shiftLane(point: Point, lane: number, horizontal: boolean): Point {
  * `arriving` flips it, because the second control point is measured *back* from the target: an edge
  * arriving at a west side approaches from the west, so its tangent points that way out of the node.
  */
-function departure(
+/**
+ * Which way the `to` end of this span faces, out of its own node.
+ *
+ * One answer where there were two. `attachPoint` derived a direction to measure the outline along and
+ * `departure` derived the tangent the curve leaves or arrives on, and the two had to agree or the line
+ * met the node somewhere it was never pointing — a bug the attachment comment records having had.
+ * They are the same fact, so it is stated once and both read it.
+ *
+ * Roles as `attachPoint` takes them: `to` is the node being attached to and `from` is the other end, so
+ * the source's facing is this asked with the two swapped. `horizontal` is NOT swapped with them — the
+ * axis is a property of the span, decided once from the centres.
+ */
+export function facingOf(
   from: Point,
   to: Point,
+  curve: EdgeCurve,
   horizontal: boolean,
   side: EdgeSide | undefined,
-  arriving: boolean,
-): readonly [number, number] {
+): Facing {
+  // Somebody overruling all of it for this end of this edge.
   if (side) return OUTWARD[side];
-  const sign = Math.sign((horizontal ? to.x - from.x : to.y - from.y) || 1) * (arriving ? -1 : 1);
-  return horizontal ? [sign, 0] : [0, sign];
+  if (curve === 'smooth' || curve === 'step') {
+    // The axis it arrives on is the axis to measure: a curve arriving horizontally meets the left or
+    // right side, and how tall the node happens to be says nothing about where that side is.
+    return horizontal ? [-Math.sign(to.x - from.x || 1), 0] : [0, -Math.sign(to.y - from.y || 1)];
+  }
+  // A straight or arced edge travels the chord, so the chord's direction is the one to measure.
+  const dx = from.x - to.x;
+  const dy = from.y - to.y;
+  const distance = Math.hypot(dx, dy);
+  return distance === 0 ? [0, -1] : [dx / distance, dy / distance];
+}
+
+/** A facing as an angle, and back — what an interpolation between two of them needs. */
+export function angleOf(facing: Facing): number {
+  return Math.atan2(facing[1], facing[0]);
+}
+
+export function facingAt(angle: number): Facing {
+  return [Math.cos(angle), Math.sin(angle)];
+}
+
+/**
+ * The signed turn from one facing to another, the short way round.
+ *
+ * `toward` breaks the tie at exactly half a turn, where the two ways are the same length and the
+ * choice is still visible: it picks the way that passes the direction given, which callers hand the
+ * *near* side — the way the rest of the line already lies — so a swing never travels round the back of
+ * the node it is attached to.
+ */
+export function turnBetween(a: number, b: number, toward?: number): number {
+  const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
+  const delta = wrap(b - a);
+  if (toward === undefined || Math.abs(Math.abs(delta) - Math.PI) > 1e-6) return delta;
+  const near = wrap(toward - a);
+  return Math.sign(near || 1) * Math.PI;
 }
 
 /**
@@ -521,46 +596,27 @@ function midpointOf(points: Point[]): Point {
  * moment the curve itself changes which axis it travels along. One visible change rather than two
  * disagreeing ones.
  *
- * `side` is somebody overruling all of that for this end of this edge — an anchor. It wins over
- * every shape, including the two that trim along the chord: an anchored `straight` edge leaves the
- * middle of the side it was told to, which is the point of saying so.
+ * The direction is decided by {@link facingOf}, or handed in by a caller interpolating between two of
+ * them. This function's whole job is the *distance*: how far along that direction the outline is, plus
+ * the standoff. Which is why a facing between two sides needs nothing added here — walking a rotating
+ * ray out of the centre traces the real outline, corners and all, and can never land inside the node.
  */
-function attachPoint(
-  from: Point,
-  to: Point,
-  curve: EdgeCurve,
-  clearance: number | EdgeClearance,
-  horizontal: boolean,
-  side?: EdgeSide,
-): Point {
+function attachPoint(from: Point, to: Point, clearance: number | EdgeClearance, facing: Facing): Point {
   const { halfWidth, halfHeight } = clearanceOf(clearance);
   if (halfWidth <= 0 && halfHeight <= 0) return to;
   const gap = typeof clearance === 'number' ? 0 : (clearance.gap ?? 0);
-  /** The outline's distance along a direction, plus the standoff — the point, given a direction. */
-  const along = (ux: number, uy: number): Point => {
-    const reach = reachAlong(ux, uy, clearance) + gap;
-    return { x: to.x + ux * reach, y: to.y + uy * reach };
-  };
+  const reach = reachAlong(facing[0], facing[1], clearance) + gap;
+  const point = { x: to.x + facing[0] * reach, y: to.y + facing[1] * reach };
+  /*
+    Never past the other end's centre.
 
-  if (side) {
-    const [ax, ay] = OUTWARD[side];
-    return along(ax, ay);
-  }
-  if (curve === 'smooth' || curve === 'step') {
-    // The axis it arrives on is the axis to measure: a curve arriving horizontally meets the left or
-    // right side, and how tall the node happens to be says nothing about where that side is.
-    return horizontal ? along(-Math.sign(to.x - from.x || 1), 0) : along(0, -Math.sign(to.y - from.y || 1));
-  }
-  // A straight or arced edge travels the chord, so the chord's direction is the one to measure —
-  // and the point is clamped to the far end, since a target nearer than its own outline would
-  // otherwise put the arrowhead behind the node it came from.
-  const dx = from.x - to.x;
-  const dy = from.y - to.y;
-  const distance = Math.hypot(dx, dy);
+    Two overlapping cards would otherwise put this end behind the node it came from, which reads as the
+    arrowhead having escaped. Asked of every facing rather than only of the chord, where it started: the
+    rule is about the two nodes being closer than one of them is wide, and nothing about that depends on
+    what chose the direction.
+  */
+  const distance = Math.hypot(from.x - to.x, from.y - to.y);
   if (distance === 0) return to;
-  const point = along(dx / distance, dy / distance);
-  // Its own centre rather than past the other end: two overlapping cards would otherwise put this
-  // end behind the node it is attaching to.
   return Math.hypot(point.x - to.x, point.y - to.y) >= distance ? to : point;
 }
 
@@ -604,6 +660,11 @@ function attachPoint(
  * *nearest waypoint* rather than the far node, since that is the direction the line actually leaves
  * in, and `offset` is ignored: fanning is a way of separating two edges nobody has shaped, and an
  * explicit route is already separate from whatever it was drawn around.
+ *
+ * `facing` overrules the direction at either end with a vector, which is how an anchor *changing* is
+ * animated rather than jumped: a side is four directions and a rearrangement that repins one has to
+ * cross the ones in between. An override rather than a widening of `anchors`, because a side is a
+ * stored, authored fact that the canvas writes and reads back, and a direction mid-sweep is neither.
  */
 export function routeEdge(
   id: string,
@@ -615,6 +676,7 @@ export function routeEdge(
   sourceClearance: number | EdgeClearance = 0,
   anchors: EdgeAnchors = {},
   waypoints: readonly Point[] = [],
+  facing: { source?: Facing; target?: Facing } = {},
 ): EdgeGeometry {
   if (from.x === to.x && from.y === to.y) {
     // A self-loop has no direction to bow along, so it gets a fixed teardrop above the node.
@@ -636,9 +698,11 @@ export function routeEdge(
   const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
   // Computed from the centres, then held: deriving it again from the attachment point would let a
   // short edge flip axis purely because the clearance shortened it.
-  const end = attachPoint(from, to, curve, clearance, horizontal, anchors.target);
+  const facingTo = facing.target ?? facingOf(from, to, curve, horizontal, anchors.target);
   // The same question at the other end — see `sourceClearance`. Roles swapped, axis not.
-  const begin = attachPoint(to, from, curve, sourceClearance, horizontal, anchors.source);
+  const facingFrom = facing.source ?? facingOf(to, from, curve, horizontal, anchors.source);
+  const end = attachPoint(from, to, clearance, facingTo);
+  const begin = attachPoint(to, from, sourceClearance, facingFrom);
 
   if (waypoints.length) {
     /*
@@ -651,10 +715,18 @@ export function routeEdge(
     */
     const first = waypoints[0];
     const last = waypoints[waypoints.length - 1];
-    const facing = (node: Point, neighbour: Point, side: EdgeSide | undefined, own: number | EdgeClearance) =>
-      attachPoint(neighbour, node, curve, own, Math.abs(neighbour.x - node.x) >= Math.abs(neighbour.y - node.y), side);
-    const head = facing(from, first, anchors.source, sourceClearance);
-    const tail = facing(to, last, anchors.target, clearance);
+    const meeting = (
+      node: Point,
+      neighbour: Point,
+      side: EdgeSide | undefined,
+      own: number | EdgeClearance,
+      override: Facing | undefined,
+    ) => {
+      const axis = Math.abs(neighbour.x - node.x) >= Math.abs(neighbour.y - node.y);
+      return attachPoint(neighbour, node, own, override ?? facingOf(neighbour, node, curve, axis, side));
+    };
+    const head = meeting(from, first, anchors.source, sourceClearance, facing.source);
+    const tail = meeting(to, last, anchors.target, clearance, facing.target);
     const through = [head, ...waypoints, tail];
     const segments =
       curve === 'step'
@@ -727,10 +799,13 @@ export function routeEdge(
       asking for and the reason it cannot be one shared axis any more.
     */
     const reach = Math.abs(horizontal ? finish.x - start.x : finish.y - start.y) / 2;
-    const out = departure(from, to, horizontal, anchors.source, false);
-    const back = departure(from, to, horizontal, anchors.target, true);
-    const control = { x: start.x + out[0] * reach, y: start.y + out[1] * reach };
-    const control2 = { x: finish.x + back[0] * reach, y: finish.y + back[1] * reach };
+    /*
+      The tangent at each end IS that end's facing — see `facingOf`, which is the one place the two used
+      to be derived separately. Arriving along the inward direction is also what keeps the arrowhead
+      aimed at the node's centre while the facing sweeps, rather than at wherever the line came from.
+    */
+    const control = { x: start.x + facingFrom[0] * reach, y: start.y + facingFrom[1] * reach };
+    const control2 = { x: finish.x + facingTo[0] * reach, y: finish.y + facingTo[1] * reach };
     return {
       id,
       from: start,

@@ -44,7 +44,10 @@ export {
   distanceToEdge,
   bendPoints,
   edgeBounds,
+  angleOf,
   endOf,
+  facingAt,
+  facingOf,
   fractionAlong,
   groupByEndpoints,
   orthogonalThrough,
@@ -54,11 +57,12 @@ export {
   routesAlike,
   splineThrough,
   trimToRadius,
+  turnBetween,
   waypointFromWorld,
   waypointsOf,
   waypointToWorld,
 } from './geometry';
-export type { EdgeClearance, EdgeWaypoint } from './geometry';
+export type { EdgeClearance, EdgeWaypoint, Facing } from './geometry';
 export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
 export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';

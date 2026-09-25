@@ -596,3 +596,215 @@ describe('shape travel', () => {
     expect(engine.index.hitTest({ x: at.x, y: at.y })).toEqual(['a']);
   });
 });
+
+/**
+ * The lines' half of the same movement.
+ *
+ * Tree mode pins every child's line to its parent's underside and its own top. On the canvas nothing is
+ * pinned, so a line meets whichever side it approaches from — and the switch therefore *repins* both
+ * ends of every edge. Left as a side change that is one of four letters, the arrowhead teleports across
+ * the card at the first frame, which is the one thing a reader tracking a connection cannot follow.
+ *
+ * So the subject here is the attach point over time, and two properties of it: that it is continuous at
+ * both ends of the travel, and that it is never anywhere a card is — the failure the user asked for
+ * specifically, an arrowhead disappearing behind the thing it points at.
+ */
+describe('anchor travel', () => {
+  const edges = (): SeedSource => ({
+    id: 'test',
+    async seed() {
+      return {
+        nodes: ['a', 'b'].map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+        edges: [{ id: 'a->b', source: 'a', target: 'b', type: 'rel' }],
+      };
+    },
+  });
+
+  /** Two layouts far enough apart that a card's own box never reaches the other one. */
+  const apart = {
+    across: () => ({
+      id: 'across',
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, i) => [node.id, { x: i * 600, y: 0 }])),
+      }),
+    }),
+    down: () => ({
+      id: 'down',
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, i) => [node.id, { x: 0, y: i * 600 }])),
+      }),
+    }),
+  };
+
+  const CARD = [{ style: { shape: 'card' as const, width: 180 } }];
+
+  async function twoCards(layout: string, edgeStyle?: unknown) {
+    const registry = new PluginRegistry({ seeds: [edges()], expanders: [], layouts: apart });
+    const engine = new GraphEngine({
+      spec: {
+        seeds: { source: 'test' },
+        layout: { type: layout },
+        nodeStyle: CARD as never,
+        edgeStyle: edgeStyle as never,
+      },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    return engine;
+  }
+
+  const endOfEdge = (engine: GraphEngine) => engine.getEdgeGeometry().get('a->b')!.to;
+  /** Where the attach point sits relative to the target's own centre. */
+  const offset = (engine: GraphEngine) => {
+    const at = engine.getPositions().get('b')!;
+    const to = endOfEdge(engine);
+    return { x: to.x - at.x, y: to.y - at.y };
+  };
+
+  it('starts the sweep exactly where the line already was', async () => {
+    const engine = await twoCards('across');
+    // Running left to right, so the line meets b's west side.
+    const was = offset(engine);
+    expect(was.x).toBeLessThan(0);
+
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'down' },
+      nodeStyle: CARD as never,
+      edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n' } }] as never,
+    });
+    engine.relayout({ travel: 400 });
+
+    // The first frame is the old side, whatever the new rule says — the jump this exists to remove.
+    expect(offset(engine).x).toBeCloseTo(was.x);
+    expect(offset(engine).y).toBeCloseTo(was.y);
+  });
+
+  it('swings round the card rather than cutting across it, and lands on the pinned side', async () => {
+    const engine = await twoCards('across');
+    const seen: { x: number; y: number }[] = [];
+
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'down' },
+      nodeStyle: CARD as never,
+      edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n' } }] as never,
+    });
+    engine.relayout({ travel: 400 });
+
+    for (let step = 0; step < 12; step += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      seen.push(offset(engine));
+    }
+
+    /*
+      Never inside the card. A 180-wide card is 135 tall, so its own half-extents are 90 and 67.5 and the
+      standoff puts every honest attach point at one of them or beyond. A point closer than both means
+      the sweep has taken the line *through* the card, which is the arrowhead vanishing behind it.
+    */
+    for (const point of seen) {
+      const outside = Math.abs(point.x) >= 89 || Math.abs(point.y) >= 67;
+      expect(outside).toBe(true);
+    }
+
+    /*
+      And it genuinely passes *between* the two sides on the way. Without the sweep every frame is the
+      pinned side — dead centre of the top — which satisfies the outside test above just as well, so this
+      is the assertion that says the movement happened at all.
+    */
+    const between = seen.some((point) => Math.abs(point.x) > 5 && Math.abs(point.y) > 5);
+    expect(between).toBe(true);
+
+    // And it arrives on the top, which is what the rule asked for.
+    const landed = seen[seen.length - 1];
+    expect(landed.x).toBeCloseTo(0);
+    expect(landed.y).toBeLessThan(0);
+  });
+
+  it('is continuous into the ordinary derivation at the end', async () => {
+    const engine = await twoCards('across');
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'down' },
+      nodeStyle: CARD as never,
+      edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n' } }] as never,
+    });
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(600);
+
+    const swept = offset(engine);
+    // The same graph, arranged and styled the same way, with no travel behind it at all.
+    const settled = await twoCards('down', [{ style: { sourceAnchor: 's', targetAnchor: 'n' } }]);
+
+    expect(swept.x).toBeCloseTo(offset(settled).x);
+    expect(swept.y).toBeCloseTo(offset(settled).y);
+  });
+
+  it('sweeps nothing when the rearrangement repins nothing', async () => {
+    const engine = await twoCards('across');
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'down' }, nodeStyle: CARD as never });
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+
+    /*
+      The derived side follows the arrangement on its own — the cards are now one above the other, so the
+      line meets the top — and interpolating toward an answer that was never pinned would be a sweep
+      nobody asked for. Mid-travel the end is on a side, not between two.
+      */
+    const at = offset(engine);
+    expect(Math.abs(at.x) < 1 || Math.abs(at.y) < 1).toBe(true);
+  });
+});
+
+/**
+ * The order a renderer asks in.
+ *
+ * A mode that rearranges and restyles at once does both in one flush — swap the spec and relayout, then
+ * swap the spec and refresh the hit areas — and only one order works, because refreshing is also how a
+ * styling nothing travelled away from is let go of. This pins the sequence the Solid adapter uses, which
+ * is otherwise only a fact about which `createEffect` was declared first.
+ */
+describe('a rearrangement and a restyling in one flush', () => {
+  const nodes = () => [{ id: 'a', kind: 'entity' as const, type: 'Thing', label: 'a' }];
+  const spec = (layout: string, width: number) => ({
+    seeds: { source: 'test' },
+    layout: { type: layout },
+    nodeStyle: [{ style: { shape: 'card', width } }] as never,
+  });
+
+  it('keeps the blend when the travel is asked for first', async () => {
+    const engine = await started(spec('left', 100));
+
+    engine.setSpec(spec('right', 300));
+    engine.relayout({ travel: 400 });
+    // The restyling half, exactly as the adapter's second effect does it.
+    engine.setSpec(spec('right', 300));
+    engine.refreshHitAreas();
+
+    await vi.advanceTimersByTimeAsync(200);
+    const midway = engine.visualOf(nodes()[0]).width!;
+    expect(midway).toBeGreaterThan(100);
+    expect(midway).toBeLessThan(300);
+  });
+
+  it('lets go of a styling that nothing is travelling away from', async () => {
+    const engine = await started(spec('left', 100));
+    // One array, handed over twice. `setSpec` arms on the rules CHANGING, so a fresh copy of the same
+    // rules would re-arm with what is already in force and the sweep would be a no-op either way —
+    // which is a test that cannot fail rather than a test that passes.
+    const wide = spec('left', 300).nodeStyle;
+
+    // A restyle on its own: the new box is drawn at once, and there is nothing left to come back from.
+    engine.setSpec({ ...spec('left', 300), nodeStyle: wide });
+    engine.refreshHitAreas();
+    expect(engine.visualOf(nodes()[0]).width).toBe(300);
+
+    // A later rearrangement must not resurrect it.
+    engine.setSpec({ ...spec('right', 300), nodeStyle: wide });
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(engine.visualOf(nodes()[0]).width).toBe(300);
+  });
+});
