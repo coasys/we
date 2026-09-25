@@ -24,7 +24,7 @@
  */
 import { Column, Row } from '@we/components/solid';
 import { ROLE_NAMES } from '@we/design-utils';
-import { dragSession } from '@we/drag';
+import { type DragItem, dragSession } from '@we/drag';
 import type { EdgeWaypoint } from '@we/graph-core';
 import {
   bendPoints,
@@ -37,6 +37,7 @@ import {
   distanceToEdge,
   edgeVisual,
   endOf,
+  FOLD_BUNDLE,
   GraphEngine,
   matches,
   nodeVisual,
@@ -183,6 +184,16 @@ const ARROW_LENGTH = 6;
 const PENDING_WIDTH = 2;
 
 /**
+ * The frame round a multi-card selection, as a node id.
+ *
+ * It is not a node and never reaches the store, the index, a layout or a metric — it exists so the
+ * frame can be placed by `anchorStyle`, which takes a `NodeEntry`. Given an id at all so that
+ * anything reading one off the chrome layer during a debug session sees a name rather than an empty
+ * string it might mistake for a real node's.
+ */
+const SELECTION_FRAME_ID = 'we-graph://selection';
+
+/**
  * How near a node's centre an anchor drag counts as "no side at all", as a fraction of its half-size.
  *
  * The way back out. An anchor overrules the geometry for as long as it exists, so there has to be a
@@ -241,6 +252,25 @@ const REMOVE_WAYPOINT_WITHIN = 10;
 /** A waypoint's grip, and the hollow one that stands for a gap. Screen pixels; divided by the camera. */
 const WAYPOINT_HANDLE_R = 5;
 const WAYPOINT_GHOST_R = 4;
+
+/**
+ * How long cards take to travel into a fold, and nothing under reduced motion.
+ *
+ * The travel is the whole reason a fold is not a fade: it says *where* the cards went, which a fade
+ * cannot, and the lines retract with them because edge geometry follows positions. Asked of the
+ * browser here rather than in the engine, which has no business knowing there is one — it takes the
+ * number and interpolates.
+ *
+ * Zero rather than "shorter" for somebody who has asked for less movement. Cards sliding across a
+ * canvas is exactly the kind of motion that setting is about, and there is nothing lost by the
+ * instant version: the count on the folded card is what says something is inside it.
+ */
+const FOLD_TRAVEL_MS = 200;
+
+function foldTravel(): number {
+  if (typeof window === 'undefined' || !window.matchMedia) return FOLD_TRAVEL_MS;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : FOLD_TRAVEL_MS;
+}
 
 /**
  * How much of a value is worth carrying to a panel.
@@ -364,6 +394,7 @@ export function GraphView(props: GraphViewProps) {
   const [viewportVersion, setViewportVersion] = createSignal(0);
   const [statusVersion, setStatusVersion] = createSignal(0);
   const [connectionVersion, setConnectionVersion] = createSignal(0);
+  const [marqueeVersion, setMarqueeVersion] = createSignal(0);
   const [hovered, setHovered] = createSignal<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = createSignal<string | null>(null);
   /**
@@ -520,12 +551,49 @@ export function GraphView(props: GraphViewProps) {
           props.onSelectionChange?.(event.ids);
           break;
         case 'nodeDragEnd': {
+          /*
+            A drag that ended in somebody else's drop zone is not a move.
+
+            The cards have already been put back where they started (see `endCarry`), so reporting
+            this would write the position they were dropped *over* — which is inside a panel, and
+            would be the one place on the canvas nobody can see.
+          */
+          if (carriedAway) {
+            carriedAway = false;
+            break;
+          }
           const at = parseAddress(event.node.id);
+          /** One card that moved with the drag, as a record, or nothing when it does not stand for one. */
+          const asRecord = (id: string, x: number, y: number) => {
+            const address = parseAddress(id);
+            if (address?.kind !== 'entity' || !address.id) return [];
+            return [{ recordId: address.id, recordType: address.type ?? '', x, y }];
+          };
+          /*
+            Everything the gesture moved besides the card under the pointer, in one list.
+
+            Two sources, and they compose rather than competing. The rest of the **selection** moved
+            because somebody dragged several cards at once; a fold's **contents** moved because the
+            card they are hidden under did. A folded card inside a multi-card drag is both at once,
+            which is why the fold is asked about every node that travelled and not only the grabbed
+            one — miss that and carrying a selection containing a fold scatters its contents the next
+            time anyone opens it.
+
+            Reported rather than written, like every other gesture here: where a position lives is
+            the interface's business.
+          */
+          const carried = [
+            ...(event.moved ?? []).flatMap((row) => asRecord(row.id, row.position.x, row.position.y)),
+            ...[event.node.id, ...(event.moved ?? []).map((row) => row.id)].flatMap((id) =>
+              engine.foldedUnder(id).flatMap((row) => asRecord(row.id, row.x, row.y)),
+            ),
+          ];
           props.onNodeDragEnd?.({
             id: event.node.id,
             x: event.position.x,
             y: event.position.y,
             ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+            ...(carried.length ? { carried } : {}),
           });
           break;
         }
@@ -537,11 +605,59 @@ export function GraphView(props: GraphViewProps) {
 
   engine.subscribe((reason) => {
     batch(() => {
-      if (reason === 'viewport') setViewportVersion((n) => n + 1);
-      else if (reason === 'status') setStatusVersion((n) => n + 1);
+      if (reason === 'viewport') {
+        setViewportVersion((n) => n + 1);
+        /*
+          Reported from the notification rather than from an effect on the version signal, and the
+          difference matters: an effect would also fire for the *first* measurement, before there is a
+          camera worth describing, and a region of nothing at the origin is worse than no answer.
+          `visibleWorldRect` is empty until the surface has a size, and the guard below says so.
+        */
+        const region = engine.viewport.visibleWorldRect();
+        if (region.width > 0 && region.height > 0) props.onViewport?.(region);
+      } else if (reason === 'status') setStatusVersion((n) => n + 1);
       else if (reason === 'connection') setConnectionVersion((n) => n + 1);
+      // Its own signal, not the general one: a sweep fires on every pointer move and moves one
+      // rectangle, where `version` re-derives every node and every edge.
+      else if (reason === 'marquee') setMarqueeVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
+  });
+
+  /**
+   * The marks a host wants drawn, split into the two questions the render asks separately.
+   *
+   * `decorationIds` is what `<For>` iterates, so a row is keyed by id rather than by the object the
+   * host happened to build this tick. `decorationsById` is how that row then reads its own position,
+   * which is the part that changes. Splitting them is what lets a moving mark be a transform on an
+   * element that stays put — see the note at the `<For>` itself.
+   */
+  const decorations = createMemo(() => props.host?.decorations?.() ?? []);
+  const decorationIds = createMemo(() => decorations().map((mark) => mark.id));
+  const decorationsById = createMemo(() => new Map(decorations().map((mark) => [mark.id, mark])));
+
+  /**
+   * Follow somebody else's view: frame the region they are looking at, once per change.
+   *
+   * `framed` is what keeps this from fighting the reader. Without it the effect re-runs on every
+   * camera notification — `engine.frame` itself notifies — and the camera would be pinned to the
+   * region for as long as it was set, so a follower could not pan at all and the graph would fight
+   * every gesture. Compared by value rather than by identity, since a host recomputing an equal
+   * region on an unrelated update is ordinary and must not re-frame.
+   */
+  let framed: string | undefined;
+  createEffect(() => {
+    const region = props.region;
+    if (!region) {
+      // Following nobody leaves the camera exactly where it is. Cleared so that following the same
+      // person again re-frames rather than being taken for a region already applied.
+      framed = undefined;
+      return;
+    }
+    const key = `${region.x},${region.y},${region.width},${region.height}`;
+    if (key === framed) return;
+    framed = key;
+    untrack(() => engine.frame(region));
   });
 
   /**
@@ -603,6 +719,43 @@ export function GraphView(props: GraphViewProps) {
     live: props.live,
   });
 
+  /**
+   * A seed spec split into the part that decides the queries and the part that decides the drawing.
+   *
+   * The narrowness the effect below advertises used to stop at the prop: `seeds` was tracked whole,
+   * and `seeds` is one bag holding two kinds of thing. Which canvas, which types and how many decide
+   * what is fetched; which cards are marked as suggestions and which are left off are applied to
+   * rows already in hand. Only the seed knows which of its own options are which, so it says — see
+   * `presentationOptions` on `SeedSource`.
+   *
+   * A spec naming a source nothing has registered, or a literal one, has no presentation half and
+   * lands entirely in the structural key, which is the behaviour every seed had before this.
+   */
+  const splitSeed = (spec: unknown): [structural: unknown, presentation: unknown] => {
+    const source = (spec as { source?: unknown } | null)?.source;
+    const options = (spec as { options?: Record<string, unknown> } | null)?.options;
+    const keys = typeof source === 'string' ? registry.seed(source)?.presentationOptions : undefined;
+    if (!keys?.length || !options) return [spec, null];
+
+    const structural: Record<string, unknown> = {};
+    const presentation: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(options)) {
+      if (keys.includes(key)) presentation[key] = value;
+      else structural[key] = value;
+    }
+    return [{ ...(spec as object), options: structural }, presentation];
+  };
+
+  /** Both halves of every seed, as two comparable strings. */
+  const seedKeys = () => {
+    const specs = Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : [];
+    const split = specs.map(splitSeed);
+    return {
+      structural: JSON.stringify([split.map(([s]) => s), props.expansion ?? null]),
+      presentation: JSON.stringify(split.map(([, p]) => p)),
+    };
+  };
+
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
   // narrow: recolouring a map must never re-run its queries, and depending on the whole prop bag
   // would do exactly that. `props.layout` is read untracked so a layout swap does not land here.
@@ -616,11 +769,41 @@ export function GraphView(props: GraphViewProps) {
       which looks like a layout bug and is really this effect firing on churn. The layout and style
       effects below already compare; this one is the reason to.
     */
-    const next = JSON.stringify([props.seeds ?? null, props.expansion ?? null]);
+    const next = seedKeys().structural;
     if (previous === next) return next;
     untrack(() => {
       engine.setSpec(currentSpec());
       void engine.start();
+    });
+    return next;
+  });
+
+  /*
+    A marker changing is not the graph becoming a different graph.
+
+    The same seeds, drawn differently: a card a pass has just staged should start looking provisional,
+    and one somebody has just kept should stop. Sent down `refresh`, which re-reads and merges rather
+    than clearing — so the graph stays on screen, keeps its positions and its arrangement, and
+    `reloading` is never raised.
+
+    That last part is what this is for. `start` raises it, and `reloading` is what drops every layer
+    to 40% and puts a spinner over the middle of the canvas. On the workshop's canvas those markers
+    come straight from the transcriber, so with auto-extract on a call the whole screen faded under a
+    "Loading graph…" every couple of minutes — for a change that amounted to two cards changing
+    opacity.
+
+    `setSpec` first, or `refresh` would re-read the seeds against the markers they had last time.
+
+    The first run only records the value: the structural effect above has already loaded, and firing
+    here on mount would run every seed query a second time — the reason the revision effect below
+    does the same.
+  */
+  createEffect((previous: string | undefined) => {
+    const next = seedKeys().presentation;
+    if (previous === undefined || previous === next) return next;
+    untrack(() => {
+      engine.setSpec(currentSpec());
+      void engine.refresh();
     });
     return next;
   });
@@ -666,11 +849,28 @@ export function GraphView(props: GraphViewProps) {
    * line itself, but it is between the two things the line joins, which is what bringing a
    * connection into view is for.
    */
-  function focusTarget(recordId: string): { kind: 'node' | 'edge'; id: string; at: Point } | null {
+  function focusTarget(
+    recordId: string,
+  ): { kind: 'node' | 'edge'; id: string; at: Point } | { kind: 'folded'; id: string; owner: string } | null {
     const positions = engine.getPositions();
     for (const node of engine.store.nodes()) {
       const address = parseAddress(node.id);
       if (address?.kind !== 'entity' || address.id !== recordId) continue;
+      /*
+        Asked before the position, not after it — which is the difference between this working and
+        working except when it matters. A card is *held by a fold* from the moment the fold is made,
+        and it keeps a position for the two-tenths of a second it spends travelling into one: read
+        the position first and a focus arriving during that window selects a card on its way out of
+        sight, and then never looks again, because a focus is applied once per value.
+
+        Held is also a different answer from "not on this canvas", and wants the opposite response.
+        Something beside the graph has asked for this card — an inspector opening one end of a
+        connection, a link somebody sent — so clearing the selection would leave a panel describing
+        a card nobody can see. The fold is opened instead, exactly as clicking a search result opens
+        the sections above it in an outline.
+      */
+      const owner = engine.foldHiding(node.id);
+      if (owner) return { kind: 'folded', id: node.id, owner };
       const at = positions.get(node.id);
       if (at) return { kind: 'node', id: node.id, at: { x: at.x, y: at.y } };
     }
@@ -719,6 +919,40 @@ export function GraphView(props: GraphViewProps) {
   }
 
   /**
+   * The fold set, translated from records to nodes and handed to the engine.
+   *
+   * Re-run when the graph moves as well as when the prop does, which is what makes a fold *patient*:
+   * a canvas still loading, or one whose folded card arrives a second later from a live query, has no
+   * node to fold yet, and the fold is applied the moment there is one. The engine ignores a set it is
+   * already holding, so re-running on every redraw costs a comparison.
+   *
+   * Nothing is animated on the first application. A fold that arrives in a link is how the canvas
+   * *opens*, and cards travelling into a fold as the page appears would read as the canvas doing
+   * something to itself; a fold somebody presses is a movement they asked for and should see.
+   *
+   * **Before the focus effect below**, and that is an ordering rather than a coincidence: what the
+   * graph *shows* has to be settled before what is selected within it. The other way round, a focus
+   * arriving on the same frame as a fold selects a card that is about to be hidden — and a focus is
+   * applied once per value, so it never looks again.
+   */
+  let foldApplied = false;
+  createEffect(() => {
+    version();
+    const wanted = new Set(props.folded ?? []);
+    const nodeIds = untrack(() => {
+      if (!wanted.size) return [];
+      const ids: string[] = [];
+      for (const node of engine.store.nodes()) {
+        const address = parseAddress(node.id);
+        if (address?.kind === 'entity' && address.id && wanted.has(address.id)) ids.push(node.id);
+      }
+      return ids;
+    });
+    untrack(() => engine.setFolded(nodeIds, foldApplied ? foldTravel() : 0));
+    foldApplied = true;
+  });
+
+  /**
    * Apply `focus` — once per value, and as soon as the graph holds what it names.
    *
    * Reads `version()` so it runs again as the graph fills in: a line written a moment ago is not
@@ -741,16 +975,52 @@ export function GraphView(props: GraphViewProps) {
    * record is still missing must stay selected, not be swept away by the next redraw.
    */
   let clearedFor: string | undefined;
+  /** The fold last asked to open for this focus, so an interface that ignores it is asked once. */
+  let revealedFor: string | undefined;
   createEffect(() => {
     version();
     const recordId = props.focus;
     if (!recordId) {
       applied = undefined;
       clearedFor = undefined;
+      revealedFor = undefined;
       return;
     }
     if (recordId === applied) return;
     const target = untrack(() => focusTarget(recordId));
+
+    /*
+      Held by a fold: open the fold and let this run again.
+
+      Reported rather than unfolded here, because the fold set is the interface's — the graph does
+      not write it, the same way it does not write a position. One fold per pass, and the pass
+      repeats as the graph changes, so a card several folds deep is uncovered a level at a time;
+      each step removes an id from the set, so it terminates. Nothing to do where the interface has
+      no fold control, in which case this is a record that simply cannot be shown.
+    */
+    if (target?.kind === 'folded') {
+      /*
+        Asked once per fold, not once per redraw.
+
+        The interface is free to ignore this — a fold set that does not change leaves the card
+        exactly as hidden as it was — and a live graph redraws whenever anybody writes anything, so
+        without the guard an ignored request would be re-sent for as long as the focus stood. Keyed
+        on the pair, so a card several folds deep still asks about the next one down once the first
+        has opened.
+      */
+      const key = `${recordId}\u0000${target.owner}`;
+      if (props.onNodeFold && revealedFor !== key) {
+        revealedFor = key;
+        const at = parseAddress(target.owner);
+        props.onNodeFold({
+          id: target.owner,
+          folded: false,
+          count: engine.foldedCount(target.owner),
+          ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+        });
+      }
+      return;
+    }
 
     applyingFocus = true;
     try {
@@ -774,8 +1044,20 @@ export function GraphView(props: GraphViewProps) {
       }
       applied = recordId;
       if (target.kind === 'node') {
-        const selection = engine.getSelection();
-        if (selection.length !== 1 || selection[0] !== target.id) engine.select([target.id]);
+        /*
+          Already selected is enough — it does not have to be the *only* thing selected.
+
+          This used to demand a selection of exactly one, which quietly made multi-select impossible
+          on any canvas that binds `focus`. Shift-clicking a second card toggles it in, the click
+          writes the record into the address, the address comes back here, and a selection of two
+          was replaced by a selection of one — correct for a single frame, then collapsed by the
+          interface's own inspector wiring. The workshop does exactly that and the canvas view does
+          not, which is why the gesture worked in one and not the other.
+
+          Every case this effect exists for still holds: an inspector opening a record that is *not*
+          selected still replaces the selection with it.
+        */
+        if (!engine.getSelection().includes(target.id)) engine.select([target.id]);
       } else {
         // `selectEdge` returns early for the line already open, so no guard is needed here.
         engine.selectEdge(target.id);
@@ -878,6 +1160,18 @@ export function GraphView(props: GraphViewProps) {
           selected: selected.has(node.id),
           expanded: engine.expansion.isExpanded(node.id),
           hasMore: engine.expansion.hasMore(node.id),
+          /*
+            The fold, read onto the row rather than asked for at paint time.
+
+            `folded` and `foldedCount` are what the card wears — a chip saying how much is inside —
+            and `foldScale` is where a card in mid-travel has got to. All three go through the row
+            store, so a fold repaints the cards it touches and leaves every other card's DOM, and
+            whatever a control inside one was doing, alone.
+          */
+          folded: engine.isFolded(node.id),
+          foldedCount: engine.foldedCount(node.id),
+          foldedLinks: engine.foldedLinks(node.id),
+          foldScale: engine.foldScale(node.id),
         },
       ];
     });
@@ -927,6 +1221,134 @@ export function GraphView(props: GraphViewProps) {
    * leaves the chrome mounted — a picker the bar opened stays open, for the reason the rows exist.
    */
   const selectedRows = createMemo(() => nodeRows().filter((row) => row.entry.selected));
+
+  /**
+   * Whether the selection is a *set* rather than a card.
+   *
+   * The line the whole chrome layer turns on. One card wears its own furniture — eight resize
+   * handles, four connect dots and a bar of controls about that record. Twelve cards wearing the
+   * same thing is not a busier version of that, it is a different and unusable screen: ninety-six
+   * grab targets over the content they exist to reveal, and twelve identical bars none of which is
+   * the one you meant. So above one, the per-card chrome goes away entirely and a single frame round
+   * the selection takes its place. The frame itself is built further down, where `boxOf` is.
+   */
+  const multiSelected = createMemo(() => selectedRows().length > 1);
+
+  /**
+   * Which selection-wide controls are offered.
+   *
+   * `when` has to hold for **every** selected node rather than for any of them: "accept" over a
+   * selection where two cards are suggestions and nine are settled would be a button that does
+   * something to a fifth of what is highlighted, which is the shape of mistake nobody notices until
+   * afterwards.
+   */
+  const selectionActions = createMemo(() => {
+    const rows = selectedRows();
+    if (rows.length < 2) return [];
+    return (props.selectionActions ?? []).filter((action) =>
+      rows.every(({ entry }) => matches(entry.node, action.when)),
+    );
+  });
+
+  /** Every selected node that stands for a record — what a selection-wide action is reported with. */
+  const selectedRecords = createMemo(() =>
+    selectedRows().flatMap(({ entry }) => {
+      const at = parseAddress(entry.node.id);
+      return at?.kind === 'entity' && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
+    }),
+  );
+
+  /**
+   * The selection as things the app's drag session can carry.
+   *
+   * References, never records — `{ entity, id }` — which is what makes a card droppable somewhere
+   * the canvas has never heard of. No dataset is named: a receiver stamps that from whichever one
+   * was current when the drop happened, and a graph reading a store to answer it would be the graph
+   * learning what a dataset is.
+   *
+   * Everything in `preview` is already on the node, so building this costs a property read per card
+   * rather than a query. `editorState` is the composed document a post card draws from, handed over
+   * as the string it arrived as, so a ghost can draw the real card rather than a chip with a name on
+   * it.
+   */
+  const itemsFor = (ids: readonly string[]): DragItem[] =>
+    ids.flatMap((id) => {
+      const entry = nodeRows().find((row) => row.entry.node.id === id)?.entry;
+      const at = parseAddress(id);
+      if (!entry || at?.kind !== 'entity' || !at.id) return [];
+      const editorState = entry.node.data?.editorState;
+      const thumbnail = entry.node.data?.src;
+      /*
+        One preview, assembled — not two spreads both keyed `preview`, where the second silently
+        replaces the first. An `ImageBlock` composed into a card has both a document and a `src`, so
+        that spelling would have dropped the document on exactly the cards with most to draw.
+      */
+      const preview = {
+        ...(typeof editorState === 'string' && editorState ? { content: editorState } : {}),
+        ...(typeof thumbnail === 'string' && thumbnail ? { thumbnail } : {}),
+      };
+      return [
+        {
+          ref: { entity: at.type ?? '', id: at.id },
+          label: entry.node.label ?? at.id,
+          ...(Object.keys(preview).length ? { preview } : {}),
+        },
+      ];
+    });
+
+  /**
+   * A card drag that might turn out to be a carry.
+   *
+   * ## The card is the ghost
+   *
+   * Dragging a card already means "move it here", and it is the most-used gesture on a canvas.
+   * Rather than adding a second grab area meaning "take it away", the same drag carries both
+   * readings and the **release** decides: over nothing it was a move and the new position is
+   * written; over a drop zone the cards go back where they started and the zone gets them.
+   *
+   * That works because the session already does the hard half. Zones light up as the pointer
+   * crosses them, spring-loading opens a collapsed one, and a release over nothing does nothing at
+   * all — so "was this a carry" is exactly what `drop` answers.
+   *
+   * The ghost is `none`: the card is already under the cursor in the canvas's own space, and a
+   * second copy of it beside the first would leave neither being the answer.
+   *
+   * ## `from` is the graph, which is what stops it eating its own drag
+   *
+   * The canvas registers itself as a drop zone, so without this a card dropped back on the canvas
+   * would land in the graph's own `onDrop` and be brought in a second time. `accepts` refuses a zone
+   * the drag began inside, which this is — the same containment rule that stops a sortable dropping
+   * a row into itself.
+   */
+  let carrying: { items: DragItem[]; home: { id: string; at: Point }[]; began: boolean } | null = null;
+  /** Set by the release when a zone took the cards, and read by `nodeDragEnd` — see `onPointerUp`. */
+  let carriedAway = false;
+
+  /**
+   * Which nodes a press is about to move, mirroring `drag-node`'s own rule.
+   *
+   * A press inside the selection moves the selection; a press outside it moves that card alone and
+   * leaves the selection where it is. Asked here as well because the carry has to know what it is
+   * carrying *before* the drag starts, and the behaviour keeps that to itself.
+   */
+  function draggedBy(id: string): string[] {
+    const selection = engine.getSelection();
+    return selection.length > 1 && selection.includes(id) ? selection : [id];
+  }
+
+  /**
+   * The rows wearing a fold count — folded cards, less any that is selected.
+   *
+   * Less the selection because a selected card already has the count in its action bar, and the
+   * chip's corner is where a resize grip sits: two things taking presses in one place, one of which
+   * paints over the other. The count is never lost, only moved, which is the point of drawing it in
+   * both places.
+   */
+  const foldedRows = createMemo(() =>
+    // `foldScale` at full size only: a folded card that is itself travelling into somebody else's
+    // fold should not hand out a chip on its way past.
+    nodeRows().filter((row) => row.entry.foldedCount > 0 && !row.entry.selected && row.entry.foldScale === 1),
+  );
 
   /*
     The host's optimistic fields, handed to the engine keyed by node.
@@ -1038,7 +1460,17 @@ export function GraphView(props: GraphViewProps) {
     // second derivation would mean clicking an edge that is not the one under the cursor.
     const geometry = engine.getEdgeGeometry();
     const metrics = engine.getMetrics();
-    return [...engine.store.edges()].flatMap((edge) => {
+    /*
+      The store's lines, plus the ones standing in for what a fold hid.
+
+      The bundles are not in the store, deliberately — they are derived from the fold and would
+      otherwise have to be merged in and taken back out on every fold, refresh and reload, with a
+      seed load clearing them from under the reader. So they are drawn from beside it, styled by the
+      same rules (`{ when: { type: 'fold-bundle' } }` is how a template tells them apart) and routed
+      by the same geometry, which is what makes one fan apart from a real line between the same pair
+      instead of lying under it.
+    */
+    return [...engine.store.edges(), ...engine.foldBundles()].flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
       const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), metrics);
@@ -1060,6 +1492,18 @@ export function GraphView(props: GraphViewProps) {
   const pending = createMemo(() => {
     connectionVersion();
     return engine.getPendingConnection();
+  });
+
+  /**
+   * The rectangle a selection sweep is drawing, in world units — see `getPendingMarquee`.
+   *
+   * World units, so it is drawn inside the same transformed group the nodes are and stays anchored
+   * to the canvas when the view moves under it. A screen-space rectangle would slide off whatever it
+   * had already caught the moment anything panned.
+   */
+  const marquee = createMemo(() => {
+    marqueeVersion();
+    return engine.getPendingMarquee();
   });
 
   /**
@@ -1316,6 +1760,57 @@ export function GraphView(props: GraphViewProps) {
    */
   const actionsFor = (node: GraphNode) => (props.nodeActions ?? []).filter((action) => matches(node, action.when));
 
+  /**
+   * What the fold control has to say about itself — how much it would take, and how much it cannot.
+   *
+   * `version()` first, so every answer is re-asked when the graph moves: a card gains a connection
+   * and the control has to appear, loses its last one and it has to go. Not on the row like `folded`
+   * and `foldedCount` are, because these answers are exact and exactness costs a recomputation per
+   * card — paid here for the one or two whose chrome is drawn rather than for every card on screen.
+   *
+   * The second number is the whole reason this is not just a count. A fold never takes a card
+   * another card still points at, so folding something with four things under it sometimes takes
+   * two — and the two that stay read as a fold that half worked. Worse at the limit: where
+   * *everything* under a card is shared, the control used to vanish, which reads as "this card
+   * cannot fold" rather than as "there is nothing here a fold may take".
+   *
+   * So the control appears whenever there is anything under the card at all, and says which case it
+   * is in. Asked of the engine for the selected card only, like `canFold`.
+   */
+  const foldSays = (entry: NodeEntry) => {
+    version();
+    const hides = engine.foldImpact(entry.node.id);
+    const held = engine.foldHeldElsewhere(entry.node.id);
+    const enabled = engine.canFold(entry.node.id);
+    // The counts are true whether or not anybody is listening — a folded card still has to be able
+    // to say what it is holding. Only the *control* depends on the handler.
+    return { show: !!props.onNodeFold && (enabled || held > 0), enabled, hides, held };
+  };
+
+  /** "1 card" / "3 cards" — the graph says what it is about in its own tooltips. */
+  const cards = (count: number) => `${count} ${count === 1 ? 'card' : 'cards'}`;
+
+  /** What the fold control's tooltip reads, in the three states it has. */
+  function foldTitle(entry: NodeEntry, says: { enabled: boolean; hides: number; held: number }): string {
+    // Named rather than counted, because it is the one state where the button does nothing: every
+    // card under this one is also connected to something else, and a fold may not take those.
+    if (!says.enabled) return 'Nothing to fold — everything under this card is also connected elsewhere';
+    const elsewhere = says.held ? ` · ${cards(says.held)} also connected elsewhere` : '';
+    if (entry.folded) return `Unfold ${cards(says.hides)}${elsewhere}`;
+    return `Fold ${cards(says.hides)} into this one${says.held ? ` · ${cards(says.held)} stays, connected elsewhere` : ''}`;
+  }
+
+  /** What the fold control reports: the state being asked for, and how much it is about. */
+  function reportFold(entry: NodeEntry): void {
+    const at = parseAddress(entry.node.id);
+    props.onNodeFold?.({
+      id: entry.node.id,
+      folded: !entry.folded,
+      count: engine.foldImpact(entry.node.id),
+      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+    });
+  }
+
   const status = createMemo(() => {
     statusVersion();
     return engine.getStatus();
@@ -1353,6 +1848,10 @@ export function GraphView(props: GraphViewProps) {
       at: { x: event.clientX - (box?.left ?? 0), y: event.clientY - (box?.top ?? 0) },
       buttons: 'buttons' in event ? event.buttons : 0,
       shiftKey: event.shiftKey,
+      // The platform's multi-select modifier, folded into one flag: Control everywhere, and Command
+      // on a Mac, where Control-click is the context menu. `metaKey` stays separate below for
+      // anything that genuinely means that key rather than this intent.
+      ctrlKey: event.ctrlKey || event.metaKey,
       metaKey: event.metaKey,
       delta: 'deltaY' in event ? event.deltaY : undefined,
     };
@@ -1976,18 +2475,91 @@ export function GraphView(props: GraphViewProps) {
    * the first time one of the copies changed — during a resize, say, which is exactly when both are
    * being read every frame.
    */
-  function anchorStyle(entry: NodeEntry): JSX.CSSProperties {
+  function anchorStyle(entry: NodeEntry, fold = 1): JSX.CSSProperties {
     const box = boxOf(entry);
     return {
-      transform: `translate(${box.x}px, ${box.y}px)`,
+      /*
+        Scaled about the node's own point, which is the card's centre, so a card folding away shrinks
+        into itself rather than towards its top-left corner — and after the translate, so it shrinks
+        where it currently *is* rather than being pulled towards the origin as it goes.
+
+        Left out entirely at full size: `scale(1)` composites the same as no scale, but writing it
+        would put every card in the graph on a path the browser treats as animated.
+      */
+      transform: fold < 1 ? `translate(${box.x}px, ${box.y}px) scale(${fold})` : `translate(${box.x}px, ${box.y}px)`,
       '--node-width': `${box.width ?? entry.visual.size * 2}px`,
       '--node-height': `${box.height ?? entry.visual.size * 2}px`,
     };
   }
 
+  /**
+   * The box round everything selected, in world units — centre and size, as a node reports itself.
+   *
+   * Deliberately the same shape a node's own box has, so the frame and its bar are placed by
+   * `anchorStyle` and by exactly the stylesheet rules that place a card's. The bar then sits the
+   * same distance above a selection as it does above one card and scales with the camera the same
+   * way, with no second copy of that placement to drift out of step with the first.
+   *
+   * Measured through `boxOf`, so a card mid-resize contributes the size it is being dragged to
+   * rather than the one the data still holds.
+   *
+   * Declared here rather than beside `selectedRows` because `createMemo` runs its body eagerly, and
+   * `boxOf` reads the `resizing` signal declared above this line — see the note in `mount.test.tsx`
+   * about the last memo that reached backwards.
+   */
+  const selectionBox = createMemo(() => {
+    const rows = selectedRows();
+    if (rows.length < 2) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const { entry } of rows) {
+      const box = boxOf(entry);
+      const halfWidth = (box.width ?? entry.visual.size * 2) / 2;
+      const halfHeight = (box.height ?? entry.visual.size * 2) / 2;
+      minX = Math.min(minX, box.x - halfWidth);
+      minY = Math.min(minY, box.y - halfHeight);
+      maxX = Math.max(maxX, box.x + halfWidth);
+      maxY = Math.max(maxY, box.y + halfHeight);
+    }
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2, width: maxX - minX, height: maxY - minY };
+  });
+
+  /**
+   * The selection frame, dressed as a node so `anchorStyle` can place it.
+   *
+   * A synthetic entry rather than a second placement path: everything downstream — the transform,
+   * `--node-width`, `--node-height`, the bar's lift — is written against a `NodeEntry`, and giving
+   * the frame its own arithmetic would mean maintaining the two in step forever.
+   */
+  const selectionEntry = createMemo(() => {
+    const box = selectionBox();
+    if (!box) return null;
+    return {
+      node: { id: SELECTION_FRAME_ID, kind: 'selection', type: '' },
+      at: { x: box.x, y: box.y },
+      visual: { shape: 'rect', size: 0, width: box.width, height: box.height },
+    } as unknown as NodeEntry;
+  });
+
   /** This graph's endpoint grips, at the camera's scale — see `edgeEndAt`. */
   const edgeEndUnder = (at: Point): string | null =>
-    props.onEdgeAnchor ? edgeEndAt(at, edges(), HANDLE_HIT_R / zoom()) : null;
+    /*
+      A bundle has no ends to take hold of.
+
+      It stands for several connections at once, so there is nothing an anchor or a re-attachment
+      could be *about* — and the grips are the one part of the edge chrome that is geometric rather
+      than driven by the selection, so without this a fold's summary line handed out handles that
+      would report a route against an id no record has.
+    */
+    props.onEdgeAnchor
+      ? edgeEndAt(
+          at,
+          edges().filter((entry) => entry.edge.type !== FOLD_BUNDLE),
+          HANDLE_HIT_R / zoom(),
+        )
+      : null;
 
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
@@ -2009,7 +2581,48 @@ export function GraphView(props: GraphViewProps) {
    *
    * The listener writes nothing. See `onDeleteSelection` for why the graph reports rather than acts.
    */
+  /**
+   * An element that owns its own text input — the same test `we-sortable` makes, for the same reason.
+   *
+   * The keys below are bound on the graph's **root**, which contains the chrome as well as the hit
+   * surface (see the note there), and some of that chrome types: a colour control's hex field is an
+   * `input` inside a popup inside the selected card's bar. Without this, backspacing a wrong digit
+   * would delete the card the colour is being chosen for.
+   *
+   * `composedPath` rather than `target`, because a field inside a primitive's shadow root reports
+   * the host element as the target and the field itself only in the path.
+   */
+  const typingIn = (event: KeyboardEvent): boolean =>
+    event.composedPath().some((node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      return (
+        node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT' || node.isContentEditable
+      );
+    });
+
   function onKeyDown(event: KeyboardEvent) {
+    if (typingIn(event)) return;
+    /*
+      Undo and redo, on the surface for exactly the reason delete is.
+
+      A document-level listener would revert a card move while somebody is typing a label into the
+      inspector beside the canvas — the keystroke belongs to whatever has focus, and focus is the
+      only thing that can answer which of the two the reader meant. The cost is real and worth
+      stating: undo works while the canvas has focus and not while the inspector does. The
+      alternative silently steals the key from every text field on the page.
+
+      Both spellings of redo, because both are in use: Ctrl+Shift+Z everywhere, and Ctrl+Y on
+      Windows, where a good many people will only ever try that one.
+    */
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z' || event.key === 'y')) {
+      const redoing = event.key === 'y' || event.shiftKey;
+      const report = redoing ? props.onRedo : props.onUndo;
+      if (!report) return;
+      event.preventDefault();
+      report();
+      return;
+    }
+
     if (event.key !== 'Delete' && event.key !== 'Backspace') return;
     const report = props.onDeleteSelection;
     if (!report) return;
@@ -2040,21 +2653,120 @@ export function GraphView(props: GraphViewProps) {
     const ids = engine.getSelection();
     if (!ids.length) return;
     // Only an entity node stands for a record. A property, a literal or a synthetic cluster has
-    // nothing to delete, so it reports as a selection with no id rather than as no press at all.
+    // nothing to delete, so it is left out of `records` rather than reported as an empty one.
+    const records = selectedRecords();
     const at = ids.length === 1 ? parseAddress(ids[0]) : null;
     event.preventDefault();
     report({
       count: ids.length,
-      ...(ids.length === 1 && { kind: 'node' as const }),
+      kind: 'node',
+      // Still filled for a selection of one, which is what every existing consumer reads.
       ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(records.length ? { records } : {}),
     });
   }
 
+  /**
+   * A press on a card, remembered in case the drag that follows turns out to be a carry.
+   *
+   * Nothing is begun here. Most presses are clicks and most drags are ordinary moves, so the session
+   * waits until the pointer has actually travelled — see `carryTo`.
+   */
+  function armCarry(event: PointerEvent): void {
+    carrying = null;
+    carriedAway = false;
+    if (!props.carry || engine.isLocked()) return;
+    const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
+    if (!hit) return;
+    const ids = draggedBy(hit);
+    const items = itemsFor(ids);
+    // Nothing a receiver could be given — a property node, a cluster, a literal — is not a carry.
+    if (!items.length) return;
+    const home = ids.flatMap((id) => {
+      const at = engine.getPositions().get(id);
+      return at ? [{ id, at: { x: at.x, y: at.y } }] : [];
+    });
+    carrying = { items, home, began: false };
+  }
+
+  /** Feed the session while a card drag is running, beginning one the first time it has moved. */
+  function carryTo(event: PointerEvent): void {
+    if (!carrying || !surface) return;
+    // No button held means no drag — the same guard the behaviours carry, for the same dropped
+    // pointer-up that leaves a gesture latched.
+    if (event.buttons === 0) {
+      dragSession.cancel();
+      carrying = null;
+      return;
+    }
+    const point = { x: event.clientX, y: event.clientY };
+    if (!carrying.began) {
+      carrying.began = true;
+      dragSession.begin({
+        payload: { items: carrying.items, effect: 'copy' },
+        pointer: point,
+        // Nothing drawn: the card itself is already following the cursor. See the note on `carrying`.
+        ghost: { kind: 'none' },
+        // The graph, so the graph's own drop zone refuses this drag — see the note on `carrying`.
+        from: surface,
+        release: () => {
+          carrying = null;
+        },
+      });
+      return;
+    }
+    dragSession.move(point);
+  }
+
+  /**
+   * The release: did a zone take the cards, or was this an ordinary move?
+   *
+   * `copy`, whichever it was. The cards go back where they started rather than off the canvas,
+   * because nothing here knows what the receiver did with what it was given — and taking a card off
+   * a canvas on the strength of a drop that may have been refused is the one outcome worth refusing
+   * to risk. A Pocket that gathered it now holds a reference; the canvas is unchanged.
+   */
+  function endCarry(event: PointerEvent): void {
+    const held = carrying;
+    carrying = null;
+    if (!held?.began) return;
+    carriedAway = dragSession.drop({ x: event.clientX, y: event.clientY });
+    if (!carriedAway) return;
+    for (const { id, at } of held.home) engine.pin(id, at);
+  }
+
+  /**
+   * The last world point reported to `onPointerAt`, and whether a report is already queued.
+   *
+   * Coalesced to one per animation frame because a pointer fires far more often than a screen
+   * changes — on a high-rate mouse, several times per frame — and a consumer that has to sample it
+   * itself is a consumer doing the host's job. The *latest* position is sent when the frame comes, so
+   * nothing is averaged and nothing lags.
+   */
+  let pointerFrame: number | null = null;
+  let pointerAt: { x: number; y: number } | null = null;
+
+  function reportPointer(at: { x: number; y: number } | null) {
+    if (!props.onPointerAt) return;
+    pointerAt = at;
+    if (pointerFrame !== null) return;
+    pointerFrame = requestAnimationFrame(() => {
+      pointerFrame = null;
+      props.onPointerAt?.(pointerAt);
+    });
+  }
+
+  onCleanup(() => {
+    if (pointerFrame !== null) cancelAnimationFrame(pointerFrame);
+  });
+
   function onPointerMove(event: PointerEvent) {
+    carryTo(event);
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
     const at = engine.viewport.toWorld(toInput(event).at);
+    reportPointer(at);
     const [hit] = engine.index.hitTest(at);
     if (hit !== hovered()) setHovered(hit ?? null);
     /*
@@ -2092,6 +2804,8 @@ export function GraphView(props: GraphViewProps) {
             entity: item.ref.entity,
             id: item.ref.id,
             ...(item.ref.dataset ? { dataset: item.ref.dataset } : {}),
+            ...(item.within ? { within: item.within } : {}),
+            ...(item.preview ? { preview: item.preview } : {}),
             label: item.label,
             x: world.x,
             y: world.y,
@@ -2106,6 +2820,31 @@ export function GraphView(props: GraphViewProps) {
     <div
       class="we-graph"
       ref={surface}
+      /*
+        The keyboard, on the **root** rather than on the hit surface.
+
+        `.we-graph__surface` is a self-closing element: the node layer, every card's chrome and the
+        selection's own bar are *siblings* of it, not descendants. So a press on any of them — a bin
+        in a card's bar, a swatch, the selection's controls — moved focus outside the surface, and a
+        key pressed afterwards bubbled to this root and reached nothing. Delete had that from the
+        start; undo inherited it, and it reads as a key that is simply not wired up.
+
+        The root still answers the question the surface was chosen to answer — is the keyboard aimed
+        at this graph, or at the inspector beside it — and it now covers the graph's own furniture
+        as well, which was always part of the graph. `typingIn` guards the one thing that moves in
+        with it: chrome that takes text.
+      */
+      onKeyDown={onKeyDown}
+      /*
+        The pointer left the graph, so there is nothing to report about it.
+
+        On the **root**, not on `.we-graph__surface`, for the reason the keyboard is: the node layer,
+        every card's chrome and the selection's bar are siblings of the hit surface rather than
+        descendants, so a pointer moving from the canvas onto a card's own controls *leaves* the
+        surface without leaving the graph. Bound there, a peer's cursor would blink out every time
+        they passed over a card.
+      */
+      onPointerLeave={() => reportPointer(null)}
       style={{
         width: props.width ?? '100%',
         height: props.height ?? '100%',
@@ -2141,15 +2880,14 @@ export function GraphView(props: GraphViewProps) {
         classList={{ 'we-graph__surface--pointer-focus': pointerFocused() }}
         onBlur={() => setPointerFocused(false)}
         /*
-          Focusable only where the delete key is bound — see `onDeleteSelection`.
+          Focusable only where a key is bound to something — see `onDeleteSelection` and `onUndo`.
 
-          A graph with no answer for the key has no reason to be a tab stop, and making every one of
-          them focusable would add a stop to every page holding a map, for a focus that does nothing.
-          `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can focus is
-          a canvas only a mouse can delete from.
+          A graph with no answer for any of them has no reason to be a tab stop, and making every one
+          of them focusable would add a stop to every page holding a map, for a focus that does
+          nothing. `0` rather than `-1` so the keyboard can reach it at all: a canvas only a mouse can
+          focus is a canvas only a mouse can delete from.
         */
-        tabIndex={props.onDeleteSelection ? 0 : undefined}
-        onKeyDown={onKeyDown}
+        tabIndex={props.onDeleteSelection || props.onUndo || props.onRedo ? 0 : undefined}
         onPointerDown={(event) => {
           (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
           /*
@@ -2162,13 +2900,29 @@ export function GraphView(props: GraphViewProps) {
           */
           setPointerFocused(true);
           (event.currentTarget as HTMLElement).focus?.({ preventScroll: true });
+          armCarry(event);
           dispatch('onPointerDown', event);
         }}
         onPointerMove={onPointerMove}
-        onPointerUp={(event) => dispatch('onPointerUp', event)}
+        onPointerUp={(event) => {
+          /*
+            The session is asked **before** the behaviours are.
+
+            `drag-node` emits `nodeDragEnd` on this dispatch, and whether that drop should be written
+            depends on whether a zone just took the cards. Asking first sets the flag the event
+            handler reads; asking after would report a position for a card that is about to go back
+            where it came from.
+          */
+          endCarry(event);
+          dispatch('onPointerUp', event);
+        }}
         // Without this a gesture interrupted by the browser leaves whichever behaviour was tracking it
         // latched onto a node.
-        onPointerCancel={(event) => dispatch('onPointerCancel', event)}
+        onPointerCancel={(event) => {
+          dragSession.cancel();
+          carrying = null;
+          dispatch('onPointerCancel', event);
+        }}
         onDblClick={(event) => dispatch('onDoubleClick', event)}
         onWheel={(event) => {
           event.preventDefault();
@@ -2213,10 +2967,19 @@ export function GraphView(props: GraphViewProps) {
                   A wider, transparent copy of the line under the real one — the hover mark, and the
                   reason it is a second path rather than a thicker stroke: the visible line keeps its
                   own width, so nothing about the drawing changes shape when the pointer is near it.
+
+                  The **selected** line carries the same mark, one step stronger, and keeps it once
+                  the pointer has gone. A card says which one is selected with a ring that stays; an
+                  edge said it with nothing at all, so selecting a line and moving away left the
+                  inspector talking about a connection nobody could see on the canvas. One path
+                  rather than two, so the two states cannot stack into a third brightness.
                 */}
-                <Show when={hoveredEdge() === entry.edge.id}>
+                <Show when={hoveredEdge() === entry.edge.id || selectedEdge() === entry.edge.id}>
                   <path
-                    class="we-graph__edge-hover"
+                    classList={{
+                      'we-graph__edge-hover': true,
+                      'we-graph__edge-hover--selected': selectedEdge() === entry.edge.id,
+                    }}
                     d={entry.path}
                     fill="none"
                     stroke={color(entry.visual.color, 'neutral-300')}
@@ -2365,7 +3128,7 @@ export function GraphView(props: GraphViewProps) {
 
             The arrowhead says which way round the connection will be, which nothing else does — the
             highlight under the pointer names the card and not the direction. Its own marker rather
-            than the edges', because that one is filled `neutral-400` and this line is not; `context-
+            than the edges', because that one is filled `border-strong` and this line is not; `context-
             stroke` would say it once, and Safari does not support it.
           */}
           <Show when={pending()}>
@@ -2373,11 +3136,35 @@ export function GraphView(props: GraphViewProps) {
               <path
                 d={pathFrom(route(), ARROW_LENGTH * PENDING_WIDTH)}
                 fill="none"
-                stroke="var(--we-color-primary-500)"
+                stroke="var(--we-role-accent)"
                 stroke-width={PENDING_WIDTH}
                 stroke-dasharray="6 4"
                 vector-effect="non-scaling-stroke"
                 marker-end="url(#we-graph-arrow-pending)"
+              />
+            )}
+          </Show>
+          {/*
+            The rectangle a selection sweep is drawing.
+
+            In the transformed group with everything else, so it is anchored to the canvas rather than
+            to the window — pan mid-sweep and it keeps hold of what it has already caught.
+
+            `non-scaling-stroke` on the outline and a zoom-divided dash: the fill scales because it is
+            a region of the canvas, and the border does not because it is chrome. Without the divide
+            the dashes stretch into a solid line when you zoom in and vanish when you zoom out, which
+            is the one thing that would make it read as a drawn shape rather than a tool.
+          */}
+          <Show when={marquee()}>
+            {(bounds) => (
+              <rect
+                class="we-graph__marquee"
+                x={bounds().minX}
+                y={bounds().minY}
+                width={Math.max(0, bounds().maxX - bounds().minX)}
+                height={Math.max(0, bounds().maxY - bounds().minY)}
+                stroke-dasharray={`${4 / zoom()} ${3 / zoom()}`}
+                vector-effect="non-scaling-stroke"
               />
             )}
           </Show>
@@ -2393,7 +3180,7 @@ export function GraphView(props: GraphViewProps) {
               markerHeight={ARROW_LENGTH}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-neutral-400)" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-role-border-strong)" />
             </marker>
             {/*
               One head per colour anybody has actually asked for.
@@ -2433,7 +3220,7 @@ export function GraphView(props: GraphViewProps) {
               markerHeight={ARROW_LENGTH}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-primary-500)" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-role-accent)" />
             </marker>
           </defs>
         </svg>
@@ -2482,6 +3269,65 @@ export function GraphView(props: GraphViewProps) {
         </For>
 
         {/*
+          Marks something outside the graph put on the canvas — a peer's cursor, a pin on a card.
+
+          Inside the camera's own layer, which is the whole reason this is cheap: a decoration pans
+          and zooms with the drawing for nothing, because the layer it sits in is the thing being
+          transformed. Nothing here recomputes on a pan.
+
+          Before the nodes in document order, so a card drawn afterwards covers a mark rather than the
+          other way round — a mark is *about* the canvas and must not obscure what it is about. A
+          cursor is the exception and says so itself: `we-live-cursor` carries its own `z-index`.
+        */}
+        <Show when={props.host?.decorations}>
+          <div class="we-graph__decorations">
+            {/*
+              Keyed by **id**, which is why this iterates ids rather than marks.
+
+              `<For>` keys by reference, and a host recomputing its list hands over fresh objects every
+              time — so iterating the marks themselves recreates every row on every move. That is not a
+              performance note: a recreated element has no previous transform to transition *from*, so
+              a cursor jumps and the CSS meant to smooth it is still there looking correct. Iterating
+              ids is enough to fix it, because two equal strings are the same value.
+            */}
+            <For each={decorationIds()}>
+              {(id) => {
+                const mark = () => decorationsById().get(id);
+                /*
+                  Drawn once while this id is present, and then left alone — see `render`'s own note.
+                  Calling it inside the JSX would re-run it whenever the list was rebuilt, which is
+                  the remount this is all here to avoid.
+                */
+                const drawn = mark()?.render();
+                return (
+                  <div
+                    class="we-graph__decoration"
+                    classList={{ 'we-graph__decoration--eased': mark()?.ease === true }}
+                    style={{
+                      transform: `translate(${mark()?.x ?? 0}px, ${mark()?.y ?? 0}px)`,
+                      // A variable rather than the transition itself, so the stylesheet keeps the curve
+                      // and the timing function and this carries only the one number it knows.
+                      ...(mark()?.easeMs ? { '--we-decoration-ease': `${mark()!.easeMs}ms` } : {}),
+                    }}
+                  >
+                    {/*
+                    Counter-scaled against the camera, so a mark stays the size it was drawn at.
+
+                    In CSS rather than in JS: the layer publishes `--graph-zoom`, so this costs one
+                    declaration and no reactive computation per mark. A separate element from the one
+                    carrying the translate because that one may be transitioned — see `ease` — and a
+                    zoom folded into a transitioned transform would make every wheel click animate
+                    the cursors as well as move them.
+                  */}
+                    <div class="we-graph__decoration-scale">{drawn}</div>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
+
+        {/*
           The nodes, in a stacking context of their own — see `.we-graph__nodes`. A card's `z` orders
           it among the other cards and can never lift it over the selection chrome drawn after this.
         */}
@@ -2503,13 +3349,14 @@ export function GraphView(props: GraphViewProps) {
                   'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
                 }}
                 style={{
-                  ...anchorStyle(entry),
+                  ...anchorStyle(entry, entry.foldScale),
                   // Only where a rule chose an order; unset, document order stands, as it always has.
                   ...(entry.visual.z !== undefined ? { 'z-index': String(entry.visual.z) } : {}),
                   '--node-size': `${entry.visual.size * 2}px`,
                   '--node-color': color(entry.visual.color, 'primary-500'),
                   '--node-border': color(entry.visual.borderColor, 'transparent'),
                   '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
+                  '--node-border-style': entry.visual.borderStyle ?? 'solid',
                   '--node-radius': nodeRadius(entry.visual),
                   '--node-clip': nodeClip(entry.visual),
                   '--node-inset': nodeInset(entry.visual),
@@ -2558,7 +3405,12 @@ export function GraphView(props: GraphViewProps) {
                   true — they are the way to settle it. So the fade goes on what is drawn and the
                   chrome anchored beside it stays legible.
                 */
-                  '--node-opacity': String(entry.visual.opacity ?? 1),
+                  /*
+                  Faded with the shrink, so a card leaving is on its way out rather than merely
+                  small. Multiplied rather than replaced: a suggestion is already half-faded and
+                  folding one should not restore it to full strength on the way past.
+                */
+                  '--node-opacity': String((entry.visual.opacity ?? 1) * entry.foldScale),
                 }}
                 title={entry.visual.label}
               >
@@ -2661,8 +3513,12 @@ export function GraphView(props: GraphViewProps) {
 
           Same anchor and the same custom properties the node publishes, so the stylesheet places
           everything exactly as it did against the node.
+
+          **One card only.** Above that the selection wears a single frame instead — see the layer
+          after this one. Handles, dots and a bar are all statements about *this record*, and twelve
+          copies of them is ninety-six grab targets over the content they exist to reveal.
         */}
-        <For each={selectedRows()}>
+        <For each={multiSelected() ? [] : selectedRows()}>
           {({ entry }) => (
             <div
               class="we-graph__chrome"
@@ -2758,7 +3614,7 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={actionsFor(entry.node).length > 0}>
+              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show || props.carry}>
                 {/*
                   `pointerdown` stopped, as well as the click — on the bar, once, for everything in
                   it. The canvas hit-tests in world space from a pointer press on the layer beneath,
@@ -2780,6 +3636,52 @@ export function GraphView(props: GraphViewProps) {
                     into whatever ellipse its contents needed.
                   */}
                   <Row ay="center" gap="0" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
+                    {/*
+                      The grip, before everything — including the fold, which is otherwise first.
+
+                      Left-most because it is the only thing in the bar that is not a button: it is a
+                      grab area, and a grab area between two buttons is one somebody presses by
+                      accident on the way to the second of them.
+                    */}
+                    {/*
+                      The fold, first among the buttons.
+
+                      First because it is the one control here that is about the card's *place in the
+                      arrangement* rather than about the record or how the card is painted — and
+                      because a caret at the left of a row of buttons reads as a disclosure, which is
+                      what it is.
+
+                      It carries the count when there is something inside, so selecting a folded card
+                      does not take the count away with the chip it replaces. Icons rather than words:
+                      the caret points the way the contents are about to go.
+                    */}
+                    <Show when={foldSays(entry).show}>
+                      <we-tooltip content={foldTitle(entry, foldSays(entry))}>
+                        <we-button
+                          variant="ghost"
+                          size="md"
+                          // Square only while there is no count beside the caret.
+                          square={!entry.folded}
+                          label={entry.folded ? 'Unfold' : 'Fold'}
+                          /*
+                            Shown and refused, rather than absent. Where everything under a card is
+                            held elsewhere there is nothing a fold may take — and a control that
+                            simply was not there said that about the card instead of about the rule.
+                          */
+                          disabled={!foldSays(entry).enabled}
+                          color={entry.folded ? 'accent-text' : 'text-muted'}
+                          prop:hoverProps={{ color: entry.folded ? 'accent' : 'text' }}
+                          onClick={() => reportFold(entry)}
+                        >
+                          <we-icon name={entry.folded ? 'caret-right' : 'caret-down'} />
+                          <Show when={entry.folded && entry.foldedCount > 0}>
+                            <we-text variant="label" color="accent-text">
+                              {String(entry.foldedCount)}
+                            </we-text>
+                          </Show>
+                        </we-button>
+                      </we-tooltip>
+                    </Show>
                     <For each={actionsFor(entry.node)}>
                       {(action) => {
                         const report = (extra: { value?: unknown; preview?: boolean } = {}) => {
@@ -2787,6 +3689,8 @@ export function GraphView(props: GraphViewProps) {
                           props.onNodeAction?.({
                             action: action.id,
                             id: entry.node.id,
+                            x: entry.at.x,
+                            y: entry.at.y,
                             ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
                             ...extra,
                           });
@@ -2856,6 +3760,161 @@ export function GraphView(props: GraphViewProps) {
                   </Row>
                 </div>
               </Show>
+            </div>
+          )}
+        </For>
+
+        {/*
+          The frame round a selection of several, and the one bar that acts on it.
+
+          It replaces the per-card chrome rather than joining it — see the `multiSelected` gate on
+          the layer above. What is drawn is deliberately little: an outline saying what is caught,
+          a count saying how much, and whatever the interface offers for a set.
+
+          Placed by `anchorStyle` off a synthetic entry, so the bar is lifted and counter-scaled by
+          the same stylesheet rules that place a single card's. The outline is a `div` sized from the
+          same two custom properties rather than an SVG rect, because it belongs to the chrome layer
+          — which is already the transformed, per-node coordinate space these vars are written in.
+        */}
+        <Show when={selectionEntry()}>
+          {(entry) => (
+            <div class="we-graph__chrome" style={anchorStyle(entry())}>
+              <div class="we-graph__selection" />
+              <div
+                class="we-graph__actions"
+                // The same two presses the per-card bar stops, and for the same reason: the canvas
+                // hit-tests in world space from a press on the layer beneath, so one that reached it
+                // would start dragging whichever card happens to be under the bar.
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Row ay="center" gap="100" p="200" bg="surface-raised" border="1px solid border" r="300" shadow="md">
+                  {/*
+                    How many, then — the one thing a frame cannot say for itself. A rectangle round
+                    a dense patch of canvas does not tell you whether it caught nine cards or
+                    eleven, and that is exactly what somebody about to press a bin wants to know.
+                  */}
+                  <we-text variant="label" color="text-muted" px="200">
+                    {`${selectedRows().length} selected`}
+                  </we-text>
+                  <For each={selectionActions()}>
+                    {(action) => {
+                      const report = (extra: { value?: unknown; preview?: boolean } = {}) =>
+                        props.onSelectionAction?.({
+                          action: action.id,
+                          records: selectedRecords(),
+                          count: selectedRecords().length,
+                          ...extra,
+                        });
+                      const control = () => (action.control ? props.host?.nodeControls?.[action.control] : undefined);
+                      return (
+                        <Show
+                          when={control()}
+                          fallback={
+                            <we-tooltip content={action.title ?? action.id}>
+                              <we-button
+                                variant="ghost"
+                                square
+                                size="md"
+                                label={action.title ?? action.id}
+                                color={
+                                  action.tone === 'positive'
+                                    ? 'success-text'
+                                    : action.tone === 'danger'
+                                      ? 'danger-text'
+                                      : 'text-muted'
+                                }
+                                prop:hoverProps={
+                                  action.tone === 'positive'
+                                    ? { color: 'success' }
+                                    : action.tone === 'danger'
+                                      ? { color: 'danger' }
+                                      : { color: 'text' }
+                                }
+                                onClick={() => report()}
+                              >
+                                <we-icon name={action.icon ?? 'dot'} />
+                              </we-button>
+                            </we-tooltip>
+                          }
+                        >
+                          {(component) => (
+                            <div class="we-graph__control">
+                              {/*
+                                A set has no single value, so the control opens on the first selected
+                                card that carries one. That is a starting point for what is about to
+                                be set, not a readout of what the set is — and saying nothing at all
+                                would leave a colour picker opening on black every time.
+                              */}
+                              <Dynamic
+                                component={component()}
+                                node={selectedRows()[0]?.entry.node}
+                                value={
+                                  action.value
+                                    ? selectedRows()
+                                        .map(({ entry: row }) => readField(row.node, action.value!.from))
+                                        .find((value) => value !== undefined && value !== '')
+                                    : undefined
+                                }
+                                fill={color(selectedRows()[0]?.entry.visual.color, 'primary-500')}
+                                title={action.title}
+                                onPreview={(value: unknown) => report({ value, preview: true })}
+                                onChange={(value: unknown) => report({ value })}
+                              />
+                            </div>
+                          )}
+                        </Show>
+                      );
+                    }}
+                  </For>
+                </Row>
+              </div>
+            </div>
+          )}
+        </Show>
+
+        {/*
+          What a folded card is holding, on the card, whether or not anybody has selected it.
+
+          A fold that showed nothing would be the canvas lying: an isolated card where there were six
+          related ones, with no sign the rest exist. So the count is *always* drawn — this chip on an
+          unselected card, the action bar's own count on a selected one — and it is the press that
+          brings them back, so unfolding needs no selecting first.
+
+          In the chrome layer rather than inside the card, for the reason the action bar is: a node is
+          positioned by a transform and therefore a stacking context, so a chip drawn inside one is
+          painted under every card later in the list. This layer is above all of them.
+        */}
+        <For each={foldedRows()}>
+          {({ entry }) => (
+            <div class="we-graph__chrome" style={anchorStyle(entry)}>
+              <div
+                class="we-graph__fold"
+                // The same two presses the action bar stops, for the same reason: the canvas
+                // hit-tests from a press on the layer beneath, so one that reached it would drag the
+                // very card this chip belongs to.
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  reportFold(entry);
+                }}
+              >
+                <we-tooltip content={foldTitle(entry, foldSays(entry))}>
+                  <we-button
+                    variant="secondary"
+                    size="xs"
+                    r="pill"
+                    label={`Unfold ${entry.foldedCount}`}
+                    // The count is drawn either way — a fold has to say what it is holding — but
+                    // there is nothing to press where the interface is not listening for it.
+                    disabled={!props.onNodeFold}
+                    gap="100"
+                  >
+                    <we-icon name="caret-right" />
+                    <we-text variant="label">{String(entry.foldedCount)}</we-text>
+                  </we-button>
+                </we-tooltip>
+              </div>
             </div>
           )}
         </For>

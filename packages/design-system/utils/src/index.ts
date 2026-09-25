@@ -1,10 +1,13 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
 import { font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
 
+import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
 
 export * from './color';
+export * from './record';
 export * from './safeHref';
+export * from './saveFile';
 export * from './surface';
 export * from './tiling';
 
@@ -437,19 +440,26 @@ const warnedTokens = new Set<string>();
  * and the result is indistinguishable from a theme that chose square corners or no padding, which
  * is how `r: 'surface'` looked correct for as long as it did.
  *
- * Only fires on something *shaped* like a name: letters and dashes, no digits. A scale position
- * ('400'), a raw length and every CSS keyword have already returned above, so what reaches here is
- * either a real token from a scale this does not know or a mistake.
+ * Fires on something *shaped* like a name: letters and dashes, no digits. A raw length and every
+ * CSS keyword have already returned above, so what reaches here is either a real token from a scale
+ * this does not know or a mistake.
+ *
+ * And on a bare number that is not a step of a scale this knows. It used to skip every digit on the
+ * assumption that a number was a scale position, which let `gap: '050'` through for as long as it
+ * existed — "half of 100", on a scale that goes `0`, `100`, `200` — painting no gap anywhere it was
+ * written. Only for a known scale: a prefix this has no list for cannot tell a step from a typo.
  */
 function warnUnknownToken(prefix: string, token: string, axis?: SemanticAxis): void {
   if (process.env.NODE_ENV === 'production') return;
-  if (!/^[a-z][a-z-]*$/i.test(token)) return;
+  const unknownStep = /^\d+$/.test(token) && SCALE_NAMES[prefix] !== undefined;
+  if (!unknownStep && !/^[a-z][a-z-]*$/i.test(token)) return;
   const key = `${prefix}:${axis ?? ''}:${token}`;
   if (warnedTokens.has(key)) return;
   warnedTokens.add(key);
 
   const known = Object.keys(SEMANTIC[prefix === 'radius' ? 'radius' : (axis ?? '')] ?? {});
-  const suffix = known.length ? ` Known names here: ${known.join(', ')}.` : '';
+  const steps = unknownStep ? ` The ${prefix} scale is ${[...SCALE_NAMES[prefix]!].join(', ')}.` : '';
+  const suffix = (known.length ? ` Known names here: ${known.join(', ')}.` : '') + steps;
   console.warn(
     `[DS] "${token}" is not a ${prefix} token or theme family, so it resolves to ` +
       `var(--we-${prefix}-${token}) — a variable nothing declares, which paints nothing.${suffix}`,
@@ -914,18 +924,6 @@ export function isBgImageFaded(props: Pick<DesignSystemProps, 'bgImage' | 'bgIma
 // URLs are never revoked — the number of *distinct* images used in a session is small enough
 // that this is a non-issue in practice; revisit with an LRU + revokeObjectURL if that changes.
 const bgImageObjectUrlCache = new Map<string, string>();
-
-function dataUriToBlob(dataUri: string): Blob {
-  const commaIndex = dataUri.indexOf(',');
-  const header = dataUri.slice(0, commaIndex);
-  const base64 = dataUri.slice(commaIndex + 1).replace(/\s+/g, '');
-  const mimeMatch = /^data:([^;]+)/.exec(header);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
 
 /**
  * Resolves a bgImage value to something safe to embed in CSS. Data URIs get converted to a

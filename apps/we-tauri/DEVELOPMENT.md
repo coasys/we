@@ -35,6 +35,18 @@ pnpm tauri:build
 
 This creates a production build. If embedded apps (like Flux) are configured, they will be bundled using Tauri's resource system.
 
+## Executor Logs
+
+Every run is logged to `ad4m.log` in the active account's data directory — `~/.ad4m/ad4m.log` for the
+default account, `~/.ad4m/we-accounts/<slug>/ad4m.log` for one WE created — keeping the last five runs
+(`ad4m.log`, then `ad4m.1.log` … `ad4m.4.log`), each capped at 50 MB. The Electron host writes the same
+files by the same rules.
+
+The executor runs in this process, so the file is its logger's target rather than a copy of stdout: it
+holds everything logged through the `log` crate (the executor, Holochain, JS `console.*`) plus panics,
+and lines marked `HOST` from `src/lib.rs`. A bare `println!` reaches the terminal only. See
+`src/executor_log.rs`.
+
 ## Optional: Embedding External Apps
 
 The Tauri launcher can embed external apps via iframe. This section uses Flux as an example, but the pattern works for any app.

@@ -9,7 +9,7 @@
  * `SUPPORTED` must translate with an empty `unsupported` list AND round-trip losslessly
  * (`flat → IR → flat → IR` re-derives the identical IR). The one drill-down shape uses the neutral
  * `scope` — not a round-trip case (`irToFlatQuery` defers it to the adapter), so it's covered by the
- * `scope`→predicate resolution tests in `ad4mAdapter.test.ts`.
+ * `scope`→predicate resolution tests in the production adapter's own suite.
  */
 import { compileQuery, type FlatQuery, irToFlatQuery } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';

@@ -59,23 +59,72 @@ const CSS_STYLES = css`
     overflow: visible;
     /* Component styles */
     z-index: var(--we-z-tooltip);
-    white-space: nowrap;
+    /*
+      A phrase never breaks; anything longer is allowed to.
+
+      nowrap is right for what a tooltip usually is — "Delete this reply" folding onto two lines
+      would be worse than wide. It is wrong the moment the bubble carries a sentence: a signal type
+      says what a community means by it, and under nowrap that came out as one line as wide as the
+      description, which in a 320px panel is a tooltip wider than the app.
+
+      So the cap does the deciding. width: max-content still shrink-wraps a phrase, and max-width
+      only bites once the content is longer than the cap — at which point normal lets it wrap into
+      the column the cap defines. Nothing a caller writes changes: a short string is drawn exactly
+      as it was.
+
+      280px rather than a layout token, because the layout tokens are page measures: the smallest,
+      xs, is 420px, which is most of a docked panel and far too wide for an aside. A variable so a
+      caller with a genuinely longer aside can say so, which is cheaper than a prop nobody sets.
+
+      overflow-wrap under it for the one thing a cap cannot handle: a single token longer than the
+      column — a URL, a DID — which would otherwise push the bubble past it.
+
+      (No backticks in here: this is a tagged template literal, and one ends the string.)
+    */
+    max-width: var(--we-tooltip-max-width, 280px);
+    white-space: normal;
+    overflow-wrap: anywhere;
     font-size: var(--we-font-size-200, 14px);
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
     /* The inverse pair. Not text/onInverse: those are scale positions, so they flip with the
-       theme and a dark tooltip in light mode became a white one in dark. Both halves of this pair
-       hold a fixed lightness, so the tooltip stays opposite to the page in either polarity. */
+       theme and a dark tooltip in light mode became a white one in dark. This pair is measured
+       from the page instead, so the bubble stays a fixed distance off it in either polarity —
+       see surfaceInverse in @we/tokens for the measurements that made that necessary. */
     background: var(--we-role-surface-inverse);
     color: var(--we-role-on-inverse);
+    /*
+      No border, deliberately — the fill is the whole separation.
+
+      One was tried while the chip was being moved off the page, on the reasoning that the shadow
+      below is built from shadow-color, which is pinned near-black and so invisible on a dark page.
+      True, and it does not follow that the bubble needs an outline: once the fill sits nine
+      lightness points below whatever is behind it, the edge is already drawn by the fill, and a
+      line on top of it reads as a framed object rather than as a shape floating over the page.
+
+      It also had nowhere good to end. The arrow is 8px, rotated 45 degrees and half-buried in the
+      bubble, so bordering it draws a seam across the join and leaving it bare stops the outline
+      dead at the tail.
+
+      (No backticks in here either: this is the same tagged template literal.)
+    */
     border-radius: var(--we-border-radius, 4px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
+    /*
+      Never takes the pointer, open or closed.
+
+      It used to become pointer-events: auto once open, which is the pattern for a tooltip holding
+      something to interact with — a link, a button. This one holds a string. What it bought was
+      nothing and what it cost was the control underneath: hover a thing, the bubble appears over
+      part of it, and the click that follows lands on the bubble. Found on a comment's fold, where
+      the target is a tall column and the bubble sits across it, and the press simply did not
+      arrive.
+    */
     pointer-events: none;
   }
 
   :host([open]) [part='tooltip'] {
     display: block;
-    pointer-events: auto;
   }
 
   [part='arrow'],
@@ -292,9 +341,29 @@ export default class Tooltip extends LayoutElement {
     }
   }
 
+  /**
+   * Open — unless there is nothing to say.
+   *
+   * A tooltip with no text and nothing slotted paints an empty bubble, which is never what anybody
+   * wanted and reads as a glitch. It is not hypothetical: a control that shows its reading only
+   * while it is being dragged has empty content the rest of the time, and hovering it produced a
+   * blank card hanging off a slider.
+   *
+   * Only the HOVER and FOCUS paths ask. Setting `open` directly is a caller saying "show this now",
+   * and a caller that does so with nothing to show has made a different mistake — one this should
+   * not paper over, since silently ignoring the instruction is harder to find than an empty box.
+   */
   private show = () => {
+    if (!this._hasSomethingToSay()) return;
     this.open = true;
   };
+
+  /** Text, or anything slotted into `content` — the two ways a bubble is given something to show. */
+  private _hasSomethingToSay(): boolean {
+    if (this.content.trim()) return true;
+    const slotted = this.querySelector('[slot="content"]');
+    return Boolean(slotted && (slotted.textContent ?? '').trim());
+  }
 
   private hide = () => {
     this.open = false;

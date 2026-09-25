@@ -11,14 +11,14 @@ import type { CollabSession, CollabUser } from '../editor/collab';
  * Every template that rendered or composed a block carried this, verbatim:
  *
  * ```ts
- * perspective: { $: 'datasetStore.currentDataset.handle' }
+ * dataset: { $: 'datasetStore.currentDataset.handle' }
  * ```
  *
  * Eight files in this repo alone, and it would have been in every template anyone ever wrote. It is
- * backend plumbing quoted as a string path — the template naming an AD4M perspective, reaching
+ * backend plumbing quoted as a string path — the template naming a storage handle, reaching
  * through a store it should not need to know about, to answer a question with exactly one sensible
- * answer: *the space you are in*. Forget it and the block renders blank, because an image's
- * expression URL cannot resolve without it. That is a poor trade for a value the host already knows.
+ * answer: *the space you are in*. Forget it and the block renders blank, because a stored file's
+ * address cannot resolve without it. That is a poor trade for a value the host already knows.
  *
  * The same argument holds for who can be @mentioned, and for how a live co-editing session
  * travels: the space's members and the ephemeral transport are the host's knowledge. The host
@@ -51,7 +51,7 @@ export interface BlockHostValue {
    * `we:n:<cid>/CollectionBlock/<id>` has exactly one sensible destination, and reaching it means
    * knowing the route a record's page is mounted at, which side of a shared/personal space the URL
    * segment comes from, and how to join a space that is not joined yet. None of that is a block's
-   * business, and a prop threaded from every call site would be the `perspective` string all over
+   * business, and a prop threaded from every call site would be the `dataset` string all over
    * again.
    *
    * **Absent** where there is nowhere to go: the editor's preview, a screenshot harness, a host with
@@ -61,6 +61,12 @@ export interface BlockHostValue {
    * control that absorbs a press. See `EmbedDisplay`.
    */
   openRef?: (ref: string) => void;
+  /**
+   * A person's name, from whatever profiles the host has — for a quote saying whose words it holds.
+   * Reactive where the host's cache is; asking for somebody not yet cached may start a fetch.
+   * Absent, or `undefined` for an unknown person, and the block says nothing rather than a DID.
+   */
+  personName?: (did: string) => string | undefined;
 }
 
 const NONE: BlockHostValue = {
@@ -78,6 +84,7 @@ export function BlockHostProvider(props: {
   collab?: (nodeId: string) => CollabSession | null;
   collabUser?: () => CollabUser;
   openRef?: (ref: string) => void;
+  personName?: (did: string) => string | undefined;
   children: JSX.Element;
 }) {
   const parent = useContext(BlockHostContext);
@@ -87,6 +94,7 @@ export function BlockHostProvider(props: {
     collab: (nodeId) => (props.collab ? props.collab(nodeId) : parent.collab(nodeId)),
     collabUser: () => (props.collabUser ? props.collabUser() : parent.collabUser()),
     openRef: props.openRef ?? parent.openRef,
+    personName: props.personName ?? parent.personName,
   };
   return <BlockHostContext.Provider value={value}>{props.children}</BlockHostContext.Provider>;
 }

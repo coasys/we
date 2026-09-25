@@ -25,17 +25,48 @@
  * is not tidiness: a module cannot see the sidebar's width or the rail's, and the call module was
  * carrying `right: '72px'` — a hardcoded copy of geometry it had no way to keep in step.
  */
-import type { DockContribution } from '@we/module-shared';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import type { SnapPoint } from '../dockGeometry';
+import { COLLAPSED_PX, FRAME_BORDER_PX, type SnapPoint } from '../dockGeometry';
 import { createRegistry } from './createRegistry';
 
-export interface DockEntry extends DockContribution {
-  /** Unique — `<moduleId>:<index>`, so one module can contribute more than one panel. */
+/**
+ * A dock as the shell sees it: a node, and the string keys its geometry is read through.
+ *
+ * Every geometric field names a **key** into a store rather than carrying a value, because both halves
+ * of the answer change while the app runs and the shell reads them inside a memo. Which store: the one
+ * `store` points at when set, else the module's own (`moduleStores[moduleId]`), else a host store
+ * registered under that id (`hostDockStores`). A module's panel gets a plumbing store the registry
+ * builds; the editor's docks read `editorStore`; the shell's own read `shellStore`.
+ */
+export interface DockEntry {
+  /** Unique — `<moduleId>:<name>`, so one module can contribute more than one panel. */
   id: string;
-  /** The module whose store the `edge` / `size` / `float` keys are read from. */
+  /** The module — or host store — the keys are read from when `store` is not set. */
   moduleId: string;
+  /** Which panel this is, for a module that contributes more than one. */
+  name?: string;
+  /** A key returning `DockEdge`: where the panel would like to open, and `null` while it is closed. */
+  edge: string;
+  /** A key returning `DockSize`. Omit for `'md'`. */
+  size?: string;
+  /** A key returning `true` while the panel should overlay rather than take room. */
+  float?: string;
+  /** A key returning `DockAspect`, where the content has a shape of its own. Enables "fit to content". */
+  aspect?: string;
+  /** A key returning `DockMin`. */
+  min?: string;
+  /** A key naming the action that closes the panel — the host puts a close button on its titlebar. */
+  close?: string;
+  /** The panel itself. */
+  node: SchemaNode;
+  /** Ties break on module id. */
+  order?: number;
+  /**
+   * The store the keys resolve against, when it is neither the module's own nor a registered host
+   * store — a module panel's plumbing, built by the registry. See `moduleRegistry.panel`.
+   */
+  store?: Record<string, unknown>;
   /**
    * How a *schema* addresses that store, where it is not a module's — `'editorStore'`.
    *
@@ -75,7 +106,8 @@ export interface DockEntry extends DockContribution {
 /** A tab's label for a dock: its title, else its name made readable, else its module. */
 export function dockTitle(entry: DockEntry): string {
   if (entry.title) return entry.title;
-  const raw = entry.name ?? entry.moduleId;
+  // The id last, which every entry has — a titlebar is built for every frame now, not only a shared seat's.
+  const raw = entry.name ?? entry.moduleId ?? entry.id;
   const words = raw
     .replace(/[-_:]+/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -101,7 +133,7 @@ export const hostDockStores: Record<string, Record<string, unknown>> = {};
  * Fixed chrome the host or a template is painting, that floating panels must clear.
  *
  * The sibling of `hostDockStores`, and it exists for the same reason: `moduleChrome` sums
- * `chromeReserve` off every module store, and the app's own chrome is not a module. A shell template
+ * each module's declared `reserve` key, and the app's own chrome is not a module. A shell template
  * pinning a nav strip has exactly the problem the call bar has — a panel snapped to that corner
  * opens underneath it — and no store to publish from, because a template is data.
  *
@@ -214,6 +246,28 @@ export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
  * A displacing panel is opaque for the reason it has no radius and no shadow: it has *taken* its
  * room rather than borrowed it, so it meets the content edge to edge and is not on top of anything.
  */
+/**
+ * The size a panel's insides are laid out at while its frame eases in or out of a lane's strip.
+ *
+ * A frame moves between boxes by easing its own width and height, and whatever is inside re-lays itself
+ * out at every step — so a column opening out of its strip showed its contents crushed into 34px and
+ * unfolding from there, text wrapping a word per line, and closing did the same in reverse. Held at the
+ * open size for the length of the move (`layoutWidth` / `layoutHeight`: where it is heading when
+ * opening, where it was when closing), the contents stay still and the frame uncovers or covers them
+ * like a drawer; its `overflow: hidden` clips the rest.
+ *
+ * Only during that move. The rest of the time the contents fill the frame as they always have: the
+ * height here is the frame less a titlebar of known height, and a theme that makes the titlebar taller
+ * would otherwise clip the bottom few pixels of every panel at rest.
+ *
+ * Less the frame's border, and for the height the titlebar too, since this is the box *inside* them.
+ */
+const laidOutAt = (id: string, axis: 'width' | 'height', less: number) => {
+  const size = dockGeometryPath(id, axis === 'width' ? 'layoutWidth' : 'layoutHeight');
+  const rest = axis === 'height' ? "'0'" : 'null';
+  return { $: `${size} ? \`calc(\${${size}} - ${less}px)\` : ${rest}` };
+};
+
 const isGlass = (id: string) => `${dockGeometryPath(id, 'floating')} && !${dockGeometryPath(id, 'maximised')}`;
 
 /*
@@ -258,6 +312,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
       dragGhost(entry.id),
       laneDivider(entry.id),
       laneOuterEdge(entry.id),
+      laneStrip(entry.id),
       {
         type: '$if',
         props: {
@@ -308,7 +363,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                   when you press it, and one that arrives by drop should not either — the drag was
                   already the animation.
                 */
-                $: `${dockGeometryPath(entry.id, 'settling')} || shellStore.dockResizing ? 'none' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease'`,
+                $: `${dockGeometryPath(entry.id, 'settling')} || shellStore.dockResizing ? 'none' : 'top 300 ease, right 300 ease, bottom 300 ease, left 300 ease, width 300 ease, height 300 ease, opacity 300 ease'`,
               },
               /*
                 The panel's own surface. A module's node fills it and need not paint a background, a
@@ -361,6 +416,18 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 visibility: { $: `${dockGeometryPath(entry.id, 'hidden')} ? 'hidden' : 'visible'` },
               },
               border: '1px solid border',
+              /*
+                Dimmed while a resize has pulled its lane past the point where letting go puts it
+                away — the drag's only way to say so before it happens. See `stowPending`.
+
+                And faded out whole while it shrinks onto its strip: a stowed panel still on screen is
+                one on its way out. Fading only its contents left the frame's borders — the line
+                between two lane-mates above all — standing at full strength until the panel was
+                hidden, and then gone in one frame.
+              */
+              opacity: {
+                $: `(${dockGeometryPath(entry.id, 'stowed')} && ${dockGeometryPath(entry.id, 'contentsFaded')}) || ${dockGeometryPath(entry.id, 'awayFaded')} ? 0 : ${dockGeometryPath(entry.id, 'stowPending')} ? 0.5 : 1`,
+              },
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
               // would leave slivers of background in the corners and a shadow would fall on content
@@ -408,9 +475,19 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
                 type: 'Column',
                 props: {
                   flex: '1',
-                  minHeight: '0',
+                  // Zero when nothing says otherwise, which is what lets `flex: 1` shrink it; the box the
+                  // frame is growing into when something does. See `laidOutAt`.
+                  minHeight: laidOutAt(entry.id, 'height', COLLAPSED_PX),
+                  minWidth: laidOutAt(entry.id, 'width', FRAME_BORDER_PX),
                   width: '100%',
                   overflow: 'hidden',
+                  /*
+                    Faded in as a collapsed lane opens and out as it closes — the contents are covered
+                    and uncovered at their full size (above), and fade rather than appear or vanish
+                    wholesale. A token duration, so a theme's speed and reduced motion still decide.
+                  */
+                  opacity: { $: `${dockGeometryPath(entry.id, 'contentsFaded')} ? 0 : 1` },
+                  transition: 'opacity 300 ease',
                   [DOCK_CONTENT_ATTR]: entry.id,
                   /*
                     Room for chrome painted over a maximised panel — see `padTop` in dockGeometry.
@@ -518,6 +595,8 @@ function titleBar(entry: DockEntry): SchemaNode {
     type: 'Row',
     props: {
       width: '100%',
+      // Its controls stay put while the frame grows, rather than squeezing and wrapping. See `laidOutAt`.
+      minWidth: laidOutAt(entry.id, 'width', FRAME_BORDER_PX),
       flex: '0 0 auto',
       ay: 'center',
       gap: '100',
@@ -544,11 +623,19 @@ function titleBar(entry: DockEntry): SchemaNode {
       onDblclick: { $action: 'shellStore.toggleMaximiseDock', args: [entry.id] },
     },
     children: [
+      /*
+        First on the bar, ahead of the tabs and the grip: the strip it collapses into leads with its
+        open glyph at the same end — the top of a side strip, the left of a top or bottom one — so the
+        control to put a column away and the one to bring it back sit in about the same place.
+      */
+      whileRestored(entry.id, stowButton(entry.id)),
       tabStrip(entry.id),
       {
         type: 'we-move-handle',
         props: {
           flex: '1',
+          // So a folded bar's name can truncate rather than push the controls off the end.
+          minWidth: '0',
           height: '100%',
           label: 'Move panel',
           // `onXxx`, not `on:xxx`: the schema renderer recognises an event prop by a capital after
@@ -560,6 +647,7 @@ function titleBar(entry: DockEntry): SchemaNode {
           onMove: { $action: 'shellStore.moveDock', args: [entry.id, { $: 'arg.detail.dx' }, { $: 'arg.detail.dy' }] },
           onMoveend: { $action: 'shellStore.endDockMove', args: [entry.id] },
         },
+        children: [foldedName(entry)],
       },
       ...(entry.aspect ? [whileRestored(entry.id, fitButton(entry.id))] : []),
       whileRestored(entry.id, collapseButton(entry.id)),
@@ -570,6 +658,92 @@ function titleBar(entry: DockEntry): SchemaNode {
       // again wants to be the one furthest from the others.
       ...(entry.close || entry.closeAction ? [closeButton(entry)] : []),
     ],
+  };
+}
+
+/**
+ * The panel's name, in the grip, while it is folded — and only then.
+ *
+ * A panel alone names itself inside its own content, which is why an open one has no title up here:
+ * it would be said twice. Folding hides the content, and with it the only thing that said what the
+ * panel was — so a column of folded bars was a column of identical grips. The name comes back where
+ * the content's heading went.
+ *
+ * Not for a seat of several, whose tab strip already names every panel in it. Inside the grip
+ * rather than beside it, so the whole bar is still what drags; and pressing it without dragging
+ * opens the fold (see `endDockMove`), which is what a name on a folded bar invites.
+ */
+function foldedName(entry: DockEntry): SchemaNode {
+  const geo = (field: string) => dockGeometryPath(entry.id, field);
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `${geo('collapsed')} && count(${geo('tabs')}) < 2` },
+      then: {
+        type: 'Row',
+        props: { width: '100%', minWidth: '0', ay: 'center', gap: '200', px: '100' },
+        children: [
+          { type: 'we-icon', props: { name: 'dots-six', size: 'sm', color: 'text-faint' } },
+          { type: 'we-text', props: { variant: 'label', truncate: true }, children: [dockTitle(entry)] },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * The glyphs for putting a lane away, one per edge — and, reversed, for taking it back out.
+ *
+ * Written as `icon:` entries rather than inline in the expression that picks one, because the icon
+ * bundler collects names it can see as values — see `positionMenu` for the day that mattered — and an
+ * icon it misses renders as a blank square on an offline build.
+ */
+const STOW_ICONS = {
+  left: { icon: 'caret-double-left' },
+  right: { icon: 'caret-double-right' },
+  top: { icon: 'caret-double-up' },
+  bottom: { icon: 'caret-double-down' },
+} as const;
+
+/**
+ * Collapse this panel's lane to a strip at its edge. The strip itself is the way back — see
+ * `laneStrip`.
+ *
+ * Only on the lane's first titlebar (see `canStow`), because it acts on the column rather than the
+ * panel: a button on every titlebar that put three panels away would be a surprise on two of them.
+ * The chevrons point at the edge the lane goes to, which is what says "the whole column" rather than
+ * "this panel" — a fold's caret points up.
+ */
+function stowButton(id: string): SchemaNode {
+  const geo = (field: string) => dockGeometryPath(id, field);
+  const edgeIcon = `${geo('edge')} == 'left' ? '${STOW_ICONS.left.icon}' : ${geo('edge')} == 'right' ? '${STOW_ICONS.right.icon}' : ${geo('edge')} == 'top' ? '${STOW_ICONS.top.icon}' : '${STOW_ICONS.bottom.icon}'`;
+
+  return {
+    type: '$if',
+    props: {
+      condition: { $: geo('canStow') },
+      then: {
+        type: 'we-tooltip',
+        props: { content: 'Collapse to edge', placement: 'bottom' },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              size: 'xs',
+              square: true,
+              variant: 'ghost',
+              onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
+            },
+            children: [
+              {
+                type: 'we-icon',
+                props: { name: { $: edgeIcon } },
+              },
+            ],
+          },
+        ],
+      },
+    },
   };
 }
 
@@ -638,6 +812,7 @@ function fitButton(id: string): SchemaNode {
  */
 function tabStrip(id: string): SchemaNode {
   const tabs = dockGeometryPath(id, 'tabs');
+  const landed = `tab.id == ${dockGeometryPath(id, 'landedTab')}`;
 
   return {
     type: '$if',
@@ -659,8 +834,31 @@ function tabStrip(id: string): SchemaNode {
                   r: 'control',
                   px: '200',
                   height: '24px',
-                  bg: { $: "tab.active ? 'control-surface' : 'transparent'" },
-                  hoverProps: { bg: 'surface-hover' },
+                  /*
+                    Lit for a moment when it arrives at the front — dropped into the seat, or brought
+                    there from the rail — and eased back to its resting fill. The panel's frame did not
+                    move, so which tab is lit is the only change on screen and the flash is how the
+                    eye finds it. A token duration, so a theme's animation speed and a reduced-motion
+                    setting still decide.
+
+                    The accent fill itself rather than `accent-muted`: muted is
+                    a tint toward the ground, so in a dark theme it came out darker than the resting
+                    tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
+                    keeps its own colour throughout — see the text, below.
+
+                    No fill on hover. The name brightening under the pointer is the move handle's, and
+                    `surface-hover` on top of it darkened a tab into the titlebar behind it.
+                  */
+                  bg: { $: `${landed} ? 'accent' : tab.active ? 'control-surface' : 'transparent'` },
+                  /*
+                    Quick in, slow out — the fill arrives to be noticed and leaves without drawing the eye
+                    back to it. A transition belongs to the state being entered, so each direction takes
+                    its own. Both from the theme's duration tokens, the slow one three times the longest,
+                    so a theme's animation speed and reduced motion still decide.
+                  */
+                  transition: {
+                    $: `${landed} ? 'background-color 400 ease' : 'background-color calc(var(--we-transition-500) * 3) ease'`,
+                  },
                 },
                 children: [
                   {
@@ -687,7 +885,27 @@ function tabStrip(id: string): SchemaNode {
                     children: [
                       {
                         type: 'we-text',
-                        props: { variant: 'footnote', truncate: true, maxWidth: '120px' },
+                        props: {
+                          variant: 'footnote',
+                          truncate: true,
+                          maxWidth: '120px',
+                          /*
+                            The tab showing is at full strength at rest, not only under the pointer, and
+                            stays that colour through a flash — only the fill changes.
+
+                            Held bright because pressing a background tab brings a different frame
+                            forward, with its own titlebar and its own copy of the strip: the tab under
+                            the pointer is a new element, and it came in at the faint resting colour and
+                            eased up to the hover one, so the name dimmed on the click and brightened
+                            again. The others inherit the handle's faint-to-bright hover.
+
+                            Unchanged through a flash because every way of recolouring it looked wrong: on
+                            `on-accent` through the handle it switched in the handle's fixed 120ms while
+                            the fill took 400 to arrive and 1.5s to leave, and on its own timing the two
+                            still read as separate fades.
+                          */
+                          color: { $: "tab.active ? 'text' : null" },
+                        },
                         children: [{ $: 'tab.title' }],
                       },
                     ],
@@ -743,6 +961,25 @@ function collapseButton(id: string): SchemaNode {
 function displaceButton(id: string): SchemaNode {
   const place = (field: string) => `shellStore.dockPlacement['${id}'].${field}`;
 
+  /*
+    On the titlebar while the panel floats, and in the position menu once it docks.
+
+    A docked panel's titlebar has the most to carry — fold, collapse-to-edge, full screen, the menu
+    and close — and the least room, since a sidebar can be 200px wide. Of those, this is the one a
+    docked panel has least need of as a button: dragging the titlebar off the edge already stops it
+    taking room, and that is how people undock. A floating card is the opposite case — the button is
+    how it *starts* taking room, and there is space for it. See the `displace` entry in `positionMenu`.
+  */
+  return {
+    type: '$if',
+    props: {
+      condition: { $: dockGeometryPath(id, 'floating') },
+      then: displaceControl(id, place),
+    },
+  };
+}
+
+function displaceControl(id: string, place: (field: string) => string): SchemaNode {
   return {
     type: 'we-tooltip',
     props: {
@@ -930,6 +1167,20 @@ function positionMenu(entry: DockEntry): SchemaNode {
           // actual rule — there is a layout to go back to, and you are not on it.
           disabled: { $: `!shellStore.layoutPinned['${id}']` },
           onAction: { $action: 'shellStore.resetDockToLayout', args: [id] },
+        },
+        /*
+          Taking room, for a docked panel — the titlebar's toggle, moved here once there is a sidebar's
+          worth of controls competing for a sidebar's worth of width. See `displaceButton`. Hidden
+          while floating, where the button is back on the bar.
+        */
+        {
+          id: 'displace',
+          type: 'toggle',
+          label: 'Push content aside',
+          icon: 'columns',
+          checked: { $: place('displace') },
+          hidden: { $: dockGeometryPath(id, 'floating') },
+          onToggle: { $action: 'shellStore.toggleDockDisplace', args: [id] },
         },
         at({ snap: 'top-left', label: 'Top left', icon: 'arrow-up-left' }),
         at({ snap: 'top', label: 'Top', icon: 'arrow-line-up' }),
@@ -1345,6 +1596,122 @@ function laneOuterEdge(id: string): SchemaNode {
           },
           onResizeend: { $action: 'shellStore.endDockResize' },
         },
+      },
+    },
+  };
+}
+
+/**
+ * The strip a stowed lane becomes: the names of the panels put away, and one way back — the strip.
+ *
+ * Drawn from outside every frame, as the seams and the lane's edge are, because every frame in the
+ * lane is hidden while it is stowed — and published on the lane's first member alone, so one strip is
+ * drawn however many panels are in it. See `DockGeometry.strip`.
+ *
+ * ## One target, the whole strip
+ *
+ * A press anywhere on it opens the lane. The names used to be tabs of their own, each popping its
+ * panel out as a card beside the strip — easy to hit by accident on a strip this thin, and a panel
+ * floating out of a collapsed column read as the arrangement having come apart. A strip is a column
+ * put away, and the only thing to do with one is take it back out, so the whole of it is that
+ * button: a real `<button>`, keyboard-reachable, rather than a clickable box.
+ *
+ * Laid out from the head — down a side from the top, along the top or bottom from the left — with
+ * the open glyph first, because the collapse button it undoes sat at the head of the column. Faint
+ * until pointed at, the same as a folded bar's name, so the two ways of putting a panel away read as
+ * one family; pointing brightens every name at once, since the whole strip is what a press would open.
+ *
+ * Vertical text down a side, read top to bottom — the collapsed tool windows every docking IDE draws.
+ * Set as `writing-mode` on a wrapper, which the text inherits through its own shadow root; there is
+ * no design-system prop for it, and rotating with a transform would leave the box the wrong shape.
+ */
+function laneStrip(id: string): SchemaNode {
+  const geo = (field: string) => dockGeometryPath(id, field);
+  const vertical = geo('strip.vertical');
+  const edge = geo('edge');
+  const openIcon = `${edge} == 'left' ? '${STOW_ICONS.right.icon}' : ${edge} == 'right' ? '${STOW_ICONS.left.icon}' : ${edge} == 'top' ? '${STOW_ICONS.bottom.icon}' : '${STOW_ICONS.top.icon}'`;
+  const stripContents = (writingMode: 'vertical-rl' | 'horizontal-tb'): SchemaNode[] => [
+    { type: 'we-icon', props: { name: { $: openIcon } } },
+    {
+      type: '$each',
+      props: { items: { $: geo('strip.tabs') }, as: 'tab' },
+      children: [
+        {
+          type: 'Column',
+          props: { maxHeight: '180px', maxWidth: '180px', styles: { 'writing-mode': writingMode } },
+          children: [{ type: 'we-text', props: { variant: 'label', truncate: true }, children: [{ $: 'tab.title' }] }],
+        },
+      ],
+    },
+  ];
+
+  return {
+    type: '$if',
+    props: {
+      condition: { $: geo('strip') },
+      then: {
+        type: 'Column',
+        props: {
+          position: 'fixed',
+          top: { $: geo('strip.top') },
+          left: { $: geo('strip.left') },
+          width: { $: geo('strip.width') },
+          height: { $: geo('strip.height') },
+          bg: 'chrome',
+          /*
+            All the way round, as every panel frame is. Only the side facing the content had one, and on
+            the left that left the strip running straight into the sidebar — two strips of the same
+            ground with nothing between them.
+          */
+          border: '1px solid border',
+          overflow: 'hidden',
+          zIndex: { $: geo('strip.layer') },
+          // Fades with its lane's panels when every panel is put away or brought back.
+          opacity: { $: `${geo('awayFaded')} ? 0 : 1` },
+          transition: 'opacity 300 ease',
+        },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              variant: 'bare',
+              size: 'xs',
+              width: '100%',
+              height: '100%',
+              label: 'Open',
+              color: 'text-faint',
+              hoverProps: { color: 'text' },
+              // Eased rather than switched, so the names come up as the pointer arrives. A token duration,
+              // so a theme's animation speed and reduced motion still decide.
+              transition: 'color 200 ease',
+              onClick: { $action: 'shellStore.toggleStowLane', args: [id] },
+            },
+            children: [
+              /*
+                A column down a side and a row along the top or bottom — two nodes, because a
+                `Column` is a column whatever `direction` it is handed, which laid a top strip's names
+                out down a box 34px tall and hid all but the first. Packed from the head along the
+                strip and centred across it.
+              */
+              {
+                type: '$if',
+                props: {
+                  condition: { $: vertical },
+                  then: {
+                    type: 'Column',
+                    props: { width: '100%', height: '100%', ax: 'center', ay: 'start', gap: '300', p: '200' },
+                    children: stripContents('vertical-rl'),
+                  },
+                  else: {
+                    type: 'Row',
+                    props: { width: '100%', height: '100%', ax: 'start', ay: 'center', gap: '300', p: '200' },
+                    children: stripContents('horizontal-tb'),
+                  },
+                },
+              },
+            ],
+          },
+        ],
       },
     },
   };

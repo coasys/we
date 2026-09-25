@@ -234,6 +234,64 @@ describe('manual layout', () => {
     expect(result.positions.get('b')!.x - result.positions.get('a')!.x).toBe(100);
   });
 
+  it('spaces parked cards by their size, so neighbours never overlap', () => {
+    // The default slot was 160 and a canvas card 180 wide, so every pair of new cards overlapped.
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const result = manualLayout({ size: { width: 180, height: 135 }, margin: 20 }).init(
+      input([node('a'), node('b')], [], { visible }),
+    );
+
+    expect(result.positions.get('b')!.x - result.positions.get('a')!.x).toBe(200);
+  });
+
+  it('skips a slot a placed card already covers', () => {
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const layout = manualLayout({ size: { width: 180, height: 135 }, margin: 20 });
+    // A placed card sitting over the first slot of the tray.
+    const result = layout.init(input([node('placed', { x: 100, y: 80 }), node('new')], [], { visible }));
+
+    expect(result.positions.get('new')!.x).toBe(300);
+  });
+
+  it('parks a second batch beside the first rather than on top of it', () => {
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const layout = manualLayout({ size: { width: 180, height: 135 }, margin: 20 });
+    const first = layout.init(input([node('a')], [], { visible }));
+    const second = layout.init(input([node('a'), node('b')], [], { visible, previous: first.positions }));
+
+    expect(second.positions.get('a')).toEqual(first.positions.get('a'));
+    expect(second.positions.get('b')!.x).not.toBe(second.positions.get('a')!.x);
+  });
+
+  it('never stacks parked cards, even when the view has room for only a few', () => {
+    // Zoomed in close there were two slots in view, and every card after the second landed on them.
+    const visible = { x: 0, y: 0, width: 450, height: 300 };
+    const nodes = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => node(id));
+    const result = manualLayout({ size: { width: 180, height: 135 }, margin: 20 }).init(input(nodes, [], { visible }));
+    const boxes = nodes.map((n) => result.positions.get(n.id)!);
+
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const apart = Math.abs(boxes[i].x - boxes[j].x) >= 180 || Math.abs(boxes[i].y - boxes[j].y) >= 135;
+        expect(apart, `${nodes[i].id} and ${nodes[j].id} overlap`).toBe(true);
+      }
+    }
+    // It still starts where the reader is looking.
+    expect(boxes[0].x).toBeLessThan(visible.width);
+    expect(boxes[0].y).toBeLessThan(visible.height);
+  });
+
+  it('parks a card afresh when it comes back, in the view the reader has now', () => {
+    // Hiding suggestions and showing them again, zoomed out, is how a reader moves a batch that
+    // landed on their work — so a card that left the graph is not held to where it was parked.
+    const layout = manualLayout({ size: { width: 180, height: 135 } });
+    layout.init(input([node('a')], [], { visible: { x: 0, y: 0, width: 800, height: 600 } }));
+    layout.init(input([], [], { visible: { x: 0, y: 0, width: 800, height: 600 } }));
+    const back = layout.init(input([node('a')], [], { visible: { x: 5000, y: 5000, width: 800, height: 600 } }));
+
+    expect(back.positions.get('a')!.x).toBeGreaterThanOrEqual(5000);
+  });
+
   it('falls back to the origin before a surface has been measured', () => {
     // The one moment there is no better answer: no camera, no size, nothing to be relative to.
     const result = manualLayout({ gap: 100 }).init(input([node('a')]));

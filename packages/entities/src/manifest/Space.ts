@@ -94,12 +94,38 @@ export const Space: CoreEntityDef = {
        */
       autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: true },
       /**
+       * How deep a conversation here may go: `fractal` (a reply may be replied to) or `flat` (only
+       * the record itself may be).
+       *
+       * **A reading, not a shape.** Replies are always stored as a tree — a reply hangs off whatever
+       * it answers through `we://comment`, which is true of a post, a block, a drawn connection and
+       * another reply alike. This says only what may be *added*, so a community that switches to
+       * flat keeps showing the nesting it already has rather than silently redrawing a hierarchy as
+       * a list, and switching back loses nothing. Nothing migrates, because nothing about the data
+       * depends on it.
+       *
+       * A field here rather than a `ModuleSetting`, and the distinction is the one `moduleSettings`
+       * draws below: that field exists so a *module* stops adding columns to this entity on its own
+       * behalf, and setting groups are built from what registered modules declare. Threads are not a
+       * module — `comments` is on `WeNode`, so every record in WE has them whatever is installed —
+       * so there is no group to hang this on and nothing to uninstall it with. It sits beside
+       * `autoInterpret` for the same reason: a core capability whose scope is the community's to
+       * decide.
+       *
+       * Defaults to `fractal`, which is what every surface did before the setting existed.
+       */
+      threadMode: {
+        type: 'string',
+        predicate: 'we://thread_mode',
+        default: 'fractal',
+        options: ['fractal', 'flat'],
+      },
+      /**
        * What this community decides about each capability's settings, as JSON.
        *
        * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
-       * declares. One field rather than one per setting: `autoInterpret`, `extractionTargets` and
-       * `shareExtractionDetail` are all here as bespoke columns already, and every capability that
-       * wanted an opinion added another — a core entity accreting a field on behalf of a module is
+       * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
+       * here as bespoke columns already, and every capability that wanted an opinion added another — a core entity accreting a field on behalf of a module is
        * the shape this replaces.
        *
        * **Absent means "no opinion"**, never "off" — the same rule as `enabledModules`. A level says
@@ -107,10 +133,9 @@ export const Space: CoreEntityDef = {
        * has an opinion. See `moduleSettings.ts` in the app shell for the order and for how a
        * `restrict` setting differs.
        *
-       * ## Two of those three columns are staying, and this is not an oversight
+       * ## Those two columns are staying, and this is not an oversight
        *
-       * This field replaced the *shape*, not the three instances of it — and only one of them could
-       * move anyway. This resolver answers along one axis, **who is asking**: deployment → agent
+       * This field replaced the *shape*, not the instances of it. This resolver answers along one axis, **who is asking**: deployment → agent
        * everywhere → community here → agent here, most specific wins. `autoInterpret` and
        * `extractionTargets` carry a second axis it has no concept of, **which call** — a per-call
        * decision belonging to that call's participants rather than to the space's administrator,
@@ -118,37 +143,12 @@ export const Space: CoreEntityDef = {
        * which is a function rather than a value for exactly that reason. Migrating them here as-is
        * would typecheck, pass, and silently drop the layer where participants overrule the space.
        *
-       * `shareExtractionDetail` has no such axis and could move. There is no reason to: it is a
-       * stored predicate with data behind it, and absent-means-no-opinion makes the move a
-       * read-fallback preserving a three-way distinction rather than a rename — against the gain of
-       * one fewer column.
-       *
        * What was worth fixing is fixed: a capability that wants a setting today declares a
        * `ModuleSetting` and gets a resolved value and a rendered control, so there is no fourth
        * column coming. **Revisit the subject axis when a second capability wants a per-subject
        * override** — one is not evidence the resolver needs one. Recording is the one to watch.
        */
       moduleSettings: { type: 'string', predicate: 'we://module_settings', default: '' },
-      /**
-       * Whether extraction passes broadcast their prompt and response to the rest of the space.
-       *
-       * A property of the space for the same reason `autoInterpret` is, though a different one than
-       * might be assumed. It is not about secrecy: in a call the prompt is built from a transcript
-       * every participant already holds, so a member sharing theirs reveals nothing the others lack.
-       *
-       * It is about the state being *collective*. "I share and you do not" is an asymmetry with no
-       * use — the reason to turn this on is that a space is working on extraction and wants to see
-       * what it is doing, which is a decision about the space rather than about one member.
-       *
-       * Defaults off because the payload is tens of KB per pass and rides the ephemeral signalling
-       * transport, which exists for small last-write-wins messages. That is a poor default to impose
-       * on every space forever, and a very reasonable thing to switch on for an afternoon.
-       */
-      shareExtractionDetail: {
-        type: 'boolean',
-        predicate: 'we://share_extraction_detail',
-        default: false,
-      },
     },
     relations: {
       location: { target: 'LocationBlock', cardinality: 'one', predicate: 'we://location' },

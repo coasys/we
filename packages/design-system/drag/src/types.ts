@@ -49,6 +49,11 @@ export interface DragPreview {
   author?: string;
   /** When it was made, as an ISO string. */
   date?: string;
+  /**
+   * Where it was, by name — the space a post was read in. For a receiver that cannot resolve the
+   * source's dataset and still wants to say where the thing came from.
+   */
+  source?: string;
 }
 
 /** One thing in flight. */
@@ -61,6 +66,21 @@ export interface DragItem {
   preview?: DragPreview;
   /** The source's own handle on it, for a move. Opaque to the session. */
   origin?: unknown;
+  /**
+   * The record this one sits inside, where it has no page of its own — the post a paragraph or a
+   * picture belongs to.
+   *
+   * A block is a record and can be referenced, but a paragraph on its own is not somewhere to go,
+   * and a receiver that keeps one needs the post to open and to read it back from. It is in the same
+   * dataset as `ref`, so it names no dataset of its own.
+   */
+  within?: DragWithin;
+}
+
+/** The record a dragged one sits inside — see `DragItem.within`. Same dataset as the item's own ref. */
+export interface DragWithin {
+  entity: string;
+  id: string;
 }
 
 /**
@@ -159,7 +179,17 @@ export interface DragZone {
 export type GhostSpec =
   | { kind: 'chip'; label: string; icon?: string; count?: number }
   | { kind: 'clone'; source: HTMLElement; rect: DOMRect }
-  | { kind: 'node'; items: DragItem[] };
+  | { kind: 'node'; items: DragItem[] }
+  /**
+   * Nothing drawn — for a surface that is already moving the thing itself.
+   *
+   * A canvas drags its cards under the cursor in its own coordinate space, so a session begun from
+   * one would otherwise put a second copy of the card beside the first and neither would be the
+   * answer. The session still runs: zones light up, spring-loading works, and a release still lands.
+   * What it does not do is claim to be showing you what you are carrying, because the surface
+   * underneath already is.
+   */
+  | { kind: 'none' };
 
 /**
  * Draws a `node` ghost. Returns `null` to decline, which falls back to a chip.

@@ -1,6 +1,6 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import { agentByline, emptyState, field, formModal } from '@we/template-kit';
+import { agentByline, emptyState, field, formModal, sectionLabel } from '@we/template-kit';
 
 /**
  * The space's events, as a month and as a list.
@@ -95,7 +95,9 @@ const monthPicker: SchemaNode = {
         zIndex: 20,
         width: '260px',
         gap: '200',
-        bg: 'surface-sunken',
+        // A popover with a shadow, floating over the month grid — and the grid is itself sunken, so
+        // this was the same colour as what it floated over. `surface-raised` is the role for it.
+        bg: 'surface-raised',
         border: '1px solid border',
         r: '400',
         p: '300',
@@ -297,7 +299,7 @@ const monthGrid: SchemaNode = {
     // ── The days ─────────────────────────────────────────────────────────────
     {
       type: 'Row',
-      props: { width: '100%', gap: '100', styles: { 'flex-wrap': 'wrap' } },
+      props: { width: '100%', gap: '100', wrap: true },
       children: [
         {
           type: '$each',
@@ -312,7 +314,6 @@ const monthGrid: SchemaNode = {
                 // Seven to a row, by width rather than by a grid the schema cannot express.
                 width: 'calc(14.28% - 6px)',
                 minHeight: '92px',
-                gap: '050',
                 p: '100',
                 r: '300',
                 cursor: 'pointer',
@@ -330,7 +331,10 @@ const monthGrid: SchemaNode = {
                 // tint are one decision and were written as a role and a step.
                 border: { $: "cell.date == local.day ? '1px solid accent' : '1px solid transparent'" },
                 hoverProps: {
-                  bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken'" },
+                  // `surface-sunken-hover`, not `surface-sunken`: the month grid this cell sits in
+                  // is itself sunken, so hovering to the same role was no hover at all. That role
+                  // exists for exactly this — a well lifted, rather than a surface pressed.
+                  bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken-hover'" },
                 },
                 /*
                   Clicking the selected day again clears the selection.
@@ -546,9 +550,25 @@ export const calendarView: TemplateSchema = {
   $queries: { events: eventsDecl, dayEvents: dayEventsDecl },
   $localState: {
     /** The day the grid has selected, `YYYY-MM-DD`. Empty means "everything scheduled". */
-    day: { type: 'string', initial: '' },
+    /*
+      In the URL for the same reason, and pushed, so choosing a day is a step Back can undo.
+      Absolute, unlike the month above, because a day already is: no flaw to note here.
+    */
+    day: { type: 'string', initial: '', syncParam: { name: 'day', push: true } },
     /** Months from today the grid is showing. Paged by `$setLocal … by`, reset by "Today". */
-    monthOffset: { type: 'number', initial: 0 },
+    /*
+      In the URL, because which month you are looking at is the clearest case the rule has:
+      send somebody a link to a month and they should open on that month. It is also what
+      makes the calendar follow a driver, since a frame carries the whole address.
+
+      **An offset, so it is relative to the reader's today.** Within a session that is exactly
+      right and both agents agree. A link opened after midnight on the first of a month lands
+      one month out, which is a real flaw and the reason to move this to an absolute `YYYY-MM`
+      eventually; the expression language has no month arithmetic, so stepping from an absolute
+      month is not a one-line change. Wrong by a month across a boundary is a great deal better
+      than a link that always opens on today.
+    */
+    monthOffset: { type: 'number', initial: 0, syncParam: 'month' },
     /** The jump-to-month panel under the heading. */
     pickerOpen: { type: 'boolean', initial: false },
     /** The gate only — the drafts behind it live on the composer itself. */
@@ -670,11 +690,7 @@ export const calendarView: TemplateSchema = {
                   type: 'Column',
                   props: { width: '100%', gap: '300' },
                   children: [
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted', uppercase: true },
-                      children: ['Scheduled'],
-                    },
+                    sectionLabel({ label: 'Scheduled' }),
                     {
                       type: '$each',
                       props: { items: eventsQuery, as: 'event' },

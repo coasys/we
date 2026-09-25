@@ -27,6 +27,7 @@ import {
   type ModelType,
 } from '@coasys/ad4m';
 import type {
+  AiApiProtocol,
   AiModel,
   AiModelDraft,
   AiModelKind,
@@ -36,6 +37,9 @@ import type {
 } from '@we/backend-shared';
 
 import { type Ad4mCapability, CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
+import { missingExecutorMethods, onMissingMethod } from './missingMethods';
+import { formatNetworkMetrics } from './networkMetrics';
+import { toPeerRecords } from './peerRecords';
 
 /**
  * The languages the executor installs for itself and cannot run without.
@@ -111,6 +115,23 @@ const PRESETS: Record<AiModelKind, string[]> = {
   ],
 };
 
+/**
+ * The executor's name for each wire format. It accepts several spellings on the way in and answers
+ * with these on the way out, so these are the ones worth writing.
+ */
+const PROTOCOL_TO_AD4M: Record<AiApiProtocol, string> = {
+  openai: 'OPEN_AI',
+  anthropic: 'ANTHROPIC',
+};
+
+/**
+ * An unrecognised API type reads as OpenAI, which is what every remote model was before there was a
+ * choice — and what the executor itself assumes when none is given.
+ */
+function toProtocol(apiType: unknown): AiApiProtocol {
+  return String(apiType).toUpperCase() === 'ANTHROPIC' ? 'anthropic' : 'openai';
+}
+
 const KIND_TO_AD4M: Record<AiModelKind, ModelType> = {
   llm: 'LLM',
   embedding: 'EMBEDDING',
@@ -134,7 +155,13 @@ function toKind(modelType: ModelType): AiModelKind {
  */
 function toSource(model: AIModel): AiModelSource {
   if (model.api) {
-    return { kind: 'api', baseUrl: model.api.baseUrl, apiKey: model.api.apiKey, model: model.api.model };
+    return {
+      kind: 'api',
+      protocol: toProtocol(model.api.apiType),
+      baseUrl: model.api.baseUrl,
+      apiKey: model.api.apiKey,
+      model: model.api.model,
+    };
   }
   const local = model.local;
   if (!local) return { kind: 'preset', name: '' };
@@ -162,7 +189,14 @@ function toModelInput(draft: AiModelDraft): ModelInput {
   const input = { name: draft.name, modelType: KIND_TO_AD4M[draft.kind] } as ModelInput;
   const source = draft.source;
   if (source.kind === 'api') {
-    input.api = { baseUrl: source.baseUrl, apiKey: source.apiKey, model: source.model, apiType: 'OPEN_AI' };
+    // The protocol used to be dropped on read and written back as OpenAI, so saving any edit to an
+    // Anthropic model silently turned it into an OpenAI one pointed at Anthropic's URL.
+    input.api = {
+      baseUrl: source.baseUrl,
+      apiKey: source.apiKey,
+      model: source.model,
+      apiType: PROTOCOL_TO_AD4M[source.protocol],
+    };
   } else if (source.kind === 'huggingface') {
     input.local = {
       fileName: source.fileName,
@@ -249,6 +283,20 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
    * the list is either empty or somebody else's. They have moved to the node-scoped group below.
    */
   const agentScoped: RuntimeAdminPort = {
+    /*
+      What this executor turned out not to have.
+
+      Here rather than in the node-scoped group, and unconditional, because it is neither a node
+      setting nor a grant: it is a reading of what *this session's* own calls have already been
+      refused, and a guest on somebody else's node needs it at least as much as its operator — a
+      guest is exactly who gets the degraded surface with no way to account for it.
+
+      Answers with the AD4M-specific registry because this is the AD4M adapter; a second backend
+      answers from whatever it learns the same question through, or omits the member entirely.
+    */
+    unsupported: () => missingExecutorMethods().map(({ method, firstSeen }) => ({ name: method, firstSeen })),
+    onUnsupported: (handler) => onMissingMethod(handler),
+
     // ── Consent ───────────────────────────────────────────────────────────────
     /**
      * One executor subscription, demultiplexed into the contract's two request kinds. AD4M raises
@@ -417,6 +465,9 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
     async removeAiTask(id) {
       await client.ai.removeTask(id);
     },
+
+    // Discovery needs `AI CREATE` on the executor, the same grant as adding the model it is for.
+    ...discovery(client),
   };
 
   /**
@@ -517,15 +568,21 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
 
     // ── Peer network ──────────────────────────────────────────────────────────
     async networkMetrics() {
-      return client.runtime.getNetworkMetrics();
+      return formatNetworkMetrics(await client.runtime.getNetworkMetrics());
     },
 
-    async restartNetwork() {
-      await client.runtime.restartHolochain();
-    },
+    /*
+      No `restartNetwork`. The executor's `runtime.restartHolochain` handler returns true without
+      restarting anything — its body stopped calling `HolochainService::restart_service()` when the
+      API moved from GraphQL to WebSocket RPC — so offering it here put a button in settings that
+      spun, reported success, and changed nothing. Leaving the member off makes the shell hide the
+      control. Put it back, wrapping `client.runtime.restartHolochain()`, once the executor this
+      package pins restarts the conductor again; expect that call to need a longer timeout than the
+      client's default, since a conductor restart can outlast it.
+    */
 
     async peerInfos() {
-      return client.runtime.hcAgentInfos();
+      return toPeerRecords(await client.runtime.hcAgentInfos());
     },
 
     async addPeerInfos(infos) {
@@ -546,6 +603,23 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
     ...(canRead(CAP_DOMAIN.ai) ? aiRead : {}),
     ...(canWrite(CAP_DOMAIN.ai, CAP_VERB.create) ? aiWrite : {}),
     ...(administersNode ? nodeScoped : {}),
+  };
+}
+
+/**
+ * `discoverAiModels`, where the client can ask for it.
+ *
+ * `AIClient.discoverModels` arrived with the executor's Anthropic provider, after the SDK this
+ * package pins. Checked on the instance rather than assumed, so the settings page offers the model
+ * list wherever it works and the typed field everywhere else, instead of a button that throws.
+ */
+function discovery(client: Ad4mClient): Pick<RuntimeAdminPort, 'discoverAiModels'> {
+  const ai = client.ai as unknown as
+    { discoverModels?: (baseUrl: string, apiKey?: string, apiType?: string) => Promise<string[]> } | undefined;
+  if (!ai || typeof ai.discoverModels !== 'function') return {};
+  return {
+    discoverAiModels: ({ protocol, baseUrl, apiKey }) =>
+      ai.discoverModels!(baseUrl, apiKey || undefined, PROTOCOL_TO_AD4M[protocol]),
   };
 }
 

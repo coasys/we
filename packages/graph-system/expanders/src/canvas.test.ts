@@ -17,7 +17,12 @@ const SHAPES: EntityShape[] = [
     name: 'CollectionBlock',
     identityProperty: 'title',
     properties: [{ name: 'title', type: 'string' }],
-    relations: [],
+    // The `WeNode` relations, untyped: what `counts` is asked over. `Sighting` below deliberately
+    // has none, which is the case that must not take a type off the canvas.
+    relations: [
+      { name: 'signals', target: 'Signal', cardinality: 'many' },
+      { name: 'comments', target: '', cardinality: 'many' },
+    ],
   },
   { name: 'TaskBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
   {
@@ -181,6 +186,58 @@ describe('canvasSeed', () => {
 
     expect(asked).toContain('Sighting');
     expect(nodes.find((n) => n.type === 'Sighting')?.data).toMatchObject({ x: 10, y: 20 });
+  });
+
+  it('counts what people made of a card, in the read that was happening anyway', async () => {
+    // One more projection on a query the seed already makes, rather than a subscription per card —
+    // which is the difference between a canvas of three hundred cards loading and not.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 3, $commentsCount: 2 }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(nodes[0].data).toMatchObject({ signalsCount: 3, commentsCount: 2 });
+  });
+
+  it('leaves a zero out, so a card can ask whether the field is there', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 0, $commentsCount: 0 }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(nodes[0].data?.signalsCount).toBeUndefined();
+    expect(nodes[0].data?.commentsCount).toBeUndefined();
+  });
+
+  it('asks a type for no count it cannot answer, rather than losing the type to a refused query', async () => {
+    // A count over a relation an entity does not declare is a refused read, and the refusal would
+    // take every card of that type off the canvas — cards, lines and all — to save a number.
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 's1', nodeType: 'Sighting', x: 10, y: 10 },
+      ],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+      Sighting: [{ id: 's1', name: 'Heron' }],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toMatchObject({
+      $signalsCount: { from: 'signals', count: true },
+    });
+    expect(asked.find((q) => q.entity === 'Sighting')?.include).toBeUndefined();
+    expect(nodes.find((n) => n.type === 'Sighting')).toBeDefined();
   });
 
   it('never draws a placement as a node', async () => {
@@ -542,6 +599,70 @@ describe('the canvas seed — pending records', () => {
 });
 
 /**
+ * A suggested change to an agreed record is told apart from a suggested record, and a reader can
+ * leave suggestions off the canvas altogether.
+ *
+ * The two used to be one list, so an accepted task a pass merely had an opinion about was faded like
+ * a draft — and a "hide suggestions" built on that list would have hidden agreed work.
+ */
+describe('the canvas seed — changed and hidden records', () => {
+  const twoCards = {
+    Placement: [
+      { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+      { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+    ],
+    CollectionBlock: [
+      { id: 'c1', title: 'Agreed' },
+      { id: 'c2', title: 'Suggested' },
+    ],
+    Relationship: [
+      { id: 'r1', source: 'c1', sourceType: 'CollectionBlock', target: 'c2', targetType: 'CollectionBlock' },
+    ],
+  };
+
+  it('marks a changed record apart from a pending one', async () => {
+    const { context: ctx } = context(twoCards);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', pending: ['c2'], changed: ['c1'] }, ctx);
+
+    const agreed = nodes.find((n) => n.id.endsWith('c1'));
+    expect(agreed?.data?.changed).toBe(true);
+    expect(agreed?.data).not.toHaveProperty('pending');
+    expect(nodes.find((n) => n.id.endsWith('c2'))?.data).not.toHaveProperty('changed');
+  });
+
+  it('leaves a hidden record off, with the connections that reach it', async () => {
+    const { context: ctx } = context(twoCards);
+    const { nodes, edges } = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', hidden: ['c2'] },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id.split(/[/:]/).pop())).toEqual(['c1']);
+    expect(edges).toHaveLength(0);
+  });
+
+  it('leaves a whole type off, with the connections that reach it, and reads nothing of it', async () => {
+    const mixed = {
+      ...twoCards,
+      Placement: [...twoCards.Placement, { id: 'p3', node: 'i1', nodeType: 'ImageBlock', x: 400, y: 0 }],
+      ImageBlock: [{ id: 'i1', src: 'x.png' }],
+      Relationship: [
+        ...twoCards.Relationship,
+        { id: 'r2', source: 'c1', sourceType: 'CollectionBlock', target: 'i1', targetType: 'ImageBlock' },
+      ],
+    };
+    const { context: ctx } = context(mixed);
+    const { nodes, edges } = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', hiddenTypes: ['ImageBlock'] },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id.split(/[/:]/).pop()).sort()).toEqual(['c1', 'c2']);
+    expect(edges.map((e) => e.id)).toEqual(['canvas-connection|r1']);
+  });
+});
+
+/**
  * How a canvas draws its connections — which side of a card each line leaves and arrives on.
  *
  * The same shape as the type key above and quiet in the same way: a route that does not reach its
@@ -681,5 +802,82 @@ describe('canvas connection waypoints', () => {
 
     expect(edges[0].data?.sourceAnchor).toBe('n');
     expect(edges[0].data).not.toHaveProperty('waypoints');
+  });
+});
+
+/**
+ * What the canvas asks for, and what it says when it cannot ask for everything.
+ *
+ * Both of these are about cost and about honesty rather than about what ends up on screen — which is
+ * why neither was noticed: the canvas looked right in every case below.
+ */
+describe('the canvas seed’s reads', () => {
+  it('asks one question once, however many times it was listed', async () => {
+    /*
+      `contains` is a caller's list — on the workshop's canvas it is the call's stored extraction
+      targets — so a repeated entry is a thing that happens, and each repeat cost a round trip and a
+      standing subscription, since the engine keys its watches on the read.
+    */
+    const { context: ctx, asked } = context({
+      Placement: [],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock', 'TaskBlock', 'TaskBlock'] }, ctx);
+
+    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(1);
+  });
+
+  it('still asks twice for a type that is both placed and owned, which is two questions', async () => {
+    /*
+      The dedup is exact repeats only, and this is why. "The ones positioned here", by id, and "the
+      ones this canvas owns", by containment, are different questions — the second is what finds a
+      card nobody has placed yet. They cannot be merged into one query either: one is a `where` and
+      the other a `scope`, and the grammar has no union of the two.
+    */
+    const { context: ctx, asked } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 }],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock'] }, ctx);
+
+    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(2);
+  });
+
+  it('says so when there are more placed cards than it is allowed to read', async () => {
+    /*
+      The placements read is not like the others. Every read here is bounded, and for most of them
+      hitting the bound means some cards of that kind are missing — visible, and obviously a
+      truncation. This one decides which records round two asks for, so exceeding it does not drop
+      the overflow cards, it makes them invisible to the rest of the load entirely. Nothing else ever
+      learns they exist, and what a person sees is a canvas that silently stops.
+    */
+    const { context: ctx, warnings } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'TaskBlock', x: 1, y: 1 },
+      ],
+      TaskBlock: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two' },
+      ],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', limit: 2 }, ctx);
+
+    expect(warnings.some((w) => w.includes('stopped at 2 placed cards'))).toBe(true);
+  });
+
+  it('says nothing about a cap it did not reach', async () => {
+    // A warning on every ordinary canvas would be worth nothing on the one that is truncated.
+    const { context: ctx, warnings } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 }],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', limit: 200 }, ctx);
+
+    expect(warnings.filter((w) => w.includes('placed cards'))).toEqual([]);
   });
 });

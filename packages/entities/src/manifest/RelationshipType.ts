@@ -44,6 +44,13 @@ export const RelationshipType: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     flag: { predicate: 'we://flag', value: 'we://relationship_type' },
+    /*
+      Never in a "create something" picker, because it is not a block. A kind of connection is the
+      community's vocabulary, named in space settings through `createRelationshipType`, which derives
+      the slug templates look a kind up by. Listed in a picker — a canvas double-click once did — it
+      made a vocabulary entry with no slug, for everyone in the space, and put it on the canvas as a
+      card.
+    */
     authoring: { fields: ['name', 'description', 'icon', 'color', 'inverseName', 'directed'] },
     properties: {
       /** What this kind of connection is called, as a verb phrase — "contradicts", "came out of". */

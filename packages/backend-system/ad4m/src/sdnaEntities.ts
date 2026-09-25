@@ -14,6 +14,7 @@ import {
   EdgeRoute,
   EmbedBlock,
   EventBlock,
+  ExtractionAmendment,
   ExtractionPass,
   FileBlock,
   ImageBlock,
@@ -127,6 +128,16 @@ export async function bulkHasSubjectClassLink(
 export interface StoredShape {
   /** `sh://path` of every property the stored shape declares. */
   paths: Set<string>;
+  /**
+   * How many property shapes sit on each path.
+   *
+   * A set of paths cannot tell one property on a predicate from two, and two is a real shape: a
+   * relation and its `reverseOf` inverse are one link read from both ends, so they share a
+   * predicate by construction. `WeNode` gained `inReplyTo` beside `comments` on `we://comment` and
+   * every existing space read as fresh — the set was unchanged — so the new relation never reached
+   * them and the reverse include silently found nothing to hydrate.
+   */
+  pathCounts: Map<string, number>;
   /** Class-level interpretation hint, decoded. */
   classHint?: string;
   /** `sh://path` of the property marked `ad4m://identity`, if any. */
@@ -157,7 +168,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   const entry = (targetClass: string): StoredShape => {
     const existing = shapes.get(targetClass);
     if (existing) return existing;
-    const created: StoredShape = { paths: new Set(), propHints: new Map() };
+    const created: StoredShape = { paths: new Set(), pathCounts: new Map(), propHints: new Map() };
     shapes.set(targetClass, created);
     return created;
   };
@@ -194,7 +205,10 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   ]);
 
   for (const row of pathRows) {
-    if (row.targetClass && row.path) entry(row.targetClass).paths.add(row.path);
+    if (!row.targetClass || !row.path) continue;
+    const shape = entry(row.targetClass);
+    shape.paths.add(row.path);
+    shape.pathCounts.set(row.path, (shape.pathCounts.get(row.path) ?? 0) + 1);
   }
   for (const row of hintRows) {
     if (row.targetClass && row.hint !== undefined) entry(row.targetClass).classHint = decodeHint(row.hint);
@@ -272,7 +286,11 @@ export function clearStoredShapesCache(): void {
  * worth more than the tidiness of a narrow export surface.
  */
 export function declaredShape(model: EntityClass): StoredShape {
-  const out: StoredShape = { paths: new Set(getEntityPredicates(model)), propHints: new Map() };
+  const out: StoredShape = {
+    paths: new Set(getEntityPredicates(model)),
+    pathCounts: new Map(),
+    propHints: new Map(),
+  };
   const generate = (
     model as unknown as {
       generateSHACL?: () => {
@@ -289,6 +307,7 @@ export function declaredShape(model: EntityClass): StoredShape {
     out.classHint = shape?.interpretationHint || undefined;
     for (const property of shape?.properties ?? []) {
       if (!property.path) continue;
+      out.pathCounts.set(property.path, (out.pathCounts.get(property.path) ?? 0) + 1);
       if (property.identity) out.identityPath = property.path;
       if (property.interpretationHint) out.propHints.set(property.path, property.interpretationHint);
     }
@@ -337,6 +356,14 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
 
   const declared = declaredShape(model);
   if ([...declared.paths].some((predicate) => !current.paths.has(predicate))) return true;
+  // A path the stored shape already has, but fewer times than the model now declares — a relation
+  // gaining its inverse. Only when the declared side has counts at all: a model whose SHACL could
+  // not be generated has none, and reading that as "declares nothing" would call every shape fresh.
+  if (declared.pathCounts.size) {
+    for (const [path, count] of declared.pathCounts) {
+      if ((current.pathCounts?.get(path) ?? 0) < count) return true;
+    }
+  }
   if (declared.identityPath !== current.identityPath) return true;
   // Hints are space-owned once customized (see StoredShape.hintsCustomized): a stored hint that
   // differs from the declaration is then the community's tuning, not staleness, and rewriting it
@@ -534,10 +561,10 @@ export async function ensureEntityRegistered(p: PerspectiveProxy, model: typeof 
  * Safe to call on every boot, and safe to call from multiple independent peers/processes —
  * only models not already present on the perspective are written.
  */
-export async function installRootSdna(p: PerspectiveProxy, moduleSchemas: readonly unknown[] = []): Promise<void> {
-  // Agent-scoped module entities go here rather than into a space: they are what a module knows
-  // about *you*, and the root perspective is the one that is never synced to anybody.
-  await ensureEntitiesRegistered(p, [...ROOT_MODELS, ...(moduleSchemas as (typeof Ad4mModel)[])]);
+export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
+  // Configuration only. Agent-scoped module entities install into the personal space, beside the
+  // content they belong with — see `SYSTEM_DATASET_NAMES` in the app shell.
+  await ensureEntitiesRegistered(p, [...ROOT_MODELS]);
 }
 
 /**
@@ -593,6 +620,16 @@ export const SPACE_MODELS = [
     differently for every member, and for most of them not at all.
   */
   ExtractionPass,
+  /*
+    A change a pass suggested to a record that already existed, and somebody kept.
+
+    Shared for the same reason the pass is, and one step more so: an amendment is the record of a
+    *decision*, and the decision was taken on everyone's behalf — the value it applied is in the
+    space for every member to read, so the account of where that value came from has to be too.
+    Private, a member would see the record change with no explanation that anybody else could see
+    either.
+  */
+  ExtractionAmendment,
   Template,
   Theme,
   WeNode,

@@ -57,7 +57,11 @@ const canvasCards: SchemaNode = {
     // Nothing opens automatically: a canvas shows what is on it, and drilling into a card's own
     // blocks would turn a wall of notes into a tree of fragments.
     expansion: { defaultDepth: 0 },
-    layout: { type: 'manual' },
+    // The card's size, so a card nobody has placed is parked in a slot it fits, clear of the rest.
+    layout: {
+      type: 'manual',
+      options: { size: { width: 180, height: 135 }, widthField: 'canvasWidth', heightField: 'canvasHeight' },
+    },
     nodeStyle: [
       /*
         A card carries its content inside the box — the node *is* the thing, rather than a mark with
@@ -126,6 +130,15 @@ const canvasCards: SchemaNode = {
       // The two halves of a double-click: on a node it opens, on empty canvas it creates.
       'node-double-click',
       'canvas-double-click',
+      /*
+        The sweep, before `pan-zoom` — both want a press on empty canvas, and dispatch stops at the
+        first behaviour that claims, so listed after it this would never run at all.
+
+        Armed, a plain background drag sweeps and panning moves to the modifier. Disarmed it still
+        answers to Shift and Ctrl/Cmd, which is what makes it findable by anyone who arrives from
+        another canvas expecting it.
+      */
+      { type: 'marquee-select', options: { armed: { $: 'local.selecting' } } },
       'select',
       { type: 'drag-node', options: { pin: true } },
       /*
@@ -152,6 +165,98 @@ const canvasCards: SchemaNode = {
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
     revision: { $: '`${datasetStore.currentDataset.id}:${local.revision}`' },
+    /*
+      Cards can be taken elsewhere — a Pocket, a folder, another space's feed.
+
+      No new gesture: the drag that moves a card on the canvas carries it too, and the release
+      decides which it was. Drop zones light up as the pointer crosses them, so the option is
+      visible while the drag is live, and the card springing back says which of the two happened.
+    */
+    carry: true,
+    /*
+      Undo, over this canvas's arrangement.
+
+      The store records a move, a resize, a colour and a removal as it writes them, and replays them
+      as new forward writes — so a peer's change in between is not discarded and a card somebody
+      else has moved since is left alone. Deleting a record is deliberately not in it.
+
+      Scoped to the canvas the picker has open: replaying a move onto a canvas the reader has
+      navigated away from is the most confusing thing the key could do.
+    */
+    onUndo: { $action: 'recordStore.undoCanvas', args: [CANVAS] },
+    onRedo: { $action: 'recordStore.redoCanvas', args: [CANVAS] },
+    /*
+      What a selection of several offers.
+
+      Two, and deliberately not three. Connect, resize and "open this card" are statements about one
+      record and mean nothing said about twelve at once; recolouring and deleting are what is left.
+
+      There was a "take off the canvas" here and it has gone, because it did not do what its icon
+      promised. A card the canvas *owns* has no position to lose: the seed reads owned-but-unplaced
+      records back as the tray, so erasing one returns it on the next read and the `manual` layout
+      parks it in the corner. See `recordStore.removeFromCanvas` — it is still the right action for
+      a record merely placed here, which is a distinction a bar over a mixed selection cannot draw.
+    */
+    selectionActions: [
+      { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
+      { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
+    ],
+    /*
+      One handler for the bar, branching on which was pressed — the shape a handler array is for.
+
+      `delete` ends the records for everybody, through the store action that raises the host's
+      confirmation **once** for the whole set rather than once per card.
+    */
+    onSelectionAction: [
+      {
+        $if: {
+          condition: { $: "event.action == 'delete'" },
+          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+        },
+      },
+      /*
+        The colour, previewed as it is browsed and written once on Apply.
+
+        The picker confirms here (see `ColorControl`), so everything before the tick arrives as a
+        preview — which for a selection matters: without the guard, dragging the hue area would
+        write a record per selected card per frame.
+      */
+      {
+        $if: {
+          condition: { $: "event.action == 'color' && event.preview" },
+          then: {
+            $action: 'recordStore.previewCardStyle',
+            args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'color' && !event.preview" },
+          then: {
+            $action: 'recordStore.setCardStyle',
+            args: [CANVAS, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+    ],
+    /*
+      Delete ends the records, whether one is selected or twenty.
+
+      Through `deleteRecords` rather than `record.delete` because the host's confirmation is modal
+      and phrased per record: looping it over a selection stacks a dialog per card, which is what
+      made multi-select delete a thing to design rather than to fall into. One question, counting
+      what is in the list.
+
+      There is no reversible version of this to offer instead — taking a card off a canvas it is
+      owned by does not remove it — so the guard in front of the key is the dialog, not an undo.
+    */
+    onDeleteSelection: {
+      $if: {
+        condition: { $: 'count(event.records)' },
+        then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+      },
+    },
     onNodeClick: selectNode,
     // Clicking empty canvas deselects — the same handler the other three modes carry. The canvas is
     // where it matters most: it is the mode you click around in, and without it the only way to
@@ -290,6 +395,79 @@ export const canvasBar: SchemaNode = {
               children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
             },
             /*
+              Select mode, the counterpart of Connect.
+
+              A drag on empty canvas pans, which is right and is the gesture people use most — so
+              sweeping out a selection is armed from a control rather than taking the plain drag
+              away. Shift and Ctrl/Cmd reach it without the toggle, which is what makes it findable
+              by anybody arriving from another canvas; this is for the reader who wants it to be
+              what a plain drag does while they tidy up.
+            */
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: { $: "local.selecting ? 'primary' : 'ghost'" },
+                onClick: { $toggleLocal: 'selecting' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'selection' } }, 'Select'],
+            },
+            /*
+              Undo and redo, beside the tools rather than only on the keyboard.
+
+              The keys work while the canvas has focus, which is most of the time and not all of it
+              — clicking into the inspector to edit a label moves focus away, and the press that
+              follows would go nowhere. Buttons work wherever focus is, and they are also the only
+              sign the canvas remembers anything at all.
+
+              Disabled rather than hidden, and titled with what the press would put back: a control
+              that appears and disappears as you work is harder to aim at than one that greys.
+            */
+            {
+              type: 'we-tooltip',
+              props: {
+                content: {
+                  $: "recordStore.canvasHistory.undoLabel ? `Undo ${recordStore.canvasHistory.undoLabel}` : 'Nothing to undo'",
+                },
+              },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'ghost',
+                    square: true,
+                    label: 'Undo',
+                    disabled: { $: '!recordStore.canvasHistory.canUndo' },
+                    onClick: { $action: 'recordStore.undoCanvas', args: [CANVAS] },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'arrow-counter-clockwise' } }],
+                },
+              ],
+            },
+            {
+              type: 'we-tooltip',
+              props: {
+                content: {
+                  $: "recordStore.canvasHistory.redoLabel ? `Redo ${recordStore.canvasHistory.redoLabel}` : 'Nothing to redo'",
+                },
+              },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'ghost',
+                    square: true,
+                    label: 'Redo',
+                    disabled: { $: '!recordStore.canvasHistory.canRedo' },
+                    onClick: { $action: 'recordStore.redoCanvas', args: [CANVAS] },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'arrow-clockwise' } }],
+                },
+              ],
+            },
+            /*
               The key, which is also where a type's colour is set.
 
               Toggleable rather than fixed: a canvas with three kinds of thing on it does not need a
@@ -321,7 +499,8 @@ export const canvasBar: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'count(recordStore.creatableEntities)' },
+                // Form-made content only: this opens the record form. Notes have their own button.
+                condition: { $: "count(recordStore.creatableEntities.filter(k, k.via == 'form'))" },
                 then: {
                   type: 'we-button',
                   props: {

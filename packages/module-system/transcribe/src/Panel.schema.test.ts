@@ -10,6 +10,7 @@
  * Serialised and searched rather than walked, the same way the showcase templates are tested. A
  * schema is data; what matters is whether the token is in the tree, not the path it sits at.
  */
+import { markAction, markState, storeSurface } from '@we/module-shared';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import { evaluateExpression, markReactive, namespace, parseCached, type SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
@@ -26,14 +27,96 @@ import {
   panel,
   pendingUtterance,
   SUBJECT_EXPR,
+  transcriptComposer,
   transcriptFeed,
   transcriptLines,
 } from './Panel.schema';
+import { createTranscribeStore } from './store';
 import { VIEWING_LIVE_EXPR } from './subject';
 
 const panelJson = JSON.stringify(panel);
 const feedJson = JSON.stringify(transcriptFeed);
 const linesJson = JSON.stringify(transcriptLines);
+
+/**
+ * The store with nothing lent to it — no kernels, no effects — which is enough to read its surface.
+ *
+ * Which members are public is decided at construction and depends on nothing the host supplies, so
+ * the smallest deps the contract admits answer the question; a fuller harness lives in `store.test`.
+ */
+function bareStore() {
+  return createTranscribeStore({
+    signal: <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next: T) => (value = next)];
+    },
+    state: markState,
+    action: markAction,
+    kernels: {},
+  });
+}
+
+describe('the module declaration', () => {
+  it('names exactly the kernels the store reaches', () => {
+    // A kernel not named is absent from the bag, and the store degrades rather than throws — so a
+    // missing name here is a feature silently switched off, not a type error.
+    expect(transcribeModule.manifest.requires?.kernels).toEqual([
+      'records',
+      'presence',
+      'media',
+      'transcription',
+      'interpretation',
+    ]);
+    expect(transcribeModule.manifest.requires?.permissions).toEqual(['microphone']);
+  });
+
+  it('keeps its chrome on screen while recording, by a bare store key', () => {
+    // Recording follows the call and the call survives navigation; the key is `enabled`, which goes
+    // false the moment recording stops, so the hold cannot become permanent.
+    expect(transcribeModule.contributes?.holds).toBe('enabled');
+    expect(storeSurface(bareStore()).enabled?.kind).toBe('state');
+  });
+
+  it('owns whether each panel is open, and names how to open and close it', () => {
+    /*
+      The exception the contract describes rather than the default it offers. The store opens the
+      transcript on a record press and the extraction panel when a pass starts, and reads `open` to
+      keep polling for a model — none of which a host-held flag would let it do. Owning the flag
+      means owning `show` and `close` too, or the rail and the titlebar have nothing to call.
+    */
+    const panels = transcribeModule.contributes?.panels ?? [];
+    const surface = storeSurface(bareStore());
+
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
+    for (const p of panels) {
+      expect(p.icon).toBeTruthy();
+      expect(surface[p.open ?? '']?.kind).toBe('state');
+      expect(surface[p.show ?? '']?.kind).toBe('action');
+      expect(surface[p.close ?? '']?.kind).toBe('action');
+    }
+    // The rail spins on it while any peer's pass runs — the glance the call bar's square used to give.
+    expect(surface[panels[1].busyWhen ?? '']?.kind).toBe('state');
+    // And no launchers of its own: a panel's rail button is derived from the panel.
+    expect(transcribeModule.contributes?.launchers).toBeUndefined();
+  });
+
+  it('marks every member its own fragments name, so a placed part can still read it', () => {
+    /*
+      Members are private by default now. The module's own panel renders against the chrome bag and
+      would see a private member; a *part* placed by a template may not — so a fragment naming an
+      unmarked member is a fragment that works in the default panel and renders nothing everywhere
+      the parts exist to be placed.
+    */
+    const referenced = new Set<string>();
+    for (const match of JSON.stringify(transcribeModule.contributes).matchAll(/modules\.transcribe\.([A-Za-z_]+)/g)) {
+      referenced.add(match[1]);
+    }
+    const surface = storeSurface(bareStore());
+
+    expect(referenced.size).toBeGreaterThan(20);
+    expect([...referenced].filter((name) => !surface[name])).toEqual([]);
+  });
+});
 
 describe('which call the panel is about', () => {
   it('follows the call the address names, and falls back to the one being recorded', () => {
@@ -55,7 +138,7 @@ describe('which call the panel is about', () => {
       another call would get the live one and no complaint. Naming the bare collection id here — as
       this did before the feed became route-aware — is exactly that failure.
     */
-    const declared = transcribeModule.schemas?.transcriptFeed;
+    const declared = transcribeModule.contributes?.parts?.transcriptFeed;
     const subject = typeof declared === 'object' && 'subject' in declared ? declared.subject : undefined;
 
     expect(subject).toBe(SUBJECT_EXPR);
@@ -95,7 +178,7 @@ describe('a transcript with nothing in it', () => {
       whether there is a preview — and reversible for nothing: a buffer that never saves takes the
       placeholder's reason with it and the sentence comes back.
     */
-    expect(linesJson).toContain(`!(modules.transcribe.pending && (${VIEWING_LIVE_EXPR}))`);
+    expect(linesJson).toContain(`!(modules.transcribe.heard && (${VIEWING_LIVE_EXPR}))`);
   });
 
   it('waits for the query to answer before asserting emptiness', () => {
@@ -124,6 +207,86 @@ describe('a transcript with nothing in it', () => {
     */
     expect(linesJson).toContain('"condition":{"$":"local.utterancesLoaded"}');
     expect(linesJson).not.toContain('local.utterancesLoaded &&');
+  });
+
+  /**
+   * The window, which is the whole reason any of this changed.
+   *
+   * The query had no limit: every utterance re-ran it over the entire transcript, hydrated every row
+   * into a model instance and stringified the lot to fingerprint it. Three passes over everything
+   * already said, for each new thing said — so the cost of speaking grew with the length of the
+   * conversation, which is exactly the shape of "it got slower the longer we were in the call".
+   */
+  it('bounds what it loads', () => {
+    expect(linesJson).toContain('"limit":{"$":"modules.transcribe.transcriptShown"}');
+  });
+
+  /**
+   * Two documents with opposite anchors, out of one query.
+   *
+   * Live, a transcript is a tail: the newest N, which only `desc` can ask for. Afterwards it is a
+   * document with a beginning, read forwards, which is `asc`. Anchored to the end there is no way to
+   * reach the start but to load everything between, so the anchor is the thing that moves.
+   */
+  it('flips the order with the anchor', () => {
+    expect(linesJson).toContain(
+      "modules.transcribe.transcriptFromStart ? { createdAt: 'asc' } : { createdAt: 'desc' }",
+    );
+  });
+
+  /**
+   * And turns the tail back the right way up.
+   *
+   * `reverse` rather than a `column-reverse` box, which would look identical and quietly break the
+   * speaker grouping: it asks whether a line is by the same person as the one before it, and in a
+   * reversed list `prev` is the line *after*.
+   */
+  it('renders the live window oldest-first', () => {
+    expect(linesJson).toContain('reverse(local.utterances)');
+  });
+
+  /**
+   * A finished transcript is settled, so following it costs the node a re-query per change in the
+   * space to be told nothing changed — and reading one back is the commonest thing anybody does to
+   * a long transcript.
+   */
+  it('subscribes only while the call is live', () => {
+    expect(linesJson).toContain('"subscribe":{"$":"modules.transcribe.callOnScreenLive"}');
+  });
+
+  /**
+   * Neither way back is a button in the rows any more.
+   *
+   * Earlier lines load as the reader reaches them — reaching the edge of a list IS the request, and
+   * a button asking them to confirm the scroll they just made is a step nobody wanted. The
+   * beginning went the other way, up into the scroller's own corner beside "jump to the end", where
+   * it reads as that control's opposite rather than as a word in the margin. Both are asserted from
+   * the feed below; what is left here is the reassurance, which is the part a silently-stopping list
+   * cannot give.
+   */
+  it('says more is coming at whichever edge the window grows from, and asks for nothing', () => {
+    /*
+      No buttons in the rows at all now. Loading is on approach, and both ways back are the jump
+      controls in the scroller's corner — including "latest", which used to be a word in a header
+      here beside the name of the end you were at. The header went with it: which end you are at is
+      said by which control is offered.
+    */
+    expect(linesJson).not.toContain('modules.transcribe.showMoreTranscript');
+    expect(linesJson).not.toContain('modules.transcribe.readTranscriptFromStart');
+    expect(linesJson).not.toContain('modules.transcribe.readTranscriptLive');
+    expect(linesJson).not.toContain('The start of the transcript');
+
+    // One sentence per direction, each gated on the anchor it belongs to.
+    expect(linesJson).toContain('Earlier in the conversation');
+    expect(linesJson).toContain('Later in the conversation');
+  });
+
+  /**
+   * The reassurance is withdrawn once everything is loaded — a page that came back short is the
+   * exact answer to "is there more", even though a full one is only a probable yes.
+   */
+  it('says it only while a page came back full', () => {
+    expect(linesJson).toContain('count(local.utterances) >= modules.transcribe.transcriptShown');
   });
 
   it('shows the placeholder where there is no record to wait for, not only where one answered empty', () => {
@@ -213,9 +376,11 @@ describe('a transcript with nothing in it', () => {
       transcript. A clause telling somebody to continue a meeting that nothing will continue is
       worse than no clause, so it is tested before the two that make the offer.
     */
-    const refuses = linesJson.indexOf('!(modules.call.canCall && !modules.call.active)');
+    const refuses = linesJson.indexOf('(!modules.call || modules.transcribe.inCall)');
     expect(refuses).toBeGreaterThan(-1);
     expect(refuses).toBeLessThan(linesJson.indexOf('Continue the call to begin transcribing.'));
+    // Read off this module's own store, derived from presence — never off the call module's members.
+    expect(linesJson).not.toContain('modules.call.');
     // And the same verb the button uses, decided by the same expression.
     expect(linesJson).toContain('Join the call to begin transcribing.');
   });
@@ -385,6 +550,24 @@ describe('what belongs to the live microphone only', () => {
     );
   });
 
+  it('shows nothing at all until there are words, rather than a box saying it is listening', () => {
+    /*
+      It was gated on `heard`, which includes the gap between somebody stopping and their text coming
+      back, and filled that gap with an empty box reading "Transcribing…". The intent was to say the
+      panel had not missed anything; the effect was a box that appears, holds one word, and is
+      replaced a moment later by the words it was standing in for — on every utterance, for the
+      length of a call.
+
+      The preview arriving a beat late says the same thing by existing, and says it with content.
+    */
+    const json = JSON.stringify(pendingUtterance);
+    expect(json).not.toContain('Transcribing');
+    expect(json).not.toContain('modules.transcribe.heard');
+    // The spinner stays, and now means one thing: the NEXT sentence is still with the model while
+    // this one waits to be written.
+    expect(json).toContain('modules.transcribe.transcribing');
+  });
+
   it('leaves the record button out where it could not work, rather than showing a dead one', () => {
     /*
       It was a `disabled`, true in exactly one situation: outside a call, where there is no audio.
@@ -422,7 +605,7 @@ describe('what belongs to the live microphone only', () => {
     */
     expect(linesJson).toContain('Continue the call to begin transcribing.');
     expect(linesJson).toContain('Join the call to begin transcribing.');
-    expect(linesJson).toContain('modules.call.canCall && !modules.call.active');
+    expect(linesJson).toContain('modules.transcribe.callOnScreenLive');
   });
 });
 
@@ -463,15 +646,72 @@ describe('the feed', () => {
       other, and the first sentence written appears to leap the gap between them. Inside, it follows
       the last row whether there are two of them or two hundred.
     */
-    expect(feedJson).toContain('"pin":"end"');
+    expect(feedJson).toContain('pin');
     expect(feedJson).toContain('transcribe.transcriptLines');
     expect(feedJson.indexOf('transcribe.transcriptLines')).toBeLessThan(feedJson.indexOf('Not saved yet'));
   });
 
-  it('offers a way back to either end of a transcript somebody has scrolled through', () => {
-    // `pin` lets go of a reader who scrolls up and offers nothing to undo that; in a live transcript
-    // the bottom keeps moving, so scrolling back to it by hand is a chase.
+  /**
+   * Following the end is conditional, because the transcript is not always a tail.
+   *
+   * Anchored to its beginning it is a document, and the rows on screen are the OLDEST in the
+   * conversation — a new line does not belong below them, so pinning would drag a reader away from
+   * what they asked to read every time somebody speaks.
+   */
+  it('follows the live end only while the transcript is anchored to it', () => {
+    expect(feedJson).toContain('"pin":{"$":"modules.transcribe.transcriptFromStart ? \'\' : \'end\'"}');
+  });
+
+  /**
+   * A way back to each end, with the start one meaning something the scroller could not mean alone.
+   *
+   * `pin` lets go of a reader who scrolls up and offers nothing to undo that; in a live transcript
+   * the bottom keeps moving, so scrolling back to it by hand is a chase — that half always stood.
+   *
+   * The start half was dropped when the window arrived, because the scroll area can only reach the
+   * top of what is LOADED, which is not the beginning of the conversation: the button would have
+   * said "start" and delivered "as far back as we happened to fetch". That was right about the
+   * action and it cost the affordance, so the split is now explicit — the scroller keeps deciding
+   * WHETHER there is anywhere above to go, and the slot supplies what pressing it does.
+   */
+  it('offers both ends, and answers a jump that cannot be a scroll', () => {
+    /*
+      A jump is a scroll to an end that is loaded and a different query to one that is not. Which is
+      which is NOT stated here: the scroller reads it from the `data-we-more` marker on the "more is
+      coming" line, which `transcriptLines` renders under exactly that test. So a transcript that
+      has loaded whole scrolls at both ends rather than re-asking for what it already holds, and the
+      two cannot disagree about when there is more.
+    */
     expect(feedJson).toContain('"jump":"both"');
+    expect(feedJson).not.toContain('jumpAsks');
+    expect(feedJson).toContain('modules.transcribe.readTranscriptFromStart');
+    expect(feedJson).toContain('modules.transcribe.readTranscriptLive');
+    expect(linesJson).toContain('"data-we-more":"start"');
+    expect(linesJson).toContain('"data-we-more":"end"');
+  });
+
+  /**
+   * Earlier lines load as the reader reaches them, and their place is kept across what arrives.
+   *
+   * The guard is on the anchor rather than on there being more: the rows that could answer "is
+   * there more" are a local of `transcriptLines`, which is placed INSIDE this scroller, and an
+   * event reaches its ancestors rather than its descendants. Anchored to the start there is nothing
+   * above at all, and that case is refused outright.
+   */
+  it('loads more of the conversation on approach, at whichever end the window grows from', () => {
+    /*
+      Both, because the window has two directions and a list that paginates one way stops dead at
+      the other. Following the live end it grows backwards, so the edge worth watching is the top;
+      read from the beginning it grows forwards and the edge is the bottom. With only the first,
+      choosing "read from the start" walked you to the end of the first page and stopped, with the
+      rest of the conversation unreachable.
+    */
+    expect(feedJson).toContain('"nearStart":400');
+    expect(feedJson).toContain('"nearEnd":400');
+    expect(feedJson).toContain('modules.transcribe.showMoreTranscript');
+    // Each guarded on the anchor it belongs to, so only one of them can answer at a time.
+    expect(feedJson).toContain('!modules.transcribe.transcriptFromStart');
+    expect(feedJson).toContain('"condition":{"$":"modules.transcribe.transcriptFromStart"}');
   });
 
   it('times a row by the clock once the call is over, and relatively while it is not', () => {
@@ -749,6 +989,23 @@ describe('the extraction panel', () => {
     expect(json).toContain('recordStore.displays[item.__subjectClass].title');
   });
 
+  it('asks about a new record and a change to an agreed one as two different questions', () => {
+    /*
+      One list drew a change a pass suggested to somebody's task as a draft of the task, offered
+      Keep and Discard on it, and showed only the new value. The changes are their own group now:
+      the record as it is, each change as old → new, applied or dismissed per field.
+    */
+    expect(json).toContain(".filter(p, p.kind != 'update')");
+    expect(json).toContain(".filter(p, p.kind == 'update')");
+    expect(json).toContain('"children":["Pending changes"]');
+    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
+    expect(json).toContain('"$action":"modules.transcribe.dismissChange"');
+    // The old half comes from the record itself, asked for by id once the model is known.
+    expect(json).toContain('"current":{"entity":{"$":"proposal.entity"},"where":{"id":{"$":"proposal.id"}}');
+    // An agreed record with a change suggested still counts as extracted.
+    expect(json).not.toContain('modules.transcribe.pendingIds');
+  });
+
   it('reads what a call produced through the provenance link, in one subscription', () => {
     /*
       The question "what did this call produce" is unaskable through `children`: it holds the
@@ -760,8 +1017,13 @@ describe('the extraction panel', () => {
       when they were made rather than by which model they happen to be, and why there is a number to
       put beside the heading at all.
     */
-    expect(json).toContain('"include":{"extracted":{"order":{"createdAt":"desc"}}}');
-    expect(json).toContain('first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.pendingIds))');
+    expect(json).toContain('"extracted":{"order":{"createdAt":"desc"}}');
+    // And the amendments in the same include, so "what did this call produce" and "what did it
+    // change" are one answer rather than two that can disagree about whether it has been asked yet.
+    expect(json).toContain('"amendments":{"order":{"createdAt":"desc"}}');
+    expect(json).toContain(
+      'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
+    );
     // Keyed on the class each row turned out to be. Not `item.type`, which is a real property on a
     // CollectionBlock and so means something else on some of the rows a call can hold.
     expect(json).toContain('recordStore.displays[item.__subjectClass]');
@@ -797,7 +1059,7 @@ describe('the extraction panel', () => {
       ['success', 'check'],
       ['danger', 'x'],
     ]) {
-      expect(json).toContain(`"r":"full","label":"${tone === 'success' ? 'Keep' : 'Discard'} this"`);
+      expect(json).toContain(`"r":"full","label":"${tone === 'success' ? 'Accept' : 'Reject'}"`);
       /*
         The status foreground at rest, the fill on hover — the canvas's rule, and its reason: at this
         size the icon *is* the button, so it must stay legible against the surface behind it, and
@@ -836,10 +1098,10 @@ describe('the extraction panel', () => {
       before answering — so it sits apart, as a mark, with the words behind a tooltip.
     */
     const pencil = json.indexOf('"name":"pencil-simple"');
-    const keep = json.indexOf('"label":"Keep this"');
+    const keep = json.indexOf('"label":"Accept"');
 
     expect(pencil).toBeLessThan(keep);
-    expect(json).toContain('"content":"Edit before keeping"');
+    expect(json).toContain('"content":"Edit before accepting"');
     expect(json).toContain('"content":"Stop editing"');
     expect(json).not.toContain('"Edit"]');
     expect(json).not.toContain('"Cancel"]');
@@ -848,7 +1110,7 @@ describe('the extraction panel', () => {
   it('leaves what a pass produced to the two readouts that already say it', () => {
     /*
       A tick and "N records written." stood above the chips until the next press. The results
-      themselves appear under "Extracted", and `ExtractionPass` records the outcome and count of
+      themselves appear under "Accepted", and `ExtractionPass` records the outcome and count of
       every pass — one-shot and standing alike — so the history holds what this held and keeps
       holding it afterwards.
 
@@ -872,7 +1134,7 @@ describe('the extraction panel', () => {
       community's own colour. Here it is one line among several.
     */
     expect(json).not.toContain("last(field.options) ? 'success'");
-    // The one badge left is the count beside "Awaiting your call", which is a number and not a
+    // The one badge left is the count beside "Pending acceptance", which is a number and not a
     // state. Left open at the end rather than closing the props object: what is being pinned is
     // that the badge is the count's, and it should not have to be rewritten when the count's chip
     // gains a size or a colour.
@@ -903,7 +1165,7 @@ describe('the extraction panel', () => {
       say one thing eight times and crowd the titles they sit beside.
 
       Nothing is left relying on colour alone, which is what the rule actually asks. Each section
-      says in words what its cards are — "Awaiting your call", "Extracted" — and every card on
+      says in words what its cards are — "Pending acceptance", "Pending changes", "Accepted" — and every card on
       screen sits under one of those headings.
     */
     // The card's own former shape. `we-alert` still draws the two genuine alerts in this panel — a
@@ -1078,7 +1340,7 @@ describe('the extraction panel', () => {
     const heading = (label: string) =>
       JSON.stringify({ ...SECTION_LABEL_PROPS, flex: '1' }) + `,"children":["${label}"]`;
 
-    for (const label of ['Things to extract', 'Logs', 'Awaiting your call', 'Extracted']) {
+    for (const label of ['Things to extract', 'Logs', 'Pending acceptance', 'Pending changes', 'Accepted']) {
       expect(json).toContain(heading(label));
     }
     expect(json).not.toContain('Things to extract:');
@@ -1093,13 +1355,25 @@ describe('the extraction panel', () => {
       a section that unmounts itself cannot own the query that decides whether it should, or it
       would stop asking and never come back.
 
+      ## The count is not the whole gate any more
+
+      The live readout moved inside this section, so "is there anything to show" gained a second
+      answer: a pass in flight is a reading of this call that has not been written down yet. A call's
+      FIRST pass is exactly the state where the count is zero and somebody most wants to see
+      something happening, so gated on the count alone the section was absent for the whole of that
+      pass and appeared, already finished, a second after it ended.
+
+      Asserted as "the count is still part of it" plus "a running pass is too", rather than against
+      the whole expression: the point is which two facts decide it, not their spelling.
+
       The results could not be gated the same way. Each kind is its own subscription and a schema
       cannot sum a list of queries whose length it does not know, so nothing above the groups can
       ask whether any of them found anything — which is why the heading moved into the group, where
       the question is answerable about one kind at a time.
     */
-    const historyGate = json.indexOf('"condition":{"$":"count(local.passes)"}');
+    const historyGate = json.indexOf('"condition":{"$":"count(local.passes) ||');
     expect(historyGate).toBeGreaterThan(-1);
+    expect(json.slice(historyGate, historyGate + 200)).toContain('interpretationStore.runningCount');
     expect(json.indexOf('"Logs"')).toBeGreaterThan(historyGate);
 
     /*
@@ -1112,7 +1386,7 @@ describe('the extraction panel', () => {
       on exactly the right question.
     */
     expect(json).toContain(
-      '"condition":{"$":"count(first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.pendingIds)))"}',
+      '"condition":{"$":"count(first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds)))"}',
     );
   });
 
@@ -1125,9 +1399,18 @@ describe('the extraction panel', () => {
       The same gate everything else here already carries: proposals, the history and the results
       below all ask for a call first.
     */
-    const well = json.indexOf('"bg":"surface-sunken"');
-    expect(well).toBeGreaterThan(-1);
-    expect(json.lastIndexOf(`"condition":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`, well)).toBeGreaterThan(-1);
+    /*
+      Anchored on the chips themselves, not on the box they used to sit in. That box is gone — a row
+      of pills is already a group, and its padding was coming out of the width they wrap in — and a
+      test that navigates by a background colour is a test that fails when somebody changes a
+      background colour, which says nothing about whether the section is gated.
+    */
+    const chips = json.indexOf('"id":"transcribe.extractionTargets"');
+    expect(chips, 'the chips are not drawn at all').toBeGreaterThan(-1);
+    expect(
+      json.lastIndexOf(`"condition":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`, chips),
+      'the chips are not behind the same "are we in a call" gate as everything else here',
+    ).toBeGreaterThan(-1);
   });
 
   it('uses the same placeholder as the transcript panel, in the same words', () => {
@@ -1306,18 +1589,16 @@ describe('the panel’s reads reach the store', () => {
                   ? markReactive(() => over.enabled === true)
                   : member === 'available'
                     ? markReactive(() => over.micUp === true)
-                    : undefined,
+                    : member === 'inCall'
+                      ? markReactive(() => over.inACall === true)
+                      : member === 'callOnScreenLive'
+                        ? markReactive(() => (over.liveRecords ?? []).includes(over.address ?? ''))
+                        : undefined,
             )
-          : id === 'call' && over.callModule !== false
-            ? namespace((member) =>
-                member === 'canCall'
-                  ? markReactive(() => true)
-                  : member === 'active'
-                    ? markReactive(() => over.inACall === true)
-                    : member === 'liveCalls'
-                      ? markReactive(() => (over.liveRecords ?? []).map((recordId) => ({ recordId })))
-                      : undefined,
-              )
+          : // The call module's *presence* is all the panel asks about it now; its members are not read.
+            // A plain object, as the real bag holds one: a bare namespace reads as undefined.
+            id === 'call' && over.callModule !== false
+            ? {}
             : undefined,
       ),
       routeStore: namespace((member) =>
@@ -1578,12 +1859,13 @@ describe('the history of what was read', () => {
       button" is a statement about which node the handler sits on — a search of the serialised panel
       would pass just as happily with the caret button back and the row inert around it.
 
-      Exactly one `we-button` inside each: the caret cannot go back to being its own, because a
+      Exactly one `we-button` inside each toggle: the caret cannot go back to being its own, because a
       button nested in a button is invalid markup and would take the press on the way past and
-      toggle twice.
+      toggle twice. A heading carrying an action — Logs' export — is split into two toggles around
+      it, the name and the count, so a field may have two; the name is always one of them.
     */
-    const fields = ['proposalsOpen', 'extractedOpen', 'logsOpen'];
-    const found: Record<string, string> = {};
+    const fields = ['proposalsOpen', 'changesListOpen', 'extractedOpen', 'logsOpen'];
+    const found: Record<string, string[]> = {};
 
     const walk = (node: unknown): void => {
       if (!node || typeof node !== 'object') return;
@@ -1592,7 +1874,7 @@ describe('the history of what was read', () => {
       const field = (n.props?.onClick as { $toggleLocal?: string } | undefined)?.$toggleLocal;
       if (field && fields.includes(field)) {
         expect(n.type, `${field} is toggled from a ${n.type}`).toBe('we-button');
-        found[field] = JSON.stringify(node);
+        (found[field] ??= []).push(JSON.stringify(node));
       }
       Object.values(n).forEach(walk);
     };
@@ -1601,12 +1883,13 @@ describe('the history of what was read', () => {
     expect(Object.keys(found).sort()).toEqual([...fields].sort());
 
     for (const [field, label] of [
-      ['proposalsOpen', 'Awaiting your call'],
-      ['extractedOpen', 'Extracted'],
+      ['proposalsOpen', 'Pending acceptance'],
+      ['changesListOpen', 'Pending changes'],
+      ['extractedOpen', 'Accepted'],
       ['logsOpen', 'Logs'],
     ]) {
-      expect(found[field]).toContain(`"${label}"`);
-      expect(found[field].match(/"type":"we-button"/g)).toHaveLength(1);
+      expect(found[field].some((toggle) => toggle.includes(`"${label}"`))).toBe(true);
+      for (const toggle of found[field]) expect(toggle.match(/"type":"we-button"/g)).toHaveLength(1);
     }
   });
 
@@ -1622,12 +1905,183 @@ describe('the history of what was read', () => {
     */
     const chips = json.indexOf('"Things to extract"');
     const logs = json.indexOf('"Logs"');
-    const awaiting = json.indexOf('"Awaiting your call"');
-    const extracted = json.indexOf('"Extracted"');
+    const awaiting = json.indexOf('"Pending acceptance"');
+    const changes = json.indexOf('"Pending changes"');
+    const extracted = json.indexOf('"Accepted"');
 
     expect(chips).toBeGreaterThan(-1);
     expect(logs).toBeGreaterThan(chips);
     expect(awaiting).toBeGreaterThan(logs);
-    expect(extracted).toBeGreaterThan(awaiting);
+    expect(changes).toBeGreaterThan(awaiting);
+    expect(extracted).toBeGreaterThan(changes);
+  });
+});
+
+describe('the things to extract fold like every other section', () => {
+  /*
+    It was the one section in this panel with a heading that did not fold and no count — which is
+    also the section a reader most often wants out of the way, since it is settings rather than
+    findings.
+  */
+  it('folds, and counts what is ticked rather than what exists', () => {
+    const json = JSON.stringify(extractionPanel);
+    expect(json).toContain('"$toggleLocal":"targetsOpen"');
+    expect(json, 'the count is of every model, not the ticked ones').toContain('.filter(t, t.selected))');
+    expect(json).toContain('"persist":"transcribe.targetsOpen"');
+  });
+
+  it('gives running a pass the same weight as keeping them running', () => {
+    // `secondary` read as the lesser of the two beside an "Auto extract: on" switch, when it is the
+    // one that does something this instant.
+    expect(JSON.stringify(extractionPanel)).toContain('"variant":"primary"');
+  });
+});
+
+describe('a pass that is running is part of the log', () => {
+  const json = JSON.stringify(extractionPanel);
+  /** Where the Logs heading is, which is where its section begins. */
+  const logs = json.indexOf('"Logs"');
+  /** Where the stored passes are drawn — the `$each` over the query, inside the same fold. */
+  const storedRows = json.indexOf('"items":{"$":"local.passes"}');
+
+  /*
+    It used to sit between the chips and this section, where it read as the output of "Things to
+    extract" rather than as the newest entry of the log it becomes one of a second later. It was
+    also the one region in a panel that folds section by section with no heading over it, so a
+    readout somebody found distracting had nowhere to go.
+  */
+  it('is drawn inside the Logs section rather than above it', () => {
+    expect(logs, 'the Logs heading is in the panel at all').toBeGreaterThan(-1);
+    /*
+      Found by its own state rather than by its condition. The heading's spinner is gated on exactly
+      the same expression, so a search for that string matches whichever of the two comes first and
+      would go on passing with the readout deleted — `openPasses` is the live rows' set of open
+      disclosures and belongs to nothing else.
+    */
+    const activity = json.indexOf('"openPasses"');
+    expect(activity, 'the live readout is in the panel at all').toBeGreaterThan(-1);
+    expect(activity, 'the live readout is under the Logs heading, not before it').toBeGreaterThan(logs);
+  });
+
+  /*
+    The stored rows are `createdAt: 'desc'`, so they read newest-first and a pass in flight is the
+    newest thing there is. Under them it would be the one item out of order — and on a call read
+    every few minutes for an hour, sixty rows below the heading before the thing happening now.
+  */
+  it('is drawn above the passes already written down', () => {
+    expect(storedRows, 'the stored passes are drawn at all').toBeGreaterThan(-1);
+    const activity = json.indexOf('"openPasses"');
+    // Both bounds, so this cannot pass by the readout having escaped the section entirely — which
+    // is where it used to be, and is also before the stored rows.
+    expect(activity, 'a live row is drawn inside the section').toBeGreaterThan(logs);
+    expect(activity, 'a live row is drawn before the stored ones').toBeLessThan(storedRows);
+  });
+
+  /*
+    The fold starts closed — that is the point of moving it here, a log being worth hiding when it
+    is distracting — so the heading has to say the one thing a fold cannot say about its contents:
+    that they are changing.
+  */
+  it('spins in the heading while the section is folded over it', () => {
+    // From the heading rather than from the top: the panel has a spinner of its own further up —
+    // searching the whole document finds that one and says nothing about this section.
+    const spinner = json.indexOf('"we-spinner"', logs);
+    const exportButton = json.indexOf('"Export the extraction log"', logs);
+    expect(spinner, 'the Logs heading has a spinner').toBeGreaterThan(-1);
+    expect(spinner, 'the spinner comes before the export button, not after it').toBeLessThan(exportButton);
+    expect(spinner, 'the heading spins before the rows are reached — it is in the header').toBeLessThan(storedRows);
+  });
+});
+
+describe('the extraction chips say what they are', () => {
+  /*
+    They read as a row of small buttons: the same radius as every other control in the panel, with
+    the state carried by weight alone. Weight is a comparison — it means something once the row
+    holds both kinds, and a space with one model, or with all of them ticked, gives it nothing to be
+    read against.
+  */
+  it('are pills, and tick the ones that are on', () => {
+    const chips = JSON.stringify(extractionTargets);
+    expect(chips).toContain('"r":"pill"');
+    const tick = chips.indexOf('"name":"check"');
+    expect(tick, 'a selected chip says nothing about itself').toBeGreaterThan(-1);
+    expect(
+      chips.lastIndexOf('"condition":{"$":"target.selected"}', tick),
+      'the tick is drawn whether or not the chip is on',
+    ).toBeGreaterThan(-1);
+  });
+
+  it('sit in no well', () => {
+    // A row of pills is already a group; the box drew a second boundary round it and took the room
+    // the chips wrap in. It is also where a colour with no role to name it was being reached for.
+    expect(JSON.stringify(extractionPanel)).not.toContain('surface-sunken');
+  });
+});
+
+/**
+ * Sending a typed line, and not sending it twice.
+ *
+ * A write is a round trip — about a second against a local node and longer against a shared remote
+ * one — and the composer said nothing at all while it ran: the box was cleared on success only, so
+ * the words were still there, and the button stayed enabled because its only guard was emptiness.
+ * The obvious reading is that the press did not register, so the next thing somebody does is press
+ * again, and the transcript gets the line twice. Nothing in this panel deletes a line, so the
+ * duplicate is permanent.
+ *
+ * These pin the three parts of the answer that are each individually easy to drop: that both ways
+ * of sending raise the flag, that the flag comes down however the write ends, and that the button
+ * admits a write is happening rather than merely refusing the click.
+ */
+describe('the composer', () => {
+  const button = findNode(transcriptComposer, (n) => n.type === 'we-button') as
+    { props: Record<string, unknown> } | undefined;
+  const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
+    { props: Record<string, unknown> } | undefined;
+
+  it('declares the in-flight flag beside the draft, and keeps it out of the URL', () => {
+    /*
+      A plain field on purpose. `syncParam` would put "a write is happening" in a link, and `persist`
+      would restore, on the next launch, a composer that believes it is still writing — with no
+      write to finish and so nothing to ever bring it back down.
+    */
+    const holder = findNode(transcriptComposer, (n) => Boolean((n.$localState as Record<string, unknown>)?.sending));
+    const declared = (holder?.$localState as Record<string, Record<string, unknown>> | undefined)?.sending;
+    expect(declared).toEqual({ type: 'boolean', initial: false });
+    expect((holder?.$localState as Record<string, unknown>)?.message).toBeDefined();
+  });
+
+  it('runs the very same handler from the button and from Enter, so the guard cannot cover one only', () => {
+    // Identity, not equality: two copies that happen to match today are two copies, and the next
+    // edit changes one of them. This is what stops the flag being raised on one path and not the other.
+    const enter = textarea?.props['on:submit'] as { $if?: { then?: unknown } } | undefined;
+    expect(enter?.$if?.then).toBe(button?.props.onClick);
+  });
+
+  it('refuses a second send while one is going, on both paths', () => {
+    expect(button?.props.disabled).toEqual({ $: '!trim(local.message) || local.sending' });
+    /*
+      The field is guarded by a condition rather than by `disabled`, and that asymmetry is
+      deliberate: disabling what somebody is typing into takes the focus away mid-sentence, which is
+      a worse interruption than the bug. So the condition has to restate both halves of what
+      `disabled` says on the button — there are words, and nothing is already in flight.
+    */
+    const enter = textarea?.props['on:submit'] as { $if?: { condition?: unknown } } | undefined;
+    expect(enter?.$if?.condition).toEqual({ $: 'trim(local.message) && !local.sending' });
+  });
+
+  it('says a write is happening rather than only refusing the click', () => {
+    // The half that answers the actual report. `disabled` alone stops the duplicate and still leaves
+    // a composer that looks broken for a second, which is what produced the second press.
+    expect(button?.props.loading).toEqual({ $: 'local.sending' });
+  });
+
+  it('lowers the flag however the write ends, and keeps the words unless it succeeded', () => {
+    const send = button?.props.onClick as Record<string, unknown>[];
+    const write = send.find((step) => '$action' in step) as Record<string, unknown>;
+    // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
+    // would be a worse bug than the one this fixes.
+    expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
+    expect(write.onSuccess).toEqual([{ $setLocal: 'message', value: '' }]);
+    expect(send[0]).toEqual({ $setLocal: 'sending', value: true });
   });
 });

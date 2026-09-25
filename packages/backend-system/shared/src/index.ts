@@ -2,8 +2,8 @@
  * The backend contract.
  *
  * Everything about **getting data in and out, or talking to peers** — and nothing that knows what a
- * `SchemaNode` is. An adapter (`@we/backend-ad4m`, `@we/backend-inmemory`) implements these; the
- * shell and the modules consume them.
+ * `SchemaNode` is. The adapters under `backend-system/` implement these; the shell and the modules
+ * consume them.
  *
  * Split out of `@we/schema-shared`, which had accreted five unrelated concerns into 9,000 LOC that
  * every module peer-depended on in full — `@we/module-call` needed four exports and pulled the whole
@@ -118,6 +118,8 @@ export { combineEntityRows, entityNamesOf } from './queryUnion';
 export type { EntityRows } from './queryUnion';
 export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
+export { rangeCompare, isRangeOp, RANGE_OPS } from './rangeCompare';
+export type { RangeOp } from './rangeCompare';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
 export type {
   QueryIR,
@@ -139,7 +141,9 @@ export type {
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
+  LinkLanguageTemplate,
 } from './lifecycle';
+export { isSessionTimeout, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { EntityManifestEntry, EntityManifestProperty } from './manifestEntry';
 export { NAME_CANDIDATES, nameFromProperties, namePropertyOf } from './recordName';
@@ -156,7 +160,9 @@ export type {
   SchemaPort,
 } from './backendPorts';
 export type {
+  AiApiProtocol,
   AiModel,
+  AiModelDiscoveryQuery,
   AiModelDraft,
   AiModelKind,
   AiModelSource,
@@ -165,12 +171,15 @@ export type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
+  PeerRecords,
   RuntimeAdminPort,
   TokenizerSource,
+  UnsupportedCapability,
 } from './runtimeAdmin';
 export type {
   IncludeExtras,
   IncludeOf,
+  NewRecord,
   RecordDataKeys,
   RecordInstance,
   EntityStatic,
@@ -185,8 +194,22 @@ export type {
   WriteProperties,
 } from './recordContract';
 export { RECORD_TYPE_KEY, recordTypeOf } from './recordContract';
-export type { LanguageModelPort } from './languageModel';
-export type { TranscriptionRecord, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
+export type {
+  ConversationReply,
+  ConversationRequest,
+  ConversationTool,
+  ConversationToolCall,
+  ConversationTurn,
+  LanguageModelPort,
+  LanguageModelStatus,
+} from './languageModel';
+export type {
+  TranscriptionModelOffer,
+  TranscriptionRecord,
+  TranscriptionPort,
+  TranscriptionStream,
+  TranscriptionTuning,
+} from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,

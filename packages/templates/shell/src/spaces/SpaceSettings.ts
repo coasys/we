@@ -117,7 +117,7 @@ const pageHeader: SchemaNode = {
  */
 const notAWeSpaceNotice: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['Nothing to configure yet'] },
     {
@@ -335,7 +335,7 @@ const communitySection: SchemaNode = {
     condition: { $: 'space.canAdminister' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       $localState: {
         editName: { type: 'string', initial: { $: 'space.name' } },
         editDescription: { type: 'string', initial: { $: 'space.description' } },
@@ -458,7 +458,7 @@ const shareSection: SchemaNode = {
     condition: { $: 'space.shareLink' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       children: [
         {
           type: 'Column',
@@ -488,7 +488,7 @@ const shareSection: SchemaNode = {
                 minWidth: '0',
                 truncate: true,
                 p: '200',
-                bg: 'surface-sunken',
+                bg: 'surface',
                 r: '200',
               },
               children: [{ $: 'space.shareLink' }],
@@ -538,7 +538,7 @@ const shareSection: SchemaNode = {
                         minWidth: '0',
                         truncate: true,
                         p: '200',
-                        bg: 'surface-sunken',
+                        bg: 'surface',
                         r: '200',
                       },
                       children: [{ $: 'space.guestLink' }],
@@ -579,7 +579,7 @@ const shareSection: SchemaNode = {
  */
 const personalAppearanceSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -710,7 +710,7 @@ const moduleRow: SchemaNode = {
 
 const modulesSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -806,7 +806,7 @@ const moduleSettingsSection: SchemaNode = {
     condition: { $: 'count(spaceStore.spaceModuleSettings)' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       children: [
         {
           type: '$each',
@@ -928,7 +928,7 @@ const moduleSettingsSection: SchemaNode = {
  */
 const autoInterpretSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Row',
@@ -985,6 +985,63 @@ const autoInterpretSection: SchemaNode = {
  * standing default and a very reasonable thing to switch on while working on extraction.
  */
 /**
+ * How deep conversations go here.
+ *
+ * Beside automatic extraction because it is the same kind of decision: a community answering for
+ * everyone about what one of WE's own capabilities does, rather than a module being switched on.
+ *
+ * The wording is careful about what changes, because the honest answer is "less than you would
+ * think": replies are stored as a tree either way, so flat withholds the button that grows one and
+ * nothing else. A thread already three deep stays three deep and stays readable, and turning
+ * fractal back on lets it grow again. Said plainly, because a setting that sounded like it
+ * restructured a year of conversation is one nobody would touch.
+ */
+const threadModeSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+  children: [
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Replies to replies'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                {
+                  $: "space.canAdminister ? 'Whether a reply can itself be replied to, the way a forum thread branches — or whether answers all hang off the thing itself. Nothing is rewritten either way: threads that already branch stay as they are, and turning this back on lets them grow again.' : 'Whether a reply can itself be replied to. Changing this needs someone who administers the space.'",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-select',
+          props: {
+            size: 'sm',
+            width: '180px',
+            // Anything but the stored 'flat' reads as fractal, so a space that predates the setting
+            // shows what it has always done rather than an empty picker.
+            value: { $: "spaceStore.currentSpace.threadMode == 'flat' ? 'flat' : 'fractal'" },
+            disabled: { $: '!space.canAdminister' },
+            options: [
+              { label: 'Branching', value: 'fractal' },
+              { label: 'One level', value: 'flat' },
+            ],
+            onChange: { $action: 'spaceStore.setThreadMode', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * Which models this community's calls extract into.
  *
  * The middle of three layers, and the only one a community owns. The codebase decides what is a
@@ -1005,7 +1062,7 @@ const autoInterpretSection: SchemaNode = {
  */
 const extractionTargetsSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -1081,48 +1138,6 @@ const extractionTargetsSection: SchemaNode = {
           children: ['Nothing in this space can be extracted yet. Models declare it, in Vocabulary.'],
         },
       },
-    },
-  ],
-};
-
-const shareExtractionDetailSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
-  children: [
-    {
-      type: 'Row',
-      props: { width: '100%', gap: '400', ay: 'center' },
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '100', flex: '1' },
-          children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Share extraction detail'] },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [
-                {
-                  $: "space.canAdminister ? 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.' : 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.'",
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'we-switch',
-          props: {
-            size: 'sm',
-            checked: { $: 'spaceStore.shareExtractionDetail' },
-            disabled: { $: '!space.canAdminister' },
-            // Bare `$event.detail`, for the reason the switch above it gives.
-            onChange: {
-              $action: 'spaceStore.setShareExtractionDetail',
-              args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
-            },
-          },
-        },
-      ],
     },
   ],
 };
@@ -1357,7 +1372,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           moduleSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
-                          shareExtractionDetailSection,
+                          threadModeSection,
                         ],
                         fill,
                       ),

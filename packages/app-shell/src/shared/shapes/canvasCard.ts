@@ -42,6 +42,24 @@ export interface CanvasCard {
   lines: CanvasCardLine[];
   /** The prose — a summary, and any other long text — after the short values, where clipping costs least. */
   prose: CanvasCardLine[];
+  /**
+   * A record extraction made that nobody has kept — the seed's `data.pending`. Drawn with the
+   * "suggested" badge a board card and a calendar event carry, so a draft is said in words on the
+   * canvas too rather than by its fade and dashed edge alone.
+   */
+  pending: boolean;
+  /**
+   * How many reactions and replies this card has collected — the seed's `counts`, or 0.
+   *
+   * Two numbers rather than a count per signal type, which is what the board and the calendar draw.
+   * The difference is what the surface can pay for: those two hold their rows in a query the
+   * template owns, so a card can filter them by type for free, where a canvas holds nodes whose data
+   * is scalars only and would need the type breakdown fetched per card. A canvas card is also the
+   * most clipped preview in WE — the reader is looking at an arrangement, not a record — so "there
+   * is a conversation here" is the whole of what it owes, and one press opens the rest.
+   */
+  signals: number;
+  comments: number;
 }
 
 /** A state as a card needs it: its slug, what the community calls it, and the colour it is drawn in. */
@@ -93,6 +111,12 @@ function formatDate(value: unknown, kind: 'date' | 'datetime', locale: string | 
   const options: Intl.DateTimeFormatOptions =
     kind === 'date' ? { dateStyle: 'medium', timeZone: 'UTC' } : { dateStyle: 'medium', timeStyle: 'short' };
   return new Intl.DateTimeFormat(locale, options).format(date);
+}
+
+/** A seeded count, as a number a card can compare against 0. Anything else is nothing to say. */
+function count(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
 export function canvasCard(input: CanvasCardInput): CanvasCard {
@@ -155,6 +179,9 @@ export function canvasCard(input: CanvasCardInput): CanvasCard {
     title: input.label && input.label !== input.type ? input.label : '',
     lines,
     prose,
+    pending: data.pending === true,
+    signals: count(data.signalsCount),
+    comments: count(data.commentsCount),
   };
 }
 
@@ -197,14 +224,38 @@ export const CANVAS_RECORD_CARD: SchemaNode = {
     */
     {
       type: 'div',
-      props: { style: 'font-size: 0.8em; letter-spacing: 0.02em; opacity: 0.7; margin-bottom: 0.15em;' },
+      props: { style: 'font-size: 0.8em; letter-spacing: 0.02em; margin-bottom: 0.15em;' },
       children: [
+        /*
+          "suggested", at the header's right end — the badge a draft carries on a board and in the
+          calendar, in the same solid warning fill and ink. Floated rather than pushed by a flex row, for
+          the reason in the doc above: a float still shapes the lines beside it inside a cut card. First
+          in the header so it floats level with the kind.
+
+          A span in `em` rather than `we-badge`. The primitive is a control-height box in pixels, which
+          on a card whose every other size is `em` came out taller than the header row and pushed into
+          the title under it — and did not shrink when the card's content was scaled down. Sized off the
+          header's own text, it is one line of it, and scales with everything else on the card.
+
+          The badge's proportions rather than its pixels: regular weight, a corner about a third of its
+          height — which is what an `xs` badge's 8px radius on 24px comes to — and padding the width of
+          half its text. A pill and bold text read as a different element from the one on the board.
+        */
         {
           type: 'span',
-          props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.3em;' },
+          props: {
+            style: {
+              $: "card.pending ? 'float: right; margin-inline-start: 0.4em; padding: 0 0.5em; border-radius: 0.4em; font-size: 0.8em; font-weight: 400; line-height: 1.5; background: var(--we-role-warning); color: var(--we-role-on-warning);' : 'display: none;'",
+            },
+          },
+          children: ['suggested'],
+        },
+        {
+          type: 'span',
+          props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.3em; opacity: 0.7;' },
           children: [{ type: 'we-icon', props: { name: { $: 'card.icon' }, size: '1.1em' } }],
         },
-        { type: 'span', children: [{ $: 'card.kind' }] },
+        { type: 'span', props: { style: 'opacity: 0.7;' }, children: [{ $: 'card.kind' }] },
       ],
     },
     { type: 'div', props: { style: 'font-weight: 600;' }, children: [{ $: 'card.title' }] },
@@ -241,6 +292,53 @@ export const CANVAS_RECORD_CARD: SchemaNode = {
           children: [
             { type: 'span', props: { style: { $: CAPTION } }, children: [{ $: 'line.label' }] },
             { type: 'span', children: [{ $: 'line.text' }] },
+          ],
+        },
+      ],
+    },
+    /*
+      What people have made of this card, last — reactions and replies, as two numbers.
+
+      Last because it is about the card rather than in it, and because it is the first thing a clip
+      should take: a card too small to show its own fields has nothing to gain from a footnote. The
+      whole line is `display: none` with nothing to count, so a canvas of untouched cards gains no
+      furniture at all — the same rule the board and calendar summaries follow, expressed the way
+      this file has to express it (see the note above on `$if`).
+
+      A generic glyph rather than one per signal type: a node's data is scalars, so the breakdown by
+      type is not here to draw, and the fetch that would bring it is a query per card. `smiley` is
+      the glyph the feed's "react" affordance uses, so the two say the same thing in one vocabulary.
+    */
+    {
+      type: 'div',
+      props: {
+        style: {
+          $: "card.signals || card.comments ? 'margin-top: 0.4em; font-size: 0.8em; opacity: 0.7;' : 'display: none;'",
+        },
+      },
+      children: [
+        {
+          type: 'span',
+          props: { style: { $: "card.signals ? 'margin-inline-end: 0.7em;' : 'display: none;'" } },
+          children: [
+            {
+              type: 'span',
+              props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.25em;' },
+              children: [{ type: 'we-icon', props: { name: 'smiley', size: '1.1em' } }],
+            },
+            { $: 'card.signals' },
+          ],
+        },
+        {
+          type: 'span',
+          props: { style: { $: "card.comments ? '' : 'display: none;'" } },
+          children: [
+            {
+              type: 'span',
+              props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.25em;' },
+              children: [{ type: 'we-icon', props: { name: 'chat-circle', size: '1.1em' } }],
+            },
+            { $: 'card.comments' },
           ],
         },
       ],

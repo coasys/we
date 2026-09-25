@@ -38,6 +38,12 @@ describe('what a connection is allowed to administer', () => {
     expect(port.authorizedApps).toBeDefined();
   });
 
+  it('does not offer a network restart the executor does not perform', () => {
+    // `runtime.restartHolochain` is a no-op on the executor this package pins. Offering it put a
+    // button in settings that reported success and restarted nothing.
+    expect(createAd4mRuntimeAdmin(stubClient()).restartNetwork).toBeUndefined();
+  });
+
   it('withholds node-wide changes from a guest', () => {
     // A hosted or multi-user node: trust, peer networking and languages change something every user
     // of that node shares, and "restart networking" on a shared machine is a control that should not
@@ -141,5 +147,73 @@ describe('system languages', () => {
       { address: 'Qm-sys', name: 'languages', system: true },
       { address: 'Qm-mine', name: 'note-language', system: false },
     ]);
+  });
+});
+
+describe('remote models', () => {
+  function aiClient(models: unknown[] = [], extra: Record<string, unknown> = {}) {
+    const added: unknown[] = [];
+    const client = stubClient({
+      ai: {
+        getModels: vi.fn(async () => models),
+        getDefaultModel: vi.fn(async () => undefined),
+        setDefaultModel: vi.fn(async () => true),
+        addModel: vi.fn(async (input: unknown) => {
+          added.push(input);
+          return 'new-id';
+        }),
+        updateModel: vi.fn(async (_id: string, input: unknown) => {
+          added.push(input);
+          return true;
+        }),
+        ...extra,
+      },
+    });
+    return { client, added };
+  }
+
+  it('reads an Anthropic model back as Anthropic, and writes it back the same way', async () => {
+    // Before, the API type was dropped on read and written as OPEN_AI, so editing an Anthropic
+    // model's name turned it into an OpenAI model pointed at Anthropic's URL.
+    const { client, added } = aiClient([
+      {
+        id: 'm1',
+        name: 'Claude',
+        modelType: 'LLM',
+        api: { baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant', model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
+      },
+    ]);
+    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
+
+    const [model] = await port.aiModels!();
+    expect(model.source).toMatchObject({ kind: 'api', protocol: 'anthropic' });
+
+    await port.updateAiModel!('m1', { name: 'Claude, renamed', kind: 'llm', source: model.source });
+    expect(added[0]).toMatchObject({ api: { apiType: 'ANTHROPIC' } });
+  });
+
+  it('reads an API type it does not know as OpenAI', async () => {
+    const { client } = aiClient([
+      { id: 'm1', name: 'Old', modelType: 'LLM', api: { baseUrl: 'u', apiKey: '', model: 'x', apiType: 'OPEN_AI' } },
+    ]);
+    const [model] = await createAd4mRuntimeAdmin(client, { capabilities: null }).aiModels!();
+    expect(model.source).toMatchObject({ protocol: 'openai' });
+  });
+
+  it('lists an endpoint’s models where the client can ask, in the executor’s spelling', async () => {
+    const discoverModels = vi.fn(async () => ['claude-sonnet-5']);
+    const { client } = aiClient([], { discoverModels });
+    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
+
+    await expect(
+      port.discoverAiModels!({ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '' }),
+    ).resolves.toEqual(['claude-sonnet-5']);
+    // An empty key is sent as none, which the executor reads as a keyless endpoint.
+    expect(discoverModels).toHaveBeenCalledWith('https://api.anthropic.com', undefined, 'ANTHROPIC');
+  });
+
+  it('offers no listing on a client that predates it', () => {
+    const { client } = aiClient();
+    expect(createAd4mRuntimeAdmin(client, { capabilities: null }).discoverAiModels).toBeUndefined();
   });
 });

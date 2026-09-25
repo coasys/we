@@ -10,7 +10,7 @@ import { confirmModal } from '@we/template-kit';
  * above is about communities; this is about storage. It also keeps hard delete from sitting one
  * mis-click away from a settings gear.
  *
- * **Includes the system datasets** (`we-root`, `we-test`), which the spaces list drops. Hiding them
+ * **Includes the system datasets** (`we-root`, `we-personal`, `we-test`), which the spaces list drops. Hiding them
  * from the one surface whose whole purpose is to show everything held would reproduce the problem
  * this section exists to solve: a dataset you cannot see is a dataset you cannot reason about when
  * something is wrong.
@@ -22,9 +22,12 @@ const isSystem = { $: 'dataset.id in datasetStore.systemDatasetUuids' };
 /** `we-root` specifically — deleting it takes settings, preferences and installed templates/themes. */
 const isRoot = { $: 'dataset.id == datasetStore.rootDataset.id' };
 
+/** `we-personal` specifically — deleting it takes every note and everything in the Pocket. */
+const isPersonal = { $: 'dataset.id == datasetStore.personalDataset.id' };
+
 const datasetCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '300', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border' },
   $localState: {
     sdnaCleanupResult: { type: 'string', initial: '' },
     confirmDeleteOpen: { type: 'boolean', initial: false },
@@ -106,23 +109,25 @@ const datasetCard: SchemaNode = {
           `spaceStore.removeSpace` is wired straight through `DatasetStore.removeDataset` to
           `client.perspective.remove`, and this section lists the **system** datasets alongside the
           rest — so one tap on the `we-root` row destroys the agent's settings, installed templates
-          and themes, Pocket and profile cache together. The sibling delete in the spaces list, which
+          and themes and profile cache together — and the `we-personal` row, every note and the Pocket. The sibling delete in the spaces list, which
           can only remove one community, asked first; this one did not.
 
           Chrome, so the host's own destructive guard does not cover it: that one stands in front of
           *space templates*, which is the tier nobody in this repo authored. Chrome asks for itself.
 
-          The body changes for the root dataset rather than adding a second dialog. A footnote under
+          The body changes for the two agent datasets rather than adding more dialogs. A footnote under
           the row already says what `we-root` is, and a footnote is exactly what a person about to
           press Delete is not reading.
         */
         confirmModal({
           open: { $: 'local.confirmDeleteOpen' },
           close: { $setLocal: 'confirmDeleteOpen', value: false },
-          title: expr`${isRoot} ? 'Delete your root dataset?' : \`Delete "\${dataset.name}"?\``,
+          title: expr`${isRoot} ? 'Delete your root dataset?' : ${isPersonal} ? 'Delete your personal space?' : \`Delete "\${dataset.name}"?\``,
           body: expr`${isRoot}
-            ? 'This holds your settings, your installed templates and themes, your Pocket and your cached profiles. Deleting it resets this agent to a clean install. It cannot be undone.'
-            : 'The dataset and everything stored in it are removed from this device. If it is shared, other members keep their own copies. This cannot be undone.'`,
+            ? 'This holds your settings, your installed templates and themes and your cached profiles. Deleting it resets this agent to a clean install. It cannot be undone.'
+            : ${isPersonal}
+              ? 'This holds your notes and everything in your Pocket. They are removed from this device, and an empty personal space is made on the next start. Posts you shared from notes stay in their spaces. It cannot be undone.'
+              : 'The dataset and everything stored in it are removed from this device. If it is shared, other members keep their own copies. This cannot be undone.'`,
           detail: { $: '`ID: ${dataset.id}`' },
           confirmLabel: 'Delete',
           busyLocal: 'deleting',
@@ -142,6 +147,19 @@ const datasetCard: SchemaNode = {
           props: { variant: 'footnote', color: 'danger-text' },
           children: [
             'Deleting this removes your agent settings, per-space preferences, and every installed template and theme. No space is removed with it.',
+          ],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: isPersonal,
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'danger-text' },
+          children: [
+            'Deleting this removes your notes and your Pocket. Posts you shared from a note are not affected.',
           ],
         },
       },

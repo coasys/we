@@ -68,7 +68,7 @@ describe('what names a record', () => {
 
   it('falls back to the shape when nothing is declared or conventionally named', () => {
     // A community's own model, or a foreign class: the permanent case, since structure is all a
-    // SHACL shape carries.
+    // stored shape carries.
     expect(
       nameFromProperties([
         { name: 'seenAt', type: 'datetime' },

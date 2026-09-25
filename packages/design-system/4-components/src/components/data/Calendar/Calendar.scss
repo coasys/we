@@ -6,8 +6,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--we-space-200);
-  background: var(--we-color-neutral-0);
-  border: 1px solid var(--we-color-neutral-200);
+  background: var(--we-role-surface);
+  border: 1px solid var(--we-role-border);
   border-radius: var(--we-radius-500);
   padding: var(--we-space-400);
 
@@ -16,7 +16,7 @@
     align-items: center;
     justify-content: space-between;
     font-weight: 600;
-    color: var(--we-color-neutral-800);
+    color: var(--we-role-text);
   }
 
   &__nav {
@@ -32,7 +32,7 @@
     transition: background 0.15s ease;
 
     &:hover {
-      background: var(--we-color-neutral-100);
+      background: var(--we-role-surface-hover);
     }
   }
 
@@ -45,7 +45,7 @@
 
   &__day-header {
     font-size: var(--we-font-size-200);
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     padding: var(--we-space-100);
     font-weight: 500;
   }
@@ -65,25 +65,25 @@
     position: relative;
 
     &:hover {
-      background: var(--we-color-neutral-100);
+      background: var(--we-role-surface-hover);
     }
 
     &--selected {
-      background: var(--we-color-primary-500);
-      color: white;
+      background: var(--we-role-accent);
+      color: var(--we-role-on-accent);
 
       &:hover {
-        background: var(--we-color-primary-600);
+        background: var(--we-role-accent-hover);
       }
     }
 
     &--today {
       font-weight: 700;
-      color: var(--we-color-primary-600);
+      color: var(--we-role-accent-text);
     }
 
     &--other-month {
-      color: var(--we-color-neutral-400);
+      color: var(--we-role-text-faint);
     }
 
     &--has-events::after {
@@ -91,7 +91,7 @@
       width: 4px;
       height: 4px;
       border-radius: var(--we-radius-full);
-      background: var(--we-color-primary-500);
+      background: var(--we-role-accent);
       position: absolute;
       bottom: 2px;
     }

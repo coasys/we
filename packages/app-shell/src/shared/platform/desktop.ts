@@ -7,7 +7,7 @@
  * is generated. That transport is what each app supplies; everything else
  * lives here once.
  */
-import type { AccountHost, AppConfig, ExecutorHost, PlatformAdapter } from './types';
+import type { AccountHost, AppConfig, ExecutorHost, HostFileSaver, PlatformAdapter, ScreenSourceHost } from './types';
 
 export interface DesktopPlatformOptions {
   platform: 'electron' | 'tauri';
@@ -17,6 +17,10 @@ export interface DesktopPlatformOptions {
   isDevelopment: () => boolean;
   accounts: AccountHost;
   executor: ExecutorHost;
+  /** The host's native save dialog, where its transport offers one. See `PlatformAdapter.saveFile`. */
+  saveFile?: HostFileSaver;
+  /** Choosing a screen to share where the OS will not ask. See `PlatformAdapter.screenSources`. */
+  screenSources?: ScreenSourceHost;
 }
 
 export function createDesktopPlatform(options: DesktopPlatformOptions): PlatformAdapter {
@@ -46,5 +50,7 @@ export function createDesktopPlatform(options: DesktopPlatformOptions): Platform
     platform: options.platform,
     accounts: options.accounts,
     executor: options.executor,
+    saveFile: options.saveFile,
+    screenSources: options.screenSources,
   };
 }

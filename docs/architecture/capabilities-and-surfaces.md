@@ -33,9 +33,13 @@ Work down the list and stop at the first that fits.
 3. **Can a deployment omit it, with nothing else calling it?** → a **module**. Its own store, its
    own entities, its own chrome, its own launcher, enabled per space.
 
-**Complexity never decides.** Modules ship stores — `createStore(deps)` is part of the contract, and
-`@we/module-transcribe`'s is the largest store in the repo. "It has a lot of state" is not an
-argument for the host.
+**Complexity never decides.** Modules may ship stores — `createStore` is the optional code half of
+the contract, and `@we/module-transcribe`'s is the largest store in the repo. "It has a lot of
+state" is not an argument for the host. Nor is "it needs a device" or "it needs the model": those
+are **kernels** (`packages/module-system/shared/src/kernels.ts`), which a module asks for by name
+in its manifest and the host hands to its store — `records`, `presence`, `view`, `ephemeral`,
+`media`, `peerConnection`, `transcription`, `languageModel`, `interpretation`, `secrets`. A capability
+that is only a kernel plus a declaration is a module.
 
 **Neither does how core it feels.** Calls are as central to WE as anything and are a module, because
 a deployment can ship without them and nothing else calls them.
@@ -52,6 +56,24 @@ its targets, and `DatasetStore` gathers the turns. Move that configuration into 
 calls go away — at which point interpretation could legitimately be a processor module. Its home
 follows from where the configuration lands, not from taste.
 
+### When two capabilities seem to need each other
+
+Three things it can be, and it is always one of them. The rule that forbids a module depending on a
+module is what forces the question, and answering it has produced better structure every time:
+
+1. **A port is missing.** The capability is really the backend's, and both modules want it. WebRTC is
+   the case: the call module owns the peer connections, so nothing else can carry data between agents,
+   and the answer is a port in `@we/backend-shared` plus a kernel — not code moving sideways into
+   another module.
+2. **A medium is missing.** They want to _meet_, and there is nowhere to do it. Live cursors wanted to
+   know where somebody is looking; the answer was the `view` kernel, not a reference to whatever
+   module happened to know.
+3. **One of them is a library.** They share an algorithm rather than a capability, and it belongs in a
+   package both import at build time — which is packaging, not a runtime dependency, and is already
+   how the globe family works.
+
+If it is none of the three, the dependency is probably real and the two are one capability.
+
 ## Capabilities meet in a medium, never in each other
 
 A module may not depend on a module. Stated as a prohibition it explains nothing, and the missing
@@ -61,8 +83,10 @@ half is where the join is supposed to go. Positively:
 > never in each other.**
 
 This is already how the two most obviously cooperating modules work. `@we/module-transcribe` finds
-the live call through **presence** — `activitiesOfType(peers, 'call')`, reading the record id off
-the activity — and never names `modules.call.*`. Modules extend each other's chrome through
+the live call through **presence** — the `call` activity, whose shape the call module declares in
+its `activities` so the reader learns it from a declaration rather than from the other module's
+tests — and never reads `modules.call.*`; its one reference is the bare `{ $: 'modules.call' }`
+that asks whether calls are installed at all. Modules extend each other's chrome through
 **anchors**: one declares `anchors: ['call-controls']`, others contribute, `$slot` renders them.
 Neither is a dependency, and turning either module off degrades to "nothing matched" rather than to
 something broken.
@@ -144,7 +168,7 @@ surfaces in one — the transcribe panel is a feed, a record control, an extract
 proposals review and a target list — and an interface that wants them arranged differently can today
 only hand-write copies. So:
 
-- A module publishes **named parts** (`ModuleDefinition.schemas`, keyed `<moduleId>.<name>`), and
+- A module publishes **named parts** (`contributes.parts`, keyed `<moduleId>.<name>`), and
   composes its own panel out of them. Templates that place the whole panel are unaffected.
 - A host capability's parts are host-authored fragments in `@we/template-kit`. Templates cannot
   import modules — that edge is sideways — so a part is named as a string and resolved by the host.
@@ -158,18 +182,23 @@ heard of, so keep the set small and named for what a part _is_ rather than how i
 
 Every reader-visible property of a surface resolves the same way, in the same order:
 
-| Property       | Suggestion                     | Declaration                 | Disposition                      |
-| -------------- | ------------------------------ | --------------------------- | -------------------------------- |
-| Position, size | the module's opening bid       | `meta.panels`               | what the reader dragged          |
-| Openness       | the module's request           | `meta.panels`               | what the reader opened or closed |
-| Content        | the capability's default parts | the interface's composition | —                                |
+| Property       | Suggestion                                                    | Declaration                 | Disposition                      |
+| -------------- | ------------------------------------------------------------- | --------------------------- | -------------------------------- |
+| Position, size | the module's opening bid (`bid`)                              | `meta.panels`               | what the reader dragged          |
+| Openness       | the host's flag, or the module's `open` key when it claims it | `meta.panels`               | what the reader opened or closed |
+| Content        | the capability's default parts                                | the interface's composition | —                                |
 
 The disposition is stored per interface, so switching template is non-destructive and an author
 improving a layout is not overruled forever by one stray drag.
 
-Read `open` as a **request** — "this surface is wanted, somebody pressed record" — rather than as
-placement. It then belongs to no panel in particular: the interface has declared what plays that
-role, and the host resolves one against the other.
+**The host owns whether a panel is open** unless the module says otherwise. The rail toggles it, a
+template opens it, the titlebar closes it, and the module never sees the flag — which is why nothing
+in the notes module's store is about its panel. A module claims openness by naming `open`, `show` and `close` keys on
+the panel, and only when the flag genuinely is its own state: the call's stage is up while there is
+a call to watch, and `join` raises it. Read such an `open` as a **request** — "this surface is
+wanted, somebody pressed record" — rather than as placement. It then belongs to no panel in
+particular: the interface has declared what plays that role, and the host resolves one against the
+other.
 
 ### Panel, view, or layout
 
@@ -212,6 +241,25 @@ dock frame, which is itself chrome and needs `host-layout` members the template 
   a string and cares about nothing else, so a host group is additive with no migration; it is unbuilt
   because it would have no members until interpretation is a module, and a declaration nothing reads
   is the globe's catalogue again.
+- **Intents.** The one case medium composition genuinely cannot serve: "I want _somebody_ to do X",
+  where observing is not enough. A polls card wanting to start a call about the poll, a canvas wanting
+  to gather a card into whatever holds gathered things. That is not a dependency on the call module —
+  it is a request that some installed capability handles — and the shape is `contributes.intents`
+  handlers with declared payloads, an emit path from a fragment and from `deps`, and host resolution
+  (one handler runs, several offer a chooser, none is reported). It is what commands are in VS Code
+  and intents are in Android, and it is the biggest single lever on composability here. Unbuilt
+  because nothing in the repo has yet wanted one badly enough to pin the shape down, and an
+  extension point with no consumer is the globe's catalogue again.
+- **Declared record kinds.** `type: 'call'` on an activity now has a declaration to check against;
+  `kind: 'call'` on a collection does not. A module cannot say "I produce collections of this kind" or
+  "I consume them", so two capabilities agreeing about a record agree by copying each other's guesses —
+  and an unmatched consumer fails as silence, which is the failure this codebase keeps meeting.
+- **A vocabulary rung.** The globe family shares packages at build time and it works, but nothing
+  names it as a legitimate way for two modules to agree on a shape. Naming it is most of what stops
+  the next author reaching for a runtime dependency instead.
+- **Soft `uses`.** A module declaring which others it works better with, for the install screen and
+  the linter only — never a requirement and never a runtime call. It would let a settings screen say
+  "polls works with calls" without turning a toggle into a dependency graph.
 - **Space presets.** A space's setup is already a bundle of records — template, theme, enabled
   modules and views, shapes, signal types — with no name, so every space is assembled by hand. Seed
   is to deployment as preset would be to space. Worth naming once wires exist and not before.

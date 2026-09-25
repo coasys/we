@@ -12,7 +12,7 @@
  */
 import { render } from '@solidjs/testing-library';
 import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
-import type { AiModel, BackendPorts, ConsentRequest, RuntimeAdminPort } from '@we/backend-shared';
+import type { AiModel, BackendPorts, ConsentRequest, PeerRecords, RuntimeAdminPort } from '@we/backend-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -304,7 +304,7 @@ describe('AI models', () => {
     name: 'GPT',
     kind: 'llm',
     isDefault: true,
-    source: { kind: 'api', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-x', model: 'gpt-4o' },
+    source: { kind: 'api', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-x', model: 'gpt-4o' },
   };
   const local: AiModel = {
     id: 'm2',
@@ -340,6 +340,75 @@ describe('AI models', () => {
     };
     return { port, calls };
   }
+
+  it('sets protocol and URL from a named service, and keeps them as a starting point for a custom one', () => {
+    ports = { runtime: aiPort().port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('sourceKind', 'api');
+    store.setAiService('anthropic');
+    expect(store.aiForm()).toMatchObject({
+      apiService: 'anthropic',
+      apiProtocol: 'anthropic',
+      apiBaseUrl: 'https://api.anthropic.com',
+    });
+
+    // Custom must stay custom while the fields still hold a preset's values, or choosing it would
+    // hide the very fields it exists to show.
+    store.setAiService('custom');
+    expect(store.aiForm()).toMatchObject({ apiService: 'custom', apiProtocol: 'anthropic' });
+    expect(store.aiServiceOptions().at(-1)).toEqual({ label: 'Custom endpoint', value: 'custom' });
+  });
+
+  it('offers no model listing where the backend cannot ask', () => {
+    ports = { runtime: aiPort().port };
+    expect(mount().canDiscoverAiModels()).toBe(false);
+  });
+
+  it('lists the models an endpoint serves, and forgets them when the endpoint changes', async () => {
+    const asked: unknown[] = [];
+    const { port } = aiPort({
+      async discoverAiModels(query) {
+        asked.push(query);
+        return ['claude-sonnet-5', 'claude-haiku-4-5'];
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('sourceKind', 'api');
+    store.setAiService('anthropic');
+    store.setAiFormField('apiKey', 'sk-ant');
+    await store.discoverAiModels();
+
+    expect(asked).toEqual([{ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant' }]);
+    expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['claude-haiku-4-5', 'claude-sonnet-5']);
+    // An empty model field takes the first answer, so a working endpoint is one click from saveable.
+    expect(store.aiForm()?.apiModel).toBe('claude-haiku-4-5');
+
+    // The list answered for that key; a different key may see different models, or none.
+    store.setAiFormField('apiKey', 'sk-other');
+    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+  });
+
+  it('says why a listing failed, and offers nothing to pick', async () => {
+    const { port } = aiPort({
+      async discoverAiModels() {
+        throw new Error('Anthropic API error 401: invalid x-api-key');
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('sourceKind', 'api');
+    await store.discoverAiModels();
+
+    expect(store.error()).toContain('invalid x-api-key');
+    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+  });
 
   it('polls status only for models the backend hosts', async () => {
     const { port, calls } = aiPort();
@@ -550,6 +619,99 @@ describe('trust settings', () => {
 
     expect(store.error()).toBe('executor unreachable');
     expect(store.loading()).toBe(false);
+  });
+});
+
+describe('what is in flight', () => {
+  /** A promise the test settles by hand, so a call can be held open mid-flight. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('names the action a call belongs to, so one control does not spin for another', async () => {
+    // Fetching peer records put a spinner on "Restart networking" when both read one flag.
+    const infos = deferred<PeerRecords>();
+    const { port } = stubRuntime({ peerInfos: () => infos.promise, restartNetwork: async () => {} });
+    ports = { runtime: port };
+    const store = mount();
+
+    const fetching = store.loadPeerInfos();
+    expect(store.pending()).toEqual(['loadPeerInfos']);
+    expect(store.pending()).not.toContain('restartNetwork');
+
+    infos.resolve({ records: ['record'], readable: '["record"]' });
+    await fetching;
+    expect(store.pending()).toEqual([]);
+    expect(store.peerInfos()).toEqual(['record']);
+  });
+
+  it('keeps an action in flight until its last overlapping call returns', async () => {
+    // A double-clicked refresh: the single flag cleared when the first call returned, with the second
+    // still running.
+    const first = deferred<string[]>();
+    const second = deferred<string[]>();
+    const pendingCalls = [first, second];
+    const { port } = stubRuntime({ trustedAgents: () => pendingCalls.shift()!.promise });
+    ports = { runtime: port };
+    const store = mount();
+
+    const a = store.loadTrustedAgents();
+    const b = store.loadTrustedAgents();
+    first.resolve([]);
+    await a;
+    expect(store.pending()).toEqual(['loadTrustedAgents']);
+    expect(store.loading()).toBe(true);
+
+    second.resolve([]);
+    await b;
+    expect(store.pending()).toEqual([]);
+    expect(store.loading()).toBe(false);
+  });
+});
+
+describe('exchanging peer records', () => {
+  it('reports a failed add, so the paste box is not cleared on the attempt that failed', async () => {
+    const { port } = stubRuntime({
+      addPeerInfos: async () => {
+        throw new Error('K2SpaceNotFound');
+      },
+      peerInfos: async () => ({ records: [], readable: '[]' }),
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    expect(await store.addPeerInfos('["a"]')).toBe(false);
+    expect(store.error()).toBe('K2SpaceNotFound');
+    expect(await store.addPeerInfos('   ')).toBe(false);
+  });
+
+  it('reports a successful add and reloads what the node now holds', async () => {
+    const added: string[][] = [];
+    const { port } = stubRuntime({
+      addPeerInfos: async (infos) => {
+        added.push(infos);
+      },
+      peerInfos: async () => ({ records: ['mine', 'theirs'], readable: '[\n  "mine",\n  "theirs"\n]' }),
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    expect(await store.addPeerInfos('theirs')).toBe(true);
+    expect(added).toEqual([['theirs']]);
+    // The raw records for copying, and the backend's own reading of them for display — kept apart,
+    // since a record reformatted on its way to the clipboard no longer matches its signature.
+    expect(store.peerInfos()).toEqual(['mine', 'theirs']);
+    expect(store.peerInfosReadable()).toBe('[\n  "mine",\n  "theirs"\n]');
+  });
+
+  it('offers a restart only where the backend has one', () => {
+    ports = { runtime: stubRuntime().port };
+    expect(mount().canRestartNetwork()).toBe(false);
+
+    ports = { runtime: stubRuntime({ restartNetwork: async () => {} }).port };
+    expect(mount().canRestartNetwork()).toBe(true);
   });
 });
 

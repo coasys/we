@@ -32,7 +32,7 @@ six placements, which meant a call among three people cost a full-height column 
 | **Floating**   | A card over the content. Takes no room; the content is whole underneath it.                                                                                    |
 | **Snapped**    | Floating, parked at one of eight positions (four corners, four edge centres).                                                                                  |
 | **Displacing** | Spans its lane and insets the content by that lane's thickness. Offered on the four edge-centre snaps only — a rectangular layout cannot flow around a corner. |
-| **Maximised**  | Fills the content region. Floats, so it takes no room from anything.                                                                                           |
+| **Maximised**  | Full screen: the whole window, sidebar included. Every other panel is hidden — never unmounted — until it ends, and the sidebar and rail hide with them.       |
 
 Below `NARROW_VIEWPORT_PX` (900px of window width) displacing is switched off entirely and every
 panel floats. A 440px panel beside a 400px viewport is not two usable things.
@@ -95,15 +95,102 @@ maximising all touch. Chrome stays above every step — `chromeLayering.test.ts`
 A panel says where usable stops: `DockContribution.min` for a module, `min` on a `meta.panels`
 entry for a section — the one place a declaration writes pixels, because a floor is a fact about
 the content. `floorOf` resolves it per axis over the host's defaults, and every division, drag and
-divider honours it. A panel can be **folded** to its titlebar: its extent becomes the bar, its grow
-zero, its content hidden rather than unmounted.
+divider honours it. A panel can be **folded** to its titlebar: its content is hidden rather than
+unmounted, and the bar shows the panel's name — a panel alone names itself inside its content, which
+folding hides, so a column of folded bars would otherwise be a column of identical grips. Pressing a
+folded bar without dragging opens it; a double-click on it opens it too, rather than going full
+screen.
+
+**A fold always takes height**, on every edge, because the titlebar is always horizontal. Down a side
+lane that is the axis the lane divides, so the fold's extent becomes the bar and its lane-mates take
+the room. Across a top or bottom lane the lane divides the _width_, so a folded member keeps its
+width and becomes a bar against the edge; the lane stays as thick as its tallest **open** member, and
+only when every member has folded does it shrink to a bar and hand the room to the content
+(`laneThickness`, `laneShrunk`). A fold belongs to the **seat**: the titlebar is the seat's, so it
+folds every tab stacked there.
 
 Folding is offered wherever there is **somewhere for the room to go** (`canFold`). A float hands its
-room back to the screen, so it always may. A displacing panel hands it to a lane-mate, so it needs an
-_open_ one — which refuses both a sidebar alone on its edge and the last open member of a lane, each
-of which would otherwise leave the edge at its full width holding nothing but titlebars. An
-already-folded panel may always unfold, or folding the second-to-last member would disable the
-control that undoes it.
+room back to the screen, so it always may. Across a top or bottom lane the last fold is the one that
+hands it back, so there it always may too. Down a side, a displacing panel hands it to a lane-mate, so
+it needs an _open_ one — which refuses both a sidebar alone on its edge and the last open member of a
+lane, each of which would otherwise leave the edge at its full width holding nothing but titlebars.
+Those are what collapsing to the edge is for. An already-folded panel may always unfold, or folding
+the second-to-last member would disable the control that undoes it.
+
+### Collapsing a lane to its edge
+
+A whole displacing lane can be put away (`toggleStowLane`): it becomes a **strip** `STRIP_PX` thick
+against its edge, with one vertical tab per panel in it — every tab of every seat — and the content
+takes the rest. Offered first on the lane's first titlebar (`canStow`), ahead of its tabs and grip —
+the same end the strip's open glyph sits at — as double chevrons pointing at the
+edge, since it acts on the column rather than the panel; and by dragging the lane's inboard edge past
+`STOW_DRAG_PX` and letting go, which dims the lane while the drag says so.
+
+```
+ open                        collapsed to its edge
+ ┌──────────┬──────────┐    ┌──┬───────────────────┐
+ │ Transcr… │          │    │T │                   │
+ │          │ content  │    │r │     content       │
+ ├──────────┤          │    ├──┤                   │
+ │ Notes    │          │    │N │                   │
+ └──────────┴──────────┘    └──┴───────────────────┘
+```
+
+Every member carries `stowed`, so the lane is stowed when all of them are, and it travels through
+saved layouts and resets like any coordinate. Nothing else about a member changes — size, seat,
+which tab shows, whether it is folded — so opening the lane brings back exactly what was there.
+Gestures that take a panel out of its lane (a drag off it, a snap elsewhere, turning displacing off)
+drop the flag; a drop into a stowed lane is not offered, and joining one some other way opens it.
+
+The strip is **one button**: a press anywhere on it opens the whole lane. It leads with the open
+glyph and then names every panel in the lane, laid out from its head — from the top down a side, from
+the left along the top or bottom — faint until pointed at, like a folded bar's name. There is no
+opening one panel on its own. That was tried as a peek, a card sliding out beside the strip, and it
+was easy to trigger by accident on a strip this thin, and a panel floating out of a collapsed column
+read as the arrangement having come apart.
+
+Opening and closing ease the frame between the strip's width and the lane's, and contents re-laid out
+at every step of that arrive crushed and unfold, or fold up on the way out. For the length of the move
+a panel's titlebar and contents are held at the lane's open size (`layoutWidth` / `layoutHeight`,
+through `laidOutAt`), so the frame uncovers or covers them like a drawer, and they fade in or out
+(`contentsFaded`); a closing lane stays on screen until it has shrunk onto its strip, fading whole —
+borders included — and anchored to the same sides as when open, since a right-hand or bottom lane
+placed from the left or top cannot be transitioned to and shut on the press. While stowed,
+each seat keeps its place along the edge at the strip's thickness, so only the thickness ever moves —
+a lane of two used to open its lower panel sliding down from the top of the edge. The strip is layered
+beneath every panel in its lane, which shrink onto it over the top. At rest a panel's
+contents fill its frame as they always have.
+
+### Bringing a panel into sight
+
+A panel can be open and out of sight three ways: behind another tab of its seat, folded, or in a
+collapsed lane. `revealDock` undoes whichever it is — opens the lane, unfolds, brings the tab to the
+front —
+and flashes the tab when it came forward in a stack (`DockGeometry.landedTab`), because the frame did not
+move and which tab is lit is the only change on screen. A drop into a seat flashes the same way.
+
+The module rail depends on it. A launcher's action is usually a toggle, so a button lit for a panel
+stacked out of sight used to close a panel nobody could see. `moduleLaunchers` rows carry
+`concealed` (the rail lights on `active && !concealed`), and `launchModule` reveals a concealed panel
+instead of calling the module; a press that opens a panel reveals it too, so a panel reopening into a
+stack comes back in front. Which dock a launcher is about is `moduleRegistry.dockOfLauncher`: the dock
+named by its `key`, or the module's first.
+
+### Putting every panel away
+
+Every panel can be put away at once — the eye toggle above the rail's gear, or Cmd/Ctrl+\ — and the
+same happens on its own while a shell overlay (settings, profile, about) is up. An overlay is drawn
+inside the content region with every panel layered above it, so a settings page opened from a space
+used to come up squeezed between that space's sidebars with its floating cards on top, reading as part
+of the space rather than somewhere else.
+
+Both are one state (`panelsAway` in the shell store): every panel fades out and is hidden — never
+unmounted, so a call keeps its streams — the content region takes back the room they held, and closing
+the overlay or the toggle brings them all back exactly as they were. Nothing is written, so there is
+nothing to restore. Only the deliberate half is `panelsHidden`, which lights the toggle; an overlay
+does not set it. Asking for one panel — a rail launcher, `revealDock` — brings them all back and
+closes an overlay in front of them, and a maximised panel that is away stops hiding the sidebar and
+rail, or the way back would go with it.
 
 ### Home lanes
 
@@ -137,7 +224,7 @@ row of it wrong.
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A **displacing** panel vs the chrome at its edge | **The chrome moves.** The rail and the editing bar follow `--we-chrome-<edge>` and slide inwards; the panel takes the edge outright. This is why `RAIL_PX = 0` — a panel reserves nothing for the rail.                                                                     |
 | A **floating** panel vs the same chrome          | **The panel moves.** It publishes no inset, so nothing slides for it, and it has to clear the chrome itself. `DEFAULT_FLOAT_CHROME`, threaded through the floating paths only.                                                                                              |
-| A **maximised** panel                            | Same as floating: it clears the chrome rather than covering it, so its own titlebar controls stay reachable.                                                                                                                                                                |
+| A **maximised** panel                            | **Chrome that stays paints over it.** The sidebar and rail hide; the call bar sits on the `chrome` layer above every panel, centred on the window, and the panel pads its content by the bar's reserve (`padBottom`). Its titlebar is the way out, and Escape.              |
 | Chrome vs a **floating** panel                   | **Nothing moves.** A floating panel takes no room and somebody put it there by hand; chrome that ran away from that decision is worse than an overlap you can see and undo.                                                                                                 |
 | Chrome vs **chrome**                             | **The rail moves.** The rail is pinned to the right of the content and the call bar to its centre, so a wide displacing panel moves the rail by its whole width and the bar by half — and they meet. `railBand` is that one collision, and the only one the shell computes. |
 
@@ -180,7 +267,8 @@ A module never positions its own chrome or its own panel. It says what it has an
 
 ## A panel names itself, once, at the top
 
-The host's titlebar carries the move handle and the window controls and draws **no text**. A panel's
+The host's titlebar carries the move handle and the window controls and draws **no text** — except
+the panel's name while it is folded, when the panel's own header is hidden with its content. A panel's
 name is its own to draw — but not its own to design: **open every panel with `panelHeader` or
 `panelShell` from `@we/schema-kit`.**
 

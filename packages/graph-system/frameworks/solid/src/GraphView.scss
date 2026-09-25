@@ -207,6 +207,23 @@
   pointer-events: none;
 }
 
+/*
+  The rectangle a selection sweep draws.
+
+  Accent rather than neutral, and deliberately the same colour a selected card's ring is: the sweep
+  and the rings it produces are one gesture, and two colours would read as two things happening.
+
+  The fill is barely there. A marquee is drawn *over* the cards it is selecting — that is how you see
+  which ones it has caught — so anything more opaque hides the answer to the question being asked.
+*/
+.we-graph__marquee {
+  fill: var(--we-role-accent);
+  fill-opacity: 0.08;
+  stroke: var(--we-role-accent);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 // A DOM label, positioned at the midpoint of its edge. See the note in `GraphView.solid.tsx` for why
 // this is not SVG text.
 .we-graph__edge-label {
@@ -223,9 +240,9 @@
 
   // Legible over the edge it sits on, without a background plate that would hide the line.
   text-shadow:
-    0 0 3px var(--we-color-neutral-0),
-    0 0 3px var(--we-color-neutral-0),
-    0 0 3px var(--we-color-neutral-0);
+    0 0 3px var(--we-role-page),
+    0 0 3px var(--we-role-page),
+    0 0 3px var(--we-role-page);
 }
 
 // A **zero-size anchor** at the node's position, with the dot and label hung off it.
@@ -250,6 +267,66 @@
   width: 0;
   height: 0;
   pointer-events: none;
+}
+
+/*
+  Marks something outside the graph put on the canvas — see `GraphDecoration`.
+
+  The same zero-size anchoring the nodes use, so a mark's own origin lands exactly on its world
+  coordinates whatever it draws. Its own stacking context for the reason the nodes have one: a
+  cursor lifts itself above the cards deliberately, and without a context here it could rise past
+  the selection chrome as well.
+*/
+.we-graph__decorations {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.we-graph__decoration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/*
+  How a mark catches up to where it is now.
+
+  A transition on transform, and the duration is the point: marks that arrive on a network arrive in
+  steps — a cursor a dozen times a second at best — and a transition slightly longer than the gap
+  between steps turns those steps into continuous movement with no animation loop anywhere. Too
+  short and the stutter is still visible; too long and the mark trails visibly behind the person
+  moving it, which reads as lag rather than as smoothing.
+
+  `linear`, not an ease: each step is the middle of a continuous movement, and easing into and out of
+  every one of them is what makes interpolated cursors look like they are hesitating.
+
+  Only where the mark asked for it. Anything anchored to a record is where it is, and easing it would
+  animate a pin across the screen when a board reorders.
+*/
+.we-graph__decoration--eased {
+  /*
+    The duration is a variable because only the mark's producer knows the gap it is covering — see
+    `GraphDecoration.easeMs`. The fallback is what a mark that does not say gets.
+  */
+  transition: transform var(--we-decoration-ease, 90ms) linear;
+}
+
+/*
+  A mark stays the size it was drawn at, whatever the camera is doing.
+
+  The camera's scale is published on the layer as `--graph-zoom`, so this is one declaration and no
+  reactive computation per mark. Origin at the top left because that is where the mark's own anchor
+  point is — scaling about the centre would move a cursor's tip away from what it is pointing at,
+  which is the one thing about a cursor that has to stay true.
+*/
+.we-graph__decoration-scale {
+  transform: scale(calc(1 / var(--graph-zoom, 1)));
+  transform-origin: 0 0;
 }
 
 /*
@@ -302,6 +379,46 @@
   --actions-lift: calc(var(--connect-reach) + var(--connect-hit) / 2 + 4px);
 }
 
+/*
+  The outline round a selection of several cards.
+
+  Dashed, where a single card's selection ring is solid, because the two say different things: a ring
+  is drawn on a thing, and this is drawn round a group that has no edges of its own. Dashes are the
+  ordinary way to spell "this boundary is the tool's, not the content's".
+
+  Sized from the same two custom properties a card's chrome is, and centred on the anchor the same
+  way — so the bar above it lands exactly where a card's bar lands. Every length is divided by the
+  camera, so the outline stays one screen pixel and its clearance stays eight at any zoom, which is
+  what the hover ring and the connect handles already do.
+*/
+.we-graph__selection {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: content-box;
+  width: var(--node-width);
+  height: var(--node-height);
+
+  // Centres the box on the anchor, which is the middle of the selection.
+  transform: translate(-50%, -50%);
+
+  /*
+    Room to read the outline as surrounding the cards rather than resting on them.
+
+    `content-box`, so the padding grows the border box symmetrically around the content — and then
+    `translate(-50%, -50%)` above, which measures the *border* box, puts that grown box's centre on
+    the anchor. There is deliberately no margin: a negative one looks like it should cancel the
+    padding, and instead shifts the whole element by that much, which showed up as clearance above
+    and to the left of the cards and none below or to the right.
+  */
+  padding: calc(8px / var(--graph-zoom));
+  border: calc(1px / var(--graph-zoom)) dashed var(--we-role-accent);
+  border-radius: calc(6px / var(--graph-zoom));
+
+  // Chrome, not content: it must never take a press meant for a card underneath it.
+  pointer-events: none;
+}
+
 .we-graph__dot {
   position: absolute;
   left: 0;
@@ -316,7 +433,7 @@
   height: var(--node-size);
   border-radius: var(--node-radius);
   background: var(--node-color);
-  border: var(--node-border-width) solid var(--node-border);
+  border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
   overflow: hidden;
   transition: box-shadow 120ms ease-out;
 
@@ -370,8 +487,8 @@
   // Legible over edges and other nodes without needing a background plate.
   paint-order: stroke;
   text-shadow:
-    0 0 3px var(--we-color-neutral-0),
-    0 0 3px var(--we-color-neutral-0);
+    0 0 3px var(--we-role-page),
+    0 0 3px var(--we-role-page);
 }
 
 // The post-it: a sized box holding its own text, centred on the node's coordinates like every other
@@ -418,7 +535,7 @@
   // For the shapes a radius cannot make — see `nodeClip`. `none` for the rest.
   clip-path: var(--node-clip, none);
   background: var(--node-color);
-  border: var(--node-border-width) solid var(--node-border);
+  border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
   box-shadow: var(--we-shadow-sm);
   overflow: hidden;
 }
@@ -654,7 +771,7 @@
 */
 .we-graph__node--card.we-graph__node--hovered .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
   box-shadow: var(--we-shadow-md);
-  outline: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-300);
+  outline: calc(2px / var(--graph-zoom)) solid color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
   outline-offset: calc(1px / var(--graph-zoom));
 }
 
@@ -682,11 +799,11 @@
 }
 
 .we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
-  --ring-color: var(--we-color-primary-300);
+  --ring-color: color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
 }
 
 .we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
-  --ring-color: var(--we-color-primary-500);
+  --ring-color: var(--we-role-accent);
 }
 
 /*
@@ -699,7 +816,7 @@
   as you zoom, which is the ring growing outwards past them.
 */
 .we-graph__node--card.we-graph__node--selected .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
-  box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-color-primary-500);
+  box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-role-accent);
 }
 
 // A card that is both selected and hovered keeps the selection ring alone — two rings around one
@@ -709,11 +826,11 @@
 }
 
 .we-graph__node--hovered .we-graph__dot {
-  box-shadow: 0 0 0 3px var(--we-color-primary-200);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--we-role-accent) 35%, var(--we-role-page));
 }
 
 .we-graph__node--selected .we-graph__dot {
-  box-shadow: 0 0 0 3px var(--we-color-primary-500);
+  box-shadow: 0 0 0 3px var(--we-role-accent);
 }
 
 /*
@@ -732,7 +849,7 @@
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles
   // too, and this sits further out than the selection ring does. A cut shape goes without: a dashed
   // ring cannot be made from shadows, and on a canvas every card is placed so the mark means nothing.
-  outline: calc(2px / var(--graph-zoom)) dashed var(--we-color-neutral-500);
+  outline: calc(2px / var(--graph-zoom)) dashed var(--we-role-border-strong);
   outline-offset: calc(3px / var(--graph-zoom));
 }
 
@@ -756,6 +873,23 @@
   opacity: 0.3;
   stroke-linecap: round;
   pointer-events: none;
+}
+
+/**
+ * The same mark on the selected edge, one step stronger — and it stays when the pointer leaves.
+ *
+ * A selected card keeps a ring; a selected line kept nothing, so the only sign a connection was
+ * selected disappeared with the pointer and the inspector was left describing something the canvas
+ * did not point at. The hover value is deliberately faint — it answers "is the pointer on it?",
+ * which is a question that stops being asked the moment you let go — where this one has to hold on
+ * its own beside cards ringed in `primary-500`.
+ *
+ * The edge's own colour rather than the ring colour those cards use: a line has no fill to be
+ * mistaken for, so widening it in its own colour reads as *that* line being picked out, where a
+ * primary halo on a red line would read as a second, differently coloured line underneath it.
+ */
+.we-graph__edge-hover--selected {
+  opacity: 0.6;
 }
 
 // Resize handles on a selected card: four corners, four edges.
@@ -790,8 +924,8 @@
   width: var(--grip);
   height: var(--grip);
   border-radius: 50%;
-  background: var(--we-color-neutral-0);
-  border: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-500);
+  background: var(--we-role-page);
+  border: calc(2px / var(--graph-zoom)) solid var(--we-role-accent);
 }
 
 // The edges: strips along each side, deliberately unmarked. An edge handle announces itself by the
@@ -880,6 +1014,20 @@
 
   // The bar's own look — its padding, gap, surface and shadow — is the design-system row inside
   // this box, in the renderer. This box only places it and takes the presses.
+
+  /*
+    The bar is one row, whatever text is in it.
+
+    It is absolutely positioned inside `.we-graph__chrome`, which is a zero-width anchor — so
+    shrink-to-fit has no available width to work with and the box takes its *min-content* width.
+    Every typography component in the design system sets `overflow-wrap: anywhere`, which is right
+    everywhere else and means min-content here is about one character: the selection's "3 selected"
+    came out stacked one word per line, in a bar two characters wide.
+
+    On the container rather than on that one label, because the next thing anybody puts in a bar
+    will have the same problem and no reason to expect it.
+  */
+  white-space: nowrap;
 
   // The node layer is inert so the canvas can hit-test in world space; these take their own presses.
   pointer-events: auto;
@@ -1021,7 +1169,7 @@
   height: var(--dot);
   border-radius: 50%;
   background: var(--we-role-accent);
-  border: 1.5px solid var(--we-color-neutral-0);
+  border: 1.5px solid var(--we-role-page);
   opacity: 0.6;
   transition:
     opacity 100ms ease-out,
@@ -1129,7 +1277,7 @@
 
 .we-graph__handle-dot {
   fill: var(--we-role-accent);
-  stroke: var(--we-color-neutral-0);
+  stroke: var(--we-role-page);
 
   // The press belongs to the target around it; taking it here would shrink the grip back to the dot.
   pointer-events: none;
@@ -1156,7 +1304,7 @@
   marks along a line would be four claims about a shape nobody has chosen yet.
 */
 .we-graph__handle--ghost .we-graph__handle-dot {
-  fill: var(--we-color-neutral-0);
+  fill: var(--we-role-page);
   stroke: var(--we-role-accent);
   opacity: 0.55;
 }
@@ -1178,4 +1326,26 @@
 .we-graph we-tooltip::part(tooltip),
 .we-graph we-tooltip::part(arrow) {
   pointer-events: none;
+}
+
+/**
+ * What a folded card is holding — a count on the card, and the press that brings it back.
+ *
+ * Inside the card's bottom-right corner, and only while the card is unselected: a selected one has
+ * the same count in its action bar, and this corner is where a resize grip sits. Two things taking
+ * presses in one place is one thing too many, and the count moves rather than disappearing.
+ *
+ * Counter-scaled by the camera like the action bar, so it stays the size a finger expects at any
+ * zoom, and with the same transform order — placed in its own units, then scaled — so the inset is
+ * in screen pixels rather than world ones.
+ */
+.we-graph__fold {
+  position: absolute;
+  left: calc(var(--node-width) / 2);
+  top: calc(var(--node-height) / 2);
+
+  // The node layer is inert so the canvas can hit-test in world space; this takes its own presses.
+  pointer-events: auto;
+  transform-origin: top left;
+  transform: scale(calc(1 / var(--graph-zoom))) translate(calc(-100% - 6px), calc(-100% - 6px));
 }

@@ -1,9 +1,9 @@
 /**
  * Entities over plain rows — the in-memory half of what a declared manifest means.
  *
- * The AD4M adapter compiles a manifest into decorated model classes that write triples against
- * minted predicates. This compiles the *same manifest* into classes that write objects into
- * arrays, and the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
+ * The production adapter compiles a manifest into model classes that write links against minted
+ * predicates. This compiles the *same manifest* into classes that write objects into arrays, and
+ * the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
  * `space.save()`, `settings.addInstalledTemplates(t)` all mean what they always meant.
  *
  * That equivalence is the point. Stores and the boot sequence can then be tested against real
@@ -24,6 +24,7 @@ import {
   type InMemoryRelation,
   type Row,
 } from '@we/backend-shared';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 /** The dataset handle the in-memory lifecycle mints — its `tables` are the store. */
 interface DatasetEntry {
@@ -130,8 +131,8 @@ export interface EntityClassLike {
 /**
  * The contract, checked: this backend's compiled entities present the same static surface the
  * entity proxies are typed as — which is what makes it a second *conforming* implementation
- * rather than a lookalike. (The AD4M lane cannot make this assertion structurally — its statics
- * are `this`-polymorphic — so this is also the one place the contract is compiler-verified
+ * rather than a lookalike. (The production lane cannot make this assertion structurally — its
+ * statics are `this`-polymorphic — so this is also the one place the contract is compiler-verified
  * end to end.)
  */
 type Satisfies<A extends B, B> = A;
@@ -147,9 +148,13 @@ export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, Enti
 export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime): Record<string, EntityClassLike> {
   const classes: Record<string, EntityClassLike> = {};
 
-  /** Everything an entity declares, including whatever it inherits. */
+  /**
+   * Everything an entity declares, including whatever it inherits — from the core vocabulary when
+   * the parent is not in this manifest, which is the case for every space shape extending `WeNode`.
+   */
   const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+    const entity = manifest.entities[name] ?? CORE_MANIFEST.entities[name];
+    if (!entity) throw new Error(`manifest: "${name}" is not declared here or in the core vocabulary`);
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {
@@ -529,8 +534,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
 
       /*
         The whole list at once, in this order — the accessor an *ordered* relation is written through.
-        `setChildren` on AD4M diffs the list against what it holds and records only what moved; here
-        the list simply becomes the row's, since nothing concurrent can happen to an in-memory table.
+        A backend with concurrent writers diffs the list against what it holds and records only what
+        moved; here the list simply becomes the row's, since nothing concurrent can happen to an
+        in-memory table.
         Without it a consumer that arranges a relation — a board column — had no accessor on this
         backend at all, and the fixtures could only append.
       */

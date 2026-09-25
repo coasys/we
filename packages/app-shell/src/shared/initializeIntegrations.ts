@@ -1,20 +1,22 @@
 /**
  * Integration Initialization
  *
- * Reads we-seed.json at startup, validates it, and populates appRegistry with
- * the resolved URL for each embedded app.  Everything else (display, switching,
- * iframe mounting) is handled by AppStore and TemplateProvider at runtime.
+ * Reads we-seed.json at startup, validates it, registers the embedded apps and the feature modules
+ * the deployment declares. Everything else (display, switching, iframe mounting) is handled by
+ * AppStore and TemplateProvider at runtime.
  */
 
-import { defineModule, type ModuleStoreDeps, seedCapabilityToModule } from '@we/module-shared';
+import { defineModule, type ModuleHostProfile, type ModuleStoreDeps, seedCapabilityToModule } from '@we/module-shared';
 
 import type { WeSeedFile } from '../types/seed';
 import { installConsoleTrace } from './installConsoleTrace';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { activateSeedModules } from './registries/bundledModules';
+import { HOST_KERNELS } from './registries/moduleHostServices';
 import { moduleRegistry } from './registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from './registries/slotRegistry';
+import { seedModuleIds } from './seedModules';
 import { provideSeed } from './seedRegistry';
 
 export interface IntegrationDeps {
@@ -23,12 +25,17 @@ export interface IntegrationDeps {
    *
    * Injected rather than imported because this file is framework-neutral `shared/` code — importing
    * the Solid component registry here would drag the whole component tree into it. It is also what
-   * keeps Solid and `@we/widgets` single instances shared with the host, which is the property that
-   * starts to matter once modules load dynamically.
+   * keeps Solid and `@we/widgets` single instances shared with the host.
    */
   components?: Record<string, unknown>;
   /** Reactivity lent to module stores, so a module needn't import a framework. */
   storeDeps?: ModuleStoreDeps;
+  /**
+   * What this host is, for compatibility. The backend id comes from the connector and the framework
+   * from the renderer; the kernels are what `moduleHostServices` implements. Defaults are what the
+   * bundled hosts are, so an app that says nothing gets the answer it always had.
+   */
+  host?: Partial<ModuleHostProfile>;
 }
 
 export function initializeIntegrations(
@@ -44,13 +51,9 @@ export function initializeIntegrations(
     provideSeed(seed);
 
     /*
-      The host's own chrome, before anything replaces or contributes to it.
-
-      This is a call rather than an import side effect, and the difference is not stylistic: it used
-      to run when `slotRegistry` was first imported, from inside an import cycle with `editorDocks`,
-      so it depended on which of the two a bundle happened to reach first. The requirement was always
-      that core slots exist before the seed's boot-screen override below and before any module
-      registers — which is exactly here.
+      The host's own chrome, before anything replaces or contributes to it. A call rather than an
+      import side effect: the requirement is that core slots exist before the seed's boot-screen
+      override below and before any module registers — which is exactly here.
     */
     registerCoreSlots();
 
@@ -66,7 +69,11 @@ export function initializeIntegrations(
       slotRegistry.replace('core:bootScreen', seed.host.ui.bootScreen);
     }
 
-    const host = { backend: 'ad4m', framework: 'solid' };
+    const host: ModuleHostProfile = {
+      backend: deps.host?.backend ?? 'ad4m',
+      framework: deps.host?.framework ?? 'solid',
+      kernels: deps.host?.kernels ?? HOST_KERNELS,
+    };
 
     // Embedded apps register as modules whose contribution is an iframe. Only the URL resolution is
     // platform-specific, and only the host can do it — everything after that is ordinary module
@@ -75,23 +82,25 @@ export function initializeIntegrations(
     const embedded: string[] = [];
     for (const app of seed.apps) {
       const definition = defineModule({
-        id: app.id,
-        name: app.name,
-        // Carried through so an embedded app describes itself in the settings list like every other
-        // module. The seed has always declared it; it simply was not forwarded, which left Flux the
-        // one row on that page with a name and nothing under it.
-        description: app.description,
-        icon: app.icon,
-        capabilities: app.capabilities.map(seedCapabilityToModule),
-        // An embedded app reaches the host's agent through the data layer, so it is coupled to
-        // whichever one this build runs. Declared rather than assumed: on a host without that
-        // backend it is refused at registration with a reason, instead of mounting an iframe that
-        // waits on a handshake nobody will answer.
-        backends: ['ad4m'],
-        embed: {
-          url: platformAdapter.resolveAppUrl(app, isDev),
-          allow: generateIframePermissions(app.capabilities),
-          image: app.image,
+        manifest: {
+          id: app.id,
+          name: app.name,
+          description: app.description,
+          icon: app.icon,
+          requires: {
+            // An embedded app reaches the host's agent through the data layer, so it is coupled to
+            // whichever one this build runs. Declared rather than assumed: on a host without that
+            // backend it is refused at registration with a reason.
+            backends: ['ad4m'],
+            permissions: app.capabilities.map(seedCapabilityToModule),
+          },
+        },
+        contributes: {
+          embed: {
+            url: platformAdapter.resolveAppUrl(app, isDev),
+            allow: generateIframePermissions(app.capabilities),
+            image: app.image,
+          },
         },
       });
       const outcome = moduleRegistry.register(definition, host, deps.storeDeps);
@@ -100,19 +109,34 @@ export function initializeIntegrations(
 
     // Activate the feature modules this deployment declares. Components are passed in rather than
     // imported by each module, so Solid and @we/widgets stay single instances shared with the host.
-    const { activated } = activateSeedModules(
-      seed.modules,
+    const { activated, refused } = activateSeedModules(
+      seedModuleIds(seed),
       { components: deps.components ?? {}, storeDeps: deps.storeDeps },
       host,
       moduleRegistry,
     );
 
-    // `info`: one line, once, at boot, saying what this deployment turned out to be — which is the
-    // first thing anybody debugging a seed wants and is not a debugging leftover.
+    // `info`: one line, once, at boot, saying what this deployment turned out to be.
     console.info(
       `✓ ${seed.project.name} initialized — ${embedded.length} embedded app(s)` +
         (activated.length ? `, ${activated.length} module(s): ${activated.join(', ')}` : ''),
     );
+
+    /*
+      And say what did *not* start, in the same breath.
+
+      The registry already warns per refusal, and that was not enough: the line somebody actually reads
+      is this summary, and a summary that lists only what worked reads as a healthy boot. A module the
+      seed asked for and the host refused is then a feature that is simply absent — no store, no
+      launcher, no panel — with the only evidence a warning further up a console nobody had reason to
+      scroll. That cost three rounds of looking for a switch that did not exist.
+
+      `warn`, not `info`: the deployment asked for something it did not get.
+    */
+    if (refused.length) {
+      const named = refused.map(({ id, problems }) => `${id} (${problems.join('; ')})`).join(', ');
+      console.warn(`⚠ ${refused.length} module(s) the seed asked for did not start: ${named}`);
+    }
   } catch (error) {
     console.error('❌ Failed to initialize integrations:', error);
   }

@@ -4,14 +4,14 @@
  * what the query IR is validated and compiled against (`include` needs to know a relation's target
  * and cardinality; filter/sort need to know a property's type).
  *
- * It is a *separate* artifact from any query and from any backend. A third-party host authors a
- * manifest for its own entities; the AD4M adapter produces one from its own models.
+ * It is a *separate* artifact from any query and from any backend: the source of truth an adapter
+ * compiles from, and what a module or a community's shape wizard authors.
  *
- * Relationship to the AD4M-specific manifest (`EntityManifestEntry` in `@we/app-shell`): that one
- * is the AD4M adapter's richer, flatter form — properties and relations in one list, plus RDF
- * binding (`predicate`, `resolveLanguage`, `targetClass`). This neutral form is the semantic
- * projection it maps onto: scalars vs relations separated, keyed by name, no backend binding. The
- * adapter keeps its RDF binding on its side; only this shape crosses into the schema engine.
+ * Relationship to the flat form (`EntityManifestEntry` in `manifestEntry.ts`): that one is the
+ * richer, flatter projection — properties and relations in one list, plus the storage binding
+ * (`predicate`, `resolveLanguage`, `targetClass`) an adapter minted. This is the declaration:
+ * scalars vs relations separated, keyed by name, bound to nothing but what the declaration itself
+ * states. Only this shape crosses into the schema engine.
  */
 import { z } from 'zod';
 
@@ -28,9 +28,8 @@ export interface PropertySchema {
   /**
    * How the value is *stored*, when that differs from an inline scalar. `'file'` means the
    * property holds binary content written through the host's file storage. Every backend has this
-   * problem and solves it differently — AD4M stores an expression through its file-storage
-   * language, a SQL host would keep a URL beside a blob store — so the manifest names the intent
-   * and each adapter supplies the mechanism.
+   * problem and solves it differently — a content-addressed store, a URL beside a blob store — so
+   * the manifest names the intent and each adapter supplies the mechanism.
    */
   format?: 'file';
 
@@ -116,7 +115,7 @@ export interface PropertySchema {
    * Presentation, not storage — `format` is the storage counterpart and stays about where bytes
    * live. Absent means "whatever the type implies", which is right for most properties.
    */
-  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url';
+  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url' | 'icon';
 }
 
 /**
@@ -210,6 +209,16 @@ export interface EntitySchema {
   properties: Record<string, PropertySchema>;
   /** Typed edges, keyed by relation name. */
   relations: Record<string, RelationSchema>;
+
+  /**
+   * What this kind of thing is, in one line a person reads — "A picture, uploaded".
+   *
+   * Shown wherever a type is chosen or explained: the chooser's card, the key, an inspector's
+   * heading. On the declaration rather than in a table beside the icons, because it is part of what
+   * the type *is*, and a community's own types already carry one from the wizard — one field serves
+   * both. Absent reads as nothing to say, not as an error.
+   */
+  description?: string;
 
   /**
    * How instances of this entity are told apart from everything else in the same dataset.
@@ -333,8 +342,28 @@ export interface EntitySchema {
    * someone deciding it should have one. Entities a *community* defines are the other way round —
    * every property of a shape somebody wrote is theirs by construction, so those need no
    * declaration and never carry one.
+   *
+   * ## A form is not a place in "create something"
+   *
+   * What a person can create as content is every **block** there is a way to make (see `blockable`
+   * and `composed`), and a community's own shapes. `Relationship` and `RelationshipType` have forms
+   * and are not blocks: one is drawn between two records, the other named in space settings, and a
+   * generic picker would make either wrong. Being content is what puts an entity in a picker, not
+   * having a form — so no flag is needed to keep those two out.
+   *
+   * There was one, `offered`, and it had been asked to carry a second judgement as well: that a
+   * picture or a file with nothing to belong to is not a thing anybody sets out to make. That did not
+   * hold — a picture is as much a thing as a link — and it is gone with the flag.
    */
   authoring?: { fields: string[] };
+
+  /**
+   * Made by composing a document rather than by filling in fields — a post, a note, a board's card.
+   * The composer is its authoring surface, so a surface offering "create something" opens that for
+   * it instead of a form. Separate from `authoring`, which is a field list and would give a
+   * container's display a list of fields it has nothing to say in.
+   */
+  composed?: boolean;
 
   /**
    * How an instance of this entity is shown when nothing was written to show it — the read-side
@@ -382,7 +411,7 @@ const propertySchema = z.object({
   interpretationHint: z.string().optional(),
   identity: z.boolean().optional(),
   options: z.array(z.union([z.string(), z.number()])).optional(),
-  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url']).optional(),
+  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url', 'icon']).optional(),
 });
 const relationSchema = z.object({
   target: z.string(),
@@ -399,9 +428,11 @@ const entitySchema = z.object({
   extends: z.string().optional(),
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
+  description: z.string().optional(),
   extractable: z.boolean().optional(),
   blockable: z.boolean().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),
+  composed: z.boolean().optional(),
   display: z
     .object({
       title: z.string().optional(),

@@ -126,7 +126,7 @@ const messageRow: SchemaNode = {
     condition: { $: 'message.author == prev.author' },
     then: {
       type: 'Row',
-      props: { width: '100%', gap: '300', py: '25', ay: 'start' },
+      props: { width: '100%', gap: '300', ay: 'start' },
       children: [
         { type: 'Column', props: { width: '32px', flex: '0 0 auto' } },
         { type: 'Column', props: { flex: '1', minWidth: '0', gap: '100' }, children: messageBody },
@@ -134,7 +134,7 @@ const messageRow: SchemaNode = {
     },
     else: {
       type: 'Column',
-      props: { width: '100%', gap: '100', pt: '300', pb: '25' },
+      props: { width: '100%', gap: '100', pt: '300' },
       children: [
         agentByline({
           did: { $: 'message.author' },

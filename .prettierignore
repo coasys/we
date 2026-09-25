@@ -11,6 +11,11 @@ pnpm-lock.yaml
 # Machine-generated sources (e.g. packages/models/src/generated/coreManifest.ts)
 **/src/generated
 
+# Tauri writes its capability schemas here on every build (`src-tauri/.gitignore` ignores them for the
+# same reason). Four of them fail a format check on any machine that has built the Tauri app, which made
+# `format:check` fail for a reason nobody could act on.
+**/src-tauri/gen
+
 # Auto-generated AI context files (packages/ai-context)
 .github/copilot-instructions.md
 CLAUDE.md

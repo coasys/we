@@ -1,96 +1,135 @@
 /**
  * Module Registry — installed feature modules and what they contribute.
  *
- * The fourth registry alongside `appRegistry`, `entityRegistry`, `templateRegistry` and `themeRegistry`,
- * and deliberately the same shape: modules become the next thing that follows an existing pattern
- * rather than a new concept. Runtime only — the durable half (`AgentSettings.installedModules`,
- * `Space.enabledModules`) arrives with the marketplace, when modules become installable rather than
- * bundled.
- *
- * ## What registering does
- *
- * Fans a {@link ModuleDefinition} out to the registries that already exist — component registry, slot
- * registry — and holds the module's store under `modules.<id>` for the template bag.
+ * Fans a {@link ModuleDefinition} out to the registries that already exist — the slot registry, the
+ * dock registry, the entity registry — and holds each module's store under `modules.<id>` for the
+ * template bag. Runtime only: the durable half is `AgentSettings.installedModules` and
+ * `Space.enabledModules`.
  *
  * ## The `modules` namespace must always exist
  *
- * Subtle and easy to get wrong. Store-path resolution splits on `.`, and a **single-segment** path does
- * `stores[storeName][prop]` with no guard — so reading `modules.notes` throws if the `modules`
- * key is absent, rather than returning undefined. Deeper paths go through `walkPath`, which does
- * degrade safely.
+ * Store-path resolution splits on `.`, and a **single-segment** path does `stores[storeName][prop]`
+ * with no guard — so reading `modules.notes` throws if the `modules` key is absent. The namespace
+ * object is always present, and an individual module's key is absent until it registers. That is
+ * what makes `{ $: 'modules.notes' }` as a condition the supported way for a template to depend on
+ * an optional module.
  *
- * So: the namespace object is always present, and an individual module's key is absent until it
- * registers. That is exactly what makes `{ $: 'modules.notes' }` as a condition the
- * supported way for a template to depend on an optional module.
+ * ## Panels are plumbed here, not in the module
+ *
+ * A panel used to be seven string keys into a module's store, and a module with one panel wrote a
+ * store whose only job was to answer them. The registry builds that plumbing now: a small store per
+ * panel holding what the shell reads (`edge`, `size`, `float`, `aspect`, `min`) and the controls that
+ * open and close it. Where the module owns openness it names the keys and the plumbing reads through;
+ * where it does not — the ordinary case — the plumbing holds the flag itself. See `panelPlumbing`.
  */
-import { type EntityManifestEntry, type SchemaPort, validateManifest } from '@we/backend-shared';
-import { type EntityClass, getEntityPredicates, registerEntity, unregisterEntity } from '@we/entities';
+import type { EntityManifestEntry, SchemaPort } from '@we/backend-shared';
+import { type BlockEntityStatic, registerBlock, unregisterBlock } from '@we/block-shared';
+import { unregisterEntity } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
+  type Activity,
+  type ActivityShape,
+  type BlockContribution,
   checkModuleCompatibility,
+  KERNEL_NAMES,
+  lintModule,
+  markAction,
+  markState,
+  moduleCapabilities,
   type ModuleDefinition,
+  type ModuleFunction,
+  type ModuleHostProfile,
   type ModuleLauncher,
-  modulePredicatePrefix,
-  modulePredicateViolations,
   type ModuleScope,
+  type ModuleStore,
   type ModuleStoreDeps,
+  type ModuleStoreSurface,
+  type PanelBid,
+  type PanelContribution,
+  storeSurface,
 } from '@we/module-shared';
-import { collectComponentTypes, type SchemaNode } from '@we/schema-shared';
+import { collectComponentTypes, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
 
 import type { SettingGroup, SettingValue } from '../moduleSettings';
-import { dockFrame, dockRegistry } from './dockRegistry';
+import { type DockEntry, dockFrame, dockRegistry } from './dockRegistry';
+import { notePublisher } from './moduleHostServices';
 import { slotRegistry } from './slotRegistry';
 
 /**
  * What a module puts in front of the user — which decides *where* it can be turned off.
  *
- * The rule is that a contribution is gated at the layer where it renders:
+ * | surface      | contributes              | renders                       | agent | space |
+ * |--------------|--------------------------|-------------------------------|-------|-------|
+ * | `chrome`     | panels, slots, rail      | inside a space                | yes   | yes   |
+ * | `content`    | sections, blocks         | in a space's content          | yes   | yes   |
+ * | `app`        | an embed                 | in the shell                  | yes   | no    |
+ * | `capability` | components, parts, funcs | wherever a template mounts it | yes   | no    |
  *
- * | surface      | contributes        | renders                        | agent | space |
- * |--------------|--------------------|--------------------------------|-------|-------|
- * | `chrome`     | launcher, slots    | inside a space                 | yes   | yes   |
- * | `app`        | an embed           | in the shell                   | yes   | no    |
- * | `capability` | components only    | wherever a template mounts it  | yes   | no    |
+ * Chrome and content are what a community decides about, because they are what appears inside their
+ * space. `content` is its own row because polls fell between the other three: a section and a block
+ * are as much part of a space as a panel is, and classing the module as a capability put it outside
+ * every per-space switch — so a deployment shipping it "off until a community opts in" had shipped a
+ * setting nothing could change. An **app** sits in the shell's switcher and its iframe outlives
+ * navigation. A **capability** is mounted by whichever template asks for it, and the honest effect of
+ * a space switching it "off" would be to break the template's route — so the template decides.
  *
- * Chrome is the only surface a community decides about, because it is the only one that appears
- * inside their space.
- *
- * An **app** sits in the shell's switcher beside Spaces rather than within one, and its iframe
- * deliberately outlives navigation. Gating it per space would make an entry come and go as the
- * agent moved between spaces that have nothing to do with it, and would tear down a live session as
- * a side effect of walking into a space.
- *
- * A **capability** is mounted by whichever template asks for it — the globe module supplies
- * `CesiumGlobe`, and the honest effect of a space switching that "off" would be to break the
- * template's route. Uninstalling one at the agent layer is offered, but guarded: see
- * {@link moduleRegistry.requiredBy}.
- *
- * Both cases come out the same way: **the template decides**, which is a mechanism that already
- * exists. A community that does not want the globe view or the Flux route uses a template without
- * it.
+ * A module with both a panel and a section is chrome; the row that matters is the same either way.
  */
-export type ModuleSurface = 'chrome' | 'app' | 'capability';
+export type ModuleSurface = 'chrome' | 'content' | 'app' | 'capability';
+
+/** Derived rather than declared, so a module author cannot get it wrong. */
+export function moduleSurface(definition: ModuleDefinition): ModuleSurface {
+  const c = definition.contributes;
+  if (c?.embed) return 'app';
+  if (c?.panels?.length || c?.slots?.length || c?.launchers?.length) return 'chrome';
+  if (c?.views?.length || c?.blocks?.length) return 'content';
+  return 'capability';
+}
 
 /**
- * Derived rather than declared, so a module author cannot get it wrong and a new kind of module
- * needs no change here or in the settings pages — the answer follows from what it contributes.
+ * Whether a community decides if this module runs in their space.
+ *
+ * Chrome or content, and not agent-scoped: a module declaring `scope: 'agent'` is active wherever its
+ * agent is (see `SpaceStore.activeModules`), so a per-space switch for it would be a control that
+ * does nothing.
  */
-export function moduleSurface(definition: ModuleDefinition): ModuleSurface {
-  if (definition.embed) return 'app';
-  if (definition.launcher || definition.slots?.length || definition.docks?.length) return 'chrome';
-  return 'capability';
+export function isCommunityDecided(definition: ModuleDefinition): boolean {
+  if (definition.manifest.scope === 'agent') return false;
+  const surface = moduleSurface(definition);
+  return surface === 'chrome' || surface === 'content';
+}
+
+/**
+ * The host's side of one panel: whether it is up, how to change that, and the store the shell reads
+ * its geometry keys from.
+ */
+export interface PanelControls {
+  /** `<moduleId>:<name>` — what the dock registry, a placement and `meta.panels.dock` all key on. */
+  dockId: string;
+  moduleId: string;
+  panel: PanelContribution;
+  /** Whether the host holds the open flag (the default) or reads it off the module's store. */
+  hostOwned: boolean;
+  isOpen: () => boolean;
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+  /** `edge` / `size` / `float` / `aspect` / `min` as accessors — what `DockEntry.store` points at. */
+  store: Record<string, unknown>;
 }
 
 export interface RegisteredModule {
   definition: ModuleDefinition;
-  /** Instantiated lazily on registration, so a module can be declared before the host is ready. */
-  store?: Record<string, unknown>;
+  /** Instantiated at registration, so a module can be declared before the host is ready. */
+  store?: ModuleStore;
   /**
-   * Teardown the store registered through `deps.onDispose`, run on unregister.
-   *
-   * Held beside the store rather than on it: a module's store keys are template-callable at
-   * `modules.<id>.<key>`, and teardown is not vocabulary a rendered schema should have.
+   * Teardown the store registered through `deps.onDispose`, run on unregister. Held beside the
+   * store rather than on it: a module's store keys are template-callable, and teardown is not
+   * vocabulary a rendered schema should have.
    */
   disposers?: Array<() => void>;
+  /** This module's panels, by name. */
+  panels: Map<string, PanelControls>;
 }
 
 const modules = new Map<string, RegisteredModule>();
@@ -98,62 +137,36 @@ const modules = new Map<string, RegisteredModule>();
 /**
  * What each module's settings currently resolve to, answered by whoever can see a space.
  *
- * Injected rather than computed here for the reason every `provide*` on `DatasetStore` is: the
- * answer lives on a `Space`, on a `SpacePreference` and in the agent's own root dataset, and this
- * registry mounts below all three and knows about none of them. Defaults to silence, so a host that
- * has not wired it hands every module its declared defaults rather than nothing at all.
- *
- * Read at *call* time, not at registration: a module store is built once at boot and the space it is
- * in changes underneath it all day.
+ * Injected rather than computed here: the answer lives on a `Space`, a `SpacePreference` and the
+ * agent's root dataset, and this registry mounts below all three. Defaults to silence, so a host that
+ * has not wired it hands every module its declared defaults. Read at *call* time, not at
+ * registration: a module store is built once at boot and the space it is in changes all day.
  */
 let readSettings: (group: string) => Record<string, SettingValue> = () => ({});
 
 /**
  * Wrap a module's chrome so it only renders where the community has the module turned on.
  *
- * Done as a schema condition rather than by filtering the registry, for two reasons. It needs no
- * reactivity plumbing in the host — `$if` already re-evaluates when the store changes, whereas
- * `slotRegistry` is a plain `Map` that would have to become reactive. And it composes: the module's
- * own visibility conditions still apply underneath, so a module never has to know it is being gated.
- *
- * Gated on `activeModules` — the three layers intersected, less this agent's mutes — rather than on
- * the space's decision alone. The space saying yes is necessary but not sufficient: a module the
- * agent has not installed, or has muted here, must not render either. Each layer falls back to the
- * registered set when undecided, which is what keeps existing spaces and existing agents rendering
- * the chrome they already had. See `Space.enabledModules` and `AgentSettings.installedModules`.
- *
- * ## Chrome that is about something still running
- *
- * All of the above is about chrome that belongs to a *space*, which is nearly all of it. A module
- * declaring `holdsWhen` is saying it sometimes has live state instead, and that state does not stop
- * mattering because the user walked into a different space: a call outlives navigating away from
- * where it started, and gating its bar on the destination space took away the controls — hang-up
- * included — while the call carried on regardless. So the gate widens to "enabled here, or holding
- * something". See `ModuleDefinition.holdsWhen`.
- *
- * ## Chrome that is not about a space at all
- *
- * A module declaring `scope: 'agent'` needs no separate gate here, because `activeModules` already
- * answers for it: its subject is the person rather than a community, so the community layer is
- * skipped there and being installed is the whole test. One gate, one store member, and no way for
- * the two to disagree. See `ModuleDefinition.scope` and `spaceStore.activeModules`.
+ * A schema condition rather than a filtered registry: `$if` already re-evaluates when the store
+ * changes, and it composes — the module's own visibility conditions still apply underneath. Gated on
+ * `activeModules` (the layers intersected, less this agent's mutes), widened by the module's `holds`
+ * key so chrome about something still running — a call — survives walking into a space that never
+ * enabled it. See `ModuleContributions.holds`.
  */
-function gateOnSpace(moduleId: string, node: SchemaNode, holdsWhen?: string): SchemaNode {
+function gateOnSpace(moduleId: string, node: SchemaNode, holds?: string): SchemaNode {
   const enabledHere = `'${moduleId}' in spaceStore.activeModules`;
   return {
     type: '$if',
     props: {
-      condition: { $: holdsWhen ? `${enabledHere} || ${holdsWhen}` : enabledHere },
+      condition: { $: holds ? `${enabledHere} || modules.${moduleId}.${holds}` : enabledHere },
       then: node,
     },
   };
 }
 
 /**
- * The `modules.<id>.*` namespace handed to the renderer's stores bag.
- *
- * A single stable object mutated in place rather than rebuilt, so the reference in the bag stays
- * valid as modules register.
+ * The `modules.<id>.*` namespace handed to the renderer's stores bag. One stable object mutated in
+ * place rather than rebuilt, so the reference in the bag stays valid as modules register.
  */
 export const moduleStores: Record<string, unknown> = {};
 
@@ -183,58 +196,286 @@ const compiledEntities = new Map<string, unknown[]>();
  */
 function declaredEntities(schemas: SchemaPort, scope: ModuleScope): unknown[] {
   return moduleRegistry.all().flatMap(({ definition }) => {
-    if (!definition.entities) return [];
-    if ((definition.entities.scope ?? 'space') !== scope) return [];
-    const cached = compiledEntities.get(definition.id);
+    const entities = definition.contributes?.entities;
+    if (!entities) return [];
+    if ((entities.scope ?? 'space') !== scope) return [];
+    const cached = compiledEntities.get(definition.manifest.id);
     if (cached) return cached;
-    const compiled = Object.values(
-      schemas.declare(definition.entities.manifest, {
-        moduleId: definition.id,
-        predicates: definition.entities.predicates,
-      }),
-    );
-    compiledEntities.set(definition.id, compiled);
+    const byName = schemas.declare(entities.manifest, {
+      moduleId: definition.manifest.id,
+      predicates: entities.predicates,
+    }) as Record<string, unknown>;
+    const compiled = Object.values(byName);
+    compiledEntities.set(definition.manifest.id, compiled);
+    registerModuleBlocks(definition, byName);
     return compiled;
   });
+}
+
+/** The `_type` a composed block of a module entity carries. */
+export function moduleBlockNodeType(block: BlockContribution): string {
+  return block.nodeType ?? block.entity.toLowerCase();
+}
+
+/**
+ * Register a module's content types once their entities exist as classes.
+ *
+ * Here rather than at registration because a block registration carries the entity's compiled class
+ * — the persistence layer writes a composed block through it — and a module's entity is compiled
+ * lazily, on the first dataset install. The display is not here: it is the host's, since drawing a
+ * declared card is a framework component's job. See `moduleBlockDisplays` in the Solid host.
+ */
+function registerModuleBlocks(definition: ModuleDefinition, compiled: Record<string, unknown>): void {
+  const id = definition.manifest.id;
+  for (const block of definition.contributes?.blocks ?? []) {
+    const model = compiled[block.entity];
+    if (!model) {
+      console.warn(
+        `module "${id}" block "${block.entity}" names an entity its manifest does not declare; not registered`,
+      );
+      continue;
+    }
+    if (!definition.contributes?.parts?.[block.card]) {
+      console.warn(`module "${id}" block "${block.entity}" names card part "${block.card}", which it does not publish`);
+    }
+    const input = block.input ? definition.contributes?.components?.[block.input] : undefined;
+    if (block.input && !input) {
+      console.warn(
+        `module "${id}" block "${block.entity}" names input component "${block.input}", which it does not contribute`,
+      );
+    }
+    registerBlock({
+      nodeTypes: [moduleBlockNodeType(block)],
+      model: model as BlockEntityStatic,
+      entity: block.entity,
+      ...(input ? { input: input as (props: unknown) => unknown } : {}),
+    });
+  }
 }
 
 /**
  * The interface's own composition of this module's panel, or the module's default.
  *
- * The middle rung of the content chain — the same shape position and openness already have. A
- * module's presentation is a *default*, not a monopoly: an interface that wants the pieces arranged
- * differently used to have to hand-write copies and place them beside the module's panel, which is
- * how the workshop template ended up with two transcripts on screen the moment somebody pressed
- * record.
- *
- * Resolved at render rather than at registration, because a template is chosen and re-chosen while
- * the module stays installed, and a `$if` is how a schema asks a question it cannot answer when it
- * is written. The module's dock is untouched: its edge, size and open flag still decide *whether*
- * the surface is up, which is the module's to say. Only what is inside it moves.
- *
- * ## Keyed by dock, not by module
- *
- * A template's entry names a *module* — `{ module: 'transcribe', node }` — because that is the
- * question a template author is asking. The gate is keyed by **dock id** anyway, and the difference
- * only shows up for a module contributing more than one panel: keyed by module, one supplied body
- * would have replaced the contents of every one of them, so a template overriding a module's
- * transcript panel would silently have overwritten its settings panel with the same node.
- *
- * No module contributes two docks today, which is exactly why it is worth keying correctly now —
- * the day one does, the failure is a panel showing the wrong thing rather than an error. Resolving
- * a module name to a dock id is `ShellStore.panelSupplied`'s job, and it refuses the ambiguous case
- * out loud rather than picking.
+ * A module's presentation is a *default*, not a monopoly. Resolved at render rather than at
+ * registration, because a template is chosen and re-chosen while the module stays installed. Keyed
+ * by **dock id**, not by module: keyed by module, one supplied body would replace the contents of
+ * every panel a module contributes.
  */
 function suppliedOrOwn(moduleId: string, dockId: string, dock: string, own: SchemaNode): SchemaNode {
   return {
     type: '$if',
     props: {
       condition: { $: `shellStore.panelSupplied['${dockId}']` },
-      // The dock's own name travels with the request: a module with two panels has two frames
-      // asking, and a body found by module alone would land in whichever asked first.
       then: { type: 'TemplatePanelBody', props: { moduleId, dock } },
       else: own,
     },
+  };
+}
+
+/** A signal for a host that lent none — tests, and a module registered before any framework exists. */
+function plainSignal<T>(initial: T): [() => T, (next: T) => void] {
+  let value = initial;
+  return [() => value, (next: T) => void (value = next)];
+}
+
+const call = (store: ModuleStore | undefined, key: string | undefined): unknown => {
+  if (!key) return undefined;
+  const member = store?.[key];
+  return typeof member === 'function' ? (member as () => unknown)() : member;
+};
+
+const invoke = (store: ModuleStore | undefined, key: string | undefined, what: string): void => {
+  if (!key) return;
+  const member = store?.[key];
+  if (typeof member === 'function') (member as () => void)();
+  else console.warn(`module panel: ${what} names "${key}", which its store does not have`);
+};
+
+const DEFAULT_BID: PanelBid = { edge: 'right', size: 'md' };
+
+/**
+ * Build the host's half of one panel.
+ *
+ * Two sources for the bid: the static object on the contribution, and — when the module named a
+ * store key instead — whatever that key answers, read live. Two owners for openness: the module,
+ * when it named `open`, or a flag held here. Either way what comes out is one store of accessors the
+ * shell reads through `DockEntry.store`, exactly as it reads a module's own.
+ */
+function panelPlumbing(
+  moduleId: string,
+  panel: PanelContribution,
+  store: ModuleStore | undefined,
+  signal: ModuleStoreDeps['signal'],
+): PanelControls {
+  const dockId = `${moduleId}:${panel.name}`;
+  const staticBid: PanelBid = typeof panel.bid === 'object' ? panel.bid : {};
+  const bidKey = typeof panel.bid === 'string' ? panel.bid : undefined;
+  const bid = (): PanelBid => ({
+    ...DEFAULT_BID,
+    ...staticBid,
+    ...((call(store, bidKey) as PanelBid | undefined) ?? {}),
+  });
+
+  let isOpen: () => boolean;
+  let open: () => void;
+  let close: () => void;
+  const hostOwned = !panel.open;
+  if (panel.open) {
+    const key = panel.open;
+    isOpen = () => Boolean(call(store, key));
+    open = () => invoke(store, panel.show, `${dockId}.show`);
+    close = () => invoke(store, panel.close, `${dockId}.close`);
+  } else {
+    const [flag, setFlag] = signal(false);
+    isOpen = flag;
+    open = () => setFlag(true);
+    close = () => setFlag(false);
+  }
+
+  return {
+    dockId,
+    moduleId,
+    panel,
+    hostOwned,
+    isOpen,
+    open,
+    close,
+    toggle: () => (isOpen() ? close() : open()),
+    store: {
+      // `null` while closed: a panel's visibility and its placement are one question, and the shell
+      // reads this one key for both.
+      edge: () => (isOpen() ? (bid().edge ?? 'right') : null),
+      size: () => bid().size ?? 'md',
+      float: () => Boolean(bid().float),
+      aspect: () => bid().aspect,
+      min: () => bid().min,
+    },
+  };
+}
+
+/** Every activity type declared by any registered module, with who declared it. */
+function declaredActivities(): Map<string, { moduleId: string; shape: ActivityShape }> {
+  const out = new Map<string, { moduleId: string; shape: ActivityShape }>();
+  for (const { definition } of modules.values()) {
+    for (const [type, shape] of Object.entries(definition.contributes?.activities ?? {})) {
+      out.set(type, { moduleId: definition.manifest.id, shape });
+    }
+  }
+  return out;
+}
+
+const isDev = (): boolean => {
+  try {
+    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  } catch {
+    return false;
+  }
+};
+
+const activityWarned = new Set<string>();
+
+/**
+ * Check a published activity against the shape its module declared. Development only, and warns
+ * once per type: the point is to catch the second module copying the first one's guesses, not to
+ * refuse a heartbeat.
+ */
+function checkActivity(moduleId: string, activity: Activity): void {
+  if (!isDev()) return;
+  const declared = declaredActivities().get(activity.type);
+  const warn = (message: string) => {
+    const key = `${moduleId}:${activity.type}:${message}`;
+    if (activityWarned.has(key)) return;
+    activityWarned.add(key);
+    console.warn(`module "${moduleId}" presence: ${message}`);
+  };
+  if (!declared) {
+    warn(`publishes activity type "${activity.type}" it never declared in contributes.activities`);
+    return;
+  }
+  for (const [field, value] of Object.entries(activity)) {
+    if (field === 'type' || value === undefined) continue;
+    const expected = declared.shape[field];
+    if (!expected) {
+      warn(`activity "${activity.type}" carries "${field}", which its declared shape does not`);
+      continue;
+    }
+    const actual = Array.isArray(value) ? 'object' : typeof value;
+    if (actual !== expected) warn(`activity "${activity.type}".${field} is a ${actual}, declared as ${expected}`);
+  }
+}
+
+/**
+ * The deps a module's store is built with: the host's bag, plus what only this registration knows.
+ *
+ * `onDispose` and `settings` are per module because the shared bag cannot say *which* module
+ * registered a disposer or asked for its group. The kernels are the ones the manifest named and no
+ * others — a module reaching for one it did not declare gets `undefined`, which is the cheapest
+ * possible way to be told to declare it.
+ */
+function depsFor(
+  definition: ModuleDefinition,
+  storeDeps: ModuleStoreDeps,
+  disposers: Array<() => void>,
+): ModuleStoreDeps {
+  const id = definition.manifest.id;
+  const secretKeys = new Set(
+    (definition.contributes?.settings ?? []).filter((s) => s.type === 'secret').map((s) => s.key),
+  );
+  const wanted = new Set(definition.manifest.requires?.kernels ?? []);
+  const kernels: ModuleStoreDeps['kernels'] = {};
+  for (const name of KERNEL_NAMES) {
+    if (!wanted.has(name)) continue;
+    const kernel = storeDeps.kernels[name];
+    if (kernel === undefined) continue;
+    (kernels as Record<string, unknown>)[name] = kernel;
+  }
+  // Presence publishes are checked against the declared shapes on the way through.
+  if (kernels.presence) {
+    const base = kernels.presence;
+    kernels.presence = {
+      peers: base.peers,
+      clearActivity: base.clearActivity,
+      setActivity: (activity) => {
+        checkActivity(id, activity);
+        base.setActivity(activity);
+      },
+    };
+  }
+  // One publisher at a time, and the registry is what knows who is publishing.
+  if (kernels.media) {
+    const base = kernels.media;
+    kernels.media = {
+      ...base,
+      publish: (stream) => {
+        notePublisher(id, stream);
+        base.publish(stream);
+      },
+    };
+  }
+  // A secret is this module's own agent-level value, reached here and only here.
+  if (wanted.has('secrets')) {
+    kernels.secrets = {
+      get: (key) => {
+        if (!secretKeys.has(key)) return undefined;
+        const value = readSettings(id)[key];
+        return typeof value === 'string' && value ? value : undefined;
+      },
+    };
+  }
+
+  return {
+    ...storeDeps,
+    onDispose: (fn) => disposers.push(fn),
+    state: markState,
+    action: markAction,
+    // Its own group, never the whole map — and never the secrets, which reach templates through the
+    // module's own chrome if they are here.
+    settings: () =>
+      Object.fromEntries(Object.entries(readSettings(id)).filter(([key]) => !secretKeys.has(key))) as Record<
+        string,
+        boolean | string | number
+      >,
+    kernels,
   };
 }
 
@@ -242,138 +483,100 @@ export const moduleRegistry = {
   /**
    * Register a module against this host.
    *
-   * Refuses loudly rather than half-mounting, mirroring `planQuery` / `planEphemeral`: a module whose
-   * declared backend or framework doesn't match would otherwise register components that fail at
-   * render time, far from the cause.
+   * Refuses loudly rather than half-mounting: a module whose declared backend, framework or kernel
+   * does not match would otherwise register chrome that fails at render time, far from the cause.
    */
-  register(
-    definition: ModuleDefinition,
-    host: { backend: string; framework: string },
-    storeDeps?: ModuleStoreDeps,
-  ): RegisterResult {
-    // Predicates are how existing data is found, so minting one outside the module's own subtree is
-    // not a bug to fix later — by the time it is noticed, data has been written under a name nobody
-    // can adjudicate. Refused at registration for the same reason an incompatible backend is.
-    const badPredicates = [
-      ...(definition.models ?? []).flatMap((model) =>
-        modulePredicateViolations(
-          definition.id,
-          getEntityPredicates(model as Parameters<typeof getEntityPredicates>[0]),
-        ),
-      ),
-      // Declared entities mint under the module's subtree by construction, so the only way a bad
-      // predicate enters is an explicit override — which exists precisely to name something the
-      // minting rule wouldn't, and therefore needs the same adjudication.
-      ...modulePredicateViolations(definition.id, Object.values(definition.entities?.predicates ?? {})),
-    ];
-    if (badPredicates.length) {
-      const problems = [
-        `declares predicates outside ${modulePredicatePrefix(definition.id)}: ${badPredicates.join(', ')}`,
-      ];
-      console.warn(`module "${definition.id}" not registered: ${problems[0]}`);
+  register(definition: ModuleDefinition, host: ModuleHostProfile, storeDeps?: ModuleStoreDeps): RegisterResult {
+    const refuse = (problems: string[]): RegisterResult => {
+      console.warn(`module "${definition.manifest?.id ?? '?'}" not registered: ${problems.join('; ')}`);
       return { registered: false, problems };
-    }
-
-    // A declared manifest is validated here, not when it is eventually compiled: `declare` runs on
-    // the first dataset switch, so a malformed manifest would otherwise register fine and fail far
-    // from the module that shipped it — and once user-authored manifests share this compile path,
-    // an unvalidated one is data corruption waiting on a typo.
-    if (definition.entities) {
-      const result = validateManifest(definition.entities.manifest);
-      if (!result.valid) {
-        const problems = result.errors.map((e) => `invalid entities manifest at ${e.path}: ${e.message}`);
-        console.warn(`module "${definition.id}" not registered: ${problems.join('; ')}`);
-        return { registered: false, problems };
-      }
-    }
+    };
 
     /*
-      Two ways a settings declaration is inert, and both are silent without this.
-
-      A `restrict` setting that defaults to `false` can never be true: restriction is an AND, so no
-      level can grant what the default withholds. And an `enum` with no options offers nothing to
-      pick. Reported rather than refused — a module is still worth having with one dud setting, and
-      taking the whole thing out of the app over a declaration mistake is the larger failure.
+      The pure half of the judgement — shape, predicates, manifest, inert declarations — lives in the
+      contract package as `lintModule`, so a module author gets the same sentences in a test before
+      there is a registry. Refusals refuse; warnings are reported and the module registers anyway,
+      since taking a module out of the app over an inert setting is the larger failure.
     */
-    for (const setting of definition.settings ?? []) {
-      if (setting.resolution === 'restrict' && setting.default === false) {
-        console.warn(
-          `module "${definition.id}" setting "${setting.key}" is restrict and defaults to false, so no level can ever turn it on`,
-        );
-      }
-      if (setting.type === 'enum' && !setting.options?.length) {
-        console.warn(`module "${definition.id}" setting "${setting.key}" is an enum with no options`);
+    const lint = lintModule(definition, { externalEntities: Object.keys(CORE_MANIFEST.entities) });
+    if (lint.problems.length) return refuse(lint.problems);
+    for (const warning of lint.warnings) console.warn(`module "${definition.manifest.id}": ${warning}`);
+
+    const { manifest, contributes } = definition;
+    const id = manifest.id;
+
+    for (const type of Object.keys(contributes?.activities ?? {})) {
+      const other = declaredActivities().get(type);
+      if (other && other.moduleId !== id) {
+        console.warn(`module "${id}" declares activity "${type}", already declared by "${other.moduleId}"`);
       }
     }
 
     const compatibility = checkModuleCompatibility(definition, host);
-    if (!compatibility.compatible) {
-      console.warn(`module "${definition.id}" not registered: ${compatibility.problems.join('; ')}`);
-      return { registered: false, problems: compatibility.problems };
-    }
+    if (!compatibility.compatible) return refuse(compatibility.problems);
 
-    if (modules.has(definition.id)) {
+    if (modules.has(id)) {
       // Idempotent: re-registering the same id replaces rather than duplicating, so a hot reload or a
       // double-init doesn't produce two of everything.
-      moduleRegistry.unregister(definition.id);
+      moduleRegistry.unregister(id);
     }
 
-    // Reactivity is lent by the host, so a module store never imports a framework. `onDispose` is
-    // added per module rather than living on the shared deps object, because the shared one cannot
-    // say *which* module registered a disposer — and running the wrong module's teardown is worse
-    // than running none.
     const disposers: Array<() => void> = [];
-    const store = storeDeps
-      ? definition.createStore?.({
-          ...storeDeps,
-          onDispose: (fn) => disposers.push(fn),
-          // Its own group, never the whole map: a module reads what it declared and has no business
-          // knowing what another one was configured with.
-          settings: () => readSettings(definition.id),
-        })
-      : undefined;
-    modules.set(definition.id, { definition, store, disposers });
-    if (store) moduleStores[definition.id] = store;
+    const store =
+      storeDeps && definition.createStore
+        ? definition.createStore(depsFor(definition, storeDeps, disposers))
+        : undefined;
+    const signal = storeDeps?.signal ?? plainSignal;
 
-    // Two registrations are needed for a module-owned entity, and missing either fails at a
-    // different moment: SDNA install (in `installSpaceSdna`) puts the *shape* in the perspective,
-    // while this puts the *class* where `record.create` / `$query` can resolve it by name. Without
-    // this one the panel renders and only writing a note fails.
-    for (const model of (definition.models ?? []) as EntityClass[]) {
-      registerEntity((model as unknown as { className: string }).className, model);
+    const panels = new Map<string, PanelControls>();
+    for (const panel of contributes?.panels ?? []) panels.set(panel.name, panelPlumbing(id, panel, store, signal));
+
+    modules.set(id, { definition, store, disposers, panels });
+    if (store) moduleStores[id] = store;
+
+    const holds = contributes?.holds;
+    for (const [index, slot] of (contributes?.slots ?? []).entries()) {
+      slotRegistry.register({ ...slot, node: gateOnSpace(id, slot.node, holds), id: `${id}:${index}` });
     }
 
-    for (const [index, slot] of (definition.slots ?? []).entries()) {
-      slotRegistry.register({
-        ...slot,
-        node: gateOnSpace(definition.id, slot.node, definition.holdsWhen),
-        // Namespaced, and indexed so one module can contribute more than one piece of chrome.
-        id: `${definition.id}:${index}`,
-      });
-    }
-
-    // Docks are registered twice on purpose, to two registries that answer different questions.
-    // `dockRegistry` holds the contribution so the shell can resolve its geometry and subtract it
-    // from the content viewport; `slotRegistry` renders the resulting frame, because once the host
-    // has wrapped it in a positioned box it is ordinary shell chrome and needs no second render
-    // path. The `dock:` id prefix keeps the two namespaces from colliding.
-    for (const [index, dock] of (definition.docks ?? []).entries()) {
-      // The declared name where there is one, so a module that adds a second panel does not
-      // renumber the first and throw away wherever anybody had dragged it.
-      const id = `${definition.id}:${dock.name ?? index}`;
-      dockRegistry.register({ ...dock, id, moduleId: definition.id });
+    /*
+      Panels are registered twice on purpose, to two registries that answer different questions.
+      `dockRegistry` holds the contribution so the shell can resolve its geometry and subtract it from
+      the content viewport; `slotRegistry` renders the resulting frame, because once the host has
+      wrapped it in a positioned box it is ordinary shell chrome. The `dock:` prefix keeps the two
+      namespaces from colliding.
+    */
+    for (const controls of panels.values()) {
+      const { panel, dockId } = controls;
+      const staticBid: PanelBid = typeof panel.bid === 'object' ? panel.bid : {};
+      const entry: DockEntry = {
+        id: dockId,
+        moduleId: id,
+        name: panel.name,
+        title: panel.title,
+        node: panel.node,
+        order: panel.order,
+        edge: 'edge',
+        size: 'size',
+        float: 'float',
+        min: 'min',
+        // Only where there may be one: the titlebar offers "fit to content" whenever this is set.
+        aspect: staticBid.aspect || typeof panel.bid === 'string' ? 'aspect' : undefined,
+        store: controls.store,
+        // The module's own close where it owns the flag; the host's where it does not. A panel that
+        // owns its flag and names no close gets no button, as before.
+        ...(controls.hostOwned
+          ? { closeAction: { $action: 'shellStore.closeModulePanel', args: [dockId] } }
+          : panel.close
+            ? { close: panel.close }
+            : {}),
+      };
+      dockRegistry.register(entry);
       slotRegistry.register({
         anchor: 'dock-right',
-        order: dock.order,
-        id: `dock:${id}`,
-        node: gateOnSpace(
-          definition.id,
-          dockFrame(
-            { ...dock, id, moduleId: definition.id },
-            suppliedOrOwn(definition.id, id, dock.name ?? String(index), dock.node),
-          ),
-          definition.holdsWhen,
-        ),
+        order: panel.order,
+        id: `dock:${dockId}`,
+        node: gateOnSpace(id, dockFrame(entry, suppliedOrOwn(id, dockId, panel.name, panel.node)), holds),
       });
     }
 
@@ -381,21 +584,7 @@ export const moduleRegistry = {
   },
 
   /**
-   * Anchors contributed to that no registered module provides.
-   *
-   * Reported rather than thrown, and checked after the whole seed has registered rather than per
-   * module, because contributing to an anchor before its provider registers is ordinary — seed order
-   * is alphabetical, not a dependency graph.
-   *
-   * It exists because the failure is otherwise invisible: chrome aimed at a missing anchor renders
-   * nowhere, which looks exactly like a module that is simply switched off. The same reason
-   * `activateSeedModules` reports ids this build does not contain.
-   */
-  /**
    * Say what each module's settings resolve to. Returns a function that takes it back.
-   *
-   * The counterpart of `DatasetStore.provideAutoInterpretGate`, and injected for the same reason —
-   * see `readSettings`.
    */
   provideSettings(reader: (group: string) => Record<string, SettingValue>): () => void {
     readSettings = reader;
@@ -405,57 +594,48 @@ export const moduleRegistry = {
   },
 
   /**
-   * Every registered module that declares settings, as a group a screen can render.
-   *
-   * A module's group id is its module id, and its label is the module's name — so a settings screen
-   * is built from what is installed rather than from a list somebody maintains, which is the
-   * registration step that otherwise fails silently.
+   * Every registered module that declares settings, as a group a screen can render. Built from what
+   * is installed rather than from a list somebody maintains.
    */
   settingGroups(): SettingGroup[] {
     return [...modules.values()]
-      .filter((entry) => entry.definition.settings?.length)
-      .map((entry) => ({
-        id: entry.definition.id,
-        label: entry.definition.name,
-        ...(entry.definition.description ? { description: entry.definition.description } : {}),
-        settings: entry.definition.settings ?? [],
+      .filter((entry) => entry.definition.contributes?.settings?.length)
+      .map(({ definition }) => ({
+        id: definition.manifest.id,
+        label: definition.manifest.name,
+        ...(definition.manifest.description ? { description: definition.manifest.description } : {}),
+        settings: definition.contributes?.settings ?? [],
       }));
   },
 
+  /**
+   * Anchors contributed to that no registered module provides. Checked after the whole seed has
+   * registered rather than per module, because seed order is a list, not a dependency graph.
+   */
   danglingAnchors(): string[] {
-    const provided = new Set([...modules.values()].flatMap(({ definition }) => definition.anchors ?? []));
+    const provided = new Set([...modules.values()].flatMap(({ definition }) => definition.contributes?.anchors ?? []));
     return slotRegistry.contributedAnchors().filter((anchor) => !provided.has(anchor));
   },
 
   unregister(id: string): void {
     const entry = modules.get(id);
     if (!entry) return;
-    for (const index of (entry.definition.slots ?? []).keys()) slotRegistry.remove(`${id}:${index}`);
-    for (const index of (entry.definition.docks ?? []).keys()) {
-      dockRegistry.remove(`${id}:${index}`);
-      slotRegistry.remove(`dock:${id}:${index}`);
+    const contributes = entry.definition.contributes;
+    for (const index of (contributes?.slots ?? []).keys()) slotRegistry.remove(`${id}:${index}`);
+    for (const { dockId } of entry.panels.values()) {
+      dockRegistry.remove(dockId);
+      slotRegistry.remove(`dock:${dockId}`);
     }
-    for (const model of (entry.definition.models ?? []) as EntityClass[]) {
-      unregisterEntity((model as unknown as { className: string }).className);
-    }
-    // Declared entities are compiled lazily and cached, so withdrawing a module has to drop both
-    // the resolvable classes and the cache — otherwise re-registering it would reuse classes
-    // compiled against the previous declaration.
-    for (const entityName of Object.keys(entry.definition.entities?.manifest.entities ?? {})) {
-      unregisterEntity(entityName);
-    }
+    // Declared entities are compiled lazily and cached, so withdrawing a module has to drop both the
+    // resolvable classes and the cache — and the block types registered over them.
+    for (const entityName of Object.keys(contributes?.entities?.manifest.entities ?? {})) unregisterEntity(entityName);
+    for (const block of contributes?.blocks ?? []) unregisterBlock(moduleBlockNodeType(block));
     compiledEntities.delete(id);
     delete moduleStores[id];
     modules.delete(id);
 
-    // Teardown last, and after the entry is gone: a disposer that throws must not leave a
-    // half-unregistered module in the map, and a disposer that re-enters `unregister` (a call
-    // module closing a session that fires a handler that unregisters) finds nothing to do rather
-    // than recursing.
-    //
-    // Reverse order because later teardown generally depends on earlier setup, and each is guarded
-    // because these close real devices: one throwing disposer must not be able to leave the camera
-    // on for the rest of them.
+    // Teardown last, after the entry is gone, in reverse order, each guarded: one throwing disposer
+    // must not be able to leave the camera on for the rest of them.
     for (const dispose of [...(entry.disposers ?? [])].reverse()) {
       try {
         dispose();
@@ -473,186 +653,193 @@ export const moduleRegistry = {
     return modules.has(id);
   },
 
+  all(): RegisteredModule[] {
+    return [...modules.values()];
+  },
+
+  // ── Panels ────────────────────────────────────────────────────────────────
+
+  /** The host's controls for one panel, by dock id (`<moduleId>:<name>`). */
+  panel(dockId: string): PanelControls | undefined {
+    const at = dockId.lastIndexOf(':');
+    if (at === -1) return undefined;
+    return modules.get(dockId.slice(0, at))?.panels.get(dockId.slice(at + 1));
+  },
+
+  /** Every panel a module contributes, in declaration order. */
+  panelsOf(moduleId: string): PanelControls[] {
+    return [...(modules.get(moduleId)?.panels.values() ?? [])];
+  },
+
   /**
-   * Which module supplies each contributed component, by component name.
-   *
-   * The lookup behind {@link moduleRegistry.requiredBy}: a template names components, not modules,
-   * so the only way to know a template depends on the globe module is to know that module is where
-   * `CesiumGlobe` comes from.
+   * A module's rail entries that are not a panel's — `contributes.launchers`, keyed the way the rail
+   * addresses them: the plain module id for one that names no key, `<moduleId>:<key>` otherwise.
    */
+  launchersOf(definition: ModuleDefinition): { key: string; launcher: ModuleLauncher }[] {
+    return (definition.contributes?.launchers ?? []).map((launcher) => ({
+      key: launcher.key ? `${definition.manifest.id}:${launcher.key}` : definition.manifest.id,
+      launcher,
+    }));
+  },
+
+  // ── Contributions, collected ──────────────────────────────────────────────
+
+  /** Which module supplies each contributed component, by component name. */
   componentProviders(): Map<string, string> {
     const providers = new Map<string, string>();
     for (const { definition } of modules.values()) {
-      for (const name of Object.keys(definition.components ?? {})) providers.set(name, definition.id);
+      for (const name of Object.keys(definition.contributes?.components ?? {}))
+        providers.set(name, definition.manifest.id);
     }
     return providers;
   },
 
   /**
-   * The modules a schema needs in order to render — derived from the components it actually mounts.
+   * The modules a schema needs in order to render — the ones it declares in `meta.requires.modules`,
+   * plus the ones providing the components it mounts.
    *
-   * This is what makes a capability module safe to switch off: without it, uninstalling the globe
-   * takes `CesiumGlobe` out from under whatever template mounts it and the route simply stops
-   * rendering, with nothing to say why. With it, the choice can be refused and the reason named.
+   * Both, because each misses what the other sees: a declaration catches every `modules.<id>.*`
+   * expression and `$part`, which no walk of component types can; the walk catches a component a
+   * template mounted without declaring anything. This is what makes a capability module safe to
+   * switch off, and what lets a deployment omitting a module see the reason instead of a blank panel.
    */
-  requiredBy(schema: SchemaNode): string[] {
+  requiredBy(schema: SchemaNode | TemplateSchema): string[] {
     const providers = this.componentProviders();
     const required = new Set<string>();
-    for (const name of collectComponentTypes(schema)) {
+    for (const name of collectComponentTypes(schema as SchemaNode)) {
       const moduleId = providers.get(name);
       if (moduleId) required.add(moduleId);
     }
+    for (const id of (schema as TemplateSchema).meta?.requires?.modules ?? []) required.add(id);
     return [...required];
   },
 
-  all(): RegisteredModule[] {
-    return [...modules.values()];
+  /** Components every registered module contributes, for the host's component registry. */
+  components(): Record<string, unknown> {
+    return Object.assign({}, ...moduleRegistry.all().map((m) => m.definition.contributes?.components ?? {}));
   },
 
-  /**
-   * Store members each module keeps for host chrome, keyed by module id.
-   *
-   * Read by `buildTemplateBag` when it assembles the space-tier `modules` namespace — see
-   * `ModuleStoreSurface` for why a module rather than the host declares this. Rebuilt on each call
-   * rather than memoised: modules register and unregister at runtime, and this is consulted once per
-   * bag construction, not per read.
-   */
-  /**
-   * A module's launchers, however it declared them.
-   *
-   * `launcher` and `launchers` concatenated rather than one superseding the other, so a module that
-   * grows a second entry point does not have to rewrite the first — and so every module that
-   * declares only the singular keeps behaving exactly as it did.
-   *
-   * The key is what the rail addresses: the plain module id for a launcher that names none, which
-   * is every module with one, and `<moduleId>:<key>` otherwise.
-   */
-  launchersOf(definition: ModuleDefinition): { key: string; launcher: ModuleLauncher }[] {
-    const all = [...(definition.launcher ? [definition.launcher] : []), ...(definition.launchers ?? [])];
-    return all.map((launcher) => ({
-      key: launcher.key ? `${definition.id}:${launcher.key}` : definition.id,
-      launcher,
-    }));
-  },
-
-  chromeOnlyStoreMembers(): Record<string, readonly string[]> {
-    const out: Record<string, readonly string[]> = {};
-    for (const { definition } of moduleRegistry.all()) {
-      if (definition.chromeOnlyStoreMembers?.length) out[definition.id] = definition.chromeOnlyStoreMembers;
+  /** Views modules contribute, keyed by id — beside the built-in catalogue in `availableViews`. */
+  views(): Record<string, TemplateSchema> {
+    // Every view here has an id and the right role: `lintModule` refused the module otherwise.
+    const out: Record<string, TemplateSchema> = {};
+    for (const { definition } of modules.values()) {
+      for (const view of definition.contributes?.views ?? []) out[view.id!] = view;
     }
     return out;
   },
 
   /**
-   * Components every registered module contributes, for the host's component registry.
-   *
-   * Most modules should contribute none: in a schema fragment `Column` is a registry key rather than
-   * an import, so fragments are framework-agnostic. Framework components are for imperative cores
-   * only.
+   * Which module contributed each view, by view id — so a space that has a module off can leave its
+   * section out, where `views()` alone could not say whose a section was.
    */
-  components(): Record<string, unknown> {
-    return Object.assign({}, ...moduleRegistry.all().map((m) => m.definition.components ?? {}));
+  viewOwners(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const { definition } of modules.values()) {
+      for (const view of definition.contributes?.views ?? []) out[view.id!] = definition.manifest.id;
+    }
+    return out;
   },
 
-  /**
-   * Entity types every registered module owns, for the host to install into a dataset.
-   *
-   * Collected here rather than installed per-module so idempotency lives in **one** place — WE
-   * already carries `cleanupSpaceSdna` as remediation for shapes installed twice by different
-   * agents, and N modules each rolling their own install is that bug with more instances.
-   */
-  models(): unknown[] {
-    return moduleRegistry.all().flatMap((m) => m.definition.models ?? []);
+  /** Functions modules lend to expressions, with the module that lent each. */
+  functions(): (ModuleFunction & { moduleId: string })[] {
+    return moduleRegistry
+      .all()
+      .flatMap(({ definition }) =>
+        (definition.contributes?.functions ?? []).map((fn) => ({ ...fn, moduleId: definition.manifest.id })),
+      );
   },
 
+  /** Content types modules contribute, with the module that owns each. */
+  blocks(): (BlockContribution & { moduleId: string })[] {
+    return moduleRegistry
+      .all()
+      .flatMap(({ definition }) =>
+        (definition.contributes?.blocks ?? []).map((block) => ({ ...block, moduleId: definition.manifest.id })),
+      );
+  },
+
+  /** Every declared presence activity, by type. */
+  activities(): Record<string, { moduleId: string; shape: ActivityShape }> {
+    return Object.fromEntries(declaredActivities());
+  },
+
+  /** What a person agrees to when they turn a module on. See `moduleCapabilities`. */
+  capabilitiesOf(id: string): string[] {
+    const entry = modules.get(id);
+    return entry ? moduleCapabilities(entry.definition) : [];
+  },
+
+  /** A module's public store members — what a space template may reach, and what the catalogue documents. */
+  storeSurface(id: string): ModuleStoreSurface {
+    return storeSurface(modules.get(id)?.store);
+  },
+
+  /** The same, for every registered module. Read by `buildTemplateBag`. */
+  storeSurfaces(): Record<string, ModuleStoreSurface> {
+    const out: Record<string, ModuleStoreSurface> = {};
+    for (const [id, entry] of modules) out[id] = storeSurface(entry.store);
+    return out;
+  },
+
+  // ── Entities ──────────────────────────────────────────────────────────────
+
   /**
-   * Every module-owned entity type in the form the backend installs — the union of modules that
-   * ship backend-written classes (`models`) and modules that *declare* theirs (`entities`).
-   *
-   * Declared entities are compiled through the backend's own schema port, so a module that
-   * declares rather than writes needs no knowledge of which backend is running. Results are
-   * memoised per module: install runs on every dataset switch, and compiling produces fresh
-   * classes each time, which would otherwise churn the model registry underneath live queries.
+   * Every module-owned entity type in the form the backend installs into a **space**. Compiled
+   * through the backend's own schema port, so a module needs no knowledge of which backend is running.
    */
   moduleSchemas(schemas: SchemaPort): unknown[] {
-    return [...moduleRegistry.models(), ...declaredEntities(schemas, 'space')];
+    return declaredEntities(schemas, 'space');
   },
 
   /**
-   * The same, for entities a module declared `scope: 'agent'` — installed into the **root dataset**
-   * rather than into every space.
-   *
-   * Separate from `moduleSchemas` rather than filtered by the caller, because the two go to
-   * different datasets and mixing them is the failure this split exists to prevent: an agent-scoped
-   * entity installed into a shared space would sync one person's private records to a whole
-   * community, and a space-scoped one installed into the root would be queryable nowhere useful.
-   *
-   * `models` are deliberately not offered here. They are backend-written classes, which predate
-   * the manifest path; a module wanting private per-agent storage declares its entities.
+   * The same, for entities a module declared `scope: 'agent'` — installed into the **root dataset**.
+   * Separate rather than filtered by the caller: an agent-scoped entity installed into a shared space
+   * would sync one person's private records to a whole community.
    */
   agentSchemas(schemas: SchemaPort): unknown[] {
     return declaredEntities(schemas, 'agent');
   },
 
   /**
-   * Every module-declared entity as a neutral manifest entry, whatever scope it installs into.
-   *
-   * What a `scope` drill-down is resolved against: an adapter looks the anchor up by name and reads
-   * the `via` relation's predicate. Module entities were in neither list the host merged — not
-   * foreign schemas, not core vocabulary — so a module declaring a relation and then drilling into
-   * it failed with "no such relation in the current perspective's model manifest", which is a true
-   * statement about a list it was never added to. The Pocket is the first module to have its own
-   * relation to drill through; every one before it anchored on core vocabulary and resolved by luck.
-   *
-   * Both scopes, deliberately. Which dataset an entity is *installed* into says nothing about where
-   * a query naming it runs from — the Pocket's panel reads the root dataset while a space is open,
-   * so filtering this list by scope would put its relations out of reach exactly when they are used.
+   * Every module-declared entity as a neutral manifest entry, whatever scope it installs into — what a
+   * `scope` drill-down is resolved against. Both scopes, because which dataset an entity is installed
+   * into says nothing about where a query naming it runs from.
    */
   entityEntries(schemas: SchemaPort): EntityManifestEntry[] {
-    return moduleRegistry.all().flatMap(({ definition }) =>
-      definition.entities
-        ? schemas.entries(definition.entities.manifest, {
-            moduleId: definition.id,
-            predicates: definition.entities.predicates,
-          })
-        : [],
-    );
+    return moduleRegistry.all().flatMap(({ definition }) => {
+      const entities = definition.contributes?.entities;
+      return entities
+        ? schemas.entries(entities.manifest, { moduleId: definition.manifest.id, predicates: entities.predicates })
+        : [];
+    });
   },
 
-  /**
-   * Every registered module that contributes an embedded application, in registration order.
-   *
-   * What used to be `appRegistry`. Embedded apps are modules whose contribution happens to be an
-   * iframe, so they arrive through the same registration, gating and refusal path as every other
-   * module rather than a parallel one.
-   */
+  /** Every registered module that contributes an embedded application, in registration order. */
   embeds(): RegisteredEmbed[] {
     return moduleRegistry
       .all()
-      .filter((m) => m.definition.embed)
+      .filter((m) => m.definition.contributes?.embed)
       .map(({ definition }) => ({
-        id: definition.id,
-        name: definition.name,
-        icon: definition.icon ?? '',
-        image: definition.embed!.image,
-        url: definition.embed!.url,
-        allow: definition.embed!.allow,
+        id: definition.manifest.id,
+        name: definition.manifest.name,
+        icon: definition.manifest.icon ?? '',
+        image: definition.contributes!.embed!.image,
+        url: definition.contributes!.embed!.url,
+        allow: definition.contributes!.embed!.allow,
       }));
   },
 
   /**
-   * Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide.
-   *
-   * Normalised: a part written as a bare node comes back as one with no subject, so a caller has one
-   * shape to handle rather than two. See `ModulePart` — the subject is what lets a placer point a
-   * part at a record the module never knew about.
+   * Named parts, keyed `<moduleId>.<name>` so two modules cannot collide. Normalised: a part written as
+   * a bare node comes back as one with no subject, so a caller has one shape to handle.
    */
-  schemas(): Record<string, { node: SchemaNode; subject?: string }> {
+  parts(): Record<string, { node: SchemaNode; subject?: string }> {
     const out: Record<string, { node: SchemaNode; subject?: string }> = {};
     for (const { definition } of moduleRegistry.all()) {
-      for (const [name, part] of Object.entries(definition.schemas ?? {})) {
+      for (const [name, part] of Object.entries(definition.contributes?.parts ?? {})) {
         const normalised = 'node' in part ? (part as { node: SchemaNode; subject?: string }) : { node: part };
-        out[`${definition.id}.${name}`] = normalised;
+        out[`${definition.manifest.id}.${name}`] = normalised;
       }
     }
     return out;

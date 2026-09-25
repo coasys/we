@@ -205,6 +205,38 @@
   }
 }
 
+// A composition drawn somewhere dense — a reply in a thread, where the reader is following a
+// conversation rather than reading a document.
+//
+// `.we-block-content`'s padding is a *document's*: every paragraph carries `--we-space-300` on all
+// four sides, which is what makes the hover highlight a comfortable block and the caret's line easy
+// to hit. In a thread it reads as a mistake — the words sit inset from the avatar above them, with
+// a blank band over and under each line, and a two-line reply takes the height of a card.
+//
+// So the compact variant takes the horizontal padding off entirely (the words align with the byline
+// beside them) and cuts the vertical to a quarter (the lines still breathe, and nothing overlaps).
+// The one thing it must not take is the inset a marker sits in: a bullet and a quote bar are drawn
+// by pseudo-elements positioned into that space, so both are restated below.
+//
+// Applied through `BlockRenderer`'s `rootClass`, which is what that prop is for. The graph card's
+// own override (`GraphView.scss`) is the same idea for the same reason — a canvas card is the other
+// dense context — and the two are kept apart deliberately: a card clips at five lines and scales its
+// whole content, where a thread wraps and does not.
+.we-block-content--compact {
+  :is(.we-block, p, h1, h2, h3, blockquote, .we-list-item) {
+    padding: var(--we-space-100) 0;
+  }
+
+  // The markers' room, given back: `::before` is positioned at `left: 10px` in both.
+  :is(blockquote, .we-list-item) {
+    padding-left: 30px;
+  }
+
+  .we-list-item::before {
+    top: var(--we-space-100);
+  }
+}
+
 // A composition this build cannot decode. The same treatment as an unknown block, because it is
 // the same statement — something is here and we cannot draw it — one level up.
 .we-unreadable-content {
@@ -223,9 +255,16 @@
   > h3:hover,
   > blockquote:hover,
   > .we-list-item:hover,
-  > .we-block:hover {
+  > .we-block:hover,
+  > we-draggable > .we-block-draggable:hover > :is(p, h1, h2, h3, blockquote, .we-list-item, .we-block) {
     background-color: var(--we-color-neutral-75);
   }
+}
+
+// A block that can be picked up on its own — see `DraggableBlock` in BlockRenderer.tsx. Focusable
+// only programmatically (tabindex -1), so a click that focuses it draws no ring.
+.we-block-draggable:focus {
+  outline: none;
 }
 
 // Collection block wrapper — provides CSS custom properties to the nested content and an outline

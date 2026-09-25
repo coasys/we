@@ -121,7 +121,7 @@ export const consentPrompt: SchemaNode = confirmModal({
   ],
   cancelLabel: 'Deny',
   confirmLabel: 'Approve',
-  busy: { $: 'runtimeStore.loading' },
+  busy: { $: "'approveConsent' in runtimeStore.pending" },
   confirm: { $action: 'runtimeStore.approveConsent' },
 });
 

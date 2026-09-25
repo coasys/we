@@ -293,6 +293,7 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
   }
   if (style.borderColor !== undefined) visual.borderColor = style.borderColor;
   if (style.borderWidth !== undefined) visual.borderWidth = style.borderWidth;
+  if (style.borderStyle !== undefined) visual.borderStyle = style.borderStyle;
   if (style.opacity !== undefined) visual.opacity = style.opacity;
   if (style.icon !== undefined) visual.icon = style.icon;
   if (style.image !== undefined) visual.image = style.image;
@@ -302,7 +303,7 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
   if (node.unresolved) {
     visual.opacity = visual.opacity ?? 0.45;
     visual.borderWidth = visual.borderWidth ?? 1;
-    visual.borderColor = visual.borderColor ?? 'neutral-400';
+    visual.borderColor = visual.borderColor ?? 'border-strong';
   }
   return visual;
 }

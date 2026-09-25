@@ -108,6 +108,23 @@ defineFunction({
   impl: ([items]) => asList(items).length,
 });
 
+/*
+  `sum` exists for the same reason `count` does, one question along: "how many" has an answer in this
+  library and "how much" did not, so anything totalling a list — a thread's replies across its
+  levels, votes, a column of numbers a model wrote — had to be a host function or a number the
+  template could not say. It is deliberately the only arithmetic over a list: an `average` is
+  `sum(xs) / count(xs)`, and a `reduce` would be the grammar growing, which is the thing this layer
+  refuses.
+*/
+defineFunction({
+  name: 'sum',
+  category: 'list',
+  params: ['items'],
+  doc: 'The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.',
+  example: 'sum(local.replies.map(r, count(r.comments)))',
+  impl: ([items]) => asList(items).reduce((total: number, value) => total + asNumber(value), 0),
+});
+
 defineFunction({
   name: 'first',
   category: 'list',
@@ -127,6 +144,17 @@ defineFunction({
     const list = asList(items);
     return list[list.length - 1];
   },
+});
+
+defineFunction({
+  name: 'reverse',
+  category: 'list',
+  params: ['items'],
+  doc:
+    'The entries of a list, back to front. A new list — the one given is untouched, so a store array ' +
+    'or a query result can be reversed without disturbing anything else reading it.',
+  example: 'reverse(local.utterances)',
+  impl: ([items]) => [...asList(items)].reverse(),
 });
 
 defineFunction({
@@ -195,6 +223,19 @@ defineFunction({
     asList(items)
       .map(asText)
       .join(separator === undefined ? ', ' : asText(separator)),
+});
+
+defineFunction({
+  name: 'split',
+  category: 'list',
+  params: ['text', 'separator?'],
+  doc: "The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.",
+  example: 'split(routeStore.params.hide).filter(k, k != kind)',
+  impl: ([text, separator]) =>
+    asText(text)
+      .split(separator === undefined ? ',' : asText(separator))
+      .map((piece) => piece.trim())
+      .filter(Boolean),
 });
 
 // ── Text ────────────────────────────────────────────────────────────────────

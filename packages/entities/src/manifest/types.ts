@@ -103,19 +103,22 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   description: string;
   version: number;
   textContent: string;
+  sourceRef: string;
+  sourceName: string;
   children: string[];
   arranges: string[];
   gathers?: string;
   board?: CollectionBlockRecord;
   extractionPasses: string[];
   extracted: string[];
+  amendments: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   setChildren(values: (string | { id: string })[], batch?: string): Promise<unknown>;
   addArranges(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeArranges(value: string | { id: string }, batch?: string): Promise<unknown>;
   setArranges(values: (string | { id: string })[], batch?: string): Promise<unknown>;
-  setBoard(value: CollectionBlockRecord): Promise<unknown>;
+  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface DividerBlockRecord extends WeNodeRecord {
@@ -136,6 +139,8 @@ export interface EmbedBlockRecord extends WeNodeRecord {
   targetType: string;
   label: string;
   thumbnail: string;
+  sourceAuthor: string;
+  sourceName: string;
   displayMode: string;
   version: number;
 }
@@ -149,7 +154,7 @@ export interface EventBlockRecord extends WeNodeRecord {
   allDay: boolean;
   version: number;
   location?: LocationBlockRecord;
-  setLocation(value: LocationBlockRecord): Promise<unknown>;
+  setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface FileBlockRecord extends WeNodeRecord {
@@ -302,14 +307,14 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
+  threadMode: string;
   moduleSettings: string;
-  shareExtractionDetail: boolean;
   location?: LocationBlockRecord;
   board?: CollectionBlockRecord;
   taskStates: string[];
   typeStyles: string[];
-  setLocation(value: LocationBlockRecord): Promise<unknown>;
-  setBoard(value: CollectionBlockRecord): Promise<unknown>;
+  setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
+  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   setTaskStates(values: (string | { id: string })[], batch?: string): Promise<unknown>;
@@ -405,6 +410,14 @@ export interface ThemeRecord extends WeNodeRecord {
   addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+}
+
+export interface ExtractionAmendmentRecord extends RecordInstance {
+  property: string;
+  previousValue: string;
+  newValue: string;
+  nodeType: string;
+  node?: string;
 }
 
 export interface ExtractionPassRecord extends RecordInstance {

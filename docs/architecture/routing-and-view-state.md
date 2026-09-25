@@ -35,6 +35,15 @@ on the way out (Solid Router does not decode route params), where a mismatch is
 another silently wrong page. A query value takes `:` and `/` literally. Read it
 with `routeStore.params.id`. See `views/RecordPage`.
 
+**A set of ids lives there too, comma-joined.** The workshop canvas holds the
+cards a reader has _folded_ in `?fold=`, and the kinds they have put away in
+`?hide=`. Safe because a record id is a URI and a URI carries no comma, so
+`split()` reverses `join()` exactly — and worth doing because a fold is an
+arrangement of what you are reading: a canvas somebody tidied and sent should
+arrive tidied, and a reload should not undo it. Note the alternative in that
+case was a field on the shared record, which would have made one reader's fold
+everybody's; see `FOLD_PARAM` in `WorkshopKey.ts`.
+
 **2. View state — how it's arranged → query params, via `syncParam`.**
 Selected content type, sort field/direction, active filters, search text: the
 things a link's recipient should see exactly as the sender does. Declared on

@@ -1,5 +1,5 @@
 import { activitiesOfType } from '@we/backend-shared';
-import type { ModuleStoreDeps } from '@we/module-shared';
+import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
@@ -7,11 +7,76 @@ import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 /**
  * How eagerly the backend closes an utterance.
  *
- * Deliberately less twitchy than the preview settings Flux runs alongside its main stream: this is
- * the transcript of record, so it would rather wait and be right. A second, faster stream for live
- * word-by-word feedback is a later addition and does not change anything here.
+ * This is the transcript of record, so it would rather wait and be right. On AD4M it is currently
+ * inert — the executor applies its own fixed voice-activity gate and ignores what it is sent — and
+ * the segmenting that actually decides an utterance is the worklet's, tuned by `VAD` below. Kept so
+ * the intent survives into a backend that honours it.
+ *
+ * There is no second, faster preview stream beside this one, and that is a decision rather than a
+ * gap. Flux runs one, but since utterances are cut on the client both streams receive the same
+ * finished utterance, so a preview arrives only a moment before the real line — at the cost of a
+ * second model competing for the same CPU and no way to match a preview to the line that replaces
+ * it. `transcribing` says "heard, working on it" instead, for nothing.
  */
 const TUNING = { startThreshold: 0.8 };
+
+/** How often the model list is re-read while a download runs, or while recording waits for one. */
+const MODEL_POLL_MS = 3_000;
+
+/**
+ * How long an utterance may be in the backend before `transcribing` stops claiming it is coming.
+ *
+ * Not every utterance produces text: the backend drops one its own voice gate rejects, and Whisper
+ * returns nothing for a cough. Nothing reports those, so a count of utterances awaiting text never
+ * reaches zero on its own. A grace beyond the utterance's own length — a model on a CPU takes
+ * roughly as long as the audio — is what ends the claim.
+ */
+const TRANSCRIBING_GRACE_MS = 5_000;
+
+/**
+ * How long to wait before each attempt to re-establish a dropped stream.
+ *
+ * A single retry was the whole recovery once, and it is not enough against a node reached over the
+ * network: every utterance is an HTTP request carrying up to a minute of audio, so a dropped
+ * connection, a proxy hiccup or a node with its hands full is ordinary rather than exceptional. One
+ * of those ended recording for the rest of the call, and the person it happened to had no way to
+ * know except to notice the transcript had stopped — the panel is rarely on screen, and the record
+ * button stayed lit.
+ *
+ * Six attempts across roughly a minute, starting immediately because the common case is a blip that
+ * is already over. The backoff is what keeps a node that is genuinely struggling from being asked
+ * once a second by every member of the call at once.
+ */
+const RECONNECT_DELAYS_MS = [0, 1_000, 3_000, 8_000, 15_000, 30_000];
+
+/**
+ * How much unsent speech is kept while the stream is down — 60 s, at the 16 kHz the worklet sends.
+ *
+ * Somebody talking through a reconnection is the case this exists for: their words are held and land
+ * in the transcript once it is back, in the order they were said. Bounded because a reconnection
+ * that never succeeds must not grow without limit, and the *oldest* is dropped first — the longer an
+ * outage runs, the more the recent speech is the part still worth having.
+ */
+const MAX_HELD_SAMPLES = 16_000 * 60;
+
+/**
+ * How many freshly-opened streams may refuse the same utterance before it is dropped.
+ *
+ * Not every failure is about the stream. An utterance too large for whatever proxy fronts the node
+ * is refused on its own merits, and resending it is what the first version of this did — for ever,
+ * until it gave up and stopped the session. One bad utterance must cost one utterance.
+ *
+ * Counted only against a stream that was *just opened successfully*, so this cannot fire while the
+ * node is simply unreachable: an open that fails never reaches the send, and the count never moves.
+ * Two, because one refusal is not evidence and the second one is.
+ */
+const REFUSALS_BEFORE_DROPPING = 2;
+
+/** A download size as a person reads it — "970 MB", "1.5 GB". */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  return `${Math.max(10, Math.round(bytes / 1e7) * 10)} MB`;
+}
 
 /**
  * Characters of transcript held before writing a block.
@@ -25,6 +90,35 @@ const MAX_CHARS = 1000;
 
 /** Silence after which whatever has accumulated is written, so a short remark is not held forever. */
 const FLUSH_AFTER_MS = 3_000;
+
+/**
+ * How many lines a transcript opens with.
+ *
+ * Small, and smaller than it was. The figure used to be the same as the growth step below, and was
+ * argued for on the grounds that a reader scrolling back a little should never meet a button —
+ * which stopped being a reason the moment there was no button: earlier lines now load as the reader
+ * reaches them. What is left is the cost of opening, and that is paid by everybody on every call.
+ *
+ * Two hundred rows arriving at once is also a hundred-odd custom elements laying out in one pass,
+ * which is what made the panel open a couple of lines short of the bottom — see `SETTLE_MS` in
+ * `we-scroll-area`. That has its own fix, and this makes the case rarer as well as cheaper.
+ */
+const TRANSCRIPT_FIRST_PAGE = 50;
+
+/**
+ * How many more lines each load adds.
+ *
+ * Deliberately larger than the first page, and the asymmetry is the point. The window grows by
+ * re-running the query at a bigger `limit` rather than by fetching a page and appending — the
+ * backend has no cursor and a module's data surface is write-only, so there is nowhere to
+ * accumulate pages. That makes reading backwards quadratic in the number of loads: at fifty a step,
+ * reaching a thousand lines fetches ten and a half thousand rows across twenty re-renders; at two
+ * hundred it fetches three thousand across five.
+ *
+ * So the two numbers answer different questions. The first page is how much opening costs, and
+ * wants to be small. The step is how much scrolling back costs, and wants to be large.
+ */
+const TRANSCRIPT_PAGE = 200;
 
 /** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
 export const CHILDREN_PREDICATE = 'we://children';
@@ -93,6 +187,8 @@ export type ExtractStatus = 'idle' | 'running' | 'done' | 'error';
 export interface ProposalField {
   /** The model's own property name — what an edit writes to, so it must not be prettified. */
   name: string;
+  /** The name for a person to read — `dueDate` as "Due date". Derived, since a proposal carries no labels. */
+  label: string;
   /** Ready to print: stringified and bounded. See {@link MAX_SUMMARY_VALUE}. */
   value: string;
 }
@@ -165,7 +261,21 @@ const cut = (text: string, limit: number) => (text.length > limit ? `${text.slic
 function fieldsOf(values: Record<string, unknown>): ProposalField[] {
   const named = SUMMARY_FIELDS.filter((field) => values[field] !== undefined && values[field] !== '');
   const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
-  return [...named, ...rest].map((name) => ({ name, value: cut(String(values[name]), MAX_SUMMARY_VALUE) }));
+  return [...named, ...rest].map((name) => ({
+    name,
+    label: labelOf(name),
+    value: cut(String(values[name]), MAX_SUMMARY_VALUE),
+  }));
+}
+
+/** `dueDate` → "Due date". A proposal names fields as the model does; a change line is read by a person. */
+function labelOf(name: string): string {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words ? words[0].toUpperCase() + words.slice(1) : name;
 }
 
 function summarise(fields: ProposalField[]): string {
@@ -226,7 +336,21 @@ const METER_SCALE = 400;
 /** Clamped so a shout does not overflow the bar, and rounded so the width does not jitter. */
 const asPercent = (value: number) => `${Math.min(100, Math.round(value * METER_SCALE))}%`;
 
-export type TranscribeStatus = 'idle' | 'no-backend' | 'no-model' | 'no-audio' | 'starting' | 'listening' | 'error';
+/**
+ * What the session is doing. `downloading` is recording that wants to run and is waiting for a
+ * model's weights to arrive — distinct from `starting`, which is seconds, where this can be minutes.
+ */
+export type TranscribeStatus =
+  'idle' | 'no-backend' | 'no-model' | 'no-audio' | 'downloading' | 'starting' | 'listening' | 'error';
+
+/**
+ * What is known about the models this node has, independent of whether anything is recording.
+ *
+ * Separate from the status because the panel needs it when nothing is: an auto-join that found no
+ * model gives up silently and lands on `idle`, and a panel opened outside a call has never asked —
+ * yet both are exactly where somebody would want the one-click install.
+ */
+type ModelState = 'unknown' | 'none' | 'downloading' | 'ready';
 
 /** What the worklet posts. Tagged, because it reports both what it heard and how loud things are. */
 type WorkletMessage = { kind: 'utterance'; audio: Float32Array } | { kind: 'level'; rms: number; speaking: boolean };
@@ -246,10 +370,18 @@ type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { 
  *
  * ## What it listens to
  *
- * The call's own microphone, borrowed through `deps.audioInput` rather than opened here. That is
- * what makes muting the call stop the transcript: a muted track is disabled rather than removed, so
- * the worklet receives silence, the VAD never fires, and nothing is produced. A second
- * `getUserMedia` would have kept listening through the mute.
+ * The call's own microphone, borrowed through the `media` kernel (`deps.kernels.media.input`) rather
+ * than opened here. That is what makes muting the call stop the transcript: a muted track is
+ * disabled rather than removed, so the worklet receives silence, the VAD never fires, and nothing is
+ * produced. A second `getUserMedia` would have kept listening through the mute.
+ *
+ * ## What is public
+ *
+ * Members are private to this module's own chrome unless marked with `deps.state` or `deps.action`
+ * — see `store.ts` in `@we/module-shared`. Everything a template can reasonably want is marked: the
+ * transcript's live state, the recording controls, the extraction surface and the review actions.
+ * What stays unmarked is plumbing a test or the port feeds (`receiveText`, `markUtteranceSent`,
+ * `stopNow`), which no template has any business calling.
  *
  * ## What it writes
  *
@@ -281,22 +413,34 @@ type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { 
  * are attached to a valid record) and dedupable on read. The simple version ships first.
  */
 export function createTranscribeStore(deps: ModuleStoreDeps) {
-  const {
-    signal,
-    effect,
-    audioInput,
-    transcription,
-    interpretation,
-    settings,
-    createEntity,
-    linkEntity,
-    updateEntity,
-    dataset,
-    presence,
-    selfId,
-    notify,
-    onDispose,
-  } = deps;
+  const { signal, effect, settings, dataset, selfId, notify, onDispose, state, action } = deps;
+  /*
+    The kernels this module declared in `manifest.requires.kernels`, and no others. Each may still be
+    absent — a host that implements none of one refuses the module at registration, but a test, or a
+    host between boot and bind, hands over a partial bag — so everything below degrades rather than
+    throws when one is missing, exactly as it did when these were optional fields on the bag.
+  */
+  const { records, presence, media, transcription, interpretation } = deps.kernels;
+  /*
+    The three record writes, as the local names the rest of this file was written against.
+
+    Wrapped rather than detached: a kernel is an interface of function-typed members, and nothing
+    says the host's implementation does not read `this`. Feature-tested per member rather than per
+    kernel, the way every `interpretation` call below is — a host lending a records kernel with no
+    `update` is a host with no record-update surface, and `canEditProposals` and `editUtterance`
+    have to read it that way rather than throw. `undefined` where a member is missing, so every
+    `createEntity?.(…)` below keeps its meaning.
+  */
+  const createEntity: RecordsKernel['create'] | undefined =
+    typeof records?.create === 'function' ? (...args) => records.create(...args) : undefined;
+  const linkEntity: RecordsKernel['link'] | undefined =
+    typeof records?.link === 'function' ? (...args) => records.link(...args) : undefined;
+  const updateEntity: RecordsKernel['update'] | undefined =
+    typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
+  const findEntity: RecordsKernel['find'] | undefined =
+    typeof records?.find === 'function' ? (...args) => records.find(...args) : undefined;
+  /** What some module is capturing right now, or `null` — the call's microphone, in practice. */
+  const audioInput = typeof media?.input === 'function' ? () => media.input() : undefined;
 
   const [status, setStatus] = signal<TranscribeStatus>('idle');
   /** Whether we are recording. Independent of the panel — see the two toggles at the bottom. */
@@ -312,6 +456,47 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * panel again with two titlebars.
    */
   const [extractionOpen, setExtractionOpen] = signal(false);
+
+  /*
+    How much of the transcript is loaded, and which end it is anchored to.
+
+    A transcript is two documents with opposite anchors. **Live**, it is a tail: what matters is the
+    last thing said, it grows at the bottom, and reading back a little is an excursion. **Afterwards**
+    it is a document: it has a beginning, and somebody reads it forwards. One window cannot serve both
+    — anchored to the end you cannot reach the start without loading everything in between, and
+    anchored to the start you are not following the call.
+
+    So the window names its anchor, and the two modes are the same query with the order flipped:
+    `desc` + reverse for the tail, `asc` for the document. Either way `shown` bounds it, which is the
+    whole point — before this the query had no limit at all and every utterance re-fetched, re-hydrated
+    and re-fingerprinted the entire transcript, so the cost of saying one more word grew with
+    everything already said.
+
+    In the store rather than `$localState` because `transcriptLines` is placed as a part on its own,
+    while `pin` lives on the scroll area *around* it — two nodes that have to agree, with no common
+    local scope. See `transcriptFeed`.
+  */
+  const [transcriptShown, setTranscriptShown] = signal(TRANSCRIPT_FIRST_PAGE);
+  const [transcriptFromStart, setTranscriptFromStart] = signal(false);
+
+  /*
+    A different conversation is a different document, so the window starts again: one page, anchored
+    to the live end.
+
+    Without this it is a high-water mark across calls — read six hundred lines of one conversation
+    and the next opens by loading six hundred of its own, which is the cost the window exists to
+    bound, arriving one call late. Compared rather than written blind so this does not fight a reader
+    who has just pressed for more in the call they are already in.
+  */
+  let windowedCall: string | null = null;
+  effect?.(() => {
+    const record = deps.callOnScreen?.() ?? null;
+    if (record === windowedCall) return;
+    windowedCall = record;
+    setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
+    setTranscriptFromStart(false);
+  });
+
   const [error, setError] = signal<string>('');
   /** What has been heard but not yet written — shown live, so the user can see it working. */
   const [pending, setPending] = signal<string>('');
@@ -471,6 +656,32 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * would spin against each other for the length of the call.
    */
   const [autoJoinFailed, setAutoJoinFailed] = signal(false);
+  /** See {@link ModelState}. Updated by every read of the model list, whoever made it. */
+  const [modelState, setModelState] = signal<ModelState>('unknown');
+  /** The most advanced download's progress, 0–100, or null when the backend reports none. */
+  const [modelProgress, setModelProgress] = signal<number | null>(null);
+  /** A one-click install is registering its model — seconds, before the download itself begins. */
+  const [installingModel, setInstallingModel] = signal(false);
+  const [installError, setInstallError] = signal('');
+  /**
+   * Utterances handed to the backend that have not produced text yet, as far as anyone can tell.
+   *
+   * What `transcribing` reads. A count rather than a flag because speech does not wait: somebody who
+   * says two things in a row has two in flight, and the first line landing does not mean the second
+   * has. Approximate by necessity — see {@link TRANSCRIBING_GRACE_MS}.
+   */
+  const [inFlight, setInFlight] = signal(0);
+  /**
+   * The stream is gone and a new one is being opened in its place.
+   *
+   * Public, and said out loud in the panel, because this is the one state where the microphone is
+   * live and the words are going nowhere yet. Silence here is what made a dropped stream read as a
+   * working session that had stopped hearing anything.
+   */
+  const [reconnecting, setReconnecting] = signal(false);
+  let inFlightTimer: ReturnType<typeof setTimeout> | null = null;
+  let inFlightDeadline = 0;
+  let modelPoll: ReturnType<typeof setTimeout> | null = null;
 
   let context: AudioContext | null = null;
   let node: AudioWorkletNode | null = null;
@@ -864,6 +1075,51 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   const pendingIds = (): string[] => allProposals().map((p) => p.id);
 
+  /**
+   * Records a pass **made** that nobody has kept yet — `create` proposals, by id.
+   *
+   * The narrower half of {@link pendingIds}, and the one that means "not agreed". The record is in the
+   * graph from the moment the pass ran, so it is drawn wherever records of its kind are; whether it
+   * should look provisional, or be shown at all, is this question.
+   */
+  const unconfirmedIds = (): string[] =>
+    allProposals()
+      .filter((p) => p.kind === 'create')
+      .map((p) => p.id);
+
+  /**
+   * Agreed records a pass has **suggested changing** — `update` proposals, by id.
+   *
+   * The other half, and never provisional: the record is somebody's, the executor would not overwrite
+   * what a person owns, so it staged the change beside it instead. A surface marks these rather than
+   * fading them, and a "hide suggestions" never hides one.
+   */
+  const changedIds = (): string[] =>
+    allProposals()
+      .filter((p) => p.kind === 'update')
+      .map((p) => p.id);
+
+  /**
+   * Take one resolved field off a suggestion, and the suggestion with it once nothing is left.
+   *
+   * Locally rather than by re-reading, for `forgetProposal`'s reason. Fields a surface never showed
+   * — a proposed value equal to what the record already holds — stay on the row, so the record keeps
+   * its marker until the whole suggestion is applied or dismissed; see `applyAllChanges`.
+   */
+  function forgetField(id: string, field: string): void {
+    const next: Record<string, ProposalView[]> = {};
+    for (const [key, rows] of Object.entries(proposalsByCall())) {
+      next[key] = rows
+        .map((p) => {
+          if (p.id !== id) return p;
+          const fields = p.fields.filter((f) => f.name !== field);
+          return { ...p, fields, summary: summarise(fields) };
+        })
+        .filter((p) => p.fields.length > 0);
+    }
+    setProposalsByCall(next);
+  }
+
   /** Drop a resolved suggestion from wherever it was listed — see `acceptProposal`. */
   function forgetProposal(id: string): void {
     const next: Record<string, ProposalView[]> = {};
@@ -878,6 +1134,116 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * rendered under is not something the action is told.
    */
   const allProposals = (): ProposalView[] => Object.values(proposalsByCall()).flat();
+
+  /**
+   * The predicate `CollectionBlock.amendments` is written under. See `ExtractionAmendment`.
+   *
+   * Spelled here rather than derived, the same way {@link OVERLAY_KIND_PREDICATE} is in the adapter:
+   * the records kernel parents by predicate, and a module cannot ask the manifest what a relation's
+   * predicate is without importing the entity layer it is deliberately not coupled to.
+   */
+  const AMENDMENT_PREDICATE = 'we://extraction_amendment';
+
+  /**
+   * The record a change is about, as it stands *before* the change is applied.
+   *
+   * Read rather than taken from the card, although the card has it on screen: the panel holds it
+   * only because it happens to be rendering a diff, and the "Accept all" path goes through
+   * `acceptProposal`, which is also how a whole *create* is kept and knows nothing about diffs.
+   * One read here answers for both, and neither action's signature has to grow a parameter whose
+   * correctness depends on a schema passing the right expression.
+   *
+   * Timing is the whole point and there is no second chance at it: `accept` overwrites the value,
+   * so the last moment the old one exists is before the call that discards it. Hence read-then-accept
+   * rather than the other order, and hence this being worth a round trip at all.
+   *
+   * Never throws, and answers `null` for every way of not knowing — no records kernel, an
+   * unclassified proposal, a record that has since been deleted, a failed read. A null means the
+   * amendments simply are not written: losing the log is a smaller harm than a suggestion somebody
+   * pressed accept on not being applied, which is what letting this fail would cost.
+   */
+  async function readBeforeChange(proposal: ProposalView): Promise<Record<string, unknown> | null> {
+    if (!findEntity || !proposal.entity) return null;
+    try {
+      const rows = await findEntity(proposal.entity, { where: { id: proposal.id }, limit: 1 }, callTarget());
+      return (rows?.[0] as Record<string, unknown> | undefined) ?? null;
+    } catch (error) {
+      console.warn('transcribe: could not read the record a change is about —', error);
+      return null;
+    }
+  }
+
+  /**
+   * Write down the changes that were just accepted, one record per property.
+   *
+   * ## Why after the accept rather than as part of it
+   *
+   * The accept is the thing somebody asked for; this is the account of it. Written first, a failed
+   * accept would leave a log claiming a change that never happened — the one error this cannot be
+   * allowed to make, because the log's whole purpose is to be believed about what is in the record.
+   * Written after and failing, the change is applied and unrecorded, which is exactly where this
+   * started and no worse.
+   *
+   * ## Why unchanged values are skipped
+   *
+   * A staged update carries every value the pass proposed, including ones equal to what the record
+   * already held — the panel filters those out of the diff for the same reason. Keeping them would
+   * fill the log with "Fri → Fri" rows and bury the two lines somebody actually decided.
+   *
+   * `before` being null is not the same as a record with no values: the previous values could not be
+   * read at all, so nothing here can honestly say what changed. Nothing is written, rather than a
+   * row per property claiming it came from nothing.
+   */
+  async function recordAmendments(
+    proposal: ProposalView,
+    names: string[],
+    before: Record<string, unknown> | null,
+    /**
+     * What was typed into the card instead of what the pass proposed, where somebody edited it.
+     *
+     * No surface offers this today — the pencil is on a *suggestion*, and this only ever runs for a
+     * change — so it is here to keep the function honest rather than to serve a caller. A log that
+     * records a value nobody chose is the one mistake worth pre-empting in something whose whole job
+     * is to be believed.
+     */
+    edited: Record<string, string> | null = null,
+  ): Promise<void> {
+    const collection = targetCollection();
+    if (!createEntity || !collection || !before) return;
+    for (const name of names) {
+      const field = proposal.fields.find((f) => f.name === name);
+      if (!field) continue;
+      const held = before[name];
+      // Absent and empty are one case here: both read as "nothing there before", which is what a
+      // property being filled in for the first time is, and it is the common amendment.
+      const previousValue = held === undefined || held === null ? '' : String(held);
+      const newValue = edited?.[name] ?? field.value;
+      if (previousValue === newValue) continue;
+      try {
+        await createEntity(
+          'ExtractionAmendment',
+          {
+            property: name,
+            previousValue,
+            newValue,
+            nodeType: proposal.entity,
+            // A to-one relation, written as the single-entry list the model layer takes.
+            node: [proposal.id],
+          },
+          {
+            // Parented on creation, as every other write here is: unparented then linked leaves a
+            // window in which a crash orphans the record into the space.
+            parent: { id: collection, predicate: AMENDMENT_PREDICATE },
+            // The call's space, exactly as the accept just used — a call outlives the space on screen.
+            ...callTarget(),
+          },
+        );
+      } catch (error) {
+        // One property's log, not the accept and not the others. See the docblock.
+        console.warn(`transcribe: applied the change to "${name}" but could not record it —`, error);
+      }
+    }
+  }
 
   /*
     Re-read the staged suggestions whenever a pass settles — anybody's, not just a press of ours.
@@ -1124,7 +1490,106 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     }
   }
 
+  /** Forget every utterance in flight — the session ended, or the grace ran out. */
+  function clearInFlight(): void {
+    if (inFlightTimer) clearTimeout(inFlightTimer);
+    inFlightTimer = null;
+    inFlightDeadline = 0;
+    setInFlight(0);
+  }
+
+  /**
+   * An utterance has gone to the backend. It counts as being transcribed until text arrives or its
+   * grace runs out, and the grace is the longest any utterance in flight has asked for — so a short
+   * remark sent after a long one does not cut the long one's claim short.
+   */
+  function noteFed(samples: number): void {
+    const durationMs = (samples / 16_000) * 1000;
+    inFlightDeadline = Math.max(inFlightDeadline, Date.now() + durationMs + TRANSCRIBING_GRACE_MS);
+    setInFlight(inFlight() + 1);
+    if (inFlightTimer) clearTimeout(inFlightTimer);
+    inFlightTimer = setTimeout(clearInFlight, Math.max(0, inFlightDeadline - Date.now()));
+  }
+
+  /**
+   * Read the model list and record what it says, for the panel as much as for `start`.
+   *
+   * Swallows a failure and keeps whatever was known: a diagnostic read that fails once should not
+   * flip the panel to "no model installed" on a node that has one.
+   */
+  async function readModels(): Promise<Awaited<ReturnType<NonNullable<typeof transcription>['models']>> | null> {
+    if (!transcription || transcription.available?.() === false) return null;
+    try {
+      const models = await transcription.models();
+      const downloading = models.filter((m) => !m.ready);
+      setModelState(models.length === 0 ? 'none' : models.some((m) => m.ready) ? 'ready' : 'downloading');
+      const known = downloading.map((m) => m.progress).filter((p): p is number => typeof p === 'number');
+      setModelProgress(known.length ? Math.max(...known) : null);
+      return models;
+    } catch (cause) {
+      console.warn('transcribe: could not read the model list', cause);
+      return null;
+    }
+  }
+
+  /**
+   * Keep reading the model list while there is something to wait for.
+   *
+   * Three things are worth waiting for, and they overlap: a download the panel is showing progress
+   * on, recording that is switched on with nothing it can run yet, and an open panel saying there is
+   * no model. The second is what makes "it will start on its own" true — a model added in settings,
+   * or by the button, is picked up here without anybody pressing record again.
+   *
+   * One timer at a time, re-armed from its own tick, so the reads never overlap however many callers
+   * ask for a poll.
+   */
+  function pollModels(): void {
+    if (modelPoll) return;
+    modelPoll = setTimeout(async () => {
+      const models = await readModels();
+      modelPoll = null;
+      const waiting = () => enabled() && !context && (status() === 'no-model' || status() === 'downloading');
+      if (waiting() && models?.some((m) => m.ready)) {
+        const audio = audioInput?.() ?? null;
+        if (audio) {
+          void start(audio);
+          return;
+        }
+      }
+      // A panel showing "no model" keeps asking too, so a model added in settings clears the note —
+      // and hides the install button — without the panel being closed and opened again.
+      if (modelState() === 'downloading' || waiting() || (open() && modelState() === 'none')) pollModels();
+    }, MODEL_POLL_MS);
+  }
+
+  /**
+   * Install the model the backend offers, from the panel, and carry on as though it had always been
+   * there.
+   *
+   * Recording that gave up for want of a model is re-armed: an auto-join that failed silently is
+   * allowed to try again — the call is still on, and the reason it stopped is gone — and a press
+   * that found no model is already polling and picks the download up from there.
+   */
+  async function installModel(): Promise<void> {
+    if (installingModel() || !transcription?.offeredModel?.()) return;
+    setInstallingModel(true);
+    setInstallError('');
+    try {
+      await transcription.installOfferedModel?.();
+      await readModels();
+      if (autoJoinFailed()) setAutoJoinFailed(false);
+      pollModels();
+    } catch (cause) {
+      console.error('transcribe: could not install the offered model', cause);
+      setInstallError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setInstallingModel(false);
+    }
+  }
+
   function onText(text: string): void {
+    // Text is the answer to one utterance in flight, whatever it says.
+    if (inFlight() > 0) setInFlight(inFlight() - 1);
     if (!text.trim()) return;
     buffer = buffer ? `${buffer} ${text.trim()}` : text.trim();
     setPending(buffer);
@@ -1189,7 +1654,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     };
 
     try {
-      const models = await transcription.models();
+      // Through `readModels`, so the panel learns what this start learned — including a failure,
+      // which is rethrown below as the start's own.
+      const models = (await readModels()) ?? (await transcription.models());
       if (mine !== generation) return await unwind();
 
       // `no-model` means *there is no model*, and nothing else. It used to also fire when a model
@@ -1200,14 +1667,29 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         // Distinguished from a silent failure on purpose: no model and nobody talking look identical
         // from here, and only one of them is something the user can act on.
         setStatus('no-model');
+        // And kept waiting, so adding one — here or in settings — starts recording without a second
+        // press. The panel has said "it will start on its own" for a long time; this makes it so.
+        pollModels();
         return;
       }
 
-      // `ready` orders the choice; it never excludes. A model that reports not-ready is still the
-      // only model there is, the executor loads on demand, and if it genuinely cannot run then
-      // `open` fails and says why — which beats claiming nothing is installed.
-      const preferred = (candidates: typeof models) => candidates.find((m) => m.isDefault) ?? candidates[0];
-      const model = preferred(models.filter((m) => m.ready)) ?? preferred(models);
+      /*
+        Wait for a model that is still downloading rather than opening it.
+
+        This used to open it anyway, on the reasoning that the executor loads on demand and a model
+        that cannot run makes `open` fail and say why. Neither half survives contact with the
+        executor: opening a stream on weights it does not have downloads them *inside that call*,
+        holding a lock every other open waits on and reporting no progress, so the call times out at
+        thirty seconds while the download carries on — an error that names nothing, for a model that
+        is working. Waiting costs a poll, and says what is happening.
+      */
+      const ready = models.filter((m) => m.ready);
+      if (ready.length === 0) {
+        setStatus('downloading');
+        pollModels();
+        return;
+      }
+      const model = ready.find((m) => m.isDefault) ?? ready[0];
 
       newStream = await transcription.open(model.id, onText, TUNING);
       if (mine !== generation) return await unwind();
@@ -1233,16 +1715,142 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // Not connected to the destination: this is a listener, and routing the microphone to the
       // speakers would echo the speaker back to themselves.
       //
-      // Closes over the local rather than the field, so an utterance in flight during a teardown
-      // feeds the stream it was captured for instead of whatever happens to be current.
-      const feedTo = newStream;
+      // Closes over this run's session rather than the module's fields, so an utterance in flight
+      // during a teardown feeds the stream it was captured for instead of whatever happens to be
+      // current.
+      const session = {
+        stream: newStream,
+        /**
+         * Utterances with nowhere to go yet, oldest first — see {@link MAX_HELD_SAMPLES}. Each
+         * counts the streams that have refused it, so one the far end will never accept is dropped
+         * rather than retried into the ground; see {@link REFUSALS_BEFORE_DROPPING}.
+         */
+        held: [] as { audio: Float32Array; refusals: number }[],
+        /** The reconnection in progress, so every utterance that fails joins the same one. */
+        reconnecting: null as Promise<void> | null,
+      };
+
+      /** Keep an utterance until there is a stream to send it to, dropping the oldest past the cap. */
+      const hold = (audio: Float32Array): void => {
+        session.held.push({ audio, refusals: 0 });
+        let total = session.held.reduce((sum, one) => sum + one.audio.length, 0);
+        // Never empties: the utterance just held is the one worth keeping if it alone is over the cap.
+        while (total > MAX_HELD_SAMPLES && session.held.length > 1) {
+          total -= (session.held.shift() as { audio: Float32Array }).audio.length;
+        }
+      };
+
+      /*
+        Open a new stream in place of one that is gone, and send what was said meanwhile.
+
+        A feed fails for reasons that have nothing to do with this session being over: the node was
+        unreachable for a moment, a request timed out, the executor let the stream go, or the
+        utterance itself was refused by something between here and the node. None of them is a reason
+        to stop recording, and stopping is what used to happen — one failed retry ended transcription
+        for the rest of the call, with no way back but a press nobody knew to make.
+
+        The last of those is worth naming, because it is the one that was actually happening and the
+        one a retry cannot fix: a proxy refusing an utterance too large for it, the same way every
+        time. Resending it is what turned a refused utterance into a dead session. The drain below
+        drops one the far end will not take, so it costs an utterance rather than the call.
+
+        So it keeps trying, on a backoff, while the microphone stays open and what is said is held.
+        Only when a minute of attempts has failed does it call it an outage, say so and stop: by then
+        something is wrong that this cannot fix, and a lit record button over silence is worse than
+        an error somebody can act on.
+
+        Utterances that fail together share one reconnection rather than starting one each.
+      */
+      const reconnect = (cause: unknown): void => {
+        if (session.reconnecting) return;
+        console.info('[transcribe] the stream was dropped; re-establishing it', cause);
+        setReconnecting(true);
+        let last = cause;
+        session.reconnecting = (async () => {
+          for (const delay of RECONNECT_DELAYS_MS) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            if (mine !== generation) return;
+            try {
+              const fresh = await transcription.open(model.id, onText, TUNING);
+              if (mine !== generation) {
+                await fresh.close().catch(() => {});
+                return;
+              }
+              const previous = session.stream;
+              session.stream = fresh;
+              stream = fresh;
+              // Closed for tidiness; whatever dropped it has usually forgotten it already.
+              void previous.close().catch(() => {});
+              // One at a time, each removed only once it has landed — so a stream that dies again
+              // part way through a drain loses nothing, and the next attempt carries on from there.
+              while (session.held.length > 0) {
+                const next = session.held[0];
+                try {
+                  await session.stream.feed(next.audio);
+                  session.held.shift();
+                } catch (refused) {
+                  next.refusals += 1;
+                  if (next.refusals < REFUSALS_BEFORE_DROPPING) throw refused;
+                  /*
+                    A stream that had just opened would not take it twice, so it is the utterance
+                    that is being refused rather than the connection that is failing — most likely
+                    it is larger than something between here and the node will carry.
+
+                    Dropped, and the rest of the queue goes on. The same call as a failed block
+                    write: losing one utterance is better than losing the transcript, and this is
+                    the retry that used to end the session instead.
+                  */
+                  console.warn('transcribe: this utterance was refused twice and has been dropped', refused);
+                  session.held.shift();
+                }
+              }
+              setReconnecting(false);
+              return;
+            } catch (again) {
+              if (mine !== generation) return;
+              last = again;
+              console.info('[transcribe] could not re-establish the stream; trying again', again);
+            }
+          }
+          console.error('transcribe: gave up re-establishing the transcription stream', last);
+          setReconnecting(false);
+          setStatus('error');
+          setError(
+            `Transcription stopped: the speech model could not be reached again (${last instanceof Error ? last.message : String(last)}).`,
+          );
+          void stop();
+        })().finally(() => {
+          session.reconnecting = null;
+        });
+      };
+
+      /** Feed one utterance, or hold it and start putting the stream back. */
+      const feed = async (audio: Float32Array): Promise<void> => {
+        noteFed(audio.length);
+        // Held rather than raced: while a reconnection is running there is nothing to feed it to,
+        // and sending into the old stream would only fail again and say so a second time.
+        if (session.reconnecting) {
+          hold(audio);
+          return;
+        }
+        const tried = session.stream;
+        try {
+          await tried.feed(audio);
+        } catch (cause) {
+          if (mine !== generation) return;
+          // Held too, so the sentence that discovered the problem is not the one lost.
+          hold(audio);
+          reconnect(cause);
+        }
+      };
+
       newNode.port.onmessage = (event: MessageEvent<WorkletMessage>) => {
         if (event.data.kind === 'level') {
           setLevel(event.data.rms);
           setSpeaking(event.data.speaking);
           return;
         }
-        void feedTo.feed(event.data.audio);
+        void feed(event.data.audio);
       };
 
       context = newContext;
@@ -1290,6 +1898,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     stream = null;
     setLevel(0);
     setSpeaking(false);
+    // Whatever was in flight answers into a closed stream now, so nothing is still being transcribed.
+    clearInFlight();
+    // A reconnection in progress belongs to the session being torn down: the generation bump above
+    // is what ends it, and nothing should still be claiming the words are on their way.
+    setReconnecting(false);
 
     closing.node?.port.close();
     closing.node?.disconnect();
@@ -1780,7 +2393,24 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   onDispose?.(() => {
     setEnabled(false);
     setAutoJoined(false);
+    if (modelPoll) clearTimeout(modelPoll);
+    modelPoll = null;
     void stop();
+  });
+
+  /*
+    Opening the panel asks what models there are, once.
+
+    Everything else learns it by trying to record, and the panel is where somebody goes *before*
+    that — to see whether this works here at all. Without it the one-click install would appear only
+    after a failed attempt, which is the wrong order for a download that size.
+  */
+  effect?.(() => {
+    if (open() && modelState() === 'unknown') {
+      void readModels().then(() => {
+        if (modelState() === 'downloading' || modelState() === 'none') pollModels();
+      });
+    }
   });
 
   /*
@@ -1829,8 +2459,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
   return {
     // ── State ────────────────────────────────────────────────────────────────
-    status,
-    error,
+    status: state(
+      status,
+      'What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.',
+    ),
+    error: state(error, 'Why the session stopped, when status is error; empty otherwise.'),
+    /**
+     * The stream dropped and is being put back, with the microphone still open.
+     *
+     * Its own member rather than a status, because `status` says what the *session* is doing and the
+     * session is still listening: the record button stays lit, the meter keeps moving, and what is
+     * said is held rather than lost. What a reader needs to know is that the words are waiting.
+     */
+    reconnecting: state(
+      reconnecting,
+      'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
+    ),
     /**
      * What has been heard and is not yet a row in the transcript — buffering, or being written.
      *
@@ -1841,9 +2485,76 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Newest last, matching the order they will be written in. Both are non-empty only while
      * somebody carries on talking through a write, which is the case the join exists for.
      */
-    pending: () => [settling(), pending()].filter(Boolean).join(' '),
-    enabled,
-    open,
+    pending: state(
+      () => [settling(), pending()].filter(Boolean).join(' '),
+      'Words heard that are not yet a row in the transcript — buffered or being written, newest last.',
+    ),
+    /**
+     * Speech has gone to the model and its text has not come back yet.
+     *
+     * The gap between somebody stopping and their words appearing — a second or several on a CPU —
+     * during which, without this, a panel looks exactly like one that did not hear them.
+     */
+    transcribing: state(() => inFlight() > 0, 'Speech has gone to the model and its text has not come back yet.'),
+    /**
+     * Something has been said that the record does not hold yet: words buffered or being written,
+     * or speech still with the model. What decides whether the unsaved box shows, and whether the
+     * empty feed may still claim nothing has been said.
+     */
+    heard: state(
+      () => Boolean(settling() || pending() || inFlight() > 0),
+      'Something has been said that the record does not hold yet — buffered, being written or still with the model.',
+    ),
+    enabled: state(enabled, 'Whether this agent is recording their own microphone into the call.'),
+    /**
+     * No transcription model is installed, as last read. True outside a recording too — see
+     * {@link ModelState} for why that matters.
+     */
+    modelMissing: state(
+      () => modelState() === 'none',
+      'No transcription model is installed on this node, as last read.',
+    ),
+    /** A model is installed and its weights are still arriving. */
+    modelDownloading: state(
+      () => modelState() === 'downloading',
+      'A transcription model is installed and its weights are still arriving.',
+    ),
+    /** The download line, ready to show: "Downloading the speech model — 45%". */
+    modelDownloadText: state(() => {
+      const progress = modelProgress();
+      return progress === null ? 'Downloading the speech model…' : `Downloading the speech model — ${progress}%`;
+    }, 'The download line, ready to show — "Downloading the speech model — 45%".'),
+    /** Whether this connection may install the backend's offered model. */
+    canInstallModel: state(
+      () => Boolean(transcription?.offeredModel?.()),
+      'Whether this connection may install the model the backend offers.',
+    ),
+    /** The install button's words, naming the size before anybody agrees to it. */
+    installModelLabel: state(() => {
+      const offer = transcription?.offeredModel?.();
+      return offer ? `Download ${offer.name} (${formatBytes(offer.downloadBytes)})` : '';
+    }, 'The install button’s words, naming the offered model and its size; empty when none is offered.'),
+    installingModel: state(installingModel, 'A one-click model install is registering its model.'),
+    installError: state(installError, 'Why the last model install failed; empty otherwise.'),
+    installModel: action(
+      () => installModel(),
+      'Installs the model the backend offers and resumes recording that was waiting on one.',
+    ),
+    /**
+     * Whether the transcript panel is up — and this module's to say, not the host's.
+     *
+     * The contract lets the host hold a panel's openness by default, and for most panels that is the
+     * right owner. Not this one: `toggle` opens it when somebody presses record, because starting
+     * something invisible and saying nothing about it is how a feature comes to look broken, and the
+     * model poll below reads it to keep asking while a panel says "no model". Both are facts about
+     * this module, so it names the key on its panel and owns closing it too — see `panels` in
+     * `index.ts`.
+     */
+    open: state(open, 'Whether the transcript panel is open.'),
+    // The panel's `show` and `close`: what the rail and the titlebar call, since the module owns
+    // the flag.
+    openPanel: action(() => setOpen(true), 'Opens the transcript panel.'),
+    closePanel: action(() => setOpen(false), 'Closes the transcript panel.'),
     /**
      * The record this call's transcript lives in, or `null` when there is not one yet.
      *
@@ -1859,38 +2570,66 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * empty after a reload, so re-opening the panel on a finished call offered to start recording
      * as though nothing had ever happened.
      */
-    collectionId,
+    collectionId: state(
+      collectionId,
+      'The record this call’s transcript lives in, or null until something has been said.',
+    ),
 
+    /*
+      The transcript's window — see the signals for why a transcript is two documents, not one.
+    */
+    transcriptShown: state(transcriptShown, 'How many transcript lines are loaded right now.'),
+    transcriptFromStart: state(
+      transcriptFromStart,
+      'Whether the transcript is being read from its beginning rather than following the live end.',
+    ),
+    showMoreTranscript: action(
+      () => setTranscriptShown(transcriptShown() + TRANSCRIPT_PAGE),
+      'Loads one more page of the transcript, in whichever direction it is being read.',
+    ),
     /**
-     * Where the host should put this panel — see `docks` in the module definition.
+     * Read from the beginning — a different query, not a scroll.
      *
-     * `right` because that is the edge the module rail is on and where this has always opened; `md`
-     * is an opening bid the user overrides by dragging. Never floating: a transcript you read
-     * alongside the space is the case docking exists for.
+     * The window is anchored to the live end, so "the top of what is loaded" is not the start of the
+     * conversation and a scroll cannot reach one from the other. Asking for the oldest page instead
+     * is cheap, exact, and needs no cursor — which matters, because the backend has none.
+     *
+     * It arrives as a cut rather than a journey. That is the honest rendering: the content between
+     * the two ends was never on screen to travel through, and `we-scroll-area` already takes the
+     * same view of any move too long to sit through.
      */
-    dockEdge: () => (open() ? 'right' : null),
-    dockSize: () => 'md',
-    dockFloat: () => false,
+    readTranscriptFromStart: action(() => {
+      setTranscriptFromStart(true);
+      setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
+    }, 'Shows the beginning of the transcript, to be read forwards.'),
+    readTranscriptLive: action(() => {
+      setTranscriptFromStart(false);
+      setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
+    }, 'Goes back to following the end of the transcript.'),
+
+    /*
+      Where a panel opens is no longer answered here.
+
+      `dockEdge` / `dockSize` / `dockFloat` and their extraction twins were six accessors returning
+      constants — `right`, `md`, `false` — with `edge` doubling as "whether" by answering null while
+      closed. A panel's opening bid is data, so it is declared on the `PanelContribution` in
+      `index.ts`; whether the panel is up is the one thing left that is genuinely state, and that is
+      `open` above and `extractionOpen` below.
+    */
     /**
-     * The extraction panel's own edge, size and openness — the same three keys, a second time.
+     * Whether the extraction panel is up — its own flag, and module-owned for its own reason.
      *
-     * `right` as well, so the two arrive on the same edge and the host stacks them; an interface
-     * that wants them apart moves one, and the host remembers. Its own keys rather than shared ones
-     * because a dock's `edge` answers both "where" and "whether", and two panels answering that
-     * with one key could not be open independently.
+     * Separate from `open` because a transcript is read while somebody talks and extraction is read
+     * afterwards, so wanting one on screen says nothing about wanting the other. Module-owned
+     * because a *pass starting* opens it — anybody's, not only this agent's — and so does switching
+     * automatic extraction on: the four people in five who did not start a pass are the ones who
+     * need telling, and a host-held flag would leave the module no way to tell them.
      */
-    extractionOpen,
-    extractionDockEdge: () => (extractionOpen() ? 'right' : null),
-    extractionDockSize: () => 'sm',
-    extractionDockFloat: () => false,
-    /** Open or close the extraction panel — what its rail button and its titlebar call. */
-    toggleExtractionPanel: () => setExtractionOpen(!extractionOpen()),
-    // Named on the dock as its `open`, so an interface declaring this panel gets *this* one opened
-    // rather than whichever the module's first launcher happens to point at.
-    openExtractionPanel: () => setExtractionOpen(true),
-    closeExtractionPanel: () => setExtractionOpen(false),
-    level,
-    speaking,
+    extractionOpen: state(extractionOpen, 'Whether the extraction panel is open.'),
+    openExtractionPanel: action(() => setExtractionOpen(true), 'Opens the extraction panel.'),
+    closeExtractionPanel: action(() => setExtractionOpen(false), 'Closes the extraction panel.'),
+    level: state(level, 'Microphone loudness as the voice detector measures it, 0–1.'),
+    speaking: state(speaking, 'Whether the microphone level currently counts as speech.'),
     /**
      * The level and the onset threshold as CSS widths, ready to bind.
      *
@@ -1902,17 +2641,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * meter exists: a marker at a number that had drifted from the one the VAD compares against would
      * be confidently wrong about exactly the thing someone consults it to understand.
      */
-    levelPercent: () => asPercent(level()),
-    thresholdPercent: () => asPercent(VAD.speechOnsetThreshold),
+    levelPercent: state(() => asPercent(level()), 'The microphone level as a CSS width for a meter.'),
+    thresholdPercent: state(
+      () => asPercent(VAD.speechOnsetThreshold),
+      'The speech-onset threshold as a CSS width, to mark on the same meter.',
+    ),
     /** True only while actually producing — what the call bar's record button highlights on. */
-    listening: () => status() === 'listening',
+    listening: state(
+      () => status() === 'listening',
+      'True only while actually transcribing — what a record button highlights on.',
+    ),
 
     /**
      * Recording was started by a peer's transcript rather than by this agent — see the auto-join
      * effect. What the call bar reads to announce it, since being switched on by somebody else is
      * not something an agent should have to notice for themselves.
      */
-    autoJoined,
+    autoJoined: state(autoJoined, 'Recording was started by the call rather than by this agent pressing record.'),
     /**
      * Whether somebody else in this call is recording and this agent is not — the offer's condition.
      *
@@ -1924,28 +2669,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * False once this agent has opted out, and false while already recording — there is nothing to
      * offer someone who is already in.
      */
-    invited: () => {
+    invited: state(() => {
       const call = myCall();
       if (!call || enabled() || optedOut()) return false;
       return peerRecordersOf(call.id).length > 0;
-    },
+    }, 'Somebody else in this call is recording and this agent is not, having not opted out.'),
     /**
-     * Who to name in the notice, joined or merely offered.
+     * The first peer recording this call, for a surface that names who started it.
      *
-     * One agent rather than the list: it is a single line in a call bar, and "Ana is transcribing" is
-     * the part that makes it mean something. Their DID rather than their name, because this module
-     * holds no profiles — the fragment resolves it with `$agent`, the same way the calls list puts a
+     * One agent rather than the list, and their DID rather than their name, because this module
+     * holds no profiles — a fragment resolves it with `$agent`, the same way the calls list puts a
      * face on an utterance.
      *
-     * Empty once no peer is recording any more, which the call bar tests before drawing the notice:
-     * this agent may still be recording after the peer who started it stopped, and a chip reading
-     * " is transcribing" is worse than no chip.
+     * Empty once no peer is recording any more: this agent may still be recording after the peer who
+     * started it stopped, so test it before drawing a name.
      */
-    invitedBy: () => {
+    invitedBy: state(() => {
       const call = myCall();
       if (!call) return '';
       return peerRecordersOf(call.id)[0] ?? '';
-    },
+    }, 'The agent id of the first peer recording this call, or empty when none is.'),
     /**
      * Everyone recording this call, this agent included — the numerator of coverage.
      *
@@ -1954,32 +2697,49 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * reads exactly like a transcript of the call. Published so the panel can say which it is, while
      * the meeting is still happening and somebody can still do something about it.
      */
-    transcribers: () => {
+    transcribers: state(() => {
       const call = myCall();
       return call ? recordersOf(call.id) : [];
-    },
+    }, 'Everyone recording this call, this agent included — the numerator of coverage.'),
     /** Everyone in this call — the denominator. Empty outside a call, which is what hides coverage. */
-    callAgents: () => {
+    callAgents: state(() => {
       const call = myCall();
       return call ? agentsInCall(call.id) : [];
-    },
+    }, 'Everyone in this call, recording or not — the denominator of coverage; empty outside a call.'),
+    /** Whether this agent is in a call at all — what decides between "join" and "continue" wording. */
+    inCall: state(() => myCall() !== null, 'Whether this agent is in a call right now.'),
+    /**
+     * Whether somebody is in the call the address names, read off presence rather than off the call
+     * module's roster. The panel used to read `modules.call.liveCalls` for this, which was the one
+     * place this module named that one; presence is the medium the two are meant to meet in.
+     */
+    callOnScreenLive: state(() => {
+      const record = deps.callOnScreen?.() ?? null;
+      if (!record || !presence) return false;
+      return activitiesOfType(presence.peers(), 'call').some(
+        ({ activity }) => (activity as { record?: string }).record === record,
+      );
+    }, 'Somebody is in the call the address names right now.'),
     /** Someone in this call is not being transcribed. The gap coverage exists to report. */
-    partialCoverage: () => {
+    partialCoverage: state(() => {
       const call = myCall();
       if (!call) return false;
       const present = agentsInCall(call.id).length;
       return present > 0 && recordersOf(call.id).length < present;
-    },
+    }, 'Someone in this call is not being transcribed.'),
     /** There is audio to listen to. Without it, offering to record is offering nothing. */
-    available: () => (audioInput?.() ?? null) !== null,
+    available: state(
+      () => (audioInput?.() ?? null) !== null,
+      'There is audio to listen to — a microphone the host is capturing.',
+    ),
 
     // ── Extraction ───────────────────────────────────────────────────────────
-    extractStatus,
-    extractCount,
-    extractError,
-    extractingId,
-    extractedId,
-    extractTurns,
+    extractStatus: state(extractStatus, 'How the last one-shot extraction pass went — idle, running, done or error.'),
+    extractCount: state(extractCount, 'How many records the last pass wrote.'),
+    extractError: state(extractError, 'Why the last pass failed; empty otherwise.'),
+    extractingId: state(extractingId, 'The collection a pass is running on right now, or empty.'),
+    extractedId: state(extractedId, 'The collection the last finished pass ran on, or empty.'),
+    extractTurns: state(extractTurns, 'How many transcript turns the last pass read.'),
     /**
      * The record this call's extraction decisions are written against.
      *
@@ -1988,7 +2748,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * before the meeting, is exactly when somebody wants to — so this is the id an extraction
      * surface names, and the one a `subject` expression falls back to.
      */
-    callId: () => targetCollection(),
+    callId: state(
+      () => targetCollection(),
+      'The record extraction decisions for this call are written against — the call’s own record from its first second.',
+    ),
 
     /**
      * What can be extracted from **one named call**, indexed by its record id.
@@ -2010,8 +2773,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * `canChoose` false it is a call nothing has been said in yet; with both true it is a node with
      * no model at all, which `extractable` answers.
      */
-    extractionFor: () =>
-      /*
+    extractionFor: state(
+      () =>
+        /*
         A `namespace`, not a plain object and not a `Proxy`.
 
         A plain object cannot hold an entry per call — the ids are not enumerable from here, and a
@@ -2021,42 +2785,45 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         back `undefined` with nothing said. `namespace` is the mechanism the expression layer
         already provides for a keyed lookup, and `readProperty` reaches it before that guard.
       */
-      namespace((key: string) => {
-        {
+        namespace((key: string) => {
           {
-            const collection = key;
-            return {
-              /**
-               * What this call can have extracted, and whether each is on —
-               * `{ entity, label, selected }`.
-               *
-               * One list rather than two, because a schema renders it as a row of toggles and cannot
-               * join two lists to decide which are ticked. Empty in a space that has marked no models
-               * for extraction, which is a real state worth saying rather than an error.
-               */
-              targets: targetsFor(collection).map((target) => ({ ...target, label: humanise(target.entity) })),
-              /**
-               * Whether a press on one of those would actually record anything.
-               *
-               * Both halves fail silently and differently: no call means there is nothing to record a
-               * choice against, and a host with no `setTarget` cannot record one at all. Published so
-               * a surface can say which rather than offering chips that absorb the click — which is
-               * what they did, and what made this look broken rather than unavailable.
-               */
-              canChoose: Boolean(collection) && typeof interpretation?.setTarget === 'function',
-              /**
-               * Whether there is anything to extract *from* and anything to extract *with*.
-               *
-               * Both halves matter and they fail differently: no collection means nothing has been
-               * said yet, no port means this node has no LLM. The panel tells those apart; this is
-               * the guard that stops the button being offered when neither can be fixed by pressing
-               * it.
-               */
-              canExtract: hasTranscript(collection) && (interpretation?.available() ?? false) && hasTargets(collection),
-            };
+            {
+              const collection = key;
+              return {
+                /**
+                 * What this call can have extracted, and whether each is on —
+                 * `{ entity, label, selected }`.
+                 *
+                 * One list rather than two, because a schema renders it as a row of toggles and cannot
+                 * join two lists to decide which are ticked. Empty in a space that has marked no models
+                 * for extraction, which is a real state worth saying rather than an error.
+                 */
+                targets: targetsFor(collection).map((target) => ({ ...target, label: humanise(target.entity) })),
+                /**
+                 * Whether a press on one of those would actually record anything.
+                 *
+                 * Both halves fail silently and differently: no call means there is nothing to record a
+                 * choice against, and a host with no `setTarget` cannot record one at all. Published so
+                 * a surface can say which rather than offering chips that absorb the click — which is
+                 * what they did, and what made this look broken rather than unavailable.
+                 */
+                canChoose: Boolean(collection) && typeof interpretation?.setTarget === 'function',
+                /**
+                 * Whether there is anything to extract *from* and anything to extract *with*.
+                 *
+                 * Both halves matter and they fail differently: no collection means nothing has been
+                 * said yet, no port means this node has no LLM. The panel tells those apart; this is
+                 * the guard that stops the button being offered when neither can be fixed by pressing
+                 * it.
+                 */
+                canExtract:
+                  hasTranscript(collection) && (interpretation?.available() ?? false) && hasTargets(collection),
+              };
+            }
           }
-        }
-      }),
+        }),
+      'What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id].',
+    ),
     /**
      * Include or exclude one model from what **this call** extracts, for everyone in it.
      *
@@ -2069,7 +2836,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * button carries none, so pressing Extract is how the rest of the conversation gets swept with
      * the new list.
      */
-    toggleExtractionTarget: async (entity: string, collection?: string) => {
+    toggleExtractionTarget: action(async (entity: string, collection?: string) => {
       // Named, or the one this agent is in — the same pair `extractCollection` and `extract` are,
       // so a panel about a call somebody opened from a link changes *that* call's list.
       const target = collection || targetCollection();
@@ -2080,14 +2847,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       } catch (error) {
         console.warn('[transcribe] could not change what this call extracts', error);
       }
-    },
+    }, 'Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.'),
     /**
      * Whether this call is extracted as it happens — its participants' answer, else the space's.
      *
      * What a switch in the extraction panel binds to. Absent a call it answers for the space, which
      * is the honest reading of "does this happen here" when there is no conversation to be about.
      */
-    autoExtract: () => autoEnabled(collectionId() ?? myCall()?.recordId ?? undefined),
+    autoExtract: state(
+      () => autoEnabled(collectionId() ?? myCall()?.recordId ?? undefined),
+      'Whether this call is extracted as it happens — its participants’ answer, else the space’s.',
+    ),
     /**
      * Whether any pass is running right now, this node's or a peer's — what the rail's Extraction
      * launcher spins on, via `busyWhen`.
@@ -2097,8 +2867,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * ones this exists for, and their node is not the one running it. Feature-tested for the reason
      * the settled-count effect above is: the forwarding wrapper is always present, the feed is not.
      */
-    passRunning: () =>
-      typeof interpretation?.activity === 'function' ? interpretation.activity().some((pass) => pass.running) : false,
+    passRunning: state(
+      () =>
+        typeof interpretation?.activity === 'function' ? interpretation.activity().some((pass) => pass.running) : false,
+      'Whether any extraction pass is running right now, this node’s or a peer’s.',
+    ),
     /**
      * Turn it on or off for **this call**, for everyone in it.
      *
@@ -2111,7 +2884,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * same reason as `toggleExtractionTarget` — pair it with `canChooseTargets`, which answers the
      * same question about the same record.
      */
-    toggleAutoExtract: async () => {
+    toggleAutoExtract: action(async () => {
       const live = collectionId() ?? myCall()?.recordId ?? '';
       if (!live || typeof interpretation?.setAuto !== 'function') return;
       const next = !autoEnabled(live);
@@ -2125,9 +2898,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       } catch (error) {
         console.warn('[transcribe] could not change whether this call extracts as it happens', error);
       }
-    },
+    }, 'Turns automatic extraction on or off for this call, for everyone in it.'),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
-    extractable: () => interpretation?.available() ?? false,
+    extractable: state(
+      () => interpretation?.available() ?? false,
+      'Whether this node can interpret at all — false when it has no language model.',
+    ),
     /**
      * The record the call this agent is in is writing into — the id, so a list can pick it out.
      *
@@ -2141,7 +2917,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * this is `$eq` it against a record id: an empty string can never match one, where `null` and a
      * missing field are the same falsy value and would make an unrelated absent id look live.
      */
-    liveCollectionId: () => collectionId() ?? '',
+    liveCollectionId: state(
+      () => collectionId() ?? '',
+      'The record the call this agent is in is writing into, or empty when there is none.',
+    ),
     /**
      * Suggestions staged on one conversation — `modules.transcribe.proposalsFor[<id>]`.
      *
@@ -2151,7 +2930,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      *
      * An empty key asks about the whole space, which is the honest answer outside a call.
      */
-    proposalsFor: () => namespace((key: string) => proposalsFor(key)),
+    proposalsFor: state(
+      () => namespace((key: string) => proposalsFor(key)),
+      'Suggestions staged on one conversation, by record id — read as proposalsFor[id].',
+    ),
     /**
      * Every record still awaiting a decision, by id — what marks a card as a suggestion.
      *
@@ -2160,7 +2942,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * for is a fact about a conversation. A board asks the first question and a review list the
      * second, and keying the first made switching calls flash every outgoing card as settled.
      */
-    pendingIds,
+    pendingIds: state(pendingIds, 'Every record still awaiting a decision, by id, across every call asked about.'),
     /**
      * The same suggestions as rows rather than ids, for a surface that has to *read* one.
      *
@@ -2168,7 +2950,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * proposed has to find the proposal and read it, which ids cannot answer. Both are the union
      * across every call asked about, for the reason `pendingIds` gives at length.
      */
-    pendingProposals: allProposals,
+    pendingProposals: state(allProposals, 'The same suggestions as rows — { id, kind, entity, fields, summary }.'),
+    /**
+     * Records a pass made that nobody has kept — draw them as provisional, and let a reader hide them.
+     * See {@link pendingIds} for why this is a union across calls rather than keyed by one.
+     */
+    unconfirmedIds: state(unconfirmedIds, 'Records a pass made that nobody has kept yet, by id.'),
+    /** Agreed records carrying a suggested change — mark them, never fade or hide them. */
+    changedIds: state(changedIds, 'Agreed records carrying a suggested change, by id.'),
     /**
      * The same, for the call this agent is in.
      *
@@ -2180,16 +2969,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Not a member to reach for in something new. A surface that can be about a past call should say
      * which call it means, which is `proposalsFor`.
      */
-    proposals: () => proposalsFor(targetCollection()),
+    proposals: state(
+      () => proposalsFor(targetCollection()),
+      'Suggestions staged on the live call — prefer proposalsFor with the call named.',
+    ),
     /** The suggestion open for editing, or '' when none is. Compare it against a row's own id. */
-    editingProposal,
+    editingProposal: state(editingProposal, 'The suggestion open for editing, or empty when none is.'),
     /**
      * What has been typed into the open draft, keyed by the model's property name.
      *
      * Read a field with an index — `modules.transcribe.proposalDraft[field.name]` — because the keys
      * come from the model and a template cannot name them. Empty when nothing is being edited.
      */
-    proposalDraft,
+    proposalDraft: state(proposalDraft, 'What has been typed into the open suggestion, keyed by property name.'),
     /**
      * Whether an edited suggestion can actually be written back on accept.
      *
@@ -2197,7 +2989,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * model the suggestion is of — an edit needs the entity name to write to. Gate the edit control
      * on it rather than offering one whose Keep would silently discard what was typed.
      */
-    canEditProposals: () => !!updateEntity,
+    canEditProposals: state(() => !!updateEntity, 'Whether an edited suggestion can be written back on accept.'),
     /**
      * Why auto-extraction is not running here, or empty when it is.
      *
@@ -2205,7 +2997,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * fail on a node that interprets perfectly well — the host may simply not coordinate standing
      * watches — and the two want different sentences.
      */
-    watchProblem,
+    watchProblem: state(watchProblem, 'Why the standing extraction watch is not running here; empty when it is.'),
 
     /*
       ── Live extraction ──────────────────────────────────────────────────────
@@ -2237,9 +3029,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     /**
      * Start or stop recording.
      *
-     * Separate from {@link togglePanel} because they are different questions — "capture this call"
-     * and "show me what was captured" — and fusing them meant the transcript vanished the moment you
-     * stopped recording, which is exactly when you want to read it.
+     * Separate from the panel's own `open` / `openPanel` / `closePanel` because they are different
+     * questions — "capture this call" and "show me what was captured" — and fusing them meant the
+     * transcript vanished the moment you stopped recording, which is exactly when you want to read it.
      *
      * Turning it on opens the panel too, the once: starting something invisible and saying nothing
      * about it is how a feature comes to look broken. Auto-join deliberately does not go through
@@ -2250,7 +3042,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * agent who is simply not recording while a peer is, and switch them straight back on. Turning
      * it *on* clears the same flag, because pressing record is unambiguous about wanting to be in.
      */
-    toggle: () => {
+    toggle: action(() => {
       const next = !enabled();
       /*
         `optedOut` **before** `enabled`, and that ordering is the whole of a two-press bug.
@@ -2282,7 +3074,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       */
       const call = myCall();
       if (call) announce(call.id, next);
-    },
+    }, 'Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.'),
     /*
       There is no `dismissInvite` any more, and nothing replaced it.
 
@@ -2292,10 +3084,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       button beside it does. A separate action would have been the same three writes under a second
       name, and a way to hide the notice while still being recorded.
     */
-    togglePanel: () => setOpen(!open()),
-    // Named on the dock as its `open` — see `openExtractionPanel` for why a dock says this itself.
-    openPanel: () => setOpen(true),
-    closePanel: () => setOpen(false),
+    /*
+      No `togglePanel` or `toggleExtractionPanel` any more.
+
+      They were the launchers' actions, and a launcher exists now only for a press that does
+      something other than open one panel. A panel's rail button is derived from the panel: the host
+      reads `open` and calls `show` or `close`, so a toggle here would be a third spelling of the
+      same two writes. `openPanel` / `closePanel` above are those two keys.
+    */
     /**
      * Text heard, from wherever it came.
      *
@@ -2318,7 +3114,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Re-running is safe and expected. The engine dedups against instances already in the graph, so
      * a second press over the same conversation updates what it found rather than duplicating it.
      */
-    extract: () => runExtraction(collectionId() ?? ''),
+    extract: action(
+      () => runExtraction(collectionId() ?? ''),
+      'Runs one extraction pass over the call this agent is transcribing.',
+    ),
     /**
      * The same pass over any call's record, named by id.
      *
@@ -2328,7 +3127,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * gathering was never the limit: it drills down through the collection's children and so has
      * always read every agent's utterances, not only this one's.
      */
-    extractCollection: (collection: string) => runExtraction(collection),
+    extractCollection: action(
+      (collection: string) => runExtraction(collection),
+      'Runs one extraction pass over any call’s record, by id.',
+    ),
     /** Re-read what is staged. Called after a pass; exposed so a panel can refresh on open. */
     /**
      * Re-read what is staged on a call, or on the live one when given nothing.
@@ -2336,7 +3138,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Rarely needed now that reading a key fetches it: this is for asking *again* — after a pass
      * somebody else ran, or a card that looks stale. It bypasses the once-per-key guard on purpose.
      */
-    refreshProposals: (collection?: string) => loadProposals(collection),
+    refreshProposals: action(
+      (collection?: string) => loadProposals(collection),
+      'Re-reads what is staged on a call, or on the live one.',
+    ),
     /**
      * Keep a suggestion, or drop it.
      *
@@ -2367,12 +3172,28 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * the honest state — the decision was recorded and only the wording did not land — and the
      * record is now an ordinary one the reviewer can edit anywhere it appears.
      */
-    acceptProposal: async (id: string) => {
+    acceptProposal: action(async (id: string) => {
       if (!interpretation) return;
       const edited = editingProposal() === id ? changedFields(id) : null;
+      /*
+        "Accept all" on a change comes through here too, so the same read has to happen first —
+        and only for a change: a *create* has no previous values, and reading a record that does not
+        exist yet would be a round trip to learn nothing.
+      */
+      const proposal = allProposals().find((p) => p.id === id);
+      const amending = proposal?.kind === 'update' ? proposal : null;
+      const before = amending ? await readBeforeChange(amending) : null;
       await interpretation.accept(id, undefined, callTarget());
-      const entity = allProposals().find((p) => p.id === id)?.entity;
+      const entity = proposal?.entity;
       forgetProposal(id);
+      if (amending) {
+        await recordAmendments(
+          amending,
+          amending.fields.map((f) => f.name),
+          before,
+          edited,
+        );
+      }
       // Only if the draft belonged to *this* card. Keeping one suggestion must not throw away what
       // was typed into another one that happens to be open beside it.
       if (editingProposal() === id) closeProposalEdit();
@@ -2383,26 +3204,51 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       } catch (error) {
         console.warn('transcribe: kept the suggestion but could not apply the edit —', error);
       }
-    },
+    }, 'Keeps a suggestion, as proposed or as edited.'),
     /** Open one suggestion for editing, seeded with what the model proposed. */
-    editProposal: (id: string) => {
+    editProposal: action((id: string) => {
       const proposal = allProposals().find((p) => p.id === id);
       if (!proposal) return;
       setProposalDraft(Object.fromEntries(proposal.fields.map((f) => [f.name, f.value])));
       setEditingProposal(id);
-    },
+    }, 'Opens one suggestion for editing, seeded with what the model proposed.'),
     /** Set one field of the open draft. Takes the name, so one action serves every control. */
-    setProposalField: (name: string, value: string) => setProposalDraft({ ...proposalDraft(), [name]: value }),
+    setProposalField: action(
+      (name: string, value: string) => setProposalDraft({ ...proposalDraft(), [name]: value }),
+      'Sets one field of the open draft, by property name.',
+    ),
     /** Close the open draft, discarding what was typed. */
-    cancelProposalEdit: () => closeProposalEdit(),
-    rejectProposal: async (id: string) => {
+    cancelProposalEdit: action(() => closeProposalEdit(), 'Closes the open draft, discarding what was typed.'),
+    /**
+     * Apply one suggested change to an agreed record: the staged value becomes the real one.
+     *
+     * Per field, because a suggested change is often half right — the new due date, but not the
+     * reassignment that came with it. The executor accepts a single property of an overlay, so the
+     * rest stays staged for a separate answer.
+     */
+    applyChange: action(async (id: string, field: string) => {
+      if (!interpretation) return;
+      // Before the accept, which overwrites the value this is the only remaining copy of.
+      const proposal = allProposals().find((p) => p.id === id);
+      const before = proposal ? await readBeforeChange(proposal) : null;
+      await interpretation.accept(id, field, callTarget());
+      forgetField(id, field);
+      if (proposal) await recordAmendments(proposal, [field], before);
+    }, 'Applies one suggested change to an agreed record.'),
+    /** Dismiss one suggested change, leaving the record's value as it was. */
+    dismissChange: action(async (id: string, field: string) => {
+      if (!interpretation) return;
+      await interpretation.reject(id, field, callTarget());
+      forgetField(id, field);
+    }, 'Dismisses one suggested change, leaving the record as it was.'),
+    rejectProposal: action(async (id: string) => {
       if (!interpretation) return;
       await interpretation.reject(id, undefined, callTarget());
       forgetProposal(id);
       // Whatever was typed into it went with it. Leaving the draft open would leave a card's worth
       // of edits attached to an id that no longer resolves.
       if (editingProposal() === id) closeProposalEdit();
-    },
+    }, 'Drops a suggestion.'),
     /**
      * Write something a person typed into the transcript, at the moment they typed it.
      *
@@ -2427,7 +3273,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * second, since a message does not need somebody to have spoken first and `collectionId` is
      * null until they have.
      */
-    addMessage: async (collection: string, text: string) => {
+    addMessage: action(async (collection: string, text: string) => {
       const words = String(text ?? '').trim();
       if (!words || !createEntity) return;
       const target = collection || targetCollection();
@@ -2446,8 +3292,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         { text: words, source: TYPED },
         { parent: { id: target, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
       );
-      await recordSelfParticipation(target, dataset);
-    },
+      /*
+        Not awaited, because the composer is waiting on this promise to say it has finished.
+
+        The roster entry is a second write, and nothing the person is looking at depends on it —
+        where the standing effect on the call's roster already spells it `void` for that reason.
+        Awaited here it put a whole extra round trip between the press and the spinner stopping, and
+        on a shared remote executor that is the difference people notice.
+
+        It only ever cost anything on the first message: the guard inside is keyed on the collection,
+        so every message after the first returned immediately. But the first message is the one
+        somebody is deciding whether the composer works at all.
+
+        Losing it is not a risk worth carrying either way — it has its own try/catch, and a failure
+        clears the guard so the next message retries.
+      */
+      void recordSelfParticipation(target, dataset);
+    }, 'Writes something a person typed into a transcript, as a typed line.'),
     /**
      * Fix the words on a line of the transcript.
      *
@@ -2465,7 +3326,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * `was` is passed in rather than read, because a module's data surface is write-only by design
      * (see `transcriptTurns`) and the panel is holding the row already.
      */
-    editUtterance: async (id: string, text: string, was?: string) => {
+    editUtterance: action(async (id: string, text: string, was?: string) => {
       const words = String(text ?? '').trim();
       if (!id || !words || !updateEntity) return;
       await updateEntity(
@@ -2475,9 +3336,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         // The call's space, as every other write here. `callTarget` answers with it or undefined.
         callTarget(),
       );
-    },
+    }, 'Corrects the words on a line of the transcript, marking a spoken line as corrected.'),
     /** Write what has been heard so far without waiting for the buffer to fill. */
-    flushNow: () => flush(),
+    flushNow: action(() => flush(), 'Writes what has been heard so far without waiting for the buffer to fill.'),
+    /**
+     * Count an utterance of `samples` 16 kHz samples as sent to the model. Exposed for tests, which
+     * cannot run the audio graph that normally does it — the `receiveText` of `transcribing`.
+     */
+    markUtteranceSent: (samples: number) => noteFed(samples),
     /** End the session now, flushing and releasing the audio graph. Exposed for tests. */
     stopNow: () => stop(),
   };

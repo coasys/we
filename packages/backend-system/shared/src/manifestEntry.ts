@@ -1,8 +1,8 @@
 /**
- * The flat, per-entity manifest form — richer than the neutral `EntityManifest` (it carries the
- * storage binding: predicate, resolveLanguage, related model) but still backend-agnostic in
- * shape. The AD4M adapter builds these from SHACL; `toNeutralManifest` projects them onto the
- * neutral form; the AI layer formats them into prompts.
+ * The flat, per-entity manifest form — richer than the declared `EntityManifest` (it carries the
+ * storage binding: predicate, resolveLanguage, related model) but backend-agnostic in shape. An
+ * adapter builds these from the schema a dataset stores; `toNeutralManifest` projects them back
+ * onto the declared form; the AI layer formats them into prompts.
  */
 import { type EntityManifest, type EntitySchema, resolvesPolymorphically } from './manifest';
 import { namePropertyOf } from './recordName';
@@ -43,8 +43,8 @@ export type EntityManifestEntry = {
    * answers in this codebase and two of them were wrong. Carried on the entry so the graph engine,
    * the card derivation and anything else handed a manifest all read the same one.
    *
-   * Absent where the entry was built from storage rather than from a declaration (a foreign SHACL
-   * class): there is nothing declared to resolve, so a reader falls back to `nameFromProperties`
+   * Absent where the entry was built from storage rather than from a declaration (a foreign
+   * schema synced in): there is nothing declared to resolve, so a reader falls back to `nameFromProperties`
    * over the properties it already has.
    */
   nameProperty?: string;
@@ -59,9 +59,8 @@ export type EntityManifestEntry = {
  * no drill-down through core vocabulary can ever resolve. That gap belonged to every backend
  * equally, so fixing it inside one adapter would have left the next to rediscover it.
  *
- * Deliberately does **not** bind storage languages. `manifestToEntries` in the AD4M adapter attaches
- * `FILE_STORAGE_LANGUAGE` to file-format properties, which is that backend's business and would be
- * wrong here; this produces the portable half, which is all `scope` resolution reads. An adapter
+ * Deliberately does **not** bind storage. An adapter's own projection attaches its file store to
+ * file-format properties, which is that backend's business and would be wrong here; this produces the portable half, which is all `scope` resolution reads. An adapter
  * that needs the binding keeps compiling the manifest itself.
  *
  * Only declared predicates are emitted. A property with none is skipped rather than given a minted
@@ -69,10 +68,21 @@ export type EntityManifestEntry = {
  * produce an entry that resolves to a predicate nothing was ever written under — a drill-down that
  * silently returns nothing, which is worse than one that fails loudly.
  */
-export function manifestEntries(manifest: EntityManifest): EntityManifestEntry[] {
-  /** Flatten `extends` so an entry carries what it inherits — `scope` resolves on the child's name. */
-  const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+export function manifestEntries(
+  manifest: EntityManifest,
+  opts: { parents?: EntityManifest } = {},
+): EntityManifestEntry[] {
+  /**
+   * Flatten `extends` so an entry carries what it inherits — `scope` resolves on the child's name.
+   *
+   * A parent this manifest does not declare is read from `opts.parents` — a space shape's manifest
+   * holds only the shape, and names `WeNode` from the core vocabulary, which this package cannot
+   * import. Not found in either, the entity carries only its own members rather than throwing: an
+   * entry list is for reading, and one missing parent should not take every other entry with it.
+   */
+  const resolved = (name: string): EntitySchema | undefined => {
+    const entity = manifest.entities[name] ?? opts.parents?.entities[name];
+    if (!entity) return undefined;
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {
@@ -82,8 +92,8 @@ export function manifestEntries(manifest: EntityManifest): EntityManifestEntry[]
     };
   };
 
-  return Object.entries(manifest.entities).map(([name]) => {
-    const entity = resolved(name);
+  return Object.entries(manifest.entities).map(([name, declared]) => {
+    const entity = resolved(name) ?? declared;
     // After flattening, so an entity that inherits its naming property from a parent carries it.
     const nameProperty = namePropertyOf(entity);
     return {

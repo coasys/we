@@ -59,11 +59,17 @@ const styles = css`
     the accessibility tree. Sizing this way rather than from the current value is what keeps the
     control from resizing every time somebody picks something.
 
-    The width itself is set inline, in the updated() hook — not here. The design system's generated sheet
-    re-declares width in its own interaction rules, so a :host rule held until the pointer arrived
-    and then lost: the control sat at its fitted width and jumped to full width on hover. Measured,
-    not guessed; the same cascade is why an equivalent rule on we-number-input never applied at all.
+    The width is a :host rule reading the design system's own variables, so an explicit width or
+    minWidth still wins, a breakpoint's width wins above it, and fit is only the default-sizing
+    opinion. It was set inline for a while, because the generated hover rule used to re-declare
+    width and a fitted control jumped to full width under the pointer; states now roll back what
+    they do not set (see "Cascade layers" in 'shared/helpers.ts'), and an inline width also beat
+    every breakpoint.
   */
+  :host([fit]) {
+    width: var(--we-select-width, fit-content);
+    min-width: var(--we-select-min-width, 0);
+  }
 
   [part='sizer'] {
     display: grid;
@@ -321,6 +327,18 @@ export default class Select extends DesignSystemElement {
    * carries an id.
    */
   @state() private _active = -1;
+  /**
+   * Whether the keyboard has been used since the listbox opened — what decides if the highlight is
+   * drawn.
+   *
+   * The highlight starts on the current value so that opening and pressing Enter changes nothing,
+   * and it was drawn from that first frame however the list opened. Opened with a click, that put a
+   * focus-coloured ring on the chosen row that nothing the person did had asked for — it read as a
+   * stray focus ring, or as a second selection. It is the keyboard's cursor, so it appears once the
+   * keyboard is in use, the same distinction `:focus-visible` makes for focus. `_active` itself is
+   * unchanged, so `aria-activedescendant` still tells a screen reader where it is.
+   */
+  @state() private _keyboard = false;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -349,13 +367,6 @@ export default class Select extends DesignSystemElement {
    */
   updated(changed: PropertyValues) {
     super.updated(changed);
-
-    // Read through the design system rather than off the element: `width` is assigned by whoever
-    // mounts this, not declared here. A consumer asking for a width means it, and `fit` is only the
-    // default-sizing opinion, so an explicit one wins.
-    const fitting = this.fit && !(this.getInstanceProps() as { width?: string }).width;
-    this.style.width = fitting ? 'fit-content' : '';
-    this.style.minWidth = fitting ? '0' : '';
 
     if (changed.has('_open')) {
       if (this._open) {
@@ -431,6 +442,7 @@ export default class Select extends DesignSystemElement {
   }
 
   private _toggle() {
+    this._keyboard = false;
     this._open = !this._open;
     if (this._open) this._syncActive();
     else this._active = -1;
@@ -468,6 +480,7 @@ export default class Select extends DesignSystemElement {
    */
   private _onKeyDown(e: KeyboardEvent) {
     if (this.disabled) return;
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(e.key)) this._keyboard = true;
 
     switch (e.key) {
       case 'ArrowDown':
@@ -565,7 +578,10 @@ export default class Select extends DesignSystemElement {
                     aria-controls="listbox"
                     aria-activedescendant=${activeId}
                     @input=${this._onInput}
-                    @focus=${() => (this._open = true)}
+                    @focus=${() => {
+                      this._keyboard = false;
+                      this._open = true;
+                    }}
                     @keydown=${this._onKeyDown}
                   />
                 `
@@ -629,7 +645,7 @@ export default class Select extends DesignSystemElement {
                               part="option"
                               role="option"
                               id=${this._optionId(index)}
-                              data-active=${index === this._active ? 'true' : nothing}
+                              data-active=${this._keyboard && index === this._active ? 'true' : nothing}
                               aria-selected=${opt.value === this.value ? 'true' : 'false'}
                               aria-disabled=${opt.disabled ? 'true' : nothing}
                               @click=${() => this._select(opt)}

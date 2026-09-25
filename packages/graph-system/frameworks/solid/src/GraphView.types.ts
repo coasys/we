@@ -289,7 +289,23 @@ export interface GraphViewProps {
    * stands for no record — a property, a literal, a synthetic cluster — which is also how a
    * template can tell that there is nothing to save.
    */
-  onNodeDragEnd?: (payload: { id: string; x: number; y: number; recordId?: string; recordType?: string }) => void;
+  onNodeDragEnd?: (payload: {
+    id: string;
+    x: number;
+    y: number;
+    recordId?: string;
+    recordType?: string;
+    /**
+     * What a folded card brought with it — every record hidden under it, at the place it now sits.
+     *
+     * Absent unless the card that was dragged is a fold holding something (see `folded`), so a
+     * consumer that ignores it behaves exactly as it did. A consumer that *writes* positions should
+     * write these too: otherwise carrying a fold across the canvas and unfolding it scatters the
+     * contents back to where they were, which makes a fold a way of hiding things rather than a way
+     * of tidying them.
+     */
+    carried?: { recordId: string; recordType: string; x: number; y: number }[];
+  }) => void;
   /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
@@ -328,7 +344,18 @@ export interface GraphViewProps {
    * `dataset` is the record's home as the drag spelt it, absent for one picked up in the dataset on
    * screen. A receiver that can only draw its own dataset's records should test it.
    */
-  onDrop?: (payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number }) => void;
+  onDrop?: (payload: {
+    entity: string;
+    id: string;
+    dataset?: string;
+    label: string;
+    x: number;
+    y: number;
+    /** The post a dropped block sits in — see `DragItem.within`. */
+    within?: { entity: string; id: string };
+    /** What the source drew it with, for a receiver that cannot read the source. */
+    preview?: { thumbnail?: string; author?: string; source?: string };
+  }) => void;
 
   /**
    * Small controls that appear above a node while it is selected — a tick, a cross, a bin.
@@ -362,6 +389,12 @@ export interface GraphViewProps {
     value?: unknown;
     /** The control is still moving — show the value, do not write it yet. */
     preview?: boolean;
+    /**
+     * Where the node is, in world units — so an action can pin a card where it is drawn. A parked
+     * card has no stored position, and accepting one should not send it somewhere else on reload.
+     */
+    x: number;
+    y: number;
   }) => void;
   /**
    * A record the interface wants shown: selected, and brought into view if it is off screen.
@@ -404,6 +437,57 @@ export interface GraphViewProps {
    */
   focus?: string;
   /**
+   * Records whose cards are **folded**: everything hanging off each of them is hidden, and the card
+   * says how much.
+   *
+   * The reading counterpart of `expansion`, and a different question from it. Expansion is about
+   * resolution — how much of the graph is fetched at all — where a fold hides part of what is
+   * already here, so folding costs no query, moves nothing that stays, and unfolding puts every card
+   * back exactly where it was. On a canvas, where position is the work, that distinction is the
+   * whole feature: a fold has to be able to tidy the board without rearranging it.
+   *
+   * **Record ids, like `focus`**, and for the same reason: a template has no operator that could
+   * build `we-graph://entity/<dataset>/<type>/<id>`, and it already holds the id. An id the graph
+   * does not hold is ignored rather than refused, so a fold outliving a deleted card leaves the rest
+   * of the fold alone.
+   *
+   * Which cards go away is worked out from the connections, pointing outward — see `foldGraph` in
+   * `@we/graph-core`. Two consequences worth knowing, because both are deliberate:
+   *
+   * - **A card a second, unfolded card still points at stays.** Folding must not take something
+   *   somebody else is holding, or the canvas shows a line running to nothing.
+   * - **A connection that crossed the boundary comes back as one aggregate line** from the folded
+   *   card, labelled with how many it stands for. A fold that quietly dropped it would be a canvas
+   *   showing an isolated card where there were six related ones. Those lines carry no record, so
+   *   `onEdgeClick` finds nothing behind them — they are a summary, not a claim.
+   *
+   * Hold this in something shareable. It is view state — what a reader is looking at rather than
+   * anything about the space — so WE's canvas keeps it in the address, which makes a folded canvas
+   * a thing you can send somebody and something a reload comes back to.
+   */
+  folded?: string[];
+  /**
+   * The fold control on a card was pressed — `folded` says which way.
+   *
+   * Binding it is what puts the control on a card at all, the same bargain `onNodeResize` and
+   * `onEdgeCreate` make: a graph nobody is listening to offers no affordance that would do nothing.
+   * The graph writes nothing itself — where the fold set is kept is the interface's business — so a
+   * handler that does not put the id into `folded` is a button that visibly does nothing.
+   *
+   * Offered only where it would take something away, which the graph works out and the interface
+   * cannot: a card whose only child a second parent is holding folds to nothing, and a control that
+   * promised otherwise would be worse than none. `count` is how many cards the press is about to
+   * hide, or — unfolding — how many it is about to bring back.
+   */
+  onNodeFold?: (payload: {
+    id: string;
+    recordId?: string;
+    recordType?: string;
+    /** The state being asked for, not the state it was in. */
+    folded: boolean;
+    count: number;
+  }) => void;
+  /**
    * The delete key, pressed while the graph holds focus and something is selected.
    *
    * Emits and writes nothing, like every other gesture here: what removing a thing *means* is the
@@ -413,12 +497,18 @@ export interface GraphViewProps {
    * keystrokes from whatever is around it.
    *
    * Fires only when something is selected — a press with an empty selection means nothing and has
-   * nothing to report. `recordId`/`recordType` are filled **only when the selection is exactly one
-   * record**: one selected node, or the selected edge, which are alternatives rather than layers (see
-   * the engine's `selectEdge`). `count` says how many, so an interface can tell one from several
-   * rather than guessing from an absence. Several is left unhandled deliberately — the host's delete
-   * confirmation is modal and per record, so firing it N times would stack N dialogs, and a batch
-   * confirmation is a thing to design rather than to fall into.
+   * nothing to report. `recordId`/`recordType` are filled when the selection is exactly one record:
+   * one selected node, or the selected edge, which are alternatives rather than layers (see the
+   * engine's `selectEdge`). `count` says how many.
+   *
+   * `records` carries **every** selected node that stands for one, so a multi-card selection can be
+   * acted on as a set. It is the whole selection rather than the difference: a caller wanting the
+   * single case reads `recordId` as it always did, and one wanting the set reads this, which holds
+   * that one record too.
+   *
+   * Nothing here loops the host's confirmation. A delete of several is one question about a set —
+   * see `spaceStore.deleteRecords`, which asks it once — and firing a per-record confirmation N
+   * times would stack N dialogs.
    *
    * Backspace counts as delete. On a Mac it is *the* delete key, and a canvas that answered only to
    * the one the manual calls Delete would be inoperable on half the keyboards it runs on.
@@ -428,14 +518,188 @@ export interface GraphViewProps {
     recordType?: string;
     /** Which of the two selections this was, for an interface that treats them differently. */
     kind?: 'node' | 'edge';
-    /** How many things are selected. `1` is the case the ids above are filled for. */
+    /** How many things are selected. */
     count: number;
+    /** Every selected node that stands for a record. Empty for a selected edge, or for synthetic nodes. */
+    records?: { recordId: string; recordType: string }[];
   }) => void;
+  /**
+   * Controls offered above the selection when **several** cards are selected.
+   *
+   * Its own list rather than a flag on `nodeActions`, because the two answer different questions and
+   * mostly have different answers. A card's own bar is about *that* card — connect it, resize it,
+   * accept the suggestion it is making — and almost none of that means anything said about twelve
+   * cards at once. What does is a small set: recolour them, take them off the canvas, delete them.
+   *
+   * Drawn on a bounding box round the whole selection, and the per-card chrome is **not** drawn
+   * while it is up. Twelve selected cards used to mean twelve action bars, forty-eight connect dots
+   * and ninety-six resize handles over the canvas, which is not a busier version of the single-card
+   * case but a different and unusable one.
+   *
+   * Reported through {@link onSelectionAction}, once, with every record in the selection. A set has
+   * no single colour, so a `control`'s `value` opens on the first selected card that carries one —
+   * a starting point for what is about to be set rather than a readout of what the set is.
+   *
+   * `when` is asked of **every** selected node and must match all of them, which is what keeps an
+   * answer like "accept" off a selection where only some cards are asking a question.
+   */
+  /**
+   * Whether a card dragged off this graph can be carried somewhere else.
+   *
+   * Off by default, like every other gesture here. On, the **ordinary card drag** does both jobs and
+   * the release decides which: let go over the canvas and it is a move, let go over a drop zone —
+   * a Pocket panel, a folder, another space's feed — and the cards go back where they started and
+   * the zone gets them.
+   *
+   * ## No second grab area
+   *
+   * This was a grip in the action bar first, on the reasoning that a press should declare its
+   * meaning before the drag rather than at the end of it. In use that reads as ceremony: the drag
+   * people already know does the thing, the zones light up as the pointer crosses them so the
+   * option is visible while it is live, and the cards springing back is immediate feedback about
+   * which of the two just happened. One affordance fewer, and the gesture works under a finger.
+   *
+   * The cost is real and worth knowing: panels float over the canvas, so releasing a card in the
+   * region an open panel covers is a carry rather than a move. That region is already somewhere a
+   * card should not be parked — it is what `GraphHostBindings.obscured` exists for — so it is a
+   * fair trade, but an open Pocket does change what a drag means over its own footprint.
+   *
+   * ## What travels
+   *
+   * **References**, never records: `{ entity, id }` per card, with the label and the composed
+   * document already on the node for whatever draws them. No dataset is named, because the receiver
+   * stamps that — see `@we/drag`. A press inside the selection carries the selection; a press
+   * outside it carries that card alone, which is the rule `drag-node` already follows for moving.
+   *
+   * Always a `copy`. Nothing here can know whether the receiver kept what it was given, and taking
+   * a card off the canvas on the strength of a drop that may have been refused is the one outcome
+   * worth refusing to risk.
+   */
+  carry?: boolean;
+  selectionActions?: NodeAction[];
+  /**
+   * One of {@link selectionActions} was pressed, for every record selected.
+   *
+   * The counterpart of `onNodeAction` and deliberately not a repeat of it: a set is reported once
+   * with its members, rather than once per member, so an interface writes one confirmation and one
+   * commit instead of looping something that was designed to be asked about a single card.
+   */
+  onSelectionAction?: (payload: {
+    action: string;
+    records: { recordId: string; recordType: string }[];
+    count: number;
+    value?: unknown;
+    preview?: boolean;
+  }) => void;
+  /**
+   * Ctrl/Cmd+Z, while the graph has focus.
+   *
+   * Reported, never performed — the graph has no write path, so what undoing *means* is the
+   * interface's, exactly as deleting is. On a canvas it is `recordStore.undoCanvas`; on a map with
+   * nothing to write it should be left unbound, and the key stays inert rather than doing something
+   * nobody can see.
+   *
+   * On the surface rather than the document, which is the same trade `onDeleteSelection` makes and
+   * has the same consequence: it works while the canvas has focus and not while the inspector beside
+   * it does. The alternative is stealing the key from every text field on the page.
+   */
+  onUndo?: () => void;
+  /** Ctrl/Cmd+Shift+Z, and Ctrl+Y — both spellings, because both are in use. */
+  onRedo?: () => void;
+  /**
+   * The pointer moved, reported in the canvas's **own world coordinates**, or `null` as it leaves.
+   *
+   * World units rather than screen pixels because that is the frame the canvas's content is stored
+   * in, so it is the one two agents at different zoom, in differently-shaped panels, already agree
+   * about. Converting is the graph's to do — it holds the camera, and nothing outside it can.
+   *
+   * Coalesced to one report per animation frame: a pointer fires far more often than a screen
+   * changes, and a consumer sampling it should not have to do that itself.
+   */
+  onPointerAt?: (at: { x: number; y: number } | null) => void;
+  /**
+   * What is visible now, in world coordinates — reported whenever the camera moves.
+   *
+   * The shape to hand somebody who is following along. See `Viewport.visibleWorldRect` for why a
+   * region rather than a camera: a zoom means a different amount of canvas in a different box.
+   */
+  onViewport?: (region: GraphRegion) => void;
+  /**
+   * Frame this world rectangle — the other half of `onViewport`, for following somebody else's view.
+   *
+   * Applied when the value **changes**, not continuously, so a reader who pans afterwards is not
+   * dragged back: whoever set it decides when to set it again. Set it to `null` to follow nobody,
+   * which leaves the camera exactly where it is rather than moving it anywhere.
+   *
+   * Framed with no margin, unlike the `fit` control: the region already describes what somebody could
+   * see, so padding it would show a follower slightly less at every hop.
+   */
+  region?: GraphRegion | null;
   /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */
   host?: GraphHostBindings;
+}
+
+/** A rectangle in the canvas's own world coordinates. */
+export interface GraphRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * A mark drawn on the canvas at a world point by something outside the graph.
+ *
+ * A live cursor, a pin on a card, a highlight on something an extraction pass touched. The graph
+ * positions it and nothing else: what it *is* comes from the host, exactly as `nodeContent` does, so a
+ * graph package meant to be portable never learns what a cursor or a comment is.
+ *
+ * Drawn inside the camera's own transformed layer, which is what makes this cheap — a decoration pans
+ * and zooms with the drawing for nothing, because the layer it sits in is the thing being transformed.
+ * It is counter-scaled so it stays a constant size on screen, since a cursor that grew with the zoom
+ * would be a cursor whose tip moved.
+ */
+export interface GraphDecoration {
+  /**
+   * Stable for as long as this is the same mark — an agent's id for their cursor.
+   *
+   * Keyed by it, so a mark that moves is a transform on an element that stays put in the DOM. Without
+   * that there is nothing for a transition to interpolate and nothing for `ease` to mean.
+   */
+  id: string;
+  /** Where, in world coordinates. The mark's own origin lands here. */
+  x: number;
+  y: number;
+  /**
+   * Ease toward each new position rather than jumping to it.
+   *
+   * A CSS transition on the mark's own transform, which is the whole implementation: a cursor arrives
+   * a dozen times a second at best, and a transition just longer than that gap turns those steps into
+   * continuous movement with no animation loop anywhere. Only the mark's *own* movement is eased —
+   * the camera's is not, because the layer above it carries no transition, so panning stays exact.
+   */
+  ease?: boolean;
+  /**
+   * How long that ease takes, in milliseconds. Ignored unless {@link ease}.
+   *
+   * Absent means the stylesheet's own default, tuned for a mark arriving as fast as a transport allows.
+   * A producer that knows how far apart its positions are really arriving should say so: the easing is
+   * there to cover the time until the next one, so a duration much shorter than the real gap draws a
+   * brief glide followed by stillness, which is the stutter it was meant to remove.
+   */
+  easeMs?: number;
+  /**
+   * What to draw. Host-supplied, for the reason `nodeContent` is.
+   *
+   * **Called once while this `id` is present**, not on every change to the list: what a mark *is* stays
+   * the same while it is the same mark, and only where it sits moves. So anything inside it that can
+   * change — a name that arrives late, a peer going idle — must be read from a reactive source within
+   * the returned tree rather than captured as a value before returning it.
+   */
+  render: () => JSX.Element;
 }
 
 /** One control offered above a selected node — see {@link GraphViewProps.nodeActions}. */
@@ -517,6 +781,18 @@ export interface GraphHostBindings {
    * host's, and a graph package that named one would stop being portable.
    */
   nodeControls?: Record<string, NodeControl>;
+  /**
+   * Marks to draw on the canvas at world points — see {@link GraphDecoration}.
+   *
+   * A reactive accessor, read inside the render, exactly as `pendingData` is: the set changes as
+   * peers move, and the alternative is the host pushing a prop down a component that re-runs its
+   * whole style pass when its props change.
+   *
+   * On the host seam rather than in props because a template has no business drawing these: what a
+   * mark means comes from a capability, and the host is the only thing that can turn one into
+   * something renderable.
+   */
+  decorations?(): GraphDecoration[];
   /**
    * Fields to lay over a node's own data, keyed by the record id the node stands for.
    *

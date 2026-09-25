@@ -22,6 +22,10 @@ export const TextBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A line or paragraph of text, on its own',
+    // A form, for a paragraph that stands on its own — a line of text on a canvas. Plain text: marks
+    // are written in the composer.
+    authoring: { fields: ['text'] },
     flag: { predicate: 'we://flag', value: 'we://text_block' },
     properties: {
       /** `normal` (a paragraph), `h1` | `h2` | `h3`, or `blockquote`. */
@@ -37,7 +41,7 @@ export const TextBlock: CoreEntityDef = {
       /** `rtl` when set. */
       direction: { type: 'string', predicate: 'we://direction', default: '' },
       /** The block's words, and the one string search, transcripts, notes and the AI all read. */
-      text: { type: 'string', predicate: 'we://text', default: '' },
+      text: { type: 'string', predicate: 'we://text', default: '', control: 'textarea' },
       /**
        * Inline structure over `text`, as standoff annotations — a JSON array of
        * `{ start, end, type, ...data }` ranges, offsets in Unicode **code points**, empty string for

@@ -127,7 +127,10 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
   const confirmAction = isAction
     ? {
         ...(opts.confirm as Record<string, unknown>),
-        onSuccess: [opts.close, ...(((opts.confirm as Record<string, unknown>).onSuccess as unknown[]) ?? [])],
+        onSuccess: [
+          ...(Array.isArray(opts.close) ? opts.close : [opts.close]),
+          ...(((opts.confirm as Record<string, unknown>).onSuccess as unknown[]) ?? []),
+        ],
       }
     : opts.confirm;
   const confirmSteps = Array.isArray(confirmAction) ? confirmAction : [confirmAction];
@@ -140,7 +143,8 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
       ]
     : isAction
       ? confirmAction
-      : [...confirmSteps, opts.close];
+      : // Spliced, not nested: the resolver does not flatten a list inside a list.
+        [...confirmSteps, ...(Array.isArray(opts.close) ? opts.close : [opts.close])];
 
   return {
     type: '$if',

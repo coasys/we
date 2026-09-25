@@ -52,7 +52,8 @@ without knowing what holds the data.
 Glossary (these terms pervade stores, models, and `$query`/`perspective` in schemas):
 - **Agent / DID** — a user identity; addressed by a DID (`sessionStore.me.did`).
 - **Perspective** — a local knowledge graph (links/triples). Each Space is backed by one;
-  `datasetStore.currentDataset` is the active one, `rootPerspective` holds we-root models.
+  `datasetStore.currentDataset` is the active one, `datasetStore.rootDataset` holds we-root (the app's
+  configuration), and `datasetStore.personalDataset` holds we-personal (the agent's notes and Pocket).
 - **Neighbourhood** — a *shared* perspective, synced peer-to-peer. A shared Space is a neighbourhood.
 - **SDNA (Social DNA)** — SHACL schemas installed into a perspective that define its data model.
   WE's models are SDNA-typed; `initializeAsWeSpace` installs WE's Space SDNA into a foreign perspective.
@@ -92,10 +93,14 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
 | `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
-| `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
-| `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| `@we/module-shared` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, `lintModule` — what a module author installs | Agnostic |
+| `@we/module-testing` | module-system/testing | Fakes for testing a module store without a host: `fakeDeps`, `fakeRecords`, `fakePresence`, `buildStore` | Agnostic |
+| `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
+| `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
+| `@we/history` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
+| `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
@@ -218,6 +223,7 @@ The spine of every one of these decisions is a single rule, from `packages/templ
 | Change what one section of a space *is* | **View** |
 | Change a space's whole chrome, arrangement and route table | **Shell template** |
 | Reuse an arrangement across templates | **Fragment** |
+| A visual element a library already ships — a chart, a rating, a map | **Foreign element** (seed `elements`) |
 | Stateless UI needing measurement, focus or a browser API | **Primitive** (Lit) or **component** (Solid) |
 | Computation the expression library lacks | **Expression function** |
 | A new kind of content composed into a page | **Block type** |
@@ -266,13 +272,14 @@ the seed's list is correct code that never appears.
 | Portable fragment | `schema-system/kit/src/` | `templates/kit/CONVENTIONS.md` | export from `index.ts` | `--filter @we/template-kit test` |
 | WE-domain fragment | `templates/kit/src/we/` | `templates/kit/CONVENTIONS.md` | export from `index.ts` | `--filter @we/template-kit test` |
 | Design token | `design-system/1-tokens/src/` | its `CONVENTIONS.md` | — (generated, snapshot-tested) | `--filter @we/tokens test` |
+| Foreign element | a package in `app-shell/package.json` | its library's docs | seed `elements` + `--filter @we/app-shell generate-elements` | `validate:schemas`, then `generate-context` |
 | Primitive | `design-system/3-primitives/src/primitives/` | its `CONVENTIONS.md` | — (CEM generated by its build) | `--filter @we/primitives test`, then `generate-context` |
 | Component | `design-system/4-components/src/components/` | `design-system/CONVENTIONS.md` | `componentRegistry.tsx` | `--filter @we/components test`, then `generate-context` |
 | Block type | `block-system/shared/` + `frameworks/solid/` | `block-system/CONVENTIONS.md` | `registerBlock()` in `core-blocks.ts` | `--filter @we/block-shared test` |
 | Expression function | `schema-system/shared/src/expressions/functions.ts` | `schema-system/CONVENTIONS.md` ("Adding a function") | `defineFunction()` — the registry feeds the validator, the evaluator and the generated context | `--filter @we/schema-shared test`, then `generate-context` |
 | Store | `app-shell/src/frameworks/solid/stores/` | `app-shell/CONVENTIONS.md` | classify in `templateSurface.ts` **and** describe in `fragments/stores.ts` — both fail the build if you don't | `--filter @we/app-shell test`, then `generate-context` |
 | Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
-| Feature module | `module-system/<id>/` | `module-system/shared/src/module.ts` (the contract is the documentation) | `bundledModules.ts` + seed `modules` | `--filter @we/module-shared test`, `validate:schemas` |
+| Feature module | `module-system/<id>/` (or any package exporting `createModule`) | `docs/guides/writing-a-module.md`, then `module-system/shared/src/module.ts` | seed `modules` — the registry is generated from it by `--filter @we/app-shell generate-modules` | `--filter @we/module-shared test`, `validate:schemas`, then `generate-context` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
 | Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
@@ -383,19 +390,21 @@ Record mutations via $action (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
 and acts on a record of it.
 
-record.create — creates a record in the current perspective (default) or a specified one:
-{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
-The third argument is an options object. Omit it to use the current space perspective.
+record.create — creates a record in the current dataset (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+The third argument is an options object. Omit it to write into the space on screen.
 
 record.update — updates one record:
 { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.).
-Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
+Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
+takes, and it names the same accessors.
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from
 the entity's own declaration, so a community's newest entity is creatable with no schema written for
@@ -451,6 +460,9 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
     join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
+    reverse(items) — The entries of a list, back to front. A new list — the one given is untouched, so a store array or a query result can be reversed without disturbing anything else reading it.  e.g. reverse(local.utterances)
+    split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
+    sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.comments)))
   Text:
     contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
     endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
@@ -478,6 +490,10 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
     involvement(options) — Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).  e.g. involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible
     involvementMenu(options) — The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).  e.g. involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })
+    signalTally(options) — What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).  e.g. signalTally({ signals: row.signals, type: sig })
+    reactions(options) — A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).  e.g. reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })
+    reactors(options) — Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.  e.g. reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })
+    signalTypesByUse(options) — Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).  e.g. signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
@@ -491,6 +507,7 @@ values may be expressions (in an expression) or tokens (in a $query):
   { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
   { field: { exists: true } }              — non-null / non-undefined presence check
   { field: { exists: false } }             — null or undefined check
+  { field: { gte: 10, lt: 50 } }           — a range; lt, lte, gt, gte, any of them together
   { relation: { some: {…} } }              — has at least one linked record matching the clause
   { relation: { none: {…} } }              — has no linked record matching it; { none: {} } is "has none at all"
   { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
@@ -499,27 +516,29 @@ values may be expressions (in an expression) or tokens (in a $query):
 so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
 fetched everything with its children and counted client-side. An empty clause means "any", so
 { comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
-contain a quantifier — and they are native on AD4M, where they compile to a SPARQL EXISTS group.
+contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
 A key is read as a quantifier because it carries "some" or "none", not because the model says it is
 a relation. So a scalar property can never be compared with those two words, and everything else on
 a relation-named key stays an ordinary field compare.
 
 A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
-{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
-clause. An empty list matches nothing, which is what "none of these" should mean.
+{ id: ['id1', 'id2', 'id3'] }. Native in a $query. An empty list matches nothing, which is what
+"none of these" should mean.
 
-An ABSENT property is the trap worth knowing, and "not" is where the two backends disagree.
+An ABSENT property is the trap worth knowing, and "not" is where a $query and filter() disagree.
 
-A record that never had a property written carries no value for it — on AD4M a property is a link,
-so it is simply not there. Three cases, and the middle one differs by backend:
+A record that never had a property written carries no value for it — a property is stored as a
+link, so an unwritten one is simply not there. Three cases, and the middle one differs by where it
+is evaluated:
 
   { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and on the in-memory
-                               backend (undefined !== 'x'), and does NOT match on AD4M, where
-                               != over an unbound variable excludes the row, exactly as SQL's
-                               three-valued logic excludes NULL. A $query where written with "not"
-                               can therefore pass every test and come back empty in production.
+  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and in the in-memory
+                               test backend (undefined !== 'x'), and does NOT match in a $query
+                               against the production backend, where != over an unbound value
+                               excludes the row, exactly as SQL's three-valued logic excludes
+                               NULL. A $query where written with "not" can therefore pass every
+                               test and come back empty in production.
   { field: { exists: false } } — means absent, unambiguously — but see the warning below about
                                where it can be used.
 
@@ -529,7 +548,7 @@ some records already existed reads as absent on every one of them, and the query
 consults the default when filtering.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The AD4M backend has no such operator, so a $query using one is refused rather than run. This is a
+The backend has no such operator, so a $query using one is refused rather than run. This is a
 change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
 — the clause reached a filter that rejected every row, so the query answered nothing at all, always,
 with no error anywhere. A refusal at least says so.
@@ -543,10 +562,21 @@ comparison; fetch the candidates and filter() client-side, where "exists" works;
 is a relation rather than a scalar, ask { relation: { none: {} } }, which IS native.
 
 startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
-a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend either, so
-a $query using one is refused — use contains there; inside filter() they are evaluated client-side.
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the backend either, so a
+$query using one is refused — use contains there; inside filter() they are evaluated client-side.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the executor decided pushability
+lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
+what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
+in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due in the second half of
+September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
+against a field holding the string '12' answers false, rather than guessing which you meant.
+
+In a $query a NUMBER bound is native and a STRING bound is refused — the backend compares numbers
+only. So a date range in a $query does not run yet; fetch the candidates and filter() client-side,
+where it works, or bound the query by something numeric. A numeric range (a price, a count, a
+rating) runs natively either way.
+
+OR/AND/NOT no longer cost a query its sort pushdown. They used to: the backend decided pushability
 with a second function that disagreed with what it actually emitted, and an explicit combinator fell
 outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
 like any other.
@@ -555,6 +585,7 @@ Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
 { "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
 { "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
+{ "$": "filter(local.tasks, { dueDate: { gte: local.weekStart, lt: local.weekEnd } })" }
 { "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
 { "$": "count(local.rows) > 0 && local.searchText != ''" }
 { "$": "item.author == me.did ? 'mine' : 'theirs'" }
@@ -576,6 +607,13 @@ Query (data retrieval):
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
+subscribe may also be an EXPRESSION, which is how a surface follows its subject only while the
+subject is still changing: { "subscribe": { "$": "modules.transcribe.callOnScreenLive" } } reads a
+finished call's transcript with no subscription at all, and follows a live one. Reach for it on
+anything whose record settles — a past call, an archived thread — where a live query would have the
+backend re-running it for an answer that cannot change. Turning falsy releases the subscription
+rather than merely ignoring it; an expression that has not resolved yet counts as not live, so the
+worst case is one fetch and a re-ask rather than a subscription nobody wanted.
 By default $query targets the current dataset. Use dataset to query a different dataset — required
 when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
@@ -628,10 +666,10 @@ To read the distinct kinds out of it, or merge them with kinds from another list
 { "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
-- currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- currentDataset — the currently active dataset. Use as a dataset value.
   A host store's dataset accessor (e.g. `dataset: 'datasetStore.marketplaceDataset'`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append `.handle` — component props take the
-  backend's own dataset handle: { "perspective": { "$": "datasetStore.currentDataset.handle" } }.
+  backend's own dataset handle: { "dataset": { "$": "datasetStore.currentDataset.handle" } }.
 - me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
@@ -717,6 +755,45 @@ no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
 For external-app datasets, always add dataset: { "$": "currentDataset" }.
 
+Reading a TREE rather than one record's children — the same scope, with one more key:
+
+  anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
+  whole level of a tree rather than one per parent, which also means one subscription instead of
+  one per parent.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
+
+  "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
+  three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
+  knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
+  where asking level by level from the template costs a round trip each and draws the tree a layer
+  at a time.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
+
+  "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
+  count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
+  to draw part of one.
+
+  "limitPerAnchor": 5 caps results per anchor for a single level. Note it is NOT a substitute for
+  "levels": a walk from one anchor has one group, so it would cap the total instead of the breadth
+  at each depth.
+
+  "direction": "in" searches among the records that point AT the anchor, rather than the ones it
+  points at.
+
+A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
+the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
+inReplyTo, the reverse of comments, so a row names its own parent.
+  "include": { "inReplyTo": true }
+Then each level is a filter over the one result:
+  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
+PARENTHESISE the anchor when it is anything but a plain path — `==` binds tighter than `?:`, so a
+ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
+
+A count over a whole subtree is the same idea in a projection:
+  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
+It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
+— where count(row.comments) is the direct children only and would say 3.
+
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object", "array".
@@ -792,6 +869,11 @@ the condition, a scope is dropped and the query is space-wide. Right for an opti
 for a query whose scope is about to exist, which would draw everything for a frame and then narrow.
 Give such a query "when": { "$": "local.boardLoaded" } and it is not asked until the condition is
 truthy — the result stays empty and local.<name>Loaded stays false, so a loading state can hold.
+A BOUND is the exception, and the only one: an unresolved "limit" or "offset" does NOT widen — the
+query is not asked at all, exactly as a falsy "when" leaves it unasked, and it runs once the bound
+arrives. Widening a filter answers a broader question, which is visible; widening a bound asks the
+backend for everything there is, which is not. So an expression-valued limit costs at worst one
+empty frame, never an unbounded fetch.
 A $query cannot be read inside an expression — a question for the backend is hoisted here and read
 back through local. Use count() for conditional visibility:
 { "condition": { "$": "count(local.signalTypes)" } }
@@ -1104,13 +1186,13 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement) — A colour, chosen from the theme's tokens or picked by hand.
-  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false
+  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false, confirm: boolean = false
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
@@ -1138,13 +1220,24 @@ deliberately left empty here: a card fragment cannot name its own dataset withou
 store, and portable fragments name no store by construction. The receiver stamps it, from
 whichever dataset was current when the drop happened.
 
+#### Text inside it stays selectable
+
+A press on the words of a rendered composition — anything inside a `data-we-text` region — selects
+them rather than picking the card up. The rest of the card, including the space around those
+words, still drags. See `shared/textHit.ts`.
+
+#### Nesting
+
+A draggable inside a draggable is how a picture is taken out of a post rather than the whole post:
+the innermost one under the press claims it, and the outer one sees the claim and stands aside.
+
 #### `display: contents`
 
 The wrapper must not exist as a box. A card inside a grid track, a row inside a flex column: a
 real element in between would take the track and leave the card laid out against the wrapper
 instead of the grid. What is dragged is therefore the *child*, which is also what the ghost and
 the geometry are measured from.
-  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: { thumbnail?: string; content?: string; author?: string; date?: string } | undefined, origin?: unknown | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
+  Props: entity: string = '', recordId: string = '', datasetKey: string = '', label: string = '', icon: string = '', preview?: { thumbnail?: string; content?: string; author?: string; date?: string } | undefined, origin?: unknown | undefined, within?: DragWithin | undefined, effect: 'move' | 'copy' | 'link' = 'copy', disabled: boolean = false
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, label: string = '', close: () => void
 - we-drop-zone (LayoutElement) — Anything a `we-draggable` can be dropped into.
@@ -1180,7 +1273,7 @@ DOM. See `_zone` for what happened when they did.
 
 Give every nested zone `noArm`, so picking something up speaks once about the container rather
 than once about every row inside it.
-  Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false
+  Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)
@@ -1220,6 +1313,8 @@ development only.
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', label: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
+- we-live-cursor (DesignSystemElement)
+  Props: name: string = '', hash: string = '', image: string = '', color: string = ''
 - we-location-picker (DesignSystemElement)
   Props: latitude?: number | undefined, longitude?: number | undefined, placeholder: string = 'Set location…', disabled: boolean = false, reverseGeocode: boolean = true
 - we-markdown (DesignSystemElement)
@@ -1272,14 +1367,14 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
 `separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
   Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', line: 'auto' | 'none' = 'auto', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
-  Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = '', jump: '' | 'start' | 'end' | 'both' = ''
+  Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = '', jump: '' | 'start' | 'end' | 'both' = '', nearStart: number = 0, nearEnd: number = 0
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false, ticks: 'auto' | 'on' | 'off' = 'auto'
 - we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
 #### One element, not two
@@ -1386,70 +1481,32 @@ when `relative` is enabled.
 @we/components:
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
-- AudioInput
-  Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
-- BlockPlaceholder
-  Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
+  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, rootClass?: string
-- BlockToolbar
-  Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
+  Props: editorState?: EditorStateInput, dataset?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined
-- CalloutInput
-  Props: text: string | undefined, variant: string | undefined, icon: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CodeDisplay
   Props: code: string | undefined, language: string | undefined, title: string | undefined
-- CodeInput
-  Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
-- CollectionDisplay
-  Props: layout?: string, columnCount?: number, gap?: string, content?: ContentBlock[]
-- CollectionInput
-  Props: layout?: string, columnCount?: number, gap?: string, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
-- DividerDisplay
-  Props: style: "solid" | "dashed" | "dotted" | undefined
-- DividerInput
-  Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EmbedDisplay
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, onOpenRef?: ((ref: string) => void)
-- EmbedInput
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, label?: string, thumbnail?: string, sourceAuthor?: string, sourceName?: string, onOpenRef?: ((ref: string) => void)
 - EventDisplay
   Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined
-- EventInput
-  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - FileDisplay
   Props: title: string | undefined, name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
-- FileInput
-  Props: title: string | undefined, name: string | undefined, url: string | FileData | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - ImageDisplay
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined
-- ImageInput
-  Props: src: string | FileData | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - LinkDisplay
   Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined
-- LinkInput
-  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - LocationDisplay
   Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined
-- LocationInput
-  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - TagDisplay
   Props: name: string | undefined, color: string | undefined
-- TagInput
-  Props: name: string | undefined, color: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - TaskDisplay
   Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined
-- TaskInput
-  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - VideoDisplay
   Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined
-- VideoInput
-  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
-- AudioVisualiser
-  Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
 - AvatarStack
   Props: avatars: AvatarInfo[], max?: number, size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl", overlap?: number, edge?: string, ringWidth?: string, styles?: Record<string, string | number>
 - Calendar
@@ -1464,6 +1521,8 @@ when `relative` is enabled.
 - Column (DesignSystemElement)
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
+- CountMark
+  Props: icon: string, count?: number, mine?: boolean, size?: "xs" | "sm" | "md", countTone?: "text" | "glyph", countFirst?: boolean, onPress?: (() => void), label?: string, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
@@ -1472,19 +1531,15 @@ when `relative` is enabled.
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid (DesignSystemElement)
   Props: template?: string, columns?: number, minChildWidth?: string, rows?: string, childAspect?: string | number, onMeasure?: ((box: { width: number; height: number; }) => void), onArrange?: ((tiling: Tiling) => void)
-- ImageCrop
-  Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
 - ImageLightbox
   Props: srcs: string[], initialIndex: number, onClose: () => void
-- RerenderLog
-  Props: location: string
 - Row (DesignSystemElement)
 - Search (DesignSystemElement)
   Props: placeholder?: string, value?: string, onSearch?: ((value: string) => void), debounce?: number
 - Select (DesignSystemElement)
   Props: options: SelectOption[], value?: string, placeholder?: string, searchable?: boolean, label?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - SignalControl
-  Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
+  Props: signalType: SignalTypeData, size?: "xs" | "sm" | "md", signals?: SignalData[], myDid?: string, onSignal?: ((value: number | null) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - ToastContainer
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
@@ -1502,7 +1557,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; }) => void), focus?: string, onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, host?: GraphHostBindings
 
 ---
 
@@ -1535,6 +1590,9 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - typeStyles: string — Entity holding this canvas's colour per kind of thing — WE passes "TypeStyle". Read onto every node as `canvasTypeColor`, for a style rule to pick up with `{ from: "data.canvasTypeColor" }`. This is what a canvas's key writes.
   - routes: string — Entity holding how this canvas draws its connections — WE passes "EdgeRoute". Read onto each edge as `sourceAnchor` / `targetAnchor`, which pin which SIDE of a card a line leaves and arrives on (`n`, `e`, `s`, `w`) instead of letting the geometry decide. Per canvas, like a placement: the same connection shown on two canvases is tidied on each separately. Also carries the points a line is bent through, read onto the edge as `waypoints`. Pair with onEdgeAnchor/recordStore.anchorOnCanvas and onEdgeReroute/recordStore.rerouteOnCanvas to let people set them.
   - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
+  - changed: string[] — Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.
+  - hidden: string[] — Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.
+  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
@@ -1582,7 +1640,11 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `manual` — Positions come from the nodes themselves — a canvas, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.
   - xField: string — Node data field holding x. Default "x".
   - yField: string — Node data field holding y. Default "y".
-  - Example: `{ "type": "manual" }`
+  - size: { width: number; height: number } — The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.
+  - widthField: string — Node data field holding a resized card’s own width, so parking keeps clear of it.
+  - heightField: string — The same, for height.
+  - margin: number — Clear space around a parked card. Default 24 with `size`.
+  - Example: `{ "type": "manual", "options": { "size": { "width": 180, "height": 135 } } }`
 
 **style**
 
@@ -1628,7 +1690,10 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.
   - Example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`
 - `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.
-- `drag-node` — Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.
+- `marquee-select` — Drag a rectangle over empty canvas to select everything it touches, marking each card as the rectangle reaches it. Additive rather than a mode: it takes a background press only when Shift or Ctrl/Cmd is held, or when `armed` is set, so a plain drag still pans. List it BEFORE pan-zoom, which is the background fallback and would otherwise claim the press first. Selecting touches rather than encloses, so a card wider than the view can still be caught. Holding the modifier adds to whatever is already selected.
+  - armed: boolean — Whether a plain background drag sweeps rather than pans. Default false. Arm it from a control the user can see — a touchscreen has no modifier keys.
+  - Example: `"behaviours": [{ "type": "marquee-select", "options": { "armed": { "$": "local.selecting" } } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`
+- `drag-node` — Drag a node to move it, and every other selected node with it — so a selection built by clicking or sweeping travels as one. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.
   - pin: boolean — Leave the node pinned where it was dropped.
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
 - `connect-nodes` — Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.
@@ -1840,8 +1905,8 @@ the item is never asked to be narrower than its content in the first place.
 | bgImageTint | ColorValue | Color bgImage fades toward as bgImageOpacity decreases (default: the element's own `bg`, or neutral-0) — only meaningful with bgImageOpacity |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
-| border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
-| borderColor | ColorValue | Border color (token, e.g. "neutral-200", "primary-500") |
+| border | string | Border shorthand (e.g. "1px solid border" — color tokens are resolved) |
+| borderColor | ColorValue | Border color (token, e.g. "border", "border-strong") |
 | borderTop | string | Top border shorthand (color tokens resolved) |
 | borderRight | string | Right border shorthand (color tokens resolved) |
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
@@ -1932,7 +1997,7 @@ min-content — so under it the long string still pushes its container wider tha
 
 `we-text` variants (set via the `variant` prop) bundle typography presets. Always pair with a semantic `tag` prop for correct HTML structure:
 body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
-Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="neutral-400"` explicitly.
+Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="text-muted"` explicitly.
 
 ### State
 
@@ -2142,6 +2207,8 @@ CollectionBlock extends WeNode:
   - description: string [we://description]
   - version: number [we://version]
   - textContent: string [we://text_content]
+  - sourceRef: string [we://source_ref]
+  - sourceName: string [we://source_name]
   Relations:
   - children: HasMany [we://children]
   - arranges: HasMany [we://arranges]
@@ -2149,6 +2216,7 @@ CollectionBlock extends WeNode:
   - board: HasOne → CollectionBlock [we://board]
   - extractionPasses: HasMany → ExtractionPass [we://extraction_pass_record]
   - extracted: HasMany [we://extracted]
+  - amendments: HasMany → ExtractionAmendment [we://extraction_amendment]
 
 DividerBlock extends WeNode:
   Fields:
@@ -2170,6 +2238,8 @@ EmbedBlock extends WeNode:
   - targetType: string [we://target_type]
   - label: string [we://title]
   - thumbnail: string [we://thumbnail]
+  - sourceAuthor: string [we://source_author]
+  - sourceName: string [we://source_name]
   - displayMode: string = 'card' [we://display_mode]
   - version: number [we://version]
 
@@ -2339,8 +2409,8 @@ Space extends WeNode:
   - enabledViews: string [we://enabled_views]
   - extractionTargets: string [we://extraction_targets]
   - autoInterpret: boolean = true [we://auto_interpret]
+  - threadMode: string = 'fractal' [we://thread_mode]
   - moduleSettings: string [we://module_settings]
-  - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
   - location: HasOne → LocationBlock [we://location]
   - board: HasOne → CollectionBlock [we://board]
@@ -2435,6 +2505,15 @@ Theme extends WeNode:
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
+ExtractionAmendment extends Ad4mModel:
+  Fields:
+  - property: string [we://amended_property]
+  - previousValue: string [we://previous_value]
+  - newValue: string [we://new_value]
+  - nodeType: string [we://node_type]
+  Relations:
+  - node: HasOne [we://amended_node]
+
 ExtractionPass extends Ad4mModel:
   Fields:
   - outcome: string = 'done' [we://outcome]
@@ -2462,6 +2541,7 @@ VideoBlock extends WeNode:
 WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://comment]
+  - inReplyTo: HasOne [we://comment]
   - signals: HasMany → Signal [we://signal]
   - participants: HasMany [we://participants]
   - calls: HasMany [we://call]
@@ -2509,7 +2589,7 @@ AppStore:
 
 DatasetStore:
 - State:
-  - datasets: array of dataset handles (all joined datasets; AD4M perspectives in this backend)
+  - datasets: array of dataset handles (all joined datasets)
   - orderedDatasets: datasets sorted by user-defined sidebar order, system datasets excluded
   - currentDataset: dataset handle | null (the dataset currently being viewed)
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
@@ -2518,8 +2598,9 @@ DatasetStore:
   - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
   - joinedSpaceCids: string[] — CIDs of every joined shared dataset
   - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
-  - systemDatasetUuids: string[] — uuids of the we-root/we-test system datasets
-  - rootDataset: dataset handle | null — the agent's personal root dataset (we-root models live here)
+  - systemDatasetUuids: string[] — uuids of the system datasets (we-root, we-personal, we-test)
+  - rootDataset: dataset handle | null — the app's configuration (we-root): AgentSettings, templates, themes, per-space preferences. Chrome tier only
+  - personalDataset: dataset handle | null — the agent's own things (we-personal): notes, the Pocket. Carries the ordinary space schema, so posts, blocks and files work there. Chrome tier only — a space's template cannot reach it. Null until its schema is installed
   - globalDataset: dataset handle | null — the seed-configured global discovery space, once joined
   - marketplaceDataset: dataset handle | null — the seed-configured marketplace, once joined
   - globalSpaceConfigured: boolean — the seed declares a global space
@@ -2539,7 +2620,8 @@ EditorStore:
   - isOpen: boolean — the AI chat panel is open
   - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
   - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
-  - apiKeyConfigured: boolean — the agent has an API key set, so sendMessage can work. Gate the composer on it and say what is missing rather than hiding it
+  - assistantAvailable: boolean — the node has a language model the editor can hold a conversation with, so sendMessage can work. Configured in Settings → AI. Gate the composer on it and say what is missing rather than hiding it
+  - assistantStatus: { state: 'ready' | 'loading' | 'error' | 'unchecked' | 'none', name, model, detail } | null — which model answers the chat and whether it can right now, checked without spending tokens when the panel opens and after a failed send. `unchecked` means the backend could not ask, not that it failed; `detail` says why for error and loading
   - templateName: string — the name of the template being edited, for the editor’s own header
   - templateIcon: string — its icon
   - isReadOnly: boolean — the template on screen cannot be saved in place (a built-in, or somebody else's). Edits buffer as pending changes; offer Fork rather than Save. Answers for the template rendered, so do not use it to gate per-row controls in a list — switcherGroups carries `editable` per row
@@ -2568,6 +2650,7 @@ EditorStore:
   - editorDockSize: DockSize — the opening size every editor panel shares ('sm' | 'md' | 'lg' | 'full')
   - editorDockFloat: boolean — editor panels open floating over the content rather than pushing it aside
 - Actions:
+  - refreshAssistant(): checks the chat’s model again — after changing models in settings, or to see whether a failure has cleared
   - newChat(): starts a new AI session for this template and switches to it
   - switchSession(sessionId: string): shows another saved session
   - deleteSession(sessionId: string): deletes a saved session and its messages
@@ -2598,13 +2681,12 @@ EditorStore:
 
 InterpretationStore:
 - State:
-  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` can carry `prompt`/`response` — the exchange never left the runner’s machine — so gate a details affordance on `hasDetail` and explain the refusal rather than hiding it
+  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`
   - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
   - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
   - runningPasses: InterpretationActivityView[] — the passes still in flight, for a readout that lists them
   - settledPasses: InterpretationActivityView[] — the passes that have finished, newest first
   - settledCount: number — how many have finished. What a collapsed "N extractions processed" line counts
-  - detailWithheld: boolean — a peer's settled pass is on screen whose exchange this agent cannot open, because the space does not share it. Gate a footnote explaining the absence on this rather than on a row's own hasDetail, which is false for a pass that simply has not reached the model yet
   - capable: boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work
 - Actions:
   - dismissSettled(): forgets every finished row, leaving anything still running. A running pass is not this agent’s to dismiss
@@ -2643,33 +2725,51 @@ ProfileStore:
 
 RecordStore:
 - State:
-  - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
-  - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
+  - creatableEntities: { label, value, icon, group, description, via }[] — the content a person can create here, each with the one-line `description` from its manifest (or the shape's), ready for a we-select: this space's own models first, then WE's built-in blocks. A built-in entity is here when it is a block there is a way to make — `authoring` fields (via 'form') or `composed` (via 'composer': a CollectionBlock, which is a note or a post, written in BlockComposer). Not blocks — spaces, templates, vocabulary entries, drawn Relationships — are never here. Filter by `via` for what a surface can host: a record form's type selector lists `recordStore.creatableEntities.filter(k, k.via == 'form')`; a canvas's 'add' chooser lists them all and opens the composer for 'composer'
+  - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value, accept, target, targetLabel, many, canCreate, canPick, entries }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for. control 'file' is a we-file-upload (accept names the types); control 'relation' points at another record: entries are the chips ({ key, label }), canCreate offers openRelationForm, canPick offers a picker over existing target records, and inline ('location' | 'image' | '') names the in-place control a target is made with instead — see setRelationLocation and addRelationImage; an image entry carries preview, a data URI
   - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of local names an expression could test. Pass it to discardGuard's `dirty`
-  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
+  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, every core block (a divider or a quote card included) and Relationship, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, mediaRelation, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and mediaRelation names a relation to an ImageBlock that pictures the record when no property does — look the image up by the ids it holds ({ entity: 'ImageBlock', where: { id: row[display.mediaRelation] } }) rather than drawing them and each field is { name, label, kind, role, options, vocabulary }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json, relation (with target, the model it points at); role is title, summary, media or detail. `options` is the values a field is allowed to hold where the model closes the set (a task's status), empty otherwise — count() it to tell a state worth drawing as a we-badge from free text, and map it into a we-select rather than offering a text box that accepts a word the model does not know. `vocabulary` names the community list a value is a slug of ('taskState' for a task's status, looked up in spaceStore.taskStates for its name and colour), empty otherwise. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
   - pendingLink: the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected
+  - relationDraft: the record being made inline for a relation field — an image for a sighting — as a draft of the same shape, or null. Its non-nullness mounts the nested form over the outer one. It is not written until the outer form saves
+  - relationErrors: string[] — why the nested form's last Add was refused
   - relationshipKind: string — which named RelationshipType the pending connection is, or empty for one carrying only a label. Held beside the draft because the kinds are a list to pick from, which a generated form cannot render
+  - canvasHistory: { canUndo, canRedo, undoLabel, redoLabel } — whether the canvas on screen has anything to undo or redo, and what each press would put back. Gate a control on canUndo rather than hiding it: a disabled key with a tooltip naming the act says more than an absence does
 - Actions:
   - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
   - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
   - connectNodesNow(link): writes the Relationship straight away, with no label and no kind, and answers with its id. The same onEdgeCreate payload; the choice between this and connectNodes is the template's. Ask first where the claim is the point (a knowledge map); write first where the arrangement is (a canvas beside a live call), and let the words be added in an inspector afterwards. Pair it with an onSuccess that selects the new line — a connection nobody is shown is a connection nobody knows is a record
   - setRecordEntity(entity): switches which model is being created, discarding what was typed
-  - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data
+  - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data. A file control passes its File as event.detail
+  - setRecordPlace(detail): pins the open draft's place — pass a we-location-picker's arg.detail. Writes latitude, longitude and address where the draft has them, and a name where none was typed. recordFormModal draws the picker for any model with both a latitude and a longitude field, in place of the two number boxes
+  - openRelationForm(field): opens the nested form on a relation field’s target model
+  - setRelationField(name, value): sets one field of the nested form, as setRecordField does for the outer one
+  - saveRelationForm(): adds what the nested form holds to its relation field as a chip, and closes it. Nothing is written until the outer form saves
+  - cancelRelationForm(): closes the nested form, discarding it
+  - pickRelation(field, id): points a relation field at an existing record — pass a picker’s event.detail
+  - removeRelationEntry(field, key): takes one chip off a relation field
+  - setRelationLocation(field, detail): points a location relation at the place a we-location-picker reports — pass its arg.detail. The place is made on save and names itself after the city unless a name was typed
+  - setRelationEntryField(field, key, name, value): edits one field of a relation entry still to be made — the name or address under a picked place
+  - addRelationImage(field, file): adds a chosen, cropped image to an image relation — pass an EditableImage's onImageChange event. Its entry carries a preview
   - setRelationshipKind(id): sets which named kind the pending connection is; an empty value clears it
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
-  - placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Pair with the graph’s onNodeDragEnd
-  - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. Refuses, with a toast, a record from another space (this canvas draws only its own dataset) and anything that is not a record here — an agent, a space
+  - placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Prefer dragOnCanvas for the graph’s onNodeDragEnd, which also carries what a folded card is holding
+  - dragOnCanvas(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $action calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were
+  - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space
+  - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
-  - removeFromCanvas(canvas: string, nodeId: string): takes a record off a canvas, leaving the record itself alone. A card the canvas owns survives as an unplaced one in the tray
+  - removeFromCanvas(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to
+  - deleteRecords(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — a delete drops the record's links and a re-create earns a new id, so anything pointing at the old record breaks
+  - undoCanvas(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo
+  - redoCanvas(canvas: string): does again what undoCanvas put back, on the same terms and with the same argument
   - resizeOnCanvas(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected
   - anchorOnCanvas(canvas: string, payload): pins which SIDE of a card a connection leaves or arrives on, for this canvas. Takes the graph's onEdgeAnchor payload as it arrives; an empty side clears that end, and a route with neither end pinned and no bends is deleted. Bends survive a clear — one record holds both, and letting go of a side says nothing about the shape somebody drew. Per canvas, like a placement — the same connection on somebody else's canvas is unaffected
   - rerouteOnCanvas(canvas: string, payload): writes the shape of one connection's route on this canvas — the points it is bent through. Takes the graph's onEdgeReroute payload as it arrives; the whole list, in the edge's own frame, so a bend keeps its proportions when either card moves. An empty list straightens it, and a route with no points and no anchors is deleted
   - retargetOnCanvas(canvas: string, payload): moves one end of a connection onto a different record. Takes the graph's onEdgeRetarget payload as it arrives. Unlike anchorOnCanvas and rerouteOnCanvas this changes the CLAIM rather than how one canvas draws it — the relationship now says something different everywhere it is shown. That end's anchor is cleared; its waypoints stay
-  - setCardStyle(canvas: string, nodeId: string, field: string, value): sets one presentation property of one card on one canvas — 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undone by taking the card off the canvas
+  - setCardStyle(canvas: string, node: string | string[], field: string, value): sets one presentation property of one card — or of a whole selection — on one canvas: 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider, and one id or a list so a selection is not a special case. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undoable, each card keeping its own baseline — putting back a colour applied to nine cards restores nine different colours
   - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
   - setTypeColor(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it
   - setSpaceTypeColor(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it
@@ -2692,23 +2792,30 @@ RuntimeStore:
   - canAdminister: boolean — this backend exposes runtime administration at all
   - canManageTrust: boolean — gate the trusted-agents section on this
   - canManageNetwork: boolean — gate the peer-network section on this
+  - canRestartNetwork: boolean — the backend can restart its networking layer, and the restart does something. Gate a restart control on this, not on canManageNetwork
   - canManageApps: boolean — gate the authorized-apps section on this
   - canManageLanguages: boolean — gate the languages section on this
   - canManageAi: boolean — gate the AI section on this
-  - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
+  - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, which grants reading the models but refuses changing them. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
   - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
+  - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
   - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
+  - aiServiceOptions: { label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'
+  - canDiscoverAiModels: boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed
+  - aiDiscoveredModelOptions: { label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes
   - aiFormDirty: boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
-  - networkMetrics: string — backend diagnostic blob, displayed verbatim. Empty until requested
-  - peerInfos: string[] — this node peer-discovery records, for out-of-band exchange
-  - loading: boolean — true while any runtime call is in flight
+  - networkMetrics: string — backend diagnostic blob, already formatted for reading (indented JSON, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs
+  - peerInfos: string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable
+  - peerInfosReadable: string — the same records decoded for reading, as indented JSON (agent, space, dates, url, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs
+  - pending: string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: "'loadPeerInfos' in runtimeStore.pending" }
+  - loading: boolean — true while any runtime call is in flight. Prefer pending, so a spinner does not light for an unrelated call
   - error: string — the last runtime error, for display
   - canBackUp: boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web
   - logLevels: { crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use
@@ -2724,6 +2831,8 @@ RuntimeStore:
   - newAiModel(): opens the model form empty, for a new model
   - editAiModel(id: string): opens the model form on an existing model
   - setAiFormField(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input
+  - setAiService(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing
+  - discoverAiModels(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model
   - closeAiForm(): closes the model form, discarding it
   - saveAiModel(): saves the open form — adds or updates depending on whether it has an id
   - removeAiModel(id: string): deletes a model
@@ -2739,9 +2848,11 @@ RuntimeStore:
   - revokeApp(id: string): invalidates an app's tokens, keeping the grant listed
   - removeApp(id: string): forgets the grant entirely
   - loadNetworkMetrics(): fetches the diagnostic blob
+  - copyNetworkMetrics(): copies the loaded metrics to the clipboard, with a toast either way. Takes no text: a copy action names what it copies
   - restartNetwork(): restarts the peer-networking layer
-  - loadPeerInfos(): fetches this node peer-discovery records
-  - addPeerInfos(text: string): adds pasted peer records (JSON array or one per line)
+  - loadPeerInfos(): fetches the peer-discovery records this node holds — its own and every peer it knows. Can take tens of seconds on a busy node; show a state on 'loadPeerInfos' in pending
+  - copyPeerInfos(): copies the loaded peer records as a JSON array addPeerInfos accepts, with a toast either way
+  - addPeerInfos(text: string): adds pasted peer records (JSON array or one per line). Resolves true when added — clear the paste box on result in onSuccess, since onSuccess also fires after a failure
   - setMcpEnabled(enabled: boolean): turns MCP on or off for the backend next start
   - setLogLevel(crate: string, level: string): sets one crate log level — adds it when not already set, so there is no separate add. Levels: error, warn, info, debug, trace
   - removeLogLevel(crate: string): drops an override, returning that crate to the backend default
@@ -2757,7 +2868,8 @@ SessionStore:
 - State:
   - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
   - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
-  - passwordError: boolean — true after a failed unlock attempt
+  - passwordError: boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError
+  - loginError: string — why the last sign-in failed when the password was not the problem (the backend took too long to finish), ready to display. Empty otherwise, and never set together with passwordError. Show it where passwordError’s message goes: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" }
   - loginLoading: boolean
   - createAgentError: string — the backend message from a failed agent creation, or empty
   - createAgentLoading: boolean
@@ -2833,10 +2945,12 @@ ShellStore:
 - State:
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
   - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
+  - joinSpaceOpen: boolean — the join-a-space dialog is open, where somebody pastes an address they were sent. Shell state for createSpaceOpen’s reason, opened from the same two places. It exists because a share link only opens itself on the web: a desktop build has no address bar and registers no protocol handler, so an address arriving by any other route needs somewhere to go
+  - pendingScreenSources: ScreenSource[] — the screens and windows the host is waiting for somebody to choose between ({ id, name, thumbnail }), or empty. Non-empty only on a desktop host whose OS draws no picker of its own, and only while a share is being asked for: on the web, on macOS 15+ and under a Wayland portal the OS or the browser asks instead
   - pendingDestructive: the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click
   - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
   - spaceSettingsTab: string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings
-  - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
+  - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
   - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
@@ -2853,10 +2967,14 @@ ShellStore:
   - panelSupplied: Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is
   - layoutNames: string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none
   - activeLayout: string — the saved layout the arrangement on screen is, or '' once anything has been moved since. Mark the matching row as selected
+  - panelsHidden: boolean — somebody has put every panel away at once, from the rail or with Cmd/Ctrl+\. The panels are also away while a shell overlay (settings, profile, about) is open, which is not this and does not set it. Either way they are hidden, never unmounted, and the content gets the room they took
+  - hasPanels: boolean — some panel is open on screen to put away. What the hide-all toggle is gated on
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
+  - setJoinSpaceOpen(open: boolean): opens or closes the join-a-space dialog, where somebody pastes an address they were sent. Asking for the dialog is not joining anything — spaceStore.joinSpace is where that decision is taken and keeps its own grant. Shell state for setCreateSpaceOpen’s reason, and offered beside it: the sidebar’s spaces group offers the pair behind one +
+  - chooseScreenSource(sourceId: string): answers the host’s "which screen do you want to share" with one of pendingScreenSources, or an empty id to cancel — which the page receives as the same refusal a browser’s own picker gives when dismissed. Host chrome only: a `getDisplayMedia` is outstanding the whole time the prompt is up
   - confirmDestructive(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped
   - cancelDestructive(): refuses it. The waiting action resolves as though it had been blocked
   - toggleSpaceSettings(): opens or closes the settings panel for the space on screen. What a gear in chrome should call — a control that is always present toggles, so a second press puts back what the first press changed
@@ -2886,7 +3004,13 @@ ShellStore:
   - insertDock(id: string, edge: 'left' | 'right' | 'top' | 'bottom', position: number, mode?: 'band' | 'lane' | 'tab', lane?: number | 'float'): puts a panel on that edge, renumbering what it lands among — what a drop does. 'band' opens a lane of its own at that distance inboard; 'lane' takes a new seat at that position along the lane named by `lane` (a distance inboard, or 'float' for the floating one); 'tab' joins the seat at that position, stacking behind whatever is showing there
   - toggleMaximiseDock(id: string): covers the content region with the panel, or goes back to being a card. Nothing about where the panel was is overwritten while it is on
   - toggleDockDisplace(id: string): makes the panel push the content aside, or stop. A toggle rather than a setter because a menu item reports only that it was clicked
-  - toggleCollapseDock(id: string): folds a panel down to its titlebar, or opens it again. It keeps its place in its lane and its lane-mates take the room; the content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a lane. Read dockPlacement[id].canCollapse
+  - toggleCollapseDock(id: string): folds a panel, and every tab stacked with it, down to its titlebar — or opens it again. A fold always takes height: down a side lane the lane-mates take the room, and across a top or bottom lane the lane is as thick as its tallest open member, so folding the last one hands the room back to the content. The content is hidden, never unmounted. Refused where there is nowhere for that room to go — a sidebar alone on its edge, or the last open member of a side lane; collapse that lane to its edge instead. Read dockGeometry[id].canCollapse
+  - toggleStowLane(id: string): collapses the whole displacing lane this panel is in to a strip at its edge naming its panels, or opens it again. Every panel keeps its size, which tab is showing and whether it is folded; the content is hidden, never unmounted. Offered on the lane's first titlebar — read dockGeometry[id].canStow — and a press anywhere on the strip opens it
+  - revealDock(id: string): brings an open panel into sight wherever it is hidden — to the front of its stack, unfolded, or by opening the lane it is collapsed into — and flashes its tab when it came forward in a stack. Leaves a closed panel alone. What the module rail does for a panel that is open and concealed, instead of the module’s own toggle
+  - openModulePanel(dockId: string): opens one of a module’s panels, by its dock id (`<moduleId>:<name>`). The host holds whether most panels are open, so this is where the flag lives; a module that owns its own flag is asked through the actions it named instead
+  - closeModulePanel(dockId: string): closes one of a module’s panels. What the titlebar’s close button calls for a host-owned panel
+  - toggleModulePanel(dockId: string): opens a module’s panel if it is closed, closes it if it is open — what the rail’s button does for a panel that is in sight. Prefer spaceStore.launchModule from a template, which also brings a concealed panel into view
+  - togglePanelsHidden(): puts every panel away at once, or brings them all back exactly as they were — hidden, never unmounted, with the content given their room while they are away. Does nothing while a shell overlay is up, when the panels are away already. Asking for one panel (revealDock, a rail launcher) brings them all back
   - breakOut(panelId: string, x?: number, y?: number): takes a section out of the template and makes it a panel — floating under the pointer when given one, else at the snap its meta.panels entry named. Refused for a section declared `fixed`. Takes the panel's own id, not the dock id
   - returnHome(panelId: string): puts a broken-out section back in the template at the outlet it came from. What the placeholder’s "Bring back" and the position menu’s "Return to page" call
   - stackDockstackDock(id: string, position: number): stacks a panel onto a floating one so the two share a seat and a tab strip — what a drop into the middle of a float does. Two panels in open space are in no lane, so `position` indexes the floating panels a drop could land on rather than naming one
@@ -2911,7 +3035,7 @@ SpaceStore:
   - joinSlow: boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence
   - joinError: { spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
-  - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found
+  - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
   - taskStates: { id, name, slug, semantic, color, retired, defined }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug
   - offeredTaskStates: { id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
@@ -2926,12 +3050,14 @@ SpaceStore:
   - requiredModules: string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
-  - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
-  - moduleLaunchers: { id, icon, label, active, busy }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. `active` lights the button while the module reports its surface open; `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
+  - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable, capabilities }[] — every registered module and whether this agent wants it anywhere. `capabilities` is what a person is agreeing to — derived from the module's manifest (its permissions and the kernels it reaches) and what it contributes (a panel, storage in the space), never authored, so it cannot go stale. The global Settings → Modules list, and the only place an 'app', 'capability' or agent-scoped module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' (panels, slots, rail) and 'content' (sections, blocks) render inside a space. `surface` is derived from what the module contributes. Unset, every registered module counts as installed — a seed entry's `enabled: false` is about spaces, not people. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists the community-decided modules only: chrome or content, and not agent-scoped. A community-decided module a space has off takes its sections and its space-level settings out of that space
+  - moduleLaunchers: { id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an extraction pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $action: "spaceStore.launchModule", args: [{ $: "mod.id" }] }
   - spaceViews: ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
   - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
   - viewNav: { id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree
+  - linkLanguageTemplateOptions: { label, value, icon, description }[] — how a shared space can sync (its link language), for a we-select, default first; value is the template address. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the template’s package name, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only templates publishing can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer
+  - defaultLinkLanguageTemplate: string — address of the template publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment
   - mutedDids: string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in spaceStore.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else
   - mutedAgents: MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID
   - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
@@ -2941,11 +3067,10 @@ SpaceStore:
   - myModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels
   - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
   - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
-  - shareExtractionDetail: boolean — whether extraction passes in this space broadcast their prompt and response to every member, so interpretationStore.activity rows carry detail for everyone. A community decision, off by default
   - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
-  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
+  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
   - initializeAsWeSpace(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood
   - removeSpace(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset
@@ -2965,7 +3090,7 @@ SpaceStore:
   - setAgentMuted(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass `event.detail` bare
   - markRead(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error
   - uploadFile(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload
-  - deleteCollection(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them
+  - deleteCollection(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a board are the same shape, so this is the one delete for all of them
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image
   - updateSpaceMeta(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
@@ -2977,7 +3102,7 @@ SpaceStore:
   - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
   - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
   - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
-  - setShareExtractionDetail(enabled: boolean, spaceUuid?): turns broadcasting of extraction prompts and responses on or off for a space. Omit spaceUuid for the space on screen
+  - setThreadMode(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen
   - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
@@ -3001,20 +3126,22 @@ SpaceStore:
   - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it
   - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it
   - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it
-  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
-  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
+  - upsertSignal(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right
+  - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
+  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - getSubgroupMessages(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
+  - exportExtractionLog(callId: string): writes everything extraction did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the extraction. Read-only and client-side, like exportCallTranscript
   - removeSpaceFromGlobal(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you
 
 TemplateStore:
 - State:
   - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
-  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
+  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space
   - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
   - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
@@ -3049,8 +3176,8 @@ ThemeStore:
 - State:
   - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
   - automaticThemes: array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes
-  - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
-  - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
+  - installedThemes: array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")
+  - spaceThemes: array of ThemeData objects — themes stored in the current space (origin: "custom")
   - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
   - currentThemeId: string — id of the currently active theme
   - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
@@ -3098,9 +3225,248 @@ ThemeStore:
 Record:
 - State:
 - Actions:
-  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities). See "Record mutations via $action" above
-  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest
-  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible
+  - create(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
+  - update(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest
+  - delete(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible
+
+---
+
+## Feature Modules
+
+The modules this deployment ships. A module publishes a store at `modules.<id>` (public members only),
+parts a template places with `{ "type": "$part", "props": { "id": "<id>.<part>" } }`, panels a
+template places or supplies through `meta.panels` (`{ "module": "<id>", "dock": "<panel>" }`), and
+functions expressions call like the host functions above. A template that reaches a module by name
+declares it: `meta.requires.modules: ["<id>"]`. Reading `{ "$": "modules.<id>" }` bare is how a template
+depends on a module that may not be installed.
+
+### Calls (`call`)
+Audio, video and screen share with the people in a space.
+Needs: kernels records, presence, ephemeral, media, peerConnection; permissions microphone, camera, screen-share.
+- State (read in an expression as `modules.call.<name>`):
+  - active — Whether this agent is in a call right now.
+  - arrangement — The { columns, rows } the stage is currently laid out in.
+  - audioDevice — The microphone this agent has chosen, or empty for whatever the system offers.
+  - callId — The id of the call this agent is in, or null between calls.
+  - callRecordId — The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.
+  - callSpace — The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.
+  - cameraOptions — The cameras as picker options, on the same terms as microphoneOptions.
+  - cameras — The cameras this machine has, on the same terms as microphones.
+  - canCall — Whether a call could be started here — false in a personal space, which has nobody to call.
+  - deviceSettingsOpen — Whether the camera and microphone chooser is open.
+  - devicesNamed — Whether this machine will say what its devices are called. False until capture has been allowed once.
+  - devicesProbed — Whether this machine has been asked for a device yet. Until it has, an empty device list means "not allowed to look", not "none here".
+  - elsewhere — Whether the call this agent is in belongs to a space other than the one on screen.
+  - focusedId — Whose tile the stage is giving most of its room to, or null for an even grid.
+  - liveCalls — Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.
+  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.
+  - microphoneOptions — The microphones as picker options, "System default" first — ready for a we-select.
+  - microphones — The microphones this machine has — { deviceId, label, groupId } each. A label is empty until capture has been allowed once.
+  - ongoing — Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.
+  - problem — Why the call could not start or a device could not be reached, as a sentence to show, or null.
+  - solo — Whether the spotlight has the stage to itself, with everyone else hidden.
+  - tiles — One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.
+  - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.
+  - videoDevice — The camera this agent has chosen, or empty for whatever the system offers.
+- Actions (`{ "$action": "modules.call.<name>" }`):
+  - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
+  - closeDeviceSettings — Close the camera and microphone chooser.
+  - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
+  - dismissProblem — Dismiss the problem message.
+  - focusTile — Give the participant with this id the spotlight, or take it back if they already have it.
+  - goToCall — Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.
+  - joinAnchoredCall — Join the call already happening about the record whose id is given, or start one about it.
+  - joinCall — Join a running call by its id, as liveCalls lists it, leaving any call this agent is in.
+  - leave — Leave the call, releasing the camera, the microphone and every connection.
+  - nameDevices — Ask for a device once so this machine will say what its hardware is called.
+  - openDeviceSettings — Open the camera and microphone chooser.
+  - reconnectPeer — Build one peer's connection again from scratch, without leaving the call.
+  - refreshDevices — Re-read which microphones and cameras this machine has.
+  - returnToCall — Go back to the space the call is in; does nothing outside a call.
+  - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.
+  - setDevice — Use a different microphone or camera; an empty id means whatever the system offers.
+  - startCall — Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.
+  - toggleAudio — Mute or unmute this agent’s microphone.
+  - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
+  - toggleSolo — Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.
+  - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
+- Parts: `call.anchoredCallButton`, `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile`
+- Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
+- Settings: `iceServers` (string; deployment, space, agent) — ICE servers
+- Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean }
+
+### Transcription (`transcribe`)
+Turns what is said in a call into text blocks in the space.
+Needs: kernels records, presence, media, transcription, interpretation; permissions microphone.
+- State (read in an expression as `modules.transcribe.<name>`):
+  - autoExtract — Whether this call is extracted as it happens — its participants’ answer, else the space’s.
+  - autoJoined — Recording was started by the call rather than by this agent pressing record.
+  - available — There is audio to listen to — a microphone the host is capturing.
+  - callAgents — Everyone in this call, recording or not — the denominator of coverage; empty outside a call.
+  - callId — The record extraction decisions for this call are written against — the call’s own record from its first second.
+  - callOnScreenLive — Somebody is in the call the address names right now.
+  - canEditProposals — Whether an edited suggestion can be written back on accept.
+  - canInstallModel — Whether this connection may install the model the backend offers.
+  - changedIds — Agreed records carrying a suggested change, by id.
+  - collectionId — The record this call’s transcript lives in, or null until something has been said.
+  - editingProposal — The suggestion open for editing, or empty when none is.
+  - enabled — Whether this agent is recording their own microphone into the call.
+  - error — Why the session stopped, when status is error; empty otherwise.
+  - extractable — Whether this node can interpret at all — false when it has no language model.
+  - extractCount — How many records the last pass wrote.
+  - extractedId — The collection the last finished pass ran on, or empty.
+  - extractError — Why the last pass failed; empty otherwise.
+  - extractingId — The collection a pass is running on right now, or empty.
+  - extractionFor — What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id].
+  - extractionOpen — Whether the extraction panel is open.
+  - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
+  - extractTurns — How many transcript turns the last pass read.
+  - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
+  - inCall — Whether this agent is in a call right now.
+  - installError — Why the last model install failed; empty otherwise.
+  - installingModel — A one-click model install is registering its model.
+  - installModelLabel — The install button’s words, naming the offered model and its size; empty when none is offered.
+  - invited — Somebody else in this call is recording and this agent is not, having not opted out.
+  - invitedBy — The agent id of the first peer recording this call, or empty when none is.
+  - level — Microphone loudness as the voice detector measures it, 0–1.
+  - levelPercent — The microphone level as a CSS width for a meter.
+  - listening — True only while actually transcribing — what a record button highlights on.
+  - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
+  - modelDownloading — A transcription model is installed and its weights are still arriving.
+  - modelDownloadText — The download line, ready to show — "Downloading the speech model — 45%".
+  - modelMissing — No transcription model is installed on this node, as last read.
+  - open — Whether the transcript panel is open.
+  - partialCoverage — Someone in this call is not being transcribed.
+  - passRunning — Whether any extraction pass is running right now, this node’s or a peer’s.
+  - pending — Words heard that are not yet a row in the transcript — buffered or being written, newest last.
+  - pendingIds — Every record still awaiting a decision, by id, across every call asked about.
+  - pendingProposals — The same suggestions as rows — { id, kind, entity, fields, summary }.
+  - proposalDraft — What has been typed into the open suggestion, keyed by property name.
+  - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
+  - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
+  - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
+  - speaking — Whether the microphone level currently counts as speech.
+  - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
+  - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
+  - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
+  - transcribing — Speech has gone to the model and its text has not come back yet.
+  - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
+  - transcriptShown — How many transcript lines are loaded right now.
+  - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
+  - watchProblem — Why the standing extraction watch is not running here; empty when it is.
+- Actions (`{ "$action": "modules.transcribe.<name>" }`):
+  - acceptProposal — Keeps a suggestion, as proposed or as edited.
+  - addMessage — Writes something a person typed into a transcript, as a typed line.
+  - applyChange — Applies one suggested change to an agreed record.
+  - cancelProposalEdit — Closes the open draft, discarding what was typed.
+  - closeExtractionPanel — Closes the extraction panel.
+  - closePanel — Closes the transcript panel.
+  - dismissChange — Dismisses one suggested change, leaving the record as it was.
+  - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
+  - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
+  - extract — Runs one extraction pass over the call this agent is transcribing.
+  - extractCollection — Runs one extraction pass over any call’s record, by id.
+  - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
+  - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
+  - openExtractionPanel — Opens the extraction panel.
+  - openPanel — Opens the transcript panel.
+  - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
+  - readTranscriptLive — Goes back to following the end of the transcript.
+  - refreshProposals — Re-reads what is staged on a call, or on the live one.
+  - rejectProposal — Drops a suggestion.
+  - setProposalField — Sets one field of the open draft, by property name.
+  - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
+  - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
+  - toggleAutoExtract — Turns automatic extraction on or off for this call, for everyone in it.
+  - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
+- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
+- Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically
+
+### Live presence (`live`)
+See each other’s cursors, and follow one person’s screen.
+Needs: kernels presence, ephemeral, view.
+- State (read in an expression as `modules.live.<name>`):
+  - canDrive — Whether taking the wheel is possible here.
+  - canFollow — Whether somebody else is driving, so this agent could follow them.
+  - canShareCursors — Whether live cursors are possible here — false in a space with no transport, or where they are switched off.
+  - canTakeWheel — Whether the wheel is free to take, or already this agent’s.
+  - cursorsOn — Whether this agent’s pointer is shared, and other people’s shown.
+  - driverName — The name of whoever is driving, or empty when nobody is.
+  - driving — Whether this agent has the wheel.
+  - faces — One entry per cursor on screen — { did, name, image }.
+  - following — Whether this agent is following somebody’s screen.
+  - followingName — The name of whoever this agent is following.
+  - problem — Why something could not be done, as a sentence to show, or empty.
+  - watching — How many other people here have live cursors on.
+- Actions (`{ "$action": "modules.live.<name>" }`):
+  - dismissProblem — Dismiss the problem message.
+  - follow — Follow whoever has the wheel.
+  - releaseWheel — Give up the wheel.
+  - takeWheel — Take the wheel, so anybody who opts in follows this screen.
+  - toggleCursors — Share this agent’s pointer and show other people’s, or stop.
+  - toggleFollow — Follow whoever has the wheel, or stop — whichever this press means.
+  - toggleWheel — Take the wheel, or give it up — whichever this press means.
+  - unfollow — Stop following.
+- Parts: `live.cursorToggle`, `live.wheelButton`, `live.driverStrip`
+- Settings: `cursors` (boolean; deployment, space, agent-in-space) — Live cursors; `driving` (boolean; deployment, space) — Driving
+- Presence activities: `live` { cursors: boolean }; `driving` { since: number }; `following` { id: string }
+
+### Pocket (`pocket`) — the agent’s, not a space’s
+Keep things from any space — posts, people, spaces — in a panel that follows you.
+Needs: kernels agentData.
+- State (read in an expression as `modules.pocket.<name>`):
+  - open — Whether the Pocket panel is open.
+- Actions (`{ "$action": "modules.pocket.<name>" }`):
+  - close — Closes the Pocket panel.
+  - show — Opens the Pocket panel and resolves the folder it was last looking at.
+  - toggle — Opens the Pocket panel, or closes it if it is open.
+- Parts: `pocket.toggleButton`
+- Panels (`meta.panels[].dock`): `main` "Pocket" (module-owned openness)
+- Entities (queryable with $query):
+  - PocketFolder: name: string, icon: string, color: string, root: boolean, createdOrder: number; relations folders: HasMany → PocketFolder, items: HasMany → PocketItem
+  - PocketItem: ref: string (required), entity: string, datasetKey: string, recordId: string, withinEntity: string, withinId: string, label: string, icon: string, thumbnail: string, sourceName: string, sourceAuthor: string, gatheredAt: string, note: string
+
+### Notes (`notes`) — the agent’s, not a space’s
+Private notes that follow you between spaces. Share one into a space as a post.
+Needs: kernels agentData, records.
+- No store: everything this module does is declared.
+- Parts: `notes.toggleButton`
+- Panels (`meta.panels[].dock`): `main` "Notes"
+- Entities (queryable with $query):
+  - NoteShare: noteId: string (required), ref: string (required), spaceName: string, sharedAt: string
+
+### Globe (`globe`)
+3D globe with a modular layer system — locations, country outlines, H3 hexagons.
+Needs: permissions network:cesium-ion.
+- No store: everything this module does is declared.
+- Components: CesiumGlobe
+
+### Graph (`graph`)
+A general-purpose graph engine — knowledge maps, schema maps, hierarchies and diagrams, with pluggable expanders, layouts and behaviours.
+- No store: everything this module does is declared.
+- Parts: `graph.schemaMap`, `graph.contentTree`, `graph.staticDiagram`, `graph.knowledgeMapPosts`
+- Components: GraphView
+
+### Polls (`polls`)
+Ask the space a question and watch the answer arrive.
+Needs: kernels records.
+- State (read in an expression as `modules.polls.<name>`):
+  - lastError — Why the last vote could not be recorded, or empty.
+  - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
+  - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
+  - voting — The id of the poll a vote is being written for, or empty.
+- Actions (`{ "$action": "modules.polls.<name>" }`):
+  - vote — Casts this agent’s vote on a poll, or changes it — one vote per person per poll.
+- Parts: `polls.pollCard`, `polls.pollComposer`
+- Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
+- Functions:
+  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
+- Views (sections a space enables): `polls` "Polls" at /polls
+- Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
+- Entities (queryable with $query):
+  - Poll extends WeNode: question: string (required), options: string (required), closed: boolean, version: number
+  - Vote: pollId: string (required), option: string (required)
 
 ---
 
@@ -3115,11 +3481,13 @@ Calling actions:
 Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 
 Feature-module stores:
-{ "$": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
-Each installed feature module publishes its store under its own id — modules.call.tiles,
-modules.notes.open, modules.transcribe.pending. Which ids exist depends on the deployment's seed,
-so these are not listed in the Stores section below and are never checked against a known-member
-list. A reference to a module that is not installed simply resolves to nothing.
+{ "$": "modules.<moduleId>.<member>" } and { "$action": "modules.<moduleId>.<action>" }
+Each feature module this deployment ships publishes its PUBLIC store members under its own id —
+modules.call.active, modules.transcribe.proposals, modules.polls.vote. The modules, their members,
+parts, panels, settings and functions are listed in the Feature Modules section below, and the
+validator checks every modules.* reference against it: a member a module did not mark public is as
+unknown as one it never had. { "$": "modules.<moduleId>" } as a bare condition is the way to depend
+on an optional module — it resolves to nothing where the module is not installed.
 
 Iterating over store data:
 {
@@ -3466,10 +3834,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "text-faint" } },
         {
           "type": "we-text",
-          "props": { "color": "textFaint", "textAlign": "center" },
+          "props": { "color": "text-faint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -3700,7 +4068,6 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$": "datasetStore.currentDataset.handle" },
         "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
@@ -3863,6 +4230,35 @@ The `$localState` holding the display is a convenience: `recordStore.displays['S
 read in place each time. For a feed of *mixed* types, index by the row instead —
 `recordStore.displays[row.type]` — and the same card draws every kind of record the space holds.
 
+**A picture held by relation.** A community model carries its photo as a relation to an
+`ImageBlock` rather than as a string, so `display.media` is empty and `display.mediaRelation`
+names the relation. The row holds ids, not a URL — look the image up, and gate the query so an
+unresolved id does not widen it to every image in the space:
+
+```json
+{
+  "type": "$if",
+  "props": {
+    "condition": { "$": "local.display.mediaRelation && row[local.display.mediaRelation]" },
+    "then": {
+      "type": "Column",
+      "$queries": {
+        "pictures": {
+          "entity": "ImageBlock",
+          "where": { "id": { "$": "row[local.display.mediaRelation]" } },
+          "when": { "$": "row[local.display.mediaRelation]" },
+          "limit": 1
+        }
+      },
+      "children": [
+        { "type": "$if", "props": { "condition": { "$": "count(local.pictures)" },
+          "then": { "type": "we-image", "props": { "src": { "$": "first(local.pictures).src" }, "fit": "cover", "r": "media" } } } }
+      ]
+    }
+  }
+}
+```
+
 ### A group of faces with a count
 
 ```json
@@ -3969,7 +4365,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
 ```json
 {
   "type": "Card",
-  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
+  "props": { "bg": "surface", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -3995,7 +4391,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accent-text" } },
         {
           "type": "Column",
           "props": { "gap": "100" },
@@ -4270,10 +4666,11 @@ Two kinds of entry, one list:
 | `route`    | Only while one of these segments is in the path — a segment or a list. Absent means every route. |
 | `open`     | Whether to open it as well as place it. Absent means yes — see the warning below.               |
 
-**`open: false` when a module's launcher does more than open a panel.** Placing a `module` panel
-invokes the action its launcher declares, and that is not always "open a panel" — the call module's
-is `goToCall`, which *joins a call* when there is not one. Declaring the call window without
-`open: false` would start a call the moment somebody entered the space.
+**`open: false` when a panel should wait for its moment.** Placing a `module` panel opens it as
+well — through the host's own flag, or through the `show` action a module named when it owns
+its panel's openness. That is not always wanted on entering a space: the call module's stage is
+open while there is a call to watch, and declaring it without `open: false` would put an empty
+stage over the content until somebody started one. The declaration still says where it lands.
 
 ### Sizes
 
@@ -4562,6 +4959,16 @@ it gives consistently styled scrollbars across themes.
 **Token values:** Use `tokenVar` from `@we/design-utils` when you need a token value
 inside a `style={{}}` object. Prefer DS props directly where possible.
 
+**Name a colour ROLE, in code as well as in a schema.** `tokenVar('color', 'text-muted')`, not
+`tokenVar('color', 'neutral-600')` — a step is invisible to the contrast corrections at apply time
+wherever it is written, and `tokenVar` accepts a role name directly. `pnpm audit:roles` covers the
+TypeScript and SCSS as well as the schemas, and gates CI.
+
+Note what `tokenVar` does with a name it does not know: it warns in development and returns
+`var(--we-color-<name>)` anyway, so a typo or an invented family compiles to a variable nothing
+declares and the declaration is dropped. The element paints nothing, which reads as a design
+decision rather than a bug.
+
 Raw inline styles and hardcoded CSS variable strings (`var(--we-color-neutral-400)`)
 are a signal that a DS prop or primitive is being missed — check before reaching for
 `style={{}}`.
@@ -4733,18 +5140,51 @@ This validates every `.schema.ts` under `packages/app-shell/src/shared/schemas/`
 section files that are not named `.schema.ts` are still covered, because the template that composes
 them is — the walk descends into whatever a validated schema imports.
 
-Two further audits run over the same trees and are easy to miss. Both **import and walk the composed
+Further audits run over the same trees and are easy to miss. They all **import and walk the composed
 tree** rather than grepping source, which is the only way to attribute a node that a fragment from
 another package contributed:
 
 ```sh
-pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
-pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+pnpm audit:roles                               # a scale position where a role belongs
+pnpm audit:surfaces                            # a surface-sunken invisible against its ground
+pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via `title`
+pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
 ```
 
 Run them after any template, view or fragment change. A `neutral-600` label is invisible to the
 whole contrast layer — never measured against what is behind it — so `role-audit` is the only thing
 that will report it.
+
+**The first two gate CI**, so a scale position or an invisible well fails the build rather than
+waiting to be noticed. Both are at zero; keep them there.
+
+`role-audit` has a **code half** as well, which the root script runs by default: paths after
+`--code` are scanned textually rather than imported, because a colour in a `style={{}}`, an
+`.scss` rule or a CodeMirror theme is a string in a file and there is no tree to walk. It reads
+four spellings — `var(--we-color-<hue>-<step>)`, `tokenVar('color', '<hue>-<step>')`, a DS prop in
+TSX (`color="neutral-800"`), and a raw hex or `rgb()` next to a property that paints — plus a name
+handed to `tokenVar` that is **no colour at all**, which compiles to a variable nothing declares and
+paints nothing. Four of the editor's dividers were `ui-200`, a ramp that has never existed.
+
+A genuine palette is exempt, with its reason, in one of two places: `CODE_PALETTES` for a whole file
+(syntax highlighting, a WebGL scene, a theme's own definitions) or a `role-audit: palette` marker in
+the comment above the line, for a file that is mostly chrome and has one swatch. The reasons print on
+every run. `EditorOverlay` is the case worth reading: its annotation colours are fixed on purpose,
+because they are drawn over the template being edited in whatever theme its author is choosing.
+
+`surface-audit` judges a well by what is behind it rather than by the roles table's wording, which
+is looser than the ramp. `surface-sunken` is derived from `page`, so a trough on the page is right;
+on `chrome` it is half a lightness point away and **inverts** between light and dark, and on another
+`surface-sunken` there is no difference at all. Those two fail.
+
+`query-audit` is the one whose findings are invisible in development and expensive in a real space.
+A `$query` with no `limit` re-reads, re-hydrates and re-fingerprints every row of its entity on
+every change to that entity, so a list that grows costs O(n²) over a session — fine at twenty rows
+and unusable at two thousand, which is a transcript after forty minutes. It reports only what
+nothing else bounds: `where.id`, a `scope` with `levels` or `limitPerAnchor`, and a curated
+vocabulary all count as bounded. A list that really is read whole on purpose is declared in
+`DELIBERATE` in the script, **with the reason**, and the reasons are printed on every run so they
+get reviewed rather than accumulated.
 
 Two things it now catches that it used to miss, both worth knowing when adding a schema:
 

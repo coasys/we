@@ -9,33 +9,53 @@
 import { designSystemKeys, filterProps, getKeysForLayers, tierKeys } from '@we/design-utils';
 import { describe, expect, it } from 'vitest';
 
-import { getStaticDSStyles } from './helpers';
+import { getStaticDSStyles, TIERS_ATTR } from './helpers';
 
 describe('getStaticDSStyles — tier queries', () => {
   const button = getStaticDSStyles('button');
 
-  it('emits one query per tier, for the host and for [part=base]', () => {
-    expect(button.match(/@container we-surface/g)?.length).toBe(6);
-    expect(button).toContain("@container we-surface (min-width: 900px) { [part='base']");
-    expect(button).toContain('@container we-surface (min-width: 900px) { :host');
+  it('emits one layer per tier, each with a query for the host and for [part=base]', () => {
+    expect(button.match(/@container we-surface/g)?.length).toBe(3);
+    expect(button).toContain(`@layer we-tier-md { @container we-surface (min-width: 900px) { :host([${TIERS_ATTR}]) {`);
+    expect(button).toContain(`:host([${TIERS_ATTR}]) [part='base'] {`);
   });
 
-  it('falls back down through the tiers beneath, then to the component default', () => {
-    // Cascade-through: something set only in smUpProps still applies at lg. And the base arm keeps
-    // the component's own token fallback, or an lgUpProps mentioning one prop would blank the rest.
-    expect(button).toContain('gap: var(--we-button-lg-gap, var(--we-button-md-gap, var(--we-button-sm-gap,');
+  it('has a tier name only what it sets, and roll back to the tier beneath for the rest', () => {
+    // Cascade-through: something set only in smUpProps still applies at lg, because lg reverts to md,
+    // md to sm, and sm to the base rule — which keeps the component's own token fallback, so an
+    // lgUpProps mentioning one prop cannot blank the rest.
+    expect(button).toContain('gap: var(--we-button-lg-gap, revert-layer);');
+    expect(button).toContain('gap: var(--we-button-sm-gap, revert-layer);');
+    expect(button).not.toContain('var(--we-button-lg-gap, var(--we-button-md-gap');
   });
 
-  it('comes after the state selectors, so a tier wins over a hover at equal specificity', () => {
-    // Container queries add no specificity, so this ordering *is* the precedence. A hover is a
-    // state everywhere; a tier is a different layout, and a layout that only half-applies is worse.
-    expect(button.indexOf('@container')).toBeGreaterThan(button.indexOf(':host(:hover)'));
+  it('puts every state above every tier, with no copy of a state inside a breakpoint', () => {
+    /*
+      A state rule used to fall back to the base value for what it did not set, and outranked the
+      tier rules: a label hidden until mdUpProps showed it vanished under the pointer, which ended the
+      hover and brought it back — flashing. It was held off by emitting every state again inside every
+      breakpoint. Layers make that unnecessary: a hover with nothing to say about `display` reverts
+      through the tier layers, which is where mdUpProps is.
+    */
+    const lines = button.split('\n');
+    const lastTier = lines.findIndex((line) => line.startsWith('@layer we-tier-lg'));
+    const firstState = lines.findIndex((line) => line.startsWith('@layer we-state-'));
+    expect(lastTier).toBeGreaterThan(-1);
+    expect(firstState).toBeGreaterThan(lastTier);
+    expect(lines.filter((line) => line.includes('@container') && line.includes(':where('))).toEqual([]);
+  });
+
+  it('matches tier rules only on an element that carries breakpoint props', () => {
+    for (const line of button.split('\n').filter((l) => l.startsWith('@layer we-tier-'))) {
+      expect(line).not.toMatch(/\{ \[part='base'\] \{/);
+      expect(line).toContain(`[${TIERS_ATTR}]`);
+    }
   });
 
   it('offers a layout-only element its layout props and nothing else', () => {
     // A `we-icon` never accepted visual or typography props; a breakpoint does not change that.
     const icon = getStaticDSStyles('icon', ['layout']);
-    expect(icon).toContain('@container we-surface (min-width: 640px) { :host');
+    expect(icon).toContain(`@container we-surface (min-width: 640px) { :host([${TIERS_ATTR}])`);
     expect(icon).not.toContain("[part='base'] { background");
   });
 
@@ -44,6 +64,7 @@ describe('getStaticDSStyles — tier queries', () => {
     // laid out differently at a different width.
     const layoutOnly = getStaticDSStyles('divider', ['layout']);
     expect(layoutOnly).toContain('@container we-surface');
+    expect(layoutOnly).not.toContain('@layer we-state-');
   });
 });
 

@@ -1252,6 +1252,66 @@ describe('data overlay', () => {
     return engine;
   }
 
+  it('lays out again from an overlaid coordinate where position is the data', async () => {
+    /*
+      The whole basis of an optimistic *position*. `manual` reads a node's coordinate off its own
+      fields, so a host that writes a placement and draws it before the round trip has no route to
+      the screen unless the layout sees the overlay — the layout was the one consumer of `overlaid`
+      that was not getting it, which was invisible while the overlay only carried colours.
+    */
+    const placed = {
+      manual: () => ({
+        id: 'manual',
+        derivesPositions: false,
+        init: (input: { nodes: { id: string; data?: Record<string, unknown> }[] }) => ({
+          positions: new Map(
+            input.nodes.map((node) => [node.id, { x: Number(node.data?.x ?? 0), y: Number(node.data?.y ?? 0) }]),
+          ),
+        }),
+      }),
+    };
+    const seeded: SeedSource = {
+      id: 'placed',
+      async seed() {
+        return {
+          nodes: [{ id: 'a', kind: 'entity' as const, type: 'Card', label: 'A', data: { x: 10, y: 10 } }],
+          edges: [],
+        };
+      },
+    };
+    const registry = new PluginRegistry({ seeds: [seeded], expanders: [], layouts: placed });
+    const engine = engineWith({ seeds: { source: 'placed' }, layout: { type: 'manual' } }, registry);
+    await engine.start();
+    expect(engine.getPositions().get('a')).toMatchObject({ x: 10, y: 10 });
+
+    engine.setDataOverlay(new Map([['a', { x: 400, y: 250 }]]));
+
+    expect(engine.getPositions().get('a')).toMatchObject({ x: 400, y: 250 });
+  });
+
+  it('does not re-run a layout that derives its own positions', async () => {
+    // A force simulation reheated on every overlay change would restart itself every frame somebody
+    // drags a colour slider, which is why the question is `derivesPositions` and not "did it change".
+    let runs = 0;
+    const counting = {
+      grid: () => ({
+        id: 'grid',
+        init: (input: { nodes: { id: string }[] }) => {
+          runs += 1;
+          return { positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * 10, y: 0 }])) };
+        },
+      }),
+    };
+    const registry = new PluginRegistry({ seeds: [twoCards], expanders: [], layouts: counting });
+    const engine = engineWith({ seeds: { source: 'two' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    const before = runs;
+
+    engine.setDataOverlay(new Map([['a', { canvasColor: 'primary-500' }]]));
+
+    expect(runs).toBe(before);
+  });
+
   it('picks a node at its overlaid size', async () => {
     const engine = await canvasEngine();
     const at = engine.getPositions().get('a')!;
@@ -1541,6 +1601,71 @@ describe('selecting an edge', () => {
   });
 });
 
+describe('a selection that did not change', () => {
+  /** An engine over two seeded nodes, reporting every event it emits. */
+  async function reporting() {
+    const events: { type: string; ids?: string[] }[] = [];
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], expanders: [fanoutExpander(0)], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 0 } },
+      registry,
+      context,
+      onEvent: (event) => events.push(event as { type: string; ids?: string[] }),
+    });
+    await engine.start();
+    events.length = 0;
+    return { engine, events };
+  }
+
+  it('says nothing at all', async () => {
+    /*
+      A marquee recomputes the selection on every pointer move, so an unguarded `select` turned one
+      sweep across empty canvas into a hundred identical `selectionChange` events — and the workshop
+      canvas mirrors its selection into the address, so each of those was a `replaceState`.
+    */
+    const { engine, events } = await reporting();
+    engine.select(['seed-0']);
+    expect(events).toHaveLength(1);
+
+    engine.select(['seed-0']);
+    engine.select(['seed-0']);
+    expect(events).toHaveLength(1);
+  });
+
+  it('compares by membership rather than by order', async () => {
+    const { engine, events } = await reporting();
+    engine.select(['seed-0', 'seed-1']);
+    events.length = 0;
+
+    engine.select(['seed-1', 'seed-0']);
+
+    expect(events).toEqual([]);
+  });
+
+  it('still reports a real change', async () => {
+    const { engine, events } = await reporting();
+    engine.select(['seed-0']);
+    events.length = 0;
+
+    engine.select(['seed-0', 'seed-1']);
+    engine.select([]);
+
+    expect(events.map((event) => event.ids)).toEqual([['seed-0', 'seed-1'], []]);
+  });
+
+  it('still closes an open route when the node selection is unchanged', async () => {
+    // Clicking the card that is already selected has to put a line's grips away, and the early
+    // return for "nothing changed" is exactly where that would have been dropped.
+    const { engine } = await reporting();
+    engine.select(['seed-0']);
+    engine.selectEdge('some-edge');
+    engine.select(['seed-0']);
+
+    expect(engine.getSelectedEdge()).toBeNull();
+    expect(engine.getSelection()).toEqual(['seed-0']);
+  });
+});
+
 describe('restarting the same graph keeps the arrangement', () => {
   it('keeps positions, pins and the selection when the seeds return the nodes on screen', async () => {
     /*
@@ -1620,5 +1745,437 @@ describe('restarting the same graph keeps the arrangement', () => {
     expect(engine.store.hasNode('seed-0')).toBe(false);
     expect(engine.store.nodeCount).toBe(2);
     expect(engine.isPinned('seed-0')).toBe(false);
+  });
+});
+
+/**
+ * Folding, at the engine level.
+ *
+ * The unit tests in `fold.test.ts` decide *what* a fold hides; these decide what the scene does about
+ * it — that hidden means unplaced, unrouted and unhittable all at once, that unfolding puts a card
+ * back where it was rather than wherever a layout would now put it, and that a live canvas cannot
+ * leak a fold's contents back onto the screen the next time its data changes.
+ */
+describe('GraphEngine folding', () => {
+  /** `chain` → `branch` → `leaf`, plus a `loose` card connected to nothing. */
+  function chainSeed(): SeedSource {
+    const ids = ['chain', 'branch', 'leaf', 'loose'];
+    return {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: ids.map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+          edges: [
+            { id: 'chain->branch', source: 'chain', target: 'branch', type: 'rel' },
+            { id: 'branch->leaf', source: 'branch', target: 'leaf', type: 'rel' },
+          ],
+        };
+      },
+    };
+  }
+
+  /** `parent` → `shared` ← `other`, plus `parent` → `own`: one card a fold may take, one it may not. */
+  function sharedSeed(): SeedSource {
+    const ids = ['parent', 'other', 'shared', 'own'];
+    return {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: ids.map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+          edges: [
+            { id: 'parent->shared', source: 'parent', target: 'shared', type: 'rel' },
+            { id: 'other->shared', source: 'other', target: 'shared', type: 'rel' },
+            { id: 'parent->own', source: 'parent', target: 'own', type: 'rel' },
+          ],
+        };
+      },
+    };
+  }
+
+  async function folded() {
+    const registry = new PluginRegistry({ seeds: [chainSeed()], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    return engine;
+  }
+
+  it('takes the position off everything under the fold, and leaves the card itself placed', async () => {
+    const engine = await folded();
+
+    // Instantly: an animated fold is tested below, and every other case here is about the state it
+    // settles in rather than the travel.
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.getPositions().has('chain')).toBe(true);
+    expect(engine.getPositions().has('branch')).toBe(false);
+    expect(engine.getPositions().has('leaf')).toBe(false);
+    expect(engine.getPositions().has('loose')).toBe(true);
+  });
+
+  it('leaves the cards in the store, so nothing has to be re-queried to unfold', async () => {
+    const engine = await folded();
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.store.hasNode('branch')).toBe(true);
+  });
+
+  it('drops the lines that reached what it hid', async () => {
+    const engine = await folded();
+    expect(engine.getEdgeGeometry().has('chain->branch')).toBe(true);
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.getEdgeGeometry().has('chain->branch')).toBe(false);
+    expect(engine.getEdgeGeometry().has('branch->leaf')).toBe(false);
+  });
+
+  it('stops a hidden card being picked', async () => {
+    const engine = await folded();
+    const at = engine.getPositions().get('branch')!;
+    expect(engine.index.hitTest({ x: at.x, y: at.y })).toContain('branch');
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.index.hitTest({ x: at.x, y: at.y })).not.toContain('branch');
+  });
+
+  it('clears a selection nobody can see any more', async () => {
+    const engine = await folded();
+    engine.select(['branch']);
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.getSelection()).not.toContain('branch');
+  });
+
+  it('puts a card back exactly where it was', async () => {
+    const engine = await folded();
+    const before = engine.getPositions().get('branch')!;
+
+    engine.setFolded(['chain'], 0);
+    engine.setFolded([], 0);
+
+    expect(engine.getPositions().get('branch')).toEqual(before);
+    expect(engine.getEdgeGeometry().has('chain->branch')).toBe(true);
+  });
+
+  it('holds the fold across a refresh', async () => {
+    const engine = await folded();
+    engine.setFolded(['chain'], 0);
+
+    // The case a live canvas makes constantly: new data arrives and the graph is re-read.
+    await engine.refresh();
+
+    expect(engine.getPositions().has('branch')).toBe(false);
+    expect(engine.foldedCount('chain')).toBe(2);
+  });
+
+  it('counts what it is holding', async () => {
+    const engine = await folded();
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.foldedCount('chain')).toBe(2);
+    expect(engine.isFolded('chain')).toBe(true);
+    expect(engine.foldedCount('loose')).toBe(0);
+  });
+
+  it('says how much a fold would have to leave behind', async () => {
+    /*
+      The rule a fold lives by is invisible without this number. A card another card still points at
+      is never taken — it would be left with a line running to nothing — so folding something with
+      two things under it can take one, and the one that stayed reads as a fold that half worked.
+    */
+    const registry = new PluginRegistry({ seeds: [sharedSeed()], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+
+    expect(engine.foldImpact('parent')).toBe(1);
+    expect(engine.foldHeldElsewhere('parent')).toBe(1);
+    // And the other parent's side of the same fact: it holds the shared card and nothing else.
+    expect(engine.foldImpact('other')).toBe(0);
+    expect(engine.foldHeldElsewhere('other')).toBe(1);
+  });
+
+  it('counts nothing held where nothing is shared', async () => {
+    const engine = await folded();
+
+    expect(engine.foldHeldElsewhere('chain')).toBe(0);
+    expect(engine.foldHeldElsewhere('leaf')).toBe(0);
+  });
+
+  it('offers a fold where one would do something, and not on a leaf', async () => {
+    const engine = await folded();
+
+    expect(engine.canFold('chain')).toBe(true);
+    expect(engine.canFold('leaf')).toBe(false);
+    expect(engine.canFold('loose')).toBe(false);
+  });
+
+  it('keeps offering it on the folded card, which is what unfolds it', async () => {
+    const engine = await folded();
+
+    engine.setFolded(['chain'], 0);
+
+    expect(engine.canFold('chain')).toBe(true);
+  });
+
+  it('brings the contents back beside the fold, not to where they were before it moved', async () => {
+    /*
+      The two-jump bug. A canvas reads each card's coordinates from its stored placement, and a fold
+      carried across the canvas writes new placements for its contents — which take a round trip and
+      a re-read to arrive. Unfolding in that window sent every card back to where it was before the
+      fold moved, and then the re-read landed and moved them all again. The offset is what the drag
+      wrote and what the placement will say, so it is where the card goes.
+    */
+    const engine = await folded();
+    const chain = engine.getPositions().get('chain')!;
+    const branch = engine.getPositions().get('branch')!;
+    engine.setFolded(['chain'], 0);
+    engine.pin('chain', { x: chain.x + 300, y: chain.y + 120 });
+
+    engine.setFolded([], 0);
+
+    expect(engine.getPositions().get('branch')).toMatchObject({ x: branch.x + 300, y: branch.y + 120 });
+  });
+
+  it('travels back to the same place, rather than animating to the wrong one', async () => {
+    // The same fix on the animated path, where it decides where the travel *ends*.
+    vi.useFakeTimers();
+    try {
+      const engine = await folded();
+      const chain = engine.getPositions().get('chain')!;
+      const branch = engine.getPositions().get('branch')!;
+      engine.setFolded(['chain'], 200);
+      vi.advanceTimersByTime(300);
+      engine.pin('chain', { x: chain.x + 300, y: chain.y + 120 });
+
+      engine.setFolded([], 200);
+      vi.advanceTimersByTime(300);
+
+      expect(engine.getPositions().get('branch')).toMatchObject({ x: branch.x + 300, y: branch.y + 120 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('carries what it is holding, wherever the fold has got to', async () => {
+    const engine = await folded();
+    const chain = engine.getPositions().get('chain')!;
+    const branch = engine.getPositions().get('branch')!;
+    engine.setFolded(['chain'], 0);
+
+    // Where the contents are is answered against where the fold is *now*, so a fold that has not
+    // moved reports its contents exactly where they were.
+    expect(engine.foldedUnder('chain').find((row) => row.id === 'branch')).toEqual({
+      id: 'branch',
+      x: branch.x,
+      y: branch.y,
+    });
+
+    engine.pin('chain', { x: chain.x + 50, y: chain.y - 20 });
+    const carried = engine.foldedUnder('chain');
+
+    expect(carried).toHaveLength(2);
+    expect(carried.find((row) => row.id === 'branch')).toEqual({
+      id: 'branch',
+      x: branch.x + 50,
+      y: branch.y - 20,
+    });
+    // Idempotent: asking twice is the same answer, so a drag that reports twice cannot double it.
+    expect(engine.foldedUnder('chain')).toEqual(carried);
+  });
+
+  it('carries what it is holding after an animated fold, not only an instant one', async () => {
+    /*
+      The path every real fold takes. A travelling card's position is deleted when the travel ends,
+      which does not go through the place the offsets are measured — so measuring only the instant
+      case left the ordinary one carrying nothing, silently, and only when somebody dragged a fold
+      they had made a moment earlier.
+    */
+    vi.useFakeTimers();
+    try {
+      const engine = await folded();
+      const chain = engine.getPositions().get('chain')!;
+      const branch = engine.getPositions().get('branch')!;
+
+      engine.setFolded(['chain'], 200);
+      vi.advanceTimersByTime(300);
+      engine.pin('chain', { x: chain.x + 40, y: chain.y });
+
+      expect(engine.foldedUnder('chain').find((row) => row.id === 'branch')).toEqual({
+        id: 'branch',
+        x: branch.x + 40,
+        y: branch.y,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('travels, and is gone once it arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = await folded();
+      const chain = engine.getPositions().get('chain')!;
+
+      engine.setFolded(['chain'], 200);
+
+      // Still drawn, at full size, exactly where it was: the first frame of a fold has to leave
+      // everything alone, or the card jumps before it travels.
+      expect(engine.getPositions().has('branch')).toBe(true);
+      expect(engine.foldScale('branch')).toBe(1);
+
+      vi.advanceTimersByTime(100);
+      expect(engine.foldScale('branch')).toBeLessThan(1);
+      const midway = engine.getPositions().get('branch')!;
+      // Travelling towards the card that swallowed it.
+      expect(Math.abs(midway.x - chain.x)).toBeLessThan(Math.abs(engine.getPositions().get('loose')!.x - chain.x));
+
+      vi.advanceTimersByTime(200);
+      expect(engine.getPositions().has('branch')).toBe(false);
+      expect(engine.foldScale('branch')).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+/**
+ * A load that has been replaced has nothing to say about what is on screen now.
+ *
+ * `refresh` serialises itself, but nothing serialised a `refresh` against a `start` — so switching
+ * canvases while a refresh was in flight left the older load to finish afterwards and reconcile its
+ * rows into the graph that had replaced it. Rare, silent, and indistinguishable from the backend
+ * having answered about the wrong canvas.
+ */
+describe('a superseded load', () => {
+  /** A seed that answers when told to, so two loads can be held open at once. */
+  function gatedSeed(): { source: SeedSource; release: (label: string) => void; waiting: () => number } {
+    const gates: { label: string; go: () => void }[] = [];
+    let current = 'first';
+    return {
+      waiting: () => gates.length,
+      release: (label: string) => {
+        const gate = gates.find((g) => g.label === label);
+        gate?.go();
+      },
+      source: {
+        id: 'test',
+        async seed() {
+          const label = current;
+          current = 'second';
+          await new Promise<void>((resolve) => gates.push({ label, go: resolve }));
+          return {
+            nodes: [{ id: `${label}-node`, kind: 'entity' as const, type: 'Thing', label }],
+            edges: [],
+          };
+        },
+      },
+    };
+  }
+
+  it('does not reconcile its rows into the graph that replaced it', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // Two loads open at once: the first still waiting when the second begins.
+    const first = engine.start();
+    await Promise.resolve();
+    const second = engine.start();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    // The replacement answers first and lands; the one it replaced answers afterwards.
+    gate.release('second');
+    await second;
+    gate.release('first');
+    await first;
+
+    const ids = [...engine.store.nodes()].map((n) => n.id);
+    expect(ids, 'the older load overwrote the newer one').toEqual(['second-node']);
+  });
+
+  it('hands the seed a signal, so its reads can stop when it is replaced', async () => {
+    /*
+      Every seed here takes an `AbortSignal` and threads it through each of its reads — the canvas
+      seed has done so since it was written — and nothing ever passed one, so the whole of that
+      plumbing was dead and a superseded load's queries all ran to completion. On a canvas that is
+      eleven reads nobody is waiting for.
+    */
+    const seen: (AbortSignal | undefined)[] = [];
+    const registry = new PluginRegistry({
+      seeds: [
+        {
+          id: 'test',
+          async seed(_options, _context, signal) {
+            seen.push(signal);
+            return { nodes: [], edges: [] };
+          },
+        },
+      ],
+      layouts,
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    await engine.start();
+    expect(seen[0], 'the seed was called without a signal').toBeInstanceOf(AbortSignal);
+    expect(seen[0]?.aborted, 'the load that is running is not aborted').toBe(false);
+
+    await engine.start();
+    expect(seen[0]?.aborted, 'starting again did not abort the load it replaced').toBe(true);
+  });
+
+  /*
+    Dropping a replaced load also drops the framing it owed, and nothing else was going to do it.
+
+    `start` is the only caller that asks for a fit, and it gives up before asking when its load has
+    been replaced. `resize` re-frames on a first measurement, which on a cold boot happens seconds
+    before any row arrives and so finds no positions to frame. So a refresh landing while the first
+    load was in flight left a whole canvas at the origin — which reads as cards missing rather than
+    as a camera that was never moved.
+  */
+  it('frames the graph the load it replaced was going to frame', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // The renderer measures itself on mount, before the seeds have answered.
+    engine.resize(800, 600);
+    expect(engine.viewport.get(), 'nothing to frame yet').toMatchObject({ x: 0, y: 0, zoom: 1 });
+
+    // A marker arriving from elsewhere refreshes while the first load is still out.
+    const start = engine.start();
+    await Promise.resolve();
+    const refresh = engine.refresh();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    gate.release('second');
+    await refresh;
+    gate.release('first');
+    await start;
+
+    const camera = engine.viewport.get();
+    expect(camera.x === 0 && camera.y === 0, 'the graph was left at the origin').toBe(false);
+  });
+
+  it('still leaves the camera alone when it merges into a graph already on screen', async () => {
+    // The other half of the rule, and the reason it is written as "the screen was empty" rather
+    // than "this is a refresh": a viewport that jumped whenever a peer wrote something would make
+    // a shared graph unusable.
+    const registry = new PluginRegistry({ seeds: [seedOf(4)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.behaviourContext().pan(120, 90);
+    const panned = { ...engine.viewport.get() };
+
+    await engine.refresh();
+
+    expect(engine.viewport.get().x).toBe(panned.x);
+    expect(engine.viewport.get().y).toBe(panned.y);
   });
 });

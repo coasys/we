@@ -15,6 +15,10 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/profileStore.test.tsx',
+  // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
+  // build, where `createEffect` never runs again — so every count would be 1 and the test would
+  // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.
+  'tests/profileIndex.test.tsx',
   'tests/routeStore.test.tsx',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
@@ -22,6 +26,9 @@ const SOLID_TESTS = [
   // Not a component test, but it drives real `we-iframe` elements with shadow roots and real
   // `MessageEvent`s — the DOM is what is under test.
   'tests/appBridge.test.ts',
+  // Reads a served `index.html` with `DOMParser`, dispatches real `vite:preloadError` events at a
+  // real `window` and drives `visibilitychange` on a real `document` — the DOM is the subject.
+  'tests/buildFreshness.test.ts',
   // Nothing renders, but the whole point is the fallback path: a real `document`, a real textarea
   // appended and removed, and `navigator.clipboard` absent the way it is outside a secure context.
   'tests/copyText.test.ts',
@@ -35,6 +42,26 @@ const SOLID_TESTS = [
   'tests/datasetIdentity.test.ts',
   // Renders a card's faces through the real renderer, components and host functions.
   'tests/cardPeopleLive.test.tsx',
+  // Renders a route through the real router and renderer, reading the surface its layout provides.
+  'tests/routeSurface.test.tsx',
+  // Mounts a thread through the real fragment and renderer, watching which drill-downs it issues.
+  'tests/threadDepth.test.tsx',
+  // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
+  // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
+  'tests/dockStowAndReveal.test.tsx',
+  // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
+  'tests/canvasHistory.test.tsx',
+  // Nothing renders, but every case measures a real element's box and reads real attributes off a
+  // real tree — the DOM is the subject, and the frame maths is what a live cursor is right or
+  // silently wrong by.
+  'tests/liveView.test.ts',
+  // Drives real Solid effects, which is the whole subject: the failure is what a framework does with
+  // an effect whose first run tracked nothing, and the node project's SSR build never re-runs one.
+  'tests/moduleServiceBinding.test.ts',
+  // Builds a module's store against a real reactive graph. The module package's own tests use the
+  // one-shot effect, which cannot reproduce an effect that re-triggers itself — the bug that froze the
+  // app before login.
+  'tests/liveStoreReactive.test.tsx',
 ];
 
 export default defineConfig({
@@ -86,6 +113,9 @@ export default defineConfig({
           alias,
           globals: true,
           environment: 'jsdom',
+          // Observers jsdom lacks — see the file. Only this project needs them: it is the one that
+          // renders components, and a component that measures itself reaches for them on mount.
+          setupFiles: ['./tests/jsdomGaps.ts'],
           include: SOLID_TESTS,
         },
       },

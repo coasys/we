@@ -101,6 +101,44 @@ export interface CanvasSeedOptions {
    * rest. The seed's job is only to make the distinction expressible.
    */
   pending?: string[];
+  /**
+   * Record ids that are agreed and carry a **suggested change** — a staged edit to a record a person
+   * already owns, as distinct from a suggestion of the whole record (`pending`).
+   *
+   * Read onto the matching node's data as `changed: true`. Kept apart from `pending` because the two
+   * want opposite drawings: a suggested record is provisional and may be faded, an agreed one with a
+   * change pending is not in doubt and must look like the settled record it is.
+   */
+  changed?: string[];
+  /**
+   * Record ids to leave off the canvas altogether — no card, and no line to or from one.
+   *
+   * For a reader narrowing what is shown ("hide what nobody has agreed to"), where a style rule is
+   * not enough: a card at zero opacity still takes a press and keeps its connections drawn.
+   */
+  hidden?: string[];
+  /**
+   * Whole types to leave off the canvas — every card of each, and the lines that reach them. A reader
+   * putting a kind away from the key ("no images for now"), where `hidden` would need every id.
+   */
+  hiddenTypes?: string[];
+  /**
+   * Relations to **count** on each card, read onto its data as `<name>Count` — `['signals',
+   * 'comments']` for "what have people made of this".
+   *
+   * Counts rather than the rows, because a card is a preview: what it owes a reader is that there is
+   * something to open. And counts rather than a query per card, because that is the difference
+   * between one more projection on a read the seed already makes and two hundred subscriptions on a
+   * canvas somebody dragged three hundred things onto.
+   *
+   * Only for a relation the type actually declares. A count over a relation an entity does not have
+   * is a refused query, and the refusal would take that whole type off the canvas — cards, lines and
+   * all — to save a number. A type that cannot answer simply carries no count.
+   *
+   * Absent for a count of zero, like every other unset field here, so a rule or a card can ask
+   * whether the field is there rather than comparing it.
+   */
+  counts?: string[];
   limit?: number;
 }
 
@@ -186,6 +224,25 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
   return style;
 }
 
+/**
+ * A placement's coordinate, named as a node's data bag names it.
+ *
+ * The sibling of {@link placementStyle} and exported for the same reason: a host drawing a move
+ * **before** the write comes back has to name the fields exactly as the seed does, and two copies of
+ * that naming is the sort of thing that drifts silently. Separate from `placementStyle` because the
+ * seed itself wants the coordinate as numbers for its positions map rather than as node data, so
+ * folding the two together would have it mapping x and y twice on every card it reads.
+ *
+ * Unlike the style fields, **zero is a real value here** — a card at the origin is an ordinary card
+ * — so only a non-finite coordinate is dropped. Both or neither: a patch carrying one axis would
+ * leave `manual` reading the other off stale data and send the card somewhere nobody put it.
+ */
+export function placementPosition(row: Record<string, unknown>): Record<string, GraphValue> {
+  const x = Number(row.x);
+  const y = Number(row.y);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {};
+}
+
 /** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
 function scalarsOf(row: Record<string, unknown>): Record<string, GraphValue> {
   const data: Record<string, GraphValue> = {};
@@ -201,6 +258,19 @@ export function canvasSeed(): SeedSource {
   return {
     id: 'canvas',
     description: "A container's contents, positioned by the placements recorded against it.",
+    /*
+      The three that are applied to rows already in hand.
+
+      `pending` and `changed` stamp a flag on a node that has already been built; `hidden` drops
+      rows, and the lines to them, from a set already fetched. None of them reaches a query — which
+      is exactly why a change to one should not throw the graph away. See `presentationOptions` on
+      `SeedSource` for what that cost before this existed.
+
+      `hiddenTypes` is deliberately NOT here, and the difference is the whole point of the list: a
+      hidden type is never asked for, so putting a kind away really does change what is fetched and
+      really does want a reload.
+    */
+    presentationOptions: ['pending', 'changed', 'hidden'],
     async seed(rawOptions, context, signal) {
       const options = (rawOptions ?? {}) as CanvasSeedOptions;
       // No canvas chosen yet — a picker whose `$local` is still empty. Loading the types wholesale
@@ -214,9 +284,16 @@ export function canvasSeed(): SeedSource {
       const limit = options.limit ?? 200;
       const scope = { anchor: 'CollectionBlock', via, anchorId: options.canvas };
 
-      const read = (entity: string, where?: Record<string, unknown>) =>
+      const read = (entity: string, where?: Record<string, unknown>, include?: Record<string, unknown>) =>
         context
-          .query({ entity, dataset, limit, signal, ...(where ? { where } : { scope }) })
+          .query({
+            entity,
+            dataset,
+            limit,
+            signal,
+            ...(include ? { include } : {}),
+            ...(where ? { where } : { scope }),
+          })
           .catch((error: unknown) => {
             context.warn(`canvas: cannot read ${entity}: ${error instanceof Error ? error.message : String(error)}`);
             return [] as Record<string, unknown>[];
@@ -240,15 +317,43 @@ export function canvasSeed(): SeedSource {
       ]);
 
       /*
+        The one cap worth saying out loud.
+
+        Every read here is bounded at `limit`, and for most of them hitting it means some cards of
+        that kind are missing — visible, and obviously a truncation. The placements read is not like
+        the others: it is what tells round two which records to ask for, so exceeding it does not
+        drop the overflow cards, it makes them *invisible to the rest of the load entirely*. Nothing
+        else ever learns they exist.
+
+        What that looks like from the outside is a canvas that silently stops at some number of cards
+        and a person wondering where the rest of their work went. A warning cannot fetch them, but it
+        can say which of those two things happened — and the status strip already has somewhere to
+        put it.
+
+        Compared with `>=` rather than `>`: a read that came back exactly at its limit is a read that
+        was cut off, or one that happened to fill it exactly, and nothing here can tell those apart.
+        Saying so on the boundary is the honest side to err on.
+      */
+      if (placements.length >= limit) {
+        context.warn(
+          `canvas: stopped at ${limit} placed cards — anything beyond that is not on this canvas. ` +
+            `Raise the seed's \`limit\` to see the rest.`,
+        );
+      }
+
+      /*
         Which of the records on this canvas are still only suggestions — see `pending` in the options.
 
         A set rather than the array, because it is asked once per row and a canvas holds hundreds.
       */
-      const pending = new Set(
-        Array.isArray(options.pending)
-          ? options.pending.filter((id): id is string => typeof id === 'string' && id !== '')
-          : [],
-      );
+      const idSet = (ids: unknown) =>
+        new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string' && id !== '') : []);
+      const pending = idSet(options.pending);
+      const changed = idSet(options.changed);
+      /** Left off entirely — see `hidden` in the options. */
+      const hidden = idSet(options.hidden);
+      /** Types left off entirely — see `hiddenTypes`. */
+      const hiddenTypes = idSet(options.hiddenTypes);
 
       /*
         Placements *are* the membership: which records are on this canvas, of what type, and where.
@@ -314,7 +419,13 @@ export function canvasSeed(): SeedSource {
       const nodes: GraphNode[] = [];
       const seen = new Set<string>();
       /** Record ids on this canvas, so a connection can be checked for having both ends here. */
-      const placed = new Set<string>([...placedIds.values()].flat());
+      // Less what is hidden, so a connection to a card nobody can see is not drawn either.
+      const placed = new Set<string>(
+        [...placedIds]
+          .filter(([entity]) => !hiddenTypes.has(entity))
+          .flatMap(([, ids]) => ids)
+          .filter((id) => !hidden.has(id)),
+      );
       /** Record id → its entity name, so a connection's endpoints can be addressed. */
       const typeOf = new Map<string, string>();
       for (const [entity, ids] of placedIds) for (const id of ids) typeOf.set(id, entity);
@@ -347,8 +458,60 @@ export function canvasSeed(): SeedSource {
         each. A canvas holding five kinds of thing was five sequential queries deep before anything
         appeared.
       */
-      const wanted = passes.filter((pass) => pass.entity !== placementEntity && declared(pass.entity));
-      const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where)));
+      // A hidden type is not asked for at all — nothing of it is drawn, so there is nothing to read.
+      const askable = passes.filter(
+        (pass) => pass.entity !== placementEntity && declared(pass.entity) && !hiddenTypes.has(pass.entity),
+      );
+
+      /*
+        The same question twice is one query.
+
+        `contains` comes from a caller — on the workshop's canvas it is the call's extraction targets,
+        which is a stored list — so a repeated entry is a thing that can happen, and every repeat cost
+        a round trip *and* a standing subscription, since the engine keys its watches on the read.
+
+        Only exact repeats. A type that is both placed and in `contains` appears twice here on
+        purpose and must stay twice: those are two different questions — "the ones positioned here",
+        by id, and "the ones this canvas owns", by containment — and the second is what finds a card
+        nobody has placed yet. They cannot be merged into one query either, because one is a `where`
+        and the other a `scope`, and the grammar has no way to ask for their union. That is a real
+        cost and it is an ad4m-side one; this only stops us paying it twice for one question.
+      */
+      const seenPass = new Set<string>();
+      const wanted = askable.filter((pass) => {
+        const key = `${pass.entity}|${JSON.stringify(pass.where ?? null)}`;
+        if (seenPass.has(key)) return false;
+        seenPass.add(key);
+        return true;
+      });
+
+      /**
+       * The count projections one type can answer — see `counts`.
+       *
+       * Filtered against the type's own declared relations, so a model with no `comments` is asked
+       * for none rather than refusing the read and vanishing off the canvas.
+       */
+      const countsFor = (entity: string): Record<string, unknown> | undefined => {
+        const asked = options.counts ?? [];
+        if (!asked.length) return undefined;
+        const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
+        const projections = Object.fromEntries(
+          asked.filter((name) => relations.has(name)).map((name) => [`$${name}Count`, { from: name, count: true }]),
+        );
+        return Object.keys(projections).length ? projections : undefined;
+      };
+
+      /** What those projections answered, named as a card reads them, and only where there is any. */
+      const countsOf = (row: Record<string, unknown>): Record<string, GraphValue> => {
+        const data: Record<string, GraphValue> = {};
+        for (const name of options.counts ?? []) {
+          const value = Number(row[`$${name}Count`]);
+          if (Number.isFinite(value) && value > 0) data[`${name}Count`] = value;
+        }
+        return data;
+      };
+
+      const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where, countsFor(pass.entity))));
 
       /*
         Rows a row-to-node could make nothing of, counted rather than passed over in silence.
@@ -373,6 +536,7 @@ export function canvasSeed(): SeedSource {
           // placed one, which is the one carrying a position.
           if (seen.has(node.id)) continue;
           seen.add(node.id);
+          if (typeof row.id === 'string' && hidden.has(row.id)) continue;
           const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
           /*
             Coordinates land in `data`, where the `manual` layout reads them.
@@ -386,11 +550,15 @@ export function canvasSeed(): SeedSource {
           const typeColor = typeColors.get(entity);
           const data = {
             ...node.data,
+            // Before the canvas's own fields: a count is the record's, and nothing a placement
+            // carries is named like one, so the order is only a statement of which layer owns what.
+            ...countsOf(row),
             ...(typeColor ? { canvasTypeColor: typeColor } : {}),
             // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
             // are the two states — an explicit `false` on every other card would make "not pending"
             // a value a rule could accidentally match on.
             ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
+            ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
             ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
           };
           nodes.push({ ...node, data });

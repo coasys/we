@@ -441,7 +441,9 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
       ay: 'center',
       p: '400',
       bg: 'surface',
-      border: '1px solid var(--we-role-border)', //  done ? '1px solid var(--we-role-border)' : '2px dashed var(--we-color-neutral-400)',
+      // `border` resolves role names itself, so the bare word is the spelling — and the commented
+      // alternative it carried named a scale position, which is what this file is not doing.
+      border: '1px solid border',
     },
     children: [
       {

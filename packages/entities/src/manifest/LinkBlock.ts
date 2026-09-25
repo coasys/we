@@ -4,6 +4,7 @@ export const LinkBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A link to a page on the web, with its preview',
     flag: { predicate: 'we://flag', value: 'we://link_block' },
     authoring: { fields: ['url', 'title', 'description'] },
     properties: {

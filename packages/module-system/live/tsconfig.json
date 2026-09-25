@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    // `@we/schema-kit` is exported as source, like every in-repo package a bundler compiles rather
+    // than links, so typechecking this module also typechecks the kit's own `./x.ts` imports.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    // `ES2022` for `Array.prototype.at`, which the tests read the last published message with. The
+    // repo-wide target is ES2020 and the call module carries the same pair for the same reason.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/**/*", "*.config.ts"]
+}

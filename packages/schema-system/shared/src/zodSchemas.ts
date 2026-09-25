@@ -76,11 +76,24 @@ const zQuery = z.object({
   scope: z
     .object({
       via: z.string().min(1),
-      anchorId: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]),
+      anchorId: z.union([
+        z.string(),
+        z.number(),
+        z.array(z.union([z.string(), z.number()])),
+        z.record(z.string(), z.unknown()),
+      ]),
       anchor: z.string().optional(),
+      transitive: z.boolean().optional(),
+      direction: z.enum(['out', 'in']).optional(),
+      limitPerAnchor: z.number().int().positive().optional(),
+      // A level's breadth may be a token, so "show more" is a local the template raises rather than
+      // a second query shape. Resolved before the IR is built, like every other operand.
+      levels: z.array(z.union([z.number().int().positive(), z.record(z.string(), z.unknown())])).optional(),
     })
     .optional(),
-  subscribe: z.boolean().optional(),
+  // A literal, or an expression — a surface that is live only while its subject is. See
+  // `QueryToken.subscribe`.
+  subscribe: z.union([z.boolean(), z.record(z.string(), z.unknown())]).optional(),
   dataset: z.string().optional(),
   // Run only while this expression is truthy — a query that waits for another's answer.
   when: z.record(z.string(), z.unknown()).optional(),
@@ -246,6 +259,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
     keepAlive: z.boolean().optional(),
+    /** The modules this interface reaches by name. See `TemplateMeta.requires`. */
+    requires: z.object({ modules: z.array(z.string()).optional() }).optional(),
     /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
     chromeReserve: z
       .object({

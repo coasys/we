@@ -11,7 +11,7 @@ import {
   simulateVision,
   tokenVar,
 } from '@we/design-utils';
-import { PANEL_TITLE_PROPS } from '@we/schema-kit';
+import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
 import { applyThemeVars, roleVar, surfacesForPolarity, themeParametersToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
@@ -278,12 +278,12 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
   },
   {
     label: 'Depth & inversion',
-    hint: 'The things that are deliberately not on the light/dark ramp.',
+    hint: 'The things that do not simply follow the light/dark ramp.',
     roles: [
       {
         role: 'surfaceInverse',
         label: 'Inverse surface',
-        hint: 'A surface deliberately opposite to the page — a tooltip. Stays dark in a dark theme too.',
+        hint: 'A surface deliberately opposite to the page — a tooltip. Measured from the page, so it stays clear of it in a dark theme too.',
       },
       { role: 'overlay', label: 'Scrim', hint: 'The dimming behind a modal or drawer. Carries its own transparency.' },
       {
@@ -413,20 +413,25 @@ function HueSwatch(props: { hue: number }) {
         width: '20px',
         height: '20px',
         'border-radius': '50%',
+        // role-audit: palette — a preview of the hue being chosen, so it IS the raw value. The rest
+        // of this panel is ordinary chrome and stays on roles.
         background: `hsl(${props.hue} 60% 50%)`,
         'flex-shrink': '0',
-        border: `1px solid ${tokenVar('color', 'neutral-200')}`,
+        border: `1px solid ${tokenVar('color', 'border')}`,
       }}
     />
   );
 }
 
+/**
+ * A named region inside the panel — `sectionLabel`'s treatment, in the language this panel is in.
+ *
+ * It was a hand-spelled copy a size up and a shade stronger, with a fifth value for the tracking
+ * (`0.05em`, against the inspector's `0.06em`, a `widest` twenty lines from that, and the kit's
+ * `wide`). None of those was a decision anybody made twice.
+ */
 function SectionLabel(props: { children: string }) {
-  return (
-    <we-text fontSize="200" fontWeight="600" color="text-muted" textTransform="uppercase" letterSpacing="0.05em">
-      {props.children}
-    </we-text>
-  );
+  return <we-text {...SECTION_LABEL_PROPS}>{props.children}</we-text>;
 }
 
 /**
@@ -477,11 +482,19 @@ function CollapsibleSection(props: {
     if (props.openOn?.()) setOpen(true);
   });
   return (
-    <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
-      <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} cursor="pointer">
-        <SectionLabel>{props.title}</SectionLabel>
-        <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="text-faint" />
-      </Row>
+    <Column borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="0">
+      {/*
+        A real `<button>`, not a `Row` carrying an `onClick`: the row silently loses the keyboard
+        activation and the role, and there is nowhere to put `aria-expanded`. The caret is `xs`,
+        which is the size every other caret in the app is — punctuation, a size below the glyphs it
+        sits beside.
+      */}
+      <we-button variant="bare" width="100%" r="200" expanded={open()} onClick={() => setOpen(!open())}>
+        <Row ay="center" ax="between" py="300" width="100%">
+          <SectionLabel>{props.title}</SectionLabel>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
+        </Row>
+      </we-button>
       <Show when={open()}>
         <Column gap="300" pb="400">
           {props.children}
@@ -662,7 +675,7 @@ export function ThemePanel() {
     };
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth={labelWidth} fontSize="300" color="text-muted">
+        <we-text prop:minWidth={labelWidth} fontSize="300" color="text-muted">
           {label}
         </we-text>
         <we-select
@@ -1301,7 +1314,7 @@ export function ThemePanel() {
         <we-scroll-area flex="1">
           <Column gap="0" p="400">
             {/* ── Name + icon ── */}
-            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="400" mb="0">
+            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="400" mb="0">
               <SectionLabel>Theme name</SectionLabel>
               <Row gap="200" ay="center">
                 <we-icon-picker
@@ -1371,7 +1384,7 @@ export function ThemePanel() {
                 state, which is the same import that is not available.
               */
               bg="page"
-              borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
+              borderBottom={`1px solid ${tokenVar('color', 'border')}`}
               pb="300"
               pt="300"
             >

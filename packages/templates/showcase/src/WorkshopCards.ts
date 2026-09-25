@@ -28,7 +28,9 @@
  * are — see `fieldEditor`.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { composerModal } from '@we/template-kit';
+import { composerModal, typePicker } from '@we/template-kit';
+
+import { kindFill } from './WorkshopKey.ts';
 
 /** The locals a canvas route declares for these. All ephemeral: nothing here survives a reload. */
 export const CARD_LOCALS = {
@@ -40,33 +42,60 @@ export const CARD_LOCALS = {
   noteOpen: { type: 'boolean', initial: false },
 } as const;
 
-/** What a double-click on empty canvas does: remember the point, and ask what goes there. */
-export const askWhatGoesHere: SchemaProp[] = [
-  { $setLocal: 'newAt', value: { $: 'event' } },
-  { $setLocal: 'chooserOpen', value: true },
-];
-
-/** One choice in the chooser: an icon and a name, the full width, opening to the left. */
-function choice(icon: string | { $: string }, label: string | { $: string }, onClick: SchemaProp): SchemaNode {
+/**
+ * What a double-click on empty canvas does: remember the point, and ask what goes there.
+ *
+ * Only when there is a call to put it on. Every choice writes against the call — a placement on its
+ * canvas, a card in it — so with none on screen the chooser opened onto a list of things that could
+ * only fail. Asked when the double-click lands rather than gated on the canvas, which is drawn either
+ * way.
+ */
+export function askWhatGoesHere(call: { $: string }): SchemaProp {
   return {
-    type: 'we-button',
-    props: { variant: 'ghost', width: '100%', ax: 'start', gap: '300', onClick },
-    children: [
-      { type: 'we-icon', props: { name: icon } },
-      { type: 'we-text', props: { truncate: true }, children: [label] },
-    ],
+    $if: {
+      condition: call,
+      then: [
+        { $setLocal: 'newAt', value: { $: 'event' } },
+        { $setLocal: 'chooserOpen', value: true },
+      ],
+    },
   };
 }
 
 /**
- * "What goes here?" — a note, or a record of any model this space can make.
+ * The order of the chooser's built-in section: tasks and events, which are what a meeting mostly
+ * produces, then media, then the rest. Named rather than sorted by a flag because the choice is this
+ * canvas's — another picker over the same list has its own reasons. A kind not named here follows.
+ */
+const LEADING_KINDS = [
+  'TaskBlock',
+  'EventBlock',
+  'ImageBlock',
+  'AudioBlock',
+  'VideoBlock',
+  'TextBlock',
+  'FileBlock',
+  'LocationBlock',
+  'LinkBlock',
+  'CodeBlock',
+  'TagBlock',
+  'CalloutBlock',
+];
+
+/** Back to the chooser, from whichever form or composer it opened. */
+export const BACK_TO_CHOOSER: SchemaProp[] = [{ $setLocal: 'chooserOpen', value: true }];
+
+/**
+ * "What goes here?" — anything this space can make, as `typePicker`'s searchable grid.
  *
- * Note first, because it is the thing most canvases are mostly made of. Then
- * `recordStore.creatableEntities`: the space's own models, then WE's built-in ones, each with the
- * icon its declaration carries. Picking a record opens the generic form through `createOnCanvas`,
+ * The note first (a collection, written in the composer — its description says it is a document of
+ * blocks, which is what tells it apart from Text), then this space's own types, then WE's blocks led by tasks and events. Each card's
+ * icon is drawn in the colour the key gives its kind, so the chooser and the key agree.
+ *
+ * A composed kind opens the composer. Anything else opens the generic form through `createOnCanvas`,
  * which remembers the canvas and the point, and then switches the form to the chosen model — two
- * actions, because the first opens on whatever model is offered first and the second is the one
- * that says which. Nothing is written until the form is submitted.
+ * actions, because the first opens on whatever model comes first and the second is the one that says
+ * which. Nothing is written until the form or the composer is saved.
  */
 export function newThingChooser(call: SchemaProp): SchemaNode {
   const close: SchemaProp = { $setLocal: 'chooserOpen', value: false };
@@ -76,37 +105,33 @@ export function newThingChooser(call: SchemaProp): SchemaNode {
       condition: { $: 'local.chooserOpen' },
       then: {
         type: 'we-modal',
-        props: { size: 'sm', close },
+        // Wide enough for three columns of cards where the screen has room; it narrows with the screen.
+        props: { size: 'lg', close },
         children: [
           { type: 'we-text', slot: 'header', props: { variant: 'heading-md' }, children: ['Add to the canvas'] },
-          {
-            type: 'Column',
-            props: { gap: '100', width: '100%' },
-            children: [
-              choice('note', 'Note', [close, { $setLocal: 'newNoteOpen', value: true }]),
+          typePicker({
+            lead: LEADING_KINDS,
+            composedLabel: 'Note',
+            composedIcon: 'note',
+            // The key's colour is looked up by the kind's *name*; a picker entry is the whole row.
+            fill: (kind) => kindFill(`${kind}.value`),
+            pick: (kind) => [
+              close,
               {
-                type: '$if',
-                props: {
-                  condition: { $: 'count(recordStore.creatableEntities)' },
-                  then: { type: 'we-divider' },
-                },
-              },
-              {
-                type: '$each',
-                props: { items: { $: 'recordStore.creatableEntities' }, as: 'kind' },
-                children: [
-                  choice({ $: "kind.icon ? kind.icon : 'cube'" }, { $: 'kind.label' }, [
-                    close,
+                $if: {
+                  condition: { $: `${kind}.via == 'composer'` },
+                  then: { $setLocal: 'newNoteOpen', value: true },
+                  else: [
                     {
                       $action: 'recordStore.createOnCanvas',
                       args: [call, { $: 'local.newAt.x' }, { $: 'local.newAt.y' }],
                     },
-                    { $action: 'recordStore.setRecordEntity', args: [{ $: 'kind.value' }] },
-                  ]),
-                ],
+                    { $action: 'recordStore.setRecordEntity', args: [{ $: `${kind}.value` }] },
+                  ],
+                },
               },
             ],
-          },
+          }),
         ],
       },
     },
@@ -131,6 +156,9 @@ export function newNoteModal(call: SchemaProp): SchemaNode {
       args: [{ $: 'arg' }, { canvas: call, at: { $: 'local.newAt' } }],
     },
     onSaved: [{ $setLocal: 'newAt', value: null }],
+    back: BACK_TO_CHOOSER,
+    // The disc the chooser drew a note with — its glyph, in the note's colour.
+    icon: { name: 'note', color: { $: kindFill("'CollectionBlock'") } },
   });
 }
 

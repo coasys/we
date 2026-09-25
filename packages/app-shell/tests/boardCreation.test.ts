@@ -69,7 +69,7 @@ vi.mock('@we/entities', () => {
   return {
     CollectionBlock,
     Space: { findOne: async () => null },
-    getEntitiesForPerspective: () => ({ findAll: async () => [{ id: 'task' }] }),
+    getEntityForDataset: () => ({ findAll: async () => [{ id: 'task' }] }),
     runEntityTransaction: async (_p: unknown, fn: (tx: { batchId: string }) => Promise<unknown>) => {
       const batchId = `batch-${nextId++}`;
       batches.set(batchId, { staged: [], ops: [] });

@@ -2,14 +2,25 @@ import { existsSync, globSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ROLE_NAMES } from '@we/design-utils';
 import { describe, expect, it } from 'vitest';
 
 import { assembleReference } from '../assembler.js';
 import { extractPrimitives } from '../extractors/cem.js';
 import { extractEntities } from '../extractors/entities.js';
+import { foreignElementsFromManifest } from '../extractors/foreignElements.js';
 import { extractTokens } from '../extractors/tokens.js';
 import { extractComponentProps } from '../extractors/typescript.js';
+import { architecture } from '../fragments/architecture.js';
 import { contributionSurfaces } from '../fragments/contribution-surfaces.js';
+import { designSystemProps } from '../fragments/design-system-props.js';
+import { devPatterns } from '../fragments/dev-patterns.js';
+import { panels } from '../fragments/panels.js';
+import { patterns } from '../fragments/patterns.js';
+import { routing } from '../fragments/routing.js';
+import { rules } from '../fragments/rules.js';
+import { storePatterns } from '../fragments/store-patterns.js';
+import { stores } from '../fragments/stores.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../../..');
@@ -285,5 +296,124 @@ describe('contribution surfaces', () => {
     expect(readFileSync(resolve(repoRoot, 'docs/README.md'), 'utf-8')).toContain('contributing/surfaces.md');
     expect(readFileSync(resolve(repoRoot, 'CONTRIBUTING.md'), 'utf-8')).toContain('contributing/surfaces.md');
     expect(rel).toBe('docs/contributing/surfaces.md');
+  });
+});
+
+describe('foreign elements from a custom-elements manifest', () => {
+  const manifest = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/foreign-elements.json'), 'utf-8'));
+
+  it('reads each element’s public writable fields, attribute-only props and events', () => {
+    const [rating] = foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']);
+    expect(rating).toMatchObject({
+      tagName: 'x-rating',
+      package: '@acme/elements',
+      description: 'A row of stars somebody picks from.',
+    });
+    expect(rating.props.map((p) => p.name)).toEqual(['value', 'max', 'label']);
+    expect(rating.events).toEqual(['x-change', 'x-hover']);
+  });
+
+  it('keeps to the tags the seed allows, and reads every element when it names none', () => {
+    expect(foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']).map((e) => e.tagName)).toEqual([
+      'x-rating',
+    ]);
+    expect(foreignElementsFromManifest(manifest, '@acme/elements').map((e) => e.tagName)).toEqual([
+      'x-rating',
+      'x-chart',
+    ]);
+  });
+
+  it('documents them in their own section, with the event spelling a dashed name needs', () => {
+    const elements = foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']);
+    const reference = assembleReference({
+      primitives: [],
+      components: [],
+      models: [],
+      tokens: [],
+      storeEntries: [],
+      foreignElements: elements,
+      fragments: {
+        schemaOperators: '',
+        designSystemProps: '',
+        routing: '',
+        panels: '',
+        stores: '',
+        storePatterns: '',
+        patterns: '',
+        rules: '',
+      },
+    });
+    expect(reference).toContain('## Foreign Elements (this deployment)');
+    expect(reference).toContain('- x-rating — A row of stars somebody picks from.');
+    expect(reference).toContain('Events: on:x-change, on:x-hover');
+  });
+});
+
+describe('the colours the reference teaches', () => {
+  /*
+    Every example in the fragments is an unvalidated string. `we-validate-schemas` walks real
+    `.schema.ts` files and never sees these, so the one document an author is handed first is the
+    one place in the repo where a colour is nobody's job to check — and it drifted exactly that
+    way: four examples wrote `textFaint`, `surfaceSunken` and `accentText` while the props fragment
+    two sections above told the reader those spellings paint nothing, and `semanticValidation.ts`
+    rejected them outright. The reference was teaching a schema that fails its own validator.
+
+    So the examples are checked here, on the same two rules the validator and `role-audit` apply to
+    schemas. Only code fences are read: the prose *about* scale positions ("templates written with
+    `neutral-100` are frozen into one theme's idea of grey") is the guidance, not a violation of it.
+  */
+  const fragmentSources = Object.entries({
+    architecture,
+    contributionSurfaces,
+    designSystemProps,
+    devPatterns,
+    panels,
+    patterns,
+    routing,
+    rules,
+    storePatterns,
+    stores,
+  });
+
+  /** The fenced blocks of a fragment — what a reader copies, as opposed to what they read. */
+  const fencesOf = (text: string) => [...text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map((m) => m[1]);
+
+  /** A colour prop written in JSON (`"bg": "surface"`) or in the kit's TS (`bg: 'surface'`). */
+  const COLOUR_PROP =
+    /["']?(bg|color|borderColor|fadeColor|bgImageTint|ring|border|borderTop|borderRight|borderBottom|borderLeft)["']?\s*:\s*["']([^"']+)["']/g;
+
+  const SCALE = /^(neutral|primary|success|warning|danger)-(0|25|50|75|100|200|300|400|500|600|700|800|900|1000)$/;
+  const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft']);
+
+  /** The colour half of a value: a border shorthand's third word, anything else whole. */
+  const colourOf = (prop: string, value: string) =>
+    BORDER_PROPS.has(prop) ? value.split(/\s+/).slice(2).join(' ') : value;
+
+  it('never writes a role in its TypeScript spelling', () => {
+    const camel = new Map(
+      [...ROLE_NAMES].map((kebab) => [kebab.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), kebab]),
+    );
+    const found: string[] = [];
+    for (const [name, source] of fragmentSources) {
+      for (const fence of fencesOf(source)) {
+        for (const [, prop, value] of fence.matchAll(COLOUR_PROP)) {
+          const kebab = camel.get(colourOf(prop, value));
+          if (kebab && kebab !== colourOf(prop, value)) found.push(`${name}: ${prop}: "${value}" → "${kebab}"`);
+        }
+      }
+    }
+    expect(found, 'the reference teaches a spelling semanticValidation.ts rejects').toEqual([]);
+  });
+
+  it('never names a scale position where a role belongs', () => {
+    const found: string[] = [];
+    for (const [name, source] of fragmentSources) {
+      for (const fence of fencesOf(source)) {
+        for (const [, prop, value] of fence.matchAll(COLOUR_PROP)) {
+          if (SCALE.test(colourOf(prop, value))) found.push(`${name}: ${prop}: "${value}"`);
+        }
+      }
+    }
+    expect(found, 'a scale position is invisible to the contrast layer — name a role').toEqual([]);
   });
 });

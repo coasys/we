@@ -219,6 +219,8 @@ const boardDetail: SchemaNode = {
     // so the fragment needs nothing from this view but the id.
     taskBoard({
       boardId: { $: 'local.boardId' },
+      // Extraction writes tasks onto these boards, so a reader can put away what nobody has kept.
+      suggestions: true,
       empty: emptyState({
         icon: 'check-square',
         label: 'work',
@@ -235,6 +237,9 @@ export const boardsView: TemplateSchema = {
     description: "This space's work, arranged — everything in one board, or a board per piece of work",
     icon: 'kanban',
     role: 'view',
+    // The task board's suggestion controls name `modules.transcribe.*` — see `taskBoard`. Declared so
+    // a deployment without extraction sees the dependency rather than a board with dead buttons.
+    requires: { modules: ['transcribe'] },
     segment: 'boards',
   },
   type: 'Column',

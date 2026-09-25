@@ -203,5 +203,30 @@ export type ExpanderFactory<TOptions = unknown> = (options?: TOptions) => Expand
 export interface SeedSource {
   id: string;
   description?: string;
+  /**
+   * Options that change how this seed *draws* what it found, never what it fetches.
+   *
+   * A seed's options are one bag holding two kinds of thing. Most of them decide the queries — which
+   * canvas, which types, how many. A few are applied to rows that have already come back: which
+   * cards to mark as suggestions, which to leave off. The host cannot tell them apart, and the
+   * difference decides whether a change to one is worth throwing the graph away for.
+   *
+   * It matters because the naming ones are stable and these are not. The workshop's canvas hands its
+   * suggestion markers straight from the transcriber, so they change every time an extraction pass
+   * stages a record or somebody accepts one — which, with auto-extract on, is every couple of
+   * minutes for the length of a call. Each of those was a full reload: the store cleared, every
+   * query re-run, the old graph left faded on screen under a spinner, for a change that amounted to
+   * fading two cards.
+   *
+   * Naming them here sends those changes down {@link GraphEngine.refresh} instead, which re-reads
+   * and merges without clearing — so nothing on screen goes stale and nothing loses its place. A
+   * seed that names nothing behaves exactly as before.
+   *
+   * Still more work than the change deserves: `refresh` re-runs the queries, where a marker needs no
+   * query at all. The way out of that is for the marker to stop being a seed option and become a
+   * prop of its own, beside `focus` and `folded` — which is a bigger change and is not blocked by
+   * this one.
+   */
+  presentationOptions?: string[];
   seed(options: unknown, context: ExpanderContext, signal?: AbortSignal): Promise<ExpandResult>;
 }

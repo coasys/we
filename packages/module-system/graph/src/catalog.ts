@@ -83,6 +83,24 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.',
         },
+        {
+          name: 'changed',
+          type: 'string[]',
+          description:
+            'Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.',
+        },
+        {
+          name: 'hidden',
+          type: 'string[]',
+          description:
+            'Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.',
+        },
+        {
+          name: 'counts',
+          type: 'string[]',
+          description:
+            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
       example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,
@@ -192,8 +210,21 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       options: [
         { name: 'xField', type: 'string', description: 'Node data field holding x. Default "x".' },
         { name: 'yField', type: 'string', description: 'Node data field holding y. Default "y".' },
+        {
+          name: 'size',
+          type: '{ width: number; height: number }',
+          description:
+            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.',
+        },
+        {
+          name: 'widthField',
+          type: 'string',
+          description: 'Node data field holding a resized card’s own width, so parking keeps clear of it.',
+        },
+        { name: 'heightField', type: 'string', description: 'The same, for height.' },
+        { name: 'margin', type: 'number', description: 'Clear space around a parked card. Default 24 with `size`.' },
       ],
-      example: `{ "type": "manual" }`,
+      example: `{ "type": "manual", "options": { "size": { "width": 180, "height": 135 } } }`,
     },
 
     // ─── Presentation ──────────────────────────────────────────────────────────
@@ -316,10 +347,25 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         'Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.',
     },
     {
+      id: 'marquee-select',
+      category: 'behaviour',
+      description:
+        'Drag a rectangle over empty canvas to select everything it touches, marking each card as the rectangle reaches it. Additive rather than a mode: it takes a background press only when Shift or Ctrl/Cmd is held, or when `armed` is set, so a plain drag still pans. List it BEFORE pan-zoom, which is the background fallback and would otherwise claim the press first. Selecting touches rather than encloses, so a card wider than the view can still be caught. Holding the modifier adds to whatever is already selected.',
+      options: [
+        {
+          name: 'armed',
+          type: 'boolean',
+          description:
+            'Whether a plain background drag sweeps rather than pans. Default false. Arm it from a control the user can see — a touchscreen has no modifier keys.',
+        },
+      ],
+      example: `"behaviours": [{ "type": "marquee-select", "options": { "armed": { "$": "local.selecting" } } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`,
+    },
+    {
       id: 'drag-node',
       category: 'behaviour',
       description:
-        'Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.',
+        'Drag a node to move it, and every other selected node with it — so a selection built by clicking or sweeping travels as one. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.',
       options: [{ name: 'pin', type: 'boolean', description: 'Leave the node pinned where it was dropped.' }],
       example: `{ "type": "drag-node", "options": { "pin": true } }`,
     },

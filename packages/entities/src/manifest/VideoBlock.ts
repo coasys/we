@@ -4,6 +4,9 @@ export const VideoBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A video, from a link',
+    // A form: filled in where a record is given one inline, and wherever one is made on its own.
+    authoring: { fields: ['url', 'title'] },
     flag: { predicate: 'we://flag', value: 'we://video_block' },
     properties: {
       title: { type: 'string', predicate: 'we://title', default: '' },

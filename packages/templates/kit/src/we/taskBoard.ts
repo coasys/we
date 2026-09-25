@@ -46,10 +46,18 @@
  * template is one, over composed posts. The same fragment, because a lane-only board *is* the
  * special case where nothing binds; see `lanesOnly`.
  */
-import { field, formModal } from '@we/schema-kit';
+import { field, formModal, sectionLabel } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { peopleFilter } from './peopleFilter.ts';
+import { signalDisplay } from './signalDisplay.ts';
+import {
+  answerButton,
+  suggestedChanges,
+  suggestionsToggle,
+  UNCONFIRMED,
+  withoutHiddenSuggestions,
+} from './suggestions.ts';
 
 /** The board record, hydrated one level: its columns, its own arrangement, what it gathers. */
 const BOARD = 'first(local.board)';
@@ -61,8 +69,12 @@ const BOARD = 'first(local.board)';
  * in scope, and the community's states supply names and shapes for headings. One string, reused, so
  * every reader agrees on the answer; each use is its own memo, and the function is cheap.
  */
-const VIEW =
-  'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardShow, me: me.did })';
+/*
+  `records` less what nobody has kept, while the reader has hidden it — see `suggestions.ts`. Filtered
+  before the board is worked out rather than after, so every count, the Unplaced column and the people
+  filter agree about what is on the board.
+*/
+const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), me: me.did })`;
 
 /**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
@@ -115,15 +127,19 @@ export interface TaskCardOptions {
    */
   extracted?: string;
   /**
-   * Mark a card that extraction has proposed and nobody has agreed to — an expression, per row.
+   * Mark a card extraction **made** and nobody has kept — an expression, per row.
    *
-   * A staged record is in the graph, so it answers the board's query exactly as an accepted one
-   * does, and a staged *update* to a record that exists changes nothing about the record until
-   * somebody presses Keep. Without this a suggestion was indistinguishable from a decision, and a
-   * card in Done with a proposal to move it to Blocked simply sat in Done. The canvas marks the same
-   * cards the same way; see {@link PENDING} for the default.
+   * A staged record is in the graph, so it answers the board's query exactly as an accepted one does;
+   * without this a suggestion was indistinguishable from a decision. Drawn provisional — dashed,
+   * faded, "suggested" — with Keep and Discard. Only for records a pass created: an agreed record with
+   * a change suggested is not in doubt and is drawn with `suggestions` instead. See {@link UNCONFIRMED}.
    */
   pending?: string;
+  /**
+   * Show the changes a pass suggested to this card, if it is an agreed record carrying any — as
+   * old → new lines, each applied or dismissed alone. See `suggestedChanges`.
+   */
+  suggestions?: boolean;
   /**
    * The card's fill, as an expression evaluated per row. Defaults to `surface`.
    *
@@ -148,6 +164,18 @@ export interface TaskCardOptions {
    * selectable.
    */
   select?: CardSelection;
+  /**
+   * Show what the card has collected — reactions by type, and the reply count. Off by default.
+   *
+   * Counts, never controls. A board card is dense and draggable, so a row of buttons on each would
+   * compete with the gesture the card exists for; what a card owes the reader is that a conversation
+   * is happening on it, and selecting the card opens that conversation in the inspector. Silent for
+   * a card nobody has touched, so a quiet board gains no furniture at all.
+   *
+   * Needs hydrated `signals` on the row and `local.signalTypes` above it. {@link taskBoard} declares
+   * both when its own `social` is set — this option is for a caller drawing its own cards.
+   */
+  social?: boolean;
 }
 
 /** How a card is selected: which card is, and what pressing one does. */
@@ -162,21 +190,18 @@ export interface CardSelection {
 }
 
 /**
- * The records extraction has proposed and nobody has resolved — the transcribe module's list, by id.
+ * Every record with anything staged on it, of either kind — the transcribe module's list, by id.
  *
  * A module namespace resolves to nothing where the module is not installed, and a map over nothing
  * is an empty list, so a board on a deployment without extraction marks nothing and asks nothing.
  *
- * `pendingIds` rather than the flat `proposals` it used to read. That list is the *live* call's, so
- * a board showing a past call marked whatever the current one had staged — and after a restart it
- * marked nothing at all, since nothing fills it until a pass settles or the transcriber adopts a
- * record. Whether anybody has agreed to a record is a fact about the record, true wherever it is
- * drawn, which is what this answers.
+ * Both kinds together, which is almost never the question: a card is provisional only if a pass
+ * *made* it ({@link UNCONFIRMED}), and an agreed card with a change suggested ({@link CHANGED}) is not.
+ * Kept for a surface that genuinely asks "is anything waiting on this record".
  */
+// The transcribe module's list, so a template placing a board with suggestion controls depends on
+// that module and should declare it: `meta.requires.modules: ['transcribe']`. See `suggestions.ts`.
 export const PENDING = 'modules.transcribe.pendingIds';
-
-/** What the proposal on the card in scope says — its staged values, as one line. */
-const proposalSummary = (as: string) => `find(modules.transcribe.pendingProposals, { id: ${as}.id }).summary`;
 
 /** Whether the card in scope is the selected one, as expression source — `false` where nothing selects. */
 const selectedExpr = (opts: TaskCardOptions, as: string) =>
@@ -236,7 +261,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
               condition: { $: pending },
               then: {
                 type: 'we-tooltip',
-                props: { content: 'Extraction proposed this; nobody has agreed to it yet' },
+                props: { content: 'Extraction proposed this — pending acceptance' },
                 children: [
                   {
                     type: 'we-badge',
@@ -254,23 +279,6 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
             },
           },
         ],
-      },
-      /*
-        The proposal, in its own words. For a staged *update* this is the part that matters: the card
-        shows the record as it is, and this line shows what extraction would change — "status:
-        blocked" under a card sitting in Done — so Keep and Discard are decisions about something a
-        person can see.
-      */
-      {
-        type: '$if',
-        props: {
-          condition: { $: `(${pending}) && ${proposalSummary(as)}` },
-          then: {
-            type: 'we-text',
-            props: { fontSize: '200', color: 'text-muted' },
-            children: [{ $: proposalSummary(as) }],
-          },
-        },
       },
       {
         type: '$if',
@@ -409,6 +417,47 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
             // `300` between the controls and the faces: at `100` a stack and a button read as touching.
             props: { ml: 'auto', gap: '300', ay: 'center' },
             children: [
+              // First in the group, so the counts sit left of anything that can be pressed — they are
+              // the one thing here that is a reading rather than a control.
+              /*
+                What people have made of this card, as a reading rather than a control.
+
+                `compact` and `readOnly`: a board card is dragged, so a row of live controls on it is
+                furniture competing with the gesture the card exists for — and the counts are the
+                part somebody scanning a column actually wants. Used types only, which is what
+                `compact` does by default; the card's own page has them all.
+
+                The reply count that used to sit beside these went with `activitySummary`. It is a
+                count of comments rather than of reactions, and a fragment named for signals has no
+                business carrying one — the card draws it itself, with the same mark the feed uses.
+              */
+              ...(opts.social
+                ? [
+                    signalDisplay({
+                      record: as,
+                      as: `${as}Sum`,
+                      mode: 'compact',
+                      size: 'xs',
+                      readOnly: true,
+                      inline: true,
+                    }),
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: `count(${as}.comments)` },
+                        then: {
+                          type: 'CountMark',
+                          props: {
+                            icon: 'chat-circle',
+                            count: { $: `count(${as}.comments)` },
+                            size: 'xs',
+                            label: 'Comments',
+                          },
+                        },
+                      },
+                    } as SchemaNode,
+                  ]
+                : []),
               /*
                 Keep and Discard, on the card, where the work is — the same two the canvas offers and
                 the same actions behind them. Neither asks first: keeping writes what was proposed,
@@ -428,54 +477,16 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                     // accent says "primary action"; a tick that means "yes, this" is green everywhere
                     // else in the app.
                     children: [
-                      {
-                        type: 'we-tooltip',
-                        props: { content: 'Keep this' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'outline',
-                              size: 'xs',
-                              square: true,
-                              r: 'full',
-                              label: 'Keep this',
-                              color: 'success-text',
-                              // The fill on hover, not a tint of it — the canvas's own rule for this
-                              // pair, where `on-success` answers for the contrast the moment the
-                              // background stops being the card's. A tint reads as the button
-                              // acknowledging the pointer rather than as the answer it will give.
-                              hoverProps: { bg: 'success', color: 'on-success', borderColor: 'success' },
-                              onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'check', weight: 'bold' } }],
-                          },
-                        ],
-                      },
-                      {
-                        type: 'we-tooltip',
-                        props: { content: 'Discard this' },
-                        children: [
-                          {
-                            type: 'we-button',
-                            props: {
-                              variant: 'outline',
-                              size: 'xs',
-                              square: true,
-                              r: 'full',
-                              label: 'Discard this',
-                              color: 'danger-text',
-                              // The fill on hover, not a tint of it — the canvas's own rule for this
-                              // pair, where `on-danger` answers for the contrast the moment the
-                              // background stops being the card's. A tint reads as the button
-                              // acknowledging the pointer rather than as the answer it will give.
-                              hoverProps: { bg: 'danger', color: 'on-danger', borderColor: 'danger' },
-                              onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'x', weight: 'bold' } }],
-                          },
-                        ],
-                      },
+                      answerButton({
+                        tone: 'success',
+                        label: 'Accept',
+                        onClick: { $action: 'modules.transcribe.acceptProposal', args: [{ $: `${as}.id` }] },
+                      }),
+                      answerButton({
+                        tone: 'danger',
+                        label: 'Reject — removes it',
+                        onClick: { $action: 'modules.transcribe.rejectProposal', args: [{ $: `${as}.id` }] },
+                      }),
                     ],
                   },
                 },
@@ -487,6 +498,11 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
           },
         ],
       },
+      /*
+        Last, under a rule: what a pass suggests changing about this agreed card. The card above it is
+        drawn exactly as it is, since nothing about the record is in doubt — only the change is.
+      */
+      ...(opts.suggestions ? [suggestedChanges({ record: as })] : []),
     ],
   };
 }
@@ -549,10 +565,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
         type: 'Column',
         props: { gap: '100' },
         children: [
-          {
-            type: 'we-text',
-            props: { variant: 'footnote', uppercase: true, color: 'text-muted', text: { $: 'part.name' } },
-          },
+          sectionLabel({ label: { $: 'part.name' } }),
           {
             type: '$each',
             props: { items: { $: `${people}.filter(p, p.kind == part.slug)` }, as: 'holder' },
@@ -707,6 +720,14 @@ export interface TaskBoardOptions {
    * bind to. Anything else makes every column a lane — say so with `lanesOnly`.
    */
   entity?: string;
+  /**
+   * Draw what each card has collected — see {@link TaskCardOptions.social}.
+   *
+   * Declares what that needs as well as switching it on: the pool hydrates `signals`, and the board
+   * hoists one `SignalType` subscription for every card on it rather than one per card. A board
+   * supplying its own `card` gets those two and draws the counts itself.
+   */
+  social?: boolean;
   /** Extra conditions on the pool — `{ kind: 'post' }` for a board of composed cards. */
   where?: Record<string, unknown>;
   /**
@@ -736,6 +757,15 @@ export interface TaskBoardOptions {
    * being pointed at. Off by default — a board of posts has nobody assigned to anything.
    */
   people?: boolean;
+  /**
+   * A switch above the board that puts away what extraction made and nobody has kept, with how many
+   * there are. Agreed cards with a change suggested always show. The choice rides in the address as
+   * `?suggestions=hide`, shared with any other page about the same call — see `suggestions.ts`.
+   *
+   * Every board already draws those records as provisional; this only lets a reader hide them. Offer
+   * it wherever extraction can write onto the board.
+   */
+  suggestions?: boolean;
   /**
    * Pressing a card selects it, and the selected card is drawn in the accent.
    *
@@ -856,10 +886,12 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
         extracted: opts.extracted,
         bg: opts.bg,
         showState,
-        pending: `card.id in (${PENDING})`,
+        pending: `card.id in (${UNCONFIRMED})`,
+        suggestions: true,
         dimmed: `card.id in ${VIEW}.dimmed`,
         ...(opts.select ? { select: opts.select } : {}),
         ...(opts.people ? { peopleOf: opts.entity ?? 'TaskBlock' } : {}),
+        ...(opts.social ? { social: true } : {}),
       });
 }
 
@@ -1364,7 +1396,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
                   },
                   {
                     type: 'Column',
-                    props: { gap: '050', flex: '1', minWidth: '0' },
+                    props: { flex: '1', minWidth: '0' },
                     children: [
                       {
                         type: 'we-text',
@@ -1519,6 +1551,8 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       */
       boardPeople: { type: 'array', initial: [], ...(opts.people ? { syncParam: 'who' } : {}) },
       boardShow: { type: 'string', initial: 'dim', ...(opts.people ? { persist: 'board.show' } : {}) },
+      // A row per person, or one board — its own choice now, beside rather than inside dim and hide.
+      boardGrouped: { type: 'boolean', initial: false, ...(opts.people ? { persist: 'board.grouped' } : {}) },
     },
     /*
       Three subscriptions for the whole board, read together through `arrangedBoard`.
@@ -1553,6 +1587,10 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       pool: {
         entity: opts.entity ?? 'TaskBlock',
         ...(opts.where && { where: opts.where }),
+        // Hydrated only where the cards draw them: an include nobody reads is rows of links fetched
+        // for every card on the board. `comments` needs none — a relation's own ids arrive anyway,
+        // which is what lets a reply count cost nothing.
+        ...(opts.social && { include: { signals: true } }),
         scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: ANCHOR } },
         order: { createdAt: 'asc' },
         /*
@@ -1568,20 +1606,44 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
         asked on a board without `people`, which leaves it empty and every card undimmed.
       */
       involvements: { entity: 'Involvement', ...(opts.people ? {} : { when: { $: 'false' } }) },
+      /*
+        What this community reacts with, for the counts on every card — one subscription for the
+        board. Declared here rather than by the route, so a board that draws them cannot be placed
+        without them: the reads resolve to nothing, every count reads zero, and nothing says why.
+      */
+      ...(opts.social ? { signalTypes: { entity: 'SignalType', subscribe: true } } : {}),
     },
     children: [
       addColumnModal(opts),
-      ...(opts.people
+      /*
+        The board's header: who, then whether suggestions show — in that order, the second after the
+        other controls. One wrapping row, so the switch sits beside the people filter while there is
+        room and drops under it when there is not.
+      */
+      ...(opts.people || opts.suggestions
         ? [
-            peopleFilter({
-              people: 'boardPeople',
-              show: 'boardShow',
-              modes: ['dim', 'hide', 'rows'],
-              faces: { $: `${VIEW}.involved` },
-              matched: { $: `${VIEW}.matchedCount` },
-              total: { $: `${VIEW}.cardCount` },
-              noun: 'card',
-            }),
+            {
+              type: 'Row',
+              props: { gap: '500', ay: 'center', wrap: true, width: '100%' },
+              children: [
+                ...(opts.people
+                  ? [
+                      peopleFilter({
+                        people: 'boardPeople',
+                        show: 'boardShow',
+                        grouped: 'boardGrouped',
+                        faces: { $: `${VIEW}.involved` },
+                        matched: { $: `${VIEW}.matchedCount` },
+                        total: { $: `${VIEW}.cardCount` },
+                        noun: 'card',
+                      }),
+                    ]
+                  : []),
+                ...(opts.suggestions
+                  ? [suggestionsToggle({ count: `count(local.pool.filter(r, r.id in ${UNCONFIRMED}))` })]
+                  : []),
+              ],
+            } as SchemaNode,
           ]
         : []),
       {

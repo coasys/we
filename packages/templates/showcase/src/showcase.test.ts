@@ -29,7 +29,13 @@ import {
   CANVAS_KEY,
   CARD_FILL,
   CARD_KEY,
+  FOLD_COUNT,
+  FOLD_FROM_GRAPH,
+  FOLD_QUERY,
+  FOLDED_CARDS,
+  HIDDEN_KINDS,
   KIND_DEFAULTS,
+  kindFill,
   LENS_PARAM,
   LENS_QUERY,
   LINK_ENTITY,
@@ -37,6 +43,7 @@ import {
   LINK_KEY,
   NO_LENS,
   PLAIN_FILL,
+  toggleKindShown,
   toggleLens,
 } from './WorkshopKey.ts';
 
@@ -349,16 +356,105 @@ describe('the workshop template’s call selection', () => {
     */
     const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
 
-    expect(calls).toContain('"condition":{"$":"modules.call.active || count(modules.call.liveCalls)"}');
     /*
       With `args`, and the empty string carries the whole point. A handler with none does not call
       the method with none — it forwards the click, and `startCall` takes an optional anchor id, so
       it was handed a PointerEvent and the backend refused the write. `''` is how `startCall`
       already spells "no anchor".
     */
-    expect(calls).toContain('"else":{"$action":"modules.call.startCall","args":[""]}');
+    expect(calls).toContain('{"$action":"modules.call.startCall","args":[""]}');
     // And it says which of the three it is about to do. The middle one had no words of its own.
     expect(calls).toContain("'Join the call'");
+  });
+
+  it('still offers a new call while one is running', () => {
+    /*
+      The regression this pair exists for, and it only appeared once calls became plural.
+
+      One button branched three ways, and the branch that starts a call is the one the other two
+      shadow: the moment anybody in the space was in a call it read "Join the call" — in the panel
+      header and in all three route gates, which is every door this template has — so there was no
+      way to start a second conversation without leaving the first. The call module had noticed the
+      same thing and put a `+` beside its own join prompt; this template had nothing.
+
+      Asserted as the pair rather than as the words, because the failure is one control doing two
+      jobs: a start that is only reachable when nothing is running is a start that is missing exactly
+      when somebody wants it.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // The contextual verb keeps the primary — all three of its readings.
+    expect(calls).toContain("'Go to the call'");
+    expect(calls).toContain("'Join the call'");
+    expect(calls).toContain("'New call'");
+    // And starting one stands beside it, on exactly the condition that makes the primary not a start.
+    expect(calls).toContain('"condition":{"$":"count(modules.call.liveCalls)"}');
+    expect(calls).toContain("'Leave your call and start a new one'");
+
+    // The same pair on the page, which is where somebody with no call is actually looking.
+    for (const path of ['/kanban', '/calendar']) {
+      const route = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
+      expect(route, path).toContain("'Leave your call and start a new one'");
+    }
+  });
+
+  it('asks about this space, not about wherever your call is', () => {
+    /*
+      `modules.call.active` is true of a call in *any* space, and the button was gated on it — so
+      standing in a space with no call at all, while in one somewhere else, every door read "Go to
+      the call" and led out of the space you were looking at. There was no way to start one where you
+      were standing, and nothing said why.
+
+      `liveCalls` is the space on screen and includes your own call when it is here, so it answers
+      both halves. Being in a call elsewhere keeps its own control — the call bar's "Back to the call
+      in …" — which is the module's to draw.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    expect(calls).not.toContain('modules.call.active || count(modules.call.liveCalls)');
+    expect(calls).toContain('modules.call.active && !modules.call.elsewhere');
+  });
+
+  it('joins the call it names rather than the one you are in', () => {
+    /*
+      `goToCall` answers "bring me to my call", and in a call elsewhere that is a different call from
+      the one the button is about: pressed on "Join the call", or on a live row in the list, it took
+      you to yours. `joinCall` names an id and leaves whatever you were in, which is what the word on
+      both controls promises.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // The header's singular default: the first of them, which is all a single button can mean.
+    expect(calls).toContain('{"$action":"modules.call.joinCall","args":[{"$":"first(modules.call.liveCalls).id"}]}');
+    // And the row's, which names the call beside it — see the next test for why the rows exist.
+    expect(calls).toContain('find(modules.call.liveCalls, { recordId: call.id }).id');
+  });
+
+  it('says which calls in the list are happening now, and lets you join one', () => {
+    /*
+      The list is a query over the archive, so a meeting three people were sitting in looked exactly
+      like one from last Tuesday — and the header's button cannot cover that gap, being singular:
+      with two calls running it joins whichever `liveCalls` lists first and nothing says there was a
+      choice. The call module makes the same argument for listing a row per call in its own join bar.
+
+      Asserted on the row's own affordances rather than on the section, because the fix is that a row
+      names the call it means: a marker with no way in is the state this replaces.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // A live row is told apart by being live, not by being yours — which is what it used to test.
+    expect(calls).not.toContain("call.id == modules.call.callRecordId ? 'danger' : 'text-faint'");
+    expect(calls).toContain("find(modules.call.liveCalls, { recordId: call.id }) ? 'danger' : 'text-faint'");
+    // Who is in it — on your own row too, where there is nothing to press beside them.
+    expect(calls).toContain('"type":"AvatarStack"');
+    /*
+      And a way in on everybody else's. The row used to carry both words, "Go to" for your own call
+      and "Join" for another — but going to a call you are already in is what clicking the row does,
+      so that half went and the button is gated on the row not being yours. What is left is the act
+      that is not navigation, and the tooltip says what it costs.
+    */
+    expect(calls).not.toContain("'Go to' : 'Join'");
+    expect(calls).toContain("modules.call.active ? 'Leave your call and join this one' : 'Join this call'");
   });
 
   it('keeps a calendar where the archive of calls used to be', () => {
@@ -460,9 +556,14 @@ describe('the workshop template’s call selection', () => {
     const json = JSON.stringify(workshop);
 
     expect(json).not.toContain("'danger-text'");
-    // The calls list's own dot. The transcript panel's is the module's now — see its
-    // `Panel.schema.test.ts`, which is where that half of this test went.
-    expect(json).toContain("modules.call.callRecordId ? 'danger' : 'text-faint'");
+    /*
+      The calls list's own dot. The transcript panel's is the module's now — see its
+      `Panel.schema.test.ts`, which is where that half of this test went.
+
+      It asks whether the row is live rather than whether it is *yours*, which is a separate test —
+      this one is only about the colour that answer is drawn in.
+    */
+    expect(json).toContain("find(modules.call.liveCalls, { recordId: call.id }) ? 'danger' : 'text-faint'");
   });
 
   it('draws a card nobody has agreed to yet as unsettled, and offers the decision on it', () => {
@@ -473,7 +574,9 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain('modules.transcribe.pendingIds');
+    // Only a record a pass made is unsettled; an agreed one with a change suggested is `changed`.
+    expect(json).toContain('"pending":{"$":"modules.transcribe.unconfirmedIds"}');
+    expect(json).toContain('"changed":{"$":"modules.transcribe.changedIds"}');
     /*
       `data.pending`, with the prefix — the thing that was wrong the first time.
 
@@ -482,7 +585,10 @@ describe('the workshop template’s call selection', () => {
       faded, no card offered the decision, on a canvas full of suggestions. Nothing failed, because
       nothing matching is what a clause does when it is right and there is nothing to match.
     */
-    expect(json).toContain('{"when":{"data.pending":true},"style":{"opacity":0.5}}');
+    // Dashed as well as faded, as a draft is on the board and in the key.
+    expect(json).toContain(
+      '{"when":{"data.pending":true},"style":{"opacity":0.5,"borderStyle":"dashed","borderColor":"border-strong","borderWidth":2}}',
+    );
     expect(json).not.toContain('"when":{"pending"');
     /*
       Resolvable from the card itself, so deciding about one you can see does not mean finding its
@@ -495,10 +601,40 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('modules.transcribe.rejectProposal');
     // Both halves toned, which is the point of the pair: a red cross beside a grey tick reads as one
     // real decision and one placeholder.
-    expect(json).toContain('"id":"accept","icon":"check","title":"Keep this"');
+    expect(json).toContain('"id":"accept","icon":"check","title":"Accept"');
     expect(json).toContain('"when":{"data.pending":true},"tone":"positive"');
     expect(json).toContain('"when":{"data.pending":true},"tone":"danger"');
     expect(json).toContain('"id":"reject"');
+  });
+
+  it('tells an agreed card with a change suggested apart, and lets a reader put drafts away', () => {
+    /*
+      An agreed record a pass merely had an opinion about used to be faded like a draft. It keeps its
+      look now, with an accent edge and a way into the inspector where the change is answered; and
+      the one switch — in the key here, in the headers of the board and the calendar — hides drafts
+      only, through the address so all three pages agree.
+    */
+    const json = JSON.stringify(workshop);
+
+    // Amber rather than the accent a selected card wears, so the two outlines cannot be confused.
+    expect(json).toContain('{"when":{"data.changed":true},"style":{"borderColor":"warning-text","borderWidth":2}}');
+    expect(json).toContain('"id":"review"');
+    expect(json).toContain(
+      `"hidden":{"$":"(routeStore.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
+    );
+    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
+    // Said in the key, which carries every reason a card is off the canvas, and nowhere else: a chip
+    // over the corner spoke for one of the three and stood beside the panel already saying it.
+    expect(json).not.toContain('Pending acceptance hidden');
+    // Parked in slots a card fits, and pinned where it is drawn when kept.
+    expect(json).toContain('"layout":{"type":"manual","options":{"size":{"width":180,"height":135}');
+    expect(json).toContain(
+      `"$action":"recordStore.placeOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
+    );
+    // The calendar reads its events through the same filter the board does.
+    expect(json).toContain(
+      "((routeStore.params.suggestions == 'hide') ? local.events.filter(r, !(r.id in modules.transcribe.unconfirmedIds)) : local.events)",
+    );
   });
 
   it('draws the canvas off the call’s own list of what is being extracted', () => {
@@ -597,18 +733,92 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    // Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record
-    // — the host's delete confirmation is modal and per record, so N of them would stack N dialogs.
     expect(json).toContain('"onDeleteSelection"');
-    expect(json).toContain('"condition":{"$":"event.recordId"}');
 
-    // Through `record.delete` in both places, so the host's own confirmation stands in front of a
-    // keystroke that has no undo behind it.
+    /*
+      A line has no placement, so taking it off the canvas and deleting it are the same act — and it
+      goes through `record.delete`, which the host guards, so the keystroke still asks before it
+      destroys anything.
+
+      Guarded on `kind == 'edge'` rather than on `recordId` alone, because a *card* now answers the
+      same key differently: see the test below.
+    */
+    expect(json).toContain('"condition":{"$":"event.kind == \'edge\' && event.recordId"}');
     expect(json).toContain('"$action":"record.delete"');
 
     // And the panel's own, which takes the id from the address rather than from a node payload —
     // the inspector is a panel, so the selection reaches it as parameters and nothing else.
     expect(json).toContain('"args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"}]');
+  });
+
+  it('asks once about a whole selection rather than once per card', () => {
+    /*
+      The host's delete confirmation is modal and phrased per record, so a template looping
+      `record.delete` over a selection stacks a dialog per card. `deleteRecords` raises one and
+      counts what is in the list, which is what made multi-select delete a thing to design.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"$action":"recordStore.deleteRecords"');
+    expect(json).toContain('"condition":{"$":"count(event.records)"}');
+    expect(json).toContain('"id":"delete"');
+  });
+
+  it('offers no "take off the canvas" beside the delete, because it could not work here', () => {
+    /*
+      Pinned as an absence, which is the only way a decision like this survives.
+
+      There was one, briefly, on the argument that a reflex key should do the reversible thing. It
+      is wrong on *this* canvas: almost every card is extraction output owned by the call, and the
+      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
+      returned the card on the next read and the `manual` layout parked it in the corner. The
+      control read as cards vanishing to somewhere nobody could find.
+
+      `recordStore.removeFromCanvas` is still right for a record merely *placed* here, which is a
+      distinction a bar over a mixed selection cannot draw.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).not.toContain('"eraser"');
+    expect(json).not.toContain('recordStore.removeFromCanvas');
+  });
+
+  it('can sweep a selection, carry it away, and put an arrangement back', () => {
+    const json = JSON.stringify(workshop);
+
+    /*
+      No armed toggle here, unlike the canvas view's: this canvas has no toolbar of its own — its
+      chrome is the workshop's panels — so Shift and Ctrl/Cmd are the whole gesture, which is what
+      every other canvas people use has taught them anyway.
+    */
+    expect(json).toContain('"marquee-select"');
+
+    // The canvas has always received drops and could never be dragged from, so nothing on it could
+    // reach the Pocket — which is the one thing that carries between spaces.
+    expect(json).toContain('"carry":true');
+
+    // Undo takes the canvas as an argument, which is the whole of the scoping: there is no separate
+    // "point the stack here" call for this template to have forgotten.
+    expect(json).toContain('"$action":"recordStore.undoCanvas"');
+    expect(json).toContain('"$action":"recordStore.redoCanvas"');
+  });
+
+  it('puts undo where it can be reached without the canvas having focus', () => {
+    /*
+      The keys answer only while the canvas has focus, and clicking into the inspector to edit a
+      label takes focus away — so the press that follows goes nowhere. This canvas has no toolbar of
+      its own, so the buttons live in the workshop's top chrome, which is already a row of pills.
+
+      Gated on the canvas page: the kanban and the calendar have no history of their own, and a
+      permanently disabled pill beside them would be furniture that never does anything.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"arrow-u-up-left"');
+    expect(json).toContain('"arrow-u-up-right"');
+    expect(json).toContain('!recordStore.canvasHistory.canUndo');
+    // Disabled rather than hidden, and each says what it would put back.
+    expect(json).toContain('recordStore.canvasHistory.undoLabel');
   });
 
   it('offers a connection’s kind where the line is read, not only where it was drawn', () => {
@@ -1250,10 +1460,31 @@ describe('the workshop’s canvas', () => {
       whichever is offered first. Nothing is written until the form is submitted.
     */
     expect(canvas).toContain('"canvas-double-click"');
+    // Only with a call on screen: every choice writes against it, so without one the chooser offered
+    // a list of things that could only fail.
     expect(canvas).toContain(
-      '"onCanvasDoubleClick":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]',
+      `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
-    expect(canvas).toContain('recordStore.creatableEntities');
+    // One searchable grid over the one list — the note, this space's types, then blocks led by tasks
+    // and events (see `typePicker`). A composed kind opens the composer, anything else the form.
+    expect(canvas).toContain('"placeholder":"Search types…"');
+    expect(canvas).toContain(
+      "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities",
+    );
+    // Back from the form or the composer reopens this chooser — and not for a drawn connection. In
+    // the modal's top-left corner, not in the title's line.
+    expect(canvas).toContain('"condition":{"$":"!recordStore.pendingLink"}');
+    expect(canvas).toContain('"slot":"start-button"');
+    // No model picker in the form: the kind was just chosen.
+    expect(canvas).not.toContain('"label":"Entity"');
+    // A pin rather than two number boxes, for anything with a latitude and a longitude.
+    expect(canvas).toContain('"$action":"recordStore.setRecordPlace"');
+    expect(canvas.split('{"$setLocal":"chooserOpen","value":true}').length - 1).toBeGreaterThanOrEqual(3);
+    expect(canvas).toContain(
+      `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
+    );
+    // A collection is called a note here; its description says it is a document of blocks.
+    expect(canvas).toContain("(kind.via == 'composer' ? 'Note' : kind.label)");
     expect(canvas).toContain(
       `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );
@@ -1295,8 +1526,29 @@ describe('the workshop’s canvas', () => {
       '"$action":"recordStore.updateRecordField","args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
     );
     expect(inspector).not.toContain('saveRecord');
-    // Typed controls commit on change, never on input — a keystroke is not a write.
-    expect(inspector).not.toContain('"onInput"');
+    /*
+      Typed controls commit on change, never on input — a keystroke is not a write to a record
+      everybody else is reading.
+
+      Asked of the handlers rather than of the panel's text. It used to be `not.toContain("onInput")`
+      over the whole serialisation, which held only while the inspector contained nothing but the
+      record editor: the reactions row now carries the form that defines a new signal type, and that
+      form types into its own `$localState` behind a Save button, which is the shape a draft SHOULD
+      have. The coarse version read a correct form as the defect it was written about.
+    */
+    const writesOnInput: string[] = [];
+    const seek = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(seek);
+      if (!value || typeof value !== 'object') return;
+      for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+        if (key === 'onInput' && JSON.stringify(inner).includes('updateRecordField')) {
+          writesOnInput.push(JSON.stringify(inner));
+        }
+        seek(inner);
+      }
+    };
+    seek(JSON.parse(inspector));
+    expect(writesOnInput).toEqual([]);
     // A closed set of values is a select over what the model declares.
     expect(inspector).toContain('field.options.map(o, { label: o, value: o })');
   });
@@ -1374,7 +1626,7 @@ describe('the workshop’s people', () => {
     const kanban = route('/kanban');
     expect(kanban).toContain('"$action":"spaceStore.setInvolvement"');
     expect(kanban).toContain('"syncParam":"who"');
-    expect(kanban).toContain('Row per person');
+    expect(kanban).toContain('Group by person');
     // Where a card came from is a mark and a hovercard line, never the author's name on its face.
     expect(kanban).toContain('card.id in first(local.callRow).extracted');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
@@ -1405,14 +1657,30 @@ describe('the workshop’s people', () => {
     expect(calendar).not.toContain('setAttending');
   });
 
+  it('keeps the month and the chosen day in the address, so a link and a driver both land there', () => {
+    const calendar = route('/calendar');
+    /*
+      Which month you are looking at is the clearest case the rule has: send somebody a link to a month
+      and they should open on that month. It is also what makes the calendar follow a driver, since a
+      published frame carries the whole address and nothing else about a route travels.
+
+      The month is an offset from the reader's today, so a link opened across a month boundary lands one
+      month out. That is noted where it is declared: the expression language has no month arithmetic, so
+      an absolute month is not a one-line change, and wrong by a month at a boundary beats always opening
+      on today.
+    */
+    expect(calendar).toContain('"syncParam":"month"');
+    expect(calendar).toContain('"syncParam":{"name":"day","push":true}');
+  });
+
   it('filters the calendar with the board’s own control, the chosen people in the address and the mode on the device', () => {
     const calendar = route('/calendar');
     expect(calendar).toContain('"calendarPeople":{"type":"array","initial":[],"syncParam":"who"}');
     expect(calendar).toContain('"calendarShow":{"type":"string","initial":"dim","persist":"calendar.show"}');
-    expect(calendar).toContain('Dim others');
-    // Hiding is offered; a row per person is a board's layout, and a calendar has no rows to lay out.
-    expect(calendar).toContain('Hide others');
-    expect(calendar).not.toContain('Row per person');
+    expect(calendar).toContain('"children":["Dim"]');
+    // Hiding is offered; grouping by person is a board's layout, and a calendar has no rows to lay out.
+    expect(calendar).toContain('"children":["Hide"]');
+    expect(calendar).not.toContain('Group by person');
   });
 });
 
@@ -1592,17 +1860,188 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('"height":"1lh"');
   });
 
-  it('keeps the same gap under every section caption, with the captions a step fainter', () => {
-    expect(inspector).toContain('"props":{"ml":"auto","fontSize":"100","height":"1lh","ay":"center"}');
-    expect(inspector).toContain('"props":{"gap":"200","ay":"center","opacity":0.75}');
+  it('sizes the people picker for a section heading, not for the panel header', () => {
+    /*
+      It was `sm` — the size of the pencil and the bin in the panel's own header — and a heading is
+      not the header. The kit reserves `--we-component-height-xs` for a heading's aside precisely
+      because those are the small end of the set, so at `sm` this row came out 32px against
+      everything else's 24, and a row that centres its contents put "People" lower than the four
+      names around it.
+
+      It wore a `height: '1lh'` wrapper meant to prevent exactly that. The wrapper did not work: the
+      button overflowed it and the row grew anyway, which is why this is pinned on the SIZE rather
+      than on a box drawn around it. The pixels are in the `section headings agree` browser case.
+    */
+    expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"xs"');
   });
 
   it('offers no assignee text box beside the People section that answers it', () => {
     expect(inspector).toContain("f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes");
   });
 
-  it('sets section names apart from the properties under them, with a picker sized like the header’s', () => {
-    expect(inspector).toContain('"uppercase":true');
-    expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"sm"');
+  it('sets section names apart from the properties under them', () => {
+    /*
+      Through the kit's `SECTION_LABEL_PROPS`, not a local copy of it. The copy agreed on the colour
+      and the tracking and spelled the caps with `we-text`'s own shorthand, which is the kind of
+      divergence that is invisible until somebody changes one of the two.
+    */
+    expect(inspector).toContain('"textTransform":"uppercase"');
+    expect(inspector).not.toContain('"opacity":0.75');
+  });
+
+  it('folds every section, and remembers which are open', () => {
+    /*
+      The panel's sections were the one set that could not be folded, on a panel narrow enough that
+      five of them is a lot of scrolling — and the pattern for folding one was written four times in
+      the extraction panel and nowhere else.
+
+      Persisted, not in the URL: how somebody likes the inspector folded is a preference, and a link
+      they send should not impose it on whoever opens it.
+    */
+    for (const field of ['connectionsOpen', 'connectsOpen', 'peopleOpen', 'reactionsOpen', 'discussionOpen']) {
+      expect(inspector, `${field} is never folded`).toContain(`"$toggleLocal":"${field}"`);
+      expect(inspector, `${field} is not remembered`).toContain(
+        `"persist":"inspector.${field.replace('Open', 'Section')}"`,
+      );
+      // Closed to begin with: five sections opened push the record's own properties off a 320px
+      // panel before a reader has decided they want any of them.
+      expect(inspector, `${field} starts open`).toContain(`"${field}":{"type":"boolean","initial":false`);
+    }
+  });
+
+  it('says whether a section is open, rather than only drawing a caret', () => {
+    // `we-button`'s `expanded` — the prop the shared pattern was the reason for. Without it these
+    // rows announce as plain buttons and nothing says what pressing one would do.
+    expect(inspector).toContain('"expanded":{"$":"local.discussionOpen"}');
+  });
+});
+
+describe('the chooser’s colours', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+
+  it('draws a card’s icon in its kind’s colour, looked up by the entry’s name — the default, or the space’s', () => {
+    // The picker hands a whole entry; the key looks colours up by name. Passing the entry itself made
+    // every lookup miss, and every icon came out the plain card's colour.
+    const fill = kindFill('kind.value');
+    const kind = { value: 'ImageBlock', label: 'Image' };
+    expect(run(fill, { kind, local: { typeStyles: [] } })).toBe(KIND_DEFAULTS.ImageBlock);
+    expect(run(fill, { kind, local: { typeStyles: [{ nodeType: 'ImageBlock', color: '#123456' }] } })).toBe('#123456');
+  });
+});
+
+describe('putting a kind away from the canvas', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+  const next = (hide: string, kind: string) => {
+    const action = toggleKindShown('kind') as { args: [string, { $: string }] };
+    return run(action.args[1].$, { kind, routeStore: { params: { hide } } });
+  };
+
+  it('adds a kind to the address, and takes it back out, leaving nothing when none is hidden', () => {
+    expect(next('', 'ImageBlock')).toBe('ImageBlock');
+    expect(next('ImageBlock', 'TextBlock')).toBe('ImageBlock,TextBlock');
+    expect(next('ImageBlock,TextBlock', 'ImageBlock')).toBe('TextBlock');
+    expect(next('TextBlock', 'TextBlock')).toBe('');
+    expect(run(HIDDEN_KINDS, { routeStore: { params: {} } })).toEqual([]);
+  });
+
+  it('hands the hidden kinds to the canvas', () => {
+    const workshop = showcase.workshopTemplate;
+    const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+    expect(canvas).toContain(`"hiddenTypes":{"$":"${HIDDEN_KINDS}"}`);
+  });
+});
+
+describe('folding a card on the canvas', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+
+  /** What the address would hold after the graph reported a press on one card's fold control. */
+  const next = (fold: string, recordId: string, folded: boolean) => {
+    const action = FOLD_FROM_GRAPH as { args: [string, { $: string }] };
+    return run(action.args[1].$, { event: { recordId, folded }, routeStore: { params: { fold } } });
+  };
+
+  it('adds the card the graph folded, and takes it back out', () => {
+    // Real record ids, because they are URIs: a comma-joined list is only safe if none of them can
+    // contain a comma, and this is the test that would fail if that stopped being true.
+    const one = 'we://ds/uuid-one';
+    const two = 'we://ds/uuid-two';
+
+    expect(next('', one, true)).toBe(one);
+    expect(next(one, two, true)).toBe(`${one},${two}`);
+    expect(next(`${one},${two}`, one, false)).toBe(two);
+    // Unfolding the last one leaves a clean address rather than an empty parameter.
+    expect(next(two, two, false)).toBe('');
+  });
+
+  it('folds once, however many times the same card is reported', () => {
+    const one = 'we://ds/uuid-one';
+
+    expect(next(one, one, true)).toBe(one);
+  });
+
+  it('reads nothing at all as nothing folded', () => {
+    expect(run(FOLDED_CARDS, { routeStore: { params: {} } })).toEqual([]);
+    expect(run(FOLD_COUNT, { routeStore: { params: {} } })).toBe(0);
+  });
+
+  it('hands the folded cards to the canvas, and draws the lines a fold leaves behind', () => {
+    const canvas = JSON.stringify((showcase.workshopTemplate.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+    expect(canvas).toContain(`"folded":{"$":"${FOLDED_CARDS}"}`);
+    expect(canvas).toContain('"onNodeFold"');
+    // The summary line has to look unlike a connection somebody drew — see the canvas's edgeStyle.
+    expect(canvas).toContain('"when":{"type":"fold-bundle"}');
+    expect(canvas).toContain('"dashed":true');
+  });
+
+  it('carries the fold from page to page, like the lens', () => {
+    /*
+      Every navigation this template makes spells its query out in full, and an explicit `?` drops
+      whatever the address held — so going to the board to look something up and coming back would
+      quietly unfold everything, which is most of the reason the fold is in the address at all.
+    */
+    const workshop = JSON.stringify(showcase.workshopTemplate);
+    // The fragment is a `${…}` hole in a template literal, so it is evaluated by lifting the
+    // expression out of it — the same thing the renderer does when it interpolates the path.
+    const inner = FOLD_QUERY.slice(2, -1);
+
+    // Every path the template navigates to carries it: the page switcher and the call links.
+    expect(workshop.split('&fold=').length).toBeGreaterThan(2);
+    expect(run(inner, { routeStore: { params: { fold: 'we://a' } } })).toBe('&fold=we://a');
+    expect(run(inner, { routeStore: { params: {} } })).toBe('');
+  });
+
+  it('lets a fold carry its contents when it is dragged', () => {
+    const canvas = JSON.stringify((showcase.workshopTemplate.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+    /*
+      The whole payload, and `dragOnCanvas` rather than `placeOnCanvas`. A folded card arrives
+      carrying a placement per card hidden under it, and a schema cannot loop — so picking four
+      values out of the payload would silently drop every carried card and unfolding in a corner
+      would scatter them back.
+    */
+    expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
+    expect(canvas).toContain('{"$":"event"}]');
   });
 });

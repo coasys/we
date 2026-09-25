@@ -22,7 +22,7 @@
   "devDependencies": {
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
     "vitest": "^4.1.11"

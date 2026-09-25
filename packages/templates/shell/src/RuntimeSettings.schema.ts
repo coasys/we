@@ -187,7 +187,7 @@ export const trustedAgents: SchemaNode = {
                         gap: '300',
                         ay: 'center',
                         ax: 'between',
-                        bg: 'surface-sunken',
+                        bg: 'surface',
                         r: '300',
                         px: '300',
                         py: '200',
@@ -321,7 +321,7 @@ export const mcpServer: SchemaNode = {
             condition: { $: 'runtimeStore.executorRestartPending' },
             then: {
               type: 'Row',
-              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface', r: '300', px: '300', py: '200' },
               children: [
                 {
                   type: 'we-text',
@@ -390,7 +390,7 @@ export const backup: SchemaNode = {
                 text: 'Export',
                 size: 'sm',
                 variant: 'secondary',
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'exportDatabase' in runtimeStore.pending" },
                 onClick: { $action: 'runtimeStore.exportDatabase' },
               },
             },
@@ -400,7 +400,7 @@ export const backup: SchemaNode = {
                 text: 'Import',
                 size: 'sm',
                 variant: 'ghost',
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'importDatabase' in runtimeStore.pending" },
                 onClick: { $action: 'runtimeStore.importDatabase' },
               },
             },
@@ -467,7 +467,7 @@ export const logging: SchemaNode = {
                   children: [
                     {
                       type: 'Row',
-                      props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+                      props: { gap: '200', ay: 'center', bg: 'surface', r: '300', px: '300', py: '200' },
                       children: [
                         { type: 'we-code', props: { flex: '1' }, children: [{ $: 'entry.crate' }] },
                         {
@@ -554,6 +554,365 @@ export const loggingLocalState = {
   newLogLevel: { type: 'string', initial: 'debug' },
 } as const;
 
+/**
+ * The network metrics, in a viewer that can be read.
+ *
+ * Diagnostics are opt-in: the dump is long and means nothing unless something is already wrong, so
+ * it is fetched on the press and never on opening the page. A modal rather than the inline block it
+ * replaced because the dump is hundreds of lines of nested structure — a 200px well gave it a
+ * keyhole, where somebody debugging a sync problem wants to fold away the spaces they are not
+ * asking about and read the one they are.
+ *
+ * The backend has already indented it and turned its hashes into strings (see the port's
+ * `networkMetrics`), so this only has to show it.
+ */
+const networkMetricsModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'local.showNetworkMetrics' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'lg', close: { $setLocal: 'showNetworkMetrics', value: false } },
+      children: [
+        {
+          type: 'Row',
+          slot: 'header',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'chart-line-up', color: 'text-muted' } },
+            { type: 'we-text', props: { variant: 'heading-md' }, children: ['Network metrics'] },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.networkMetrics' },
+            then: {
+              type: 'CodeEditor',
+              props: {
+                code: { $: 'runtimeStore.networkMetrics' },
+                language: 'json',
+                // A snapshot of the conductor, not a setting: nothing typed here could be applied.
+                readOnly: true,
+                // The editor's own scroller rather than the modal's, so its fold gutter and search
+                // stay beside the text while it scrolls.
+                maxHeight: '60dvh',
+                // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                // declares no layout layer, so `width` on it is an unknown prop the
+                // validator warns about and the renderer drops.
+                styles: { width: '100%' },
+              },
+            },
+            else: {
+              type: '$if',
+              props: {
+                condition: { $: "runtimeStore.error && !('loadNetworkMetrics' in runtimeStore.pending)" },
+                then: {
+                  type: 'we-alert',
+                  props: { variant: 'danger' },
+                  children: [{ $: '`Could not get the network metrics: ${runtimeStore.error}`' }],
+                },
+                else: {
+                  type: 'Column',
+                  props: { ax: 'center', ay: 'center', gap: '300', p: '600' },
+                  children: [
+                    { type: 'we-spinner' },
+                    {
+                      type: 'we-text',
+                      props: { color: 'text-muted' },
+                      children: ['Asking the conductor for its metrics…'],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        {
+          type: 'Row',
+          slot: 'footer',
+          props: { gap: '200', ax: 'end', wrap: true },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'secondary',
+                // Disabled rather than spinning: the body already shows the fetch in progress, and a
+                // second spinner in the button said the same thing twice.
+                disabled: { $: "'loadNetworkMetrics' in runtimeStore.pending" },
+                onClick: { $action: 'runtimeStore.loadNetworkMetrics' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Refresh'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                disabled: { $: '!runtimeStore.networkMetrics' },
+                onClick: { $action: 'runtimeStore.copyNetworkMetrics' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'copy' } }, 'Copy to clipboard'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * Swapping peer records by hand, for when discovery cannot introduce two nodes.
+ *
+ * A modal rather than the inline disclosure it replaced. The disclosure opened under a button that
+ * said "Exchange peer info" and nothing else, into a 120px well of records with no way to copy them
+ * and nothing on screen while they loaded — which on a busy node is up to half a minute of an empty
+ * box. Somebody who pressed it could not tell what it was for, whether it was doing anything, or
+ * what they were meant to do with what appeared.
+ *
+ * Opening it empties the paste box: one field, and the peer's records are still wherever they were
+ * sent from, where a blob left over from last time would be added by mistake. (On open rather than
+ * on close because a modal's `close` takes one handler; only `on…` props take a list.)
+ */
+const peerExchangeModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'local.showPeerExchange' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'md', close: { $setLocal: 'showPeerExchange', value: false } },
+      children: [
+        {
+          type: 'Row',
+          slot: 'header',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'handshake', color: 'text-muted' } },
+            { type: 'we-text', props: { variant: 'heading-md' }, children: ['Exchange peer info'] },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { gap: '500' },
+          children: [
+            {
+              type: 'we-text',
+              props: { color: 'text-muted' },
+              children: [
+                'Nodes normally find each other through a discovery service. When that cannot connect you and a peer — a blocked network, or a discovery server that is down — you can swap these records by hand instead: send them yours, and add theirs below.',
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
+                then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
+              },
+            },
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '100' },
+                      children: [
+                        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Records to send'] },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted' },
+                          children: ["This node's own, and those of any peers it already knows."],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'secondary',
+                        disabled: { $: '!count(runtimeStore.peerInfos)' },
+                        onClick: { $action: 'runtimeStore.copyPeerInfos' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'copy' } }, 'Copy all'],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'count(runtimeStore.peerInfos)' },
+                    /*
+                      The decoded records, not the raw ones. A raw record keeps its useful half as a
+                      JSON document escaped inside a string — the signature is over those bytes — so
+                      shown as it arrives it is one unreadable line. The backend unpacks it for
+                      display; "Copy all" still sends the originals, which is what a peer can add.
+                    */
+                    then: {
+                      type: 'CodeEditor',
+                      props: {
+                        code: { $: 'runtimeStore.peerInfosReadable' },
+                        language: 'json',
+                        readOnly: true,
+                        // Lower than the metrics viewer's: the paste box shares this modal.
+                        maxHeight: '240px',
+                        // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                        // declares no layout layer, so `width` on it is an unknown prop the
+                        // validator warns about and the renderer drops.
+                        styles: { width: '100%' },
+                      },
+                    },
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: { $: "'loadPeerInfos' in runtimeStore.pending" },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '300', ay: 'center', p: '400', ax: 'center' },
+                          children: [
+                            { type: 'we-spinner', props: { size: 'sm' } },
+                            {
+                              type: 'we-text',
+                              props: { color: 'text-muted' },
+                              children: ['Fetching records — this can take a while on a busy node…'],
+                            },
+                          ],
+                        },
+                        else: {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted' },
+                          children: ['No records yet. A node has records once it has joined a shared space.'],
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              type: 'we-form-field',
+              props: { label: "Your peer's records" },
+              children: [
+                {
+                  type: 'we-textarea',
+                  props: {
+                    rows: 4,
+                    placeholder: 'Paste the records your peer copied…',
+                    value: { $: 'local.peerInfoText' },
+                    onInput: { $setLocal: 'peerInfoText', value: { $: 'event.detail' } },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          slot: 'footer',
+          props: { gap: '200', ax: 'end', wrap: true },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                disabled: { $: "!trim(local.peerInfoText) || 'addPeerInfos' in runtimeStore.pending" },
+                loading: { $: "'addPeerInfos' in runtimeStore.pending" },
+                onClick: {
+                  $action: 'runtimeStore.addPeerInfos',
+                  args: [{ $: 'local.peerInfoText' }],
+                  // `result` is whether they were added; a failed attempt keeps the paste to retry.
+                  onSuccess: [{ $if: { condition: { $: 'result' }, then: { $setLocal: 'peerInfoText', value: '' } } }],
+                },
+              },
+              children: ["Add peer's records"],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * What this node turned out not to support — the account of a backend older than the app in front
+ * of it.
+ *
+ * ## Why this is a section and not a toast
+ *
+ * A capability gap is a property of what you are connected to, true for the whole session, and an
+ * event notification is the wrong shape for a standing fact: it fires once, before anybody has hit
+ * the symptom, and is gone by the time they go looking. It is also unactionable by most of the
+ * people who would see it — on a shared node the person who can rebuild the executor is not the
+ * person whose cards look wrong — and a danger toast nobody can act on teaches people to dismiss
+ * toasts. So it waits here, on the page somebody already comes to when the data layer is misbehaving.
+ *
+ * ## Why it names methods rather than symptoms
+ *
+ * WE knows precisely what it asked for and does not know what breaks as a result, and a sentence
+ * per known gap would be one more thing to write after each one has already cost somebody a day of
+ * diagnosis. The method name is the actionable half: it maps to a commit in the backend's history
+ * and to a decision about rebuilding a node. Hidden entirely when there is nothing to report, since
+ * an empty section here would be a claim this cannot make — see the note in the body.
+ */
+export const executorSupport: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(runtimeStore.unsupportedCapabilities)' },
+    then: adminSection({
+      title: 'Unsupported by this node',
+      icon: 'warning',
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: [
+            'The app asked this node for these and it does not have them, so whatever needed each ' +
+              'one is running with less than it was built for. Usually it means the node is ' +
+              'running an older build than the app: rebuilding it is the fix.',
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'runtimeStore.unsupportedCapabilities' }, as: 'gap' },
+          children: [
+            {
+              type: 'Row',
+              props: {
+                gap: '300',
+                ay: 'center',
+                ax: 'between',
+                wrap: true,
+                bg: 'surface',
+                r: '300',
+                px: '300',
+                py: '200',
+              },
+              children: [
+                // The name verbatim, in code type: it is a string to search a codebase for, not
+                // prose, and a proportional font invites reading it as a description.
+                { type: 'we-code', children: [{ $: 'gap.name' }] },
+                {
+                  type: 'we-timestamp',
+                  props: { value: { $: 'gap.firstSeen' }, relative: true, fontSize: '100', color: 'text-muted' },
+                },
+              ],
+            },
+          ],
+        },
+        /*
+          The honest limit, said where the list is rather than in a docblock nobody reading this
+          screen will see. Nothing is recorded until something asks for it, so this list answers
+          "what has been refused" and never "is this node current" — and somebody who came here
+          after a symptom and found the section absent would otherwise take that as a clean bill.
+        */
+        emptyNote('Only what has actually been asked for so far — this is not a full check of the node.'),
+      ],
+    }),
+  },
+};
+
 /** Diagnostics and out-of-band peer exchange for the networking layer. */
 export const peerNetwork: SchemaNode = {
   type: '$if',
@@ -562,8 +921,15 @@ export const peerNetwork: SchemaNode = {
     then: adminSection({
       title: 'Peer network',
       icon: 'globe',
-      refresh: 'runtimeStore.loadNetworkMetrics',
+      // No refresh in the heading. It used to be the only way to fetch the metrics, and an unlabelled
+      // icon is not where anybody looks for "show me the network metrics" — they have a button now,
+      // and the rest of the section fetches what it shows when it is opened.
       children: [
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ["For when this node can't reach its peers, or sync seems stuck."],
+        },
         {
           type: 'Row',
           props: { gap: '200', wrap: true },
@@ -571,122 +937,63 @@ export const peerNetwork: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                text: 'Restart networking',
                 size: 'sm',
                 variant: 'secondary',
-                loading: { $: 'runtimeStore.loading' },
-                onClick: { $action: 'runtimeStore.restartNetwork' },
+                onClick: [
+                  { $setLocal: 'showNetworkMetrics', value: true },
+                  { $action: 'runtimeStore.loadNetworkMetrics' },
+                ],
               },
+              children: [{ type: 'we-icon', props: { name: 'chart-line-up' } }, 'Get network metrics'],
             },
             {
               type: 'we-button',
               props: {
-                text: 'Exchange peer info',
                 size: 'sm',
-                variant: 'ghost',
-                onClick: [{ $toggleLocal: 'showPeerExchange' }, { $action: 'runtimeStore.loadPeerInfos' }],
+                variant: 'secondary',
+                onClick: [
+                  { $setLocal: 'peerInfoText', value: '' },
+                  { $setLocal: 'showPeerExchange', value: true },
+                  { $action: 'runtimeStore.loadPeerInfos' },
+                ],
+              },
+              children: [{ type: 'we-icon', props: { name: 'handshake' } }, 'Exchange peer info'],
+            },
+            // Offered only where the backend's restart does something: a control that spins and
+            // reports success over a no-op is worse than no control.
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.canRestartNetwork' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'secondary',
+                    loading: { $: "'restartNetwork' in runtimeStore.pending" },
+                    onClick: { $action: 'runtimeStore.restartNetwork' },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Restart networking'],
+                },
               },
             },
           ],
         },
-        // Diagnostics are opt-in: the blob is long, unformatted, and meaningless unless
-        // something is already wrong.
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'runtimeStore.networkMetrics' },
-            then: {
-              type: 'we-scroll-area',
-              props: { maxHeight: '200px' },
-              children: [
-                {
-                  type: 'we-code',
-                  props: { block: true },
-                  children: [{ $: 'runtimeStore.networkMetrics' }],
-                },
-              ],
-            },
-          },
-        },
-        // Manual peer exchange — the escape hatch for when discovery cannot find anyone.
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'local.showPeerExchange' },
-            then: {
-              type: 'Column',
-              props: { gap: '200' },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-muted' },
-                  children: [
-                    'Share these records with a peer who cannot find you, and paste theirs below. Only needed when automatic discovery fails.',
-                  ],
-                },
-                // One block per record rather than the whole array as children: the array
-                // would stringify, and each record is separately copyable this way.
-                {
-                  type: 'we-scroll-area',
-                  props: { maxHeight: '120px' },
-                  children: [
-                    {
-                      type: 'Column',
-                      props: { gap: '200' },
-                      children: [
-                        {
-                          type: '$each',
-                          props: { items: { $: 'runtimeStore.peerInfos' }, as: 'info' },
-                          children: [
-                            {
-                              type: 'we-code',
-                              props: { block: true },
-                              children: [{ $: 'info' }],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-                {
-                  type: 'we-textarea',
-                  props: {
-                    rows: 3,
-                    placeholder: "Paste a peer's info here...",
-                    value: { $: 'local.peerInfoText' },
-                    onInput: { $setLocal: 'peerInfoText', value: { $: 'event.detail' } },
-                  },
-                },
-                {
-                  type: 'we-button',
-                  props: {
-                    text: 'Add peer info',
-                    size: 'sm',
-                    variant: 'secondary',
-                    disabled: { $: '!local.peerInfoText' },
-                    onClick: {
-                      $action: 'runtimeStore.addPeerInfos',
-                      args: [{ $: 'local.peerInfoText' }],
-                      onSuccess: [{ $setLocal: 'peerInfoText', value: '' }],
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
+        networkMetricsModal,
+        peerExchangeModal,
       ],
     }),
   },
 };
 
 /**
- * Local state the network sections need: two input buffers and a disclosure toggle. Declared by
- * whichever page renders those sections, since `$localState` is scoped to the node that declares it.
+ * Local state the network sections need: two input buffers and whether each of the two network
+ * modals is open. Declared by whichever page renders those sections, since `$localState` is scoped to the
+ * node that declares it.
  */
 export const networkLocalState = {
   newTrustedAgent: { type: 'string', initial: '' },
   peerInfoText: { type: 'string', initial: '' },
   showPeerExchange: { type: 'boolean', initial: false },
+  showNetworkMetrics: { type: 'boolean', initial: false },
 } as const;

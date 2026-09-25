@@ -3,8 +3,8 @@
  *
  * `RuntimeAdminPort` already knows about transcription models — it lists them, adds them, downloads
  * them and picks a default. What it cannot do is *use* one. That gap is why transcription could not
- * be ported without a module reaching for `@coasys/ad4m` directly and declaring `backends: ['ad4m']`,
- * which is the coupling the module contract exists to avoid.
+ * be ported without a module reaching for a backend's client directly and declaring itself
+ * backend-specific, which is the coupling the module contract exists to avoid.
  *
  * ## Why a stream rather than a function
  *
@@ -26,6 +26,27 @@ export interface TranscriptionRecord {
   isDefault: boolean;
   /** False while weights are still downloading — opening a stream on it will fail or stall. */
   ready: boolean;
+  /**
+   * How far a download has got, 0–100, while `ready` is false — when the backend reports it.
+   *
+   * Absent rather than 0 where nothing is known, so "not started" and "no idea" do not read alike.
+   */
+  progress?: number;
+}
+
+/**
+ * A model the backend will install when asked, for a caller that would rather offer one button than
+ * send somebody to a settings page.
+ *
+ * The backend chooses it, because only the backend knows which of its models suits speech on the
+ * hardware it runs on — and the caller still needs the size, because a download of most of a gigabyte
+ * is something to say before anyone agrees to it rather than after.
+ */
+export interface TranscriptionModelOffer {
+  /** What to call it — "Whisper small". */
+  name: string;
+  /** Roughly how much will be downloaded, in bytes. */
+  downloadBytes: number;
 }
 
 /**
@@ -84,4 +105,19 @@ export interface TranscriptionPort {
    * mean very different things to a user.
    */
   open(modelId: string, onText: (text: string) => void, tuning?: TranscriptionTuning): Promise<TranscriptionStream>;
+  /**
+   * The model {@link installOfferedModel} would add, or null when this connection may not add one.
+   *
+   * Null — or the member absent — on a node somebody else runs: installing a model changes a
+   * machine other people share, which is the operator's decision even where the grant would allow it.
+   */
+  offeredModel?(): TranscriptionModelOffer | null;
+  /**
+   * Register the offered model, and resolve once it is registered — not once it has downloaded.
+   *
+   * The download can take minutes; `models()` reports it through `ready` and `progress` meanwhile,
+   * which is what a caller should watch. Resolving early is the point: a promise held open for a
+   * gigabyte would outlive every timeout between here and the backend.
+   */
+  installOfferedModel?(): Promise<void>;
 }

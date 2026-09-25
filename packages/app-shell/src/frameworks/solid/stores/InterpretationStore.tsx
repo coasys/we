@@ -22,7 +22,7 @@
  * formatting, so "0:42" and "Extracted 3 tasks" are unreachable from a template — the same reason
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
-import { detailWithheld, watchPassRecord } from '@shared/interpretation/activityView';
+import { watchPassRecord } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
@@ -76,7 +76,8 @@ export interface InterpretationActivityView {
   finishedAt: string;
   /** Why, for a pass that skipped or failed. Empty otherwise. */
   detail: string;
-  /** The raw prompt and response, when they are available at all. */
+  /** The raw prompt and response — on this agent's own rows only. A peer's exchange is not sent
+   *  live; it arrives with the `ExtractionPass` record once the pass settles. */
   prompt: string;
   response: string;
   /** Whether there is anything behind the disclosure triangle — so a UI can disable it with an
@@ -110,12 +111,6 @@ export interface InterpretationStore {
   runningPasses: Accessor<InterpretationActivityView[]>;
   settledPasses: Accessor<InterpretationActivityView[]>;
   settledCount: Accessor<number>;
-  /**
-   * A peer's pass is on screen whose exchange this agent cannot open, because the space does not
-   * share it. What a footnote explaining the absence is gated on — the row's own `hasDetail` cannot
-   * answer it, since a pass has no exchange until it reaches the model whatever the setting says.
-   */
-  detailWithheld: Accessor<boolean>;
   /**
    * Whether this node can interpret at all — as distinct from being able to and having no model
    * configured. False means no rebuild-free fix exists, so a UI should say so rather than offering
@@ -208,15 +203,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const spaceStore = useSpaceStore();
 
   const [rows, setRows] = createSignal<InterpretationActivity[]>([]);
-  /*
-    Whether this space shares extraction detail, read from the space rather than held here.
-
-    It was a local signal, which made it per-device and lost on reload — and, worse, scoped the
-    decision to one agent when the useful state is collective: "I share and you do not" is an
-    asymmetry with no use. It lives on the Space now, beside `autoInterpret`, so it persists, syncs,
-    and is set once where somebody would look for it.
-  */
-  const shareDetail = () => spaceStore.shareExtractionDetail();
   const [now, setNow] = createSignal(Date.now());
   const [dismissed, setDismissed] = createSignal<string[]>([]);
   /*
@@ -290,9 +276,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
       exactly a space with nobody in it, and means the store below reads `relay.rows()` whether or
       not there is a network.
     */
-    const local = createInterpretationRelay(channel ?? { publish: () => {}, onMessage: () => () => {} }, {
-      shareDetail,
-    });
+    const local = createInterpretationRelay(channel ?? { publish: () => {}, onMessage: () => () => {} });
     relay = local;
 
     const sync = () => setRows(local.rows().sort(byActivityInterest));
@@ -328,13 +312,11 @@ export function InterpretationStoreProvider(props: ParentProps) {
     };
 
     /*
-      Ask for the model exchange here and decide later whether to forward it.
+      Ask for the model exchange here, for this agent's own rows and for the `ExtractionPass` record.
 
       The backend's `detail` is a subscription-time choice and the events carry the payload over a
-      local socket regardless, so refusing it here would mean re-subscribing — and, on AD4M,
-      re-registering a shared watch — the moment somebody opened a row. Taking it costs nothing and
-      is what makes the disclosure instant. What leaves this machine is governed by `shareDetail`
-      alone, on the relay.
+      local socket regardless, so taking it costs nothing and is what makes the disclosure instant.
+      It never leaves this machine live — the relay does not send it; the record carries it.
     */
     let stop: (() => void) | undefined;
     void ports.interpretation
@@ -410,21 +392,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
     onCleanup(() => clearInterval(timer));
   });
 
-  /*
-    Re-broadcast this agent's rows when the space turns sharing on.
-
-    The relay reads the flag as it sends, and a settled pass sends nothing further — so without this
-    the setting would reach every pass except the ones already on screen, which are precisely the
-    ones somebody turned it on to look at. It runs on the space's value now rather than a local
-    switch, so it fires wherever that gets flipped, including on another member's machine.
-  */
-  let wasSharing = false;
-  createEffect(() => {
-    const sharing = shareDetail();
-    if (sharing && !wasSharing) relay?.resend();
-    wasSharing = sharing;
-  });
-
   /**
    * When each pass was first seen, which is what elapsed counts from.
    *
@@ -497,19 +464,10 @@ export function InterpretationStoreProvider(props: ParentProps) {
     provideModuleHostServices({
       interpretationAvailable: () => capable(),
       interpretationActivity: () => activity(),
-      /*
-        The space's sharing decision, for a module explaining why a peer's row will not open.
-
-        Published rather than left for the module to infer from `hasDetail`: a row can lack detail
-        for reasons that have nothing to do with the setting — a peer's pass that has not reached the
-        model yet, a skipped pass that never had an exchange, a row broadcast before the setting
-        synced — and gating an explanation of the *setting* on those showed it with sharing on.
-      */
-      interpretationDetailShared: () => shareDetail(),
       interpretationProposalsRevision: () => proposalsRevision(),
       /*
-        Whether automatic extraction is on, published for the same reason the sharing one is: a module
-        has to be able to *react* to it.
+        Whether automatic extraction is on, published because a module has to be able to *react* to
+        it.
 
         Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
         it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
@@ -535,10 +493,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
     runningPasses: createMemo(() => activity().filter((row) => row.running)),
     settledPasses: createMemo(() => activity().filter((row) => !row.running)),
     settledCount: createMemo(() => activity().filter((row) => !row.running).length),
-    // The rule itself is in `shared/interpretation/activityView.ts`, where it can be tested without
-    // a store — it has been got wrong twice, and its failure is a footnote that outlives the thing
-    // it explains, which nobody reports.
-    detailWithheld: createMemo(() => detailWithheld(activity(), shareDetail())),
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>

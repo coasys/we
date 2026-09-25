@@ -16,7 +16,7 @@ import { adminSection, emptyNote } from '@we/template-kit';
 
 const languageRow: SchemaNode = {
   type: 'Row',
-  props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+  props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface', r: '300', px: '300', py: '200' },
   children: [
     {
       type: 'Column',
@@ -112,7 +112,7 @@ export const languagesSection: SchemaNode = {
                 variant: 'secondary',
                 // The backend fetches the bundle over the network, so this is the one runtime action
                 // that can take long enough to need a spinner rather than just finishing.
-                loading: { $: 'runtimeStore.loading' },
+                loading: { $: "'installLanguage' in runtimeStore.pending" },
                 disabled: { $: '!local.newLanguageAddress' },
                 onClick: {
                   $action: 'runtimeStore.installLanguage',

@@ -49,7 +49,7 @@ import type {
   Scope,
 } from '@we/backend-shared';
 import { irToFlatQuery, planQuery } from '@we/backend-shared';
-import { type EntityClass as Ad4mEntityClass, getEntitiesForPerspective, getEntity } from '@we/entities';
+import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } from '@we/entities';
 
 import type { EntityManifestEntry } from './manifestTypes';
 
@@ -130,6 +130,15 @@ export interface Ad4mAdapterDeps {
    * rather than the host's concrete profile type, which keeps this module free of app-layer imports.
    */
   agents: () => Array<{ did?: string }>;
+  /**
+   * One agent, read so that it depends on that agent alone — see `DataBindingDeps.profileFor`.
+   *
+   * `$agent` runs an effect per row and every one of them asks here. Answered by scanning `agents()`
+   * the dependency is the entire cache, so one peer arriving re-runs every row on screen; answered
+   * by a host that can key its cache, it is the row's own agent and nothing else. Optional, and the
+   * scan below stays as the fallback for a host that cannot.
+   */
+  agentFor?: (did: string) => { did?: string } | undefined;
   /** Ask AD4M to fetch a profile this client hasn't cached. */
   fetchAgent: (did: string) => Promise<void> | void;
   /**
@@ -156,14 +165,14 @@ export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getEntity' | '$getEntitiesForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
+  '$getEntity' | '$getEntityForDataset' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
     // so `toRendererEntity` maps them onto the neutral `query`/`findAll` the renderer depends on.
     $getEntity: (name) => toRendererEntity(getEntity(name)),
-    $getEntitiesForPerspective: (name, dataset) => {
-      const model = getEntitiesForPerspective(name, dataset);
+    $getEntityForDataset: (name, dataset) => {
+      const model = getEntityForDataset(name, dataset);
       return model ? toRendererEntity(model) : undefined;
     },
     // The renderer treats this as opaque and hands it straight back, so the proxy passes through
@@ -171,7 +180,9 @@ export function createAd4mDataBindings(
     $currentDataset: deps.currentPerspective,
     // Identity directory behind the `$agent` block, bound to AD4M's agent cache.
     $identities: {
-      get: (did) => deps.agents().find((a) => a.did === did) as Record<string, unknown> | undefined,
+      get: (did) =>
+        (deps.agentFor ? deps.agentFor(did) : deps.agents().find((a) => a.did === did)) as
+          Record<string, unknown> | undefined,
       fetch: (did) => void deps.fetchAgent(did),
     },
     $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveEntities),
@@ -202,16 +213,29 @@ export function createAd4mDataBindings(
  * The pin itself is currently a test tag rather than a release, which is worth knowing when reading
  * "verified": what was verified was that build.
  *
- * This one was hand-published from `dev` at **54a3fd956** — the merge of coasys/ad4m#927, which
- * completes the eight-PR model-layer series — under npm's `dev` tag rather than `latest`. The SHA
- * matters more here than usual: a hand-published version corresponds to no git tag, so it is the
- * only thing tying this string to a build. And the executor binary is never published at all (WE
- * runs the one at `ad4m/target/release/`, per `seed-runtime.json`), so the Rust half — which is
- * where five of those eight PRs live — is pinned by that SHA and by nothing else. A core built
+ * This one was hand-published from `feat/bounded-traversal` at **3ce8430af**, under npm's `dev`
+ * tag rather than `latest`. The SHA matters more here than usual: a hand-published version
+ * corresponds to no git tag, so it is the only thing tying this string to a build. And the
+ * executor binary is never published at all (WE runs the one at `ad4m/target/release/`, per
+ * `seed-runtime.json`), so the Rust half is pinned by that SHA and by nothing else. A core built
  * from this commit against an executor built from another is exactly the skew this constant exists
  * to make visible, and npm cannot catch it.
+ *
+ * It moved off `0.13.0-test-model-layer` because that build emitted an inverse relation **twice**
+ * into the generated SHACL — `@BelongsToOne` registers in both the relation registry and the
+ * property metadata, and `buildSHACL` walked both. `WeNode.inReplyTo` therefore arrived as two
+ * property shapes on every one of the 33 WeNode subclasses, one a literal and one the relation.
+ * The manifest round-trip caught it; left alone it would have been written into each space's SDNA,
+ * where `shapeIsStale` compares path counts in one direction only and so could never have taken it
+ * back out again.
+ *
+ * Note what rides along, the fix having been published from a feature branch rather than from
+ * `dev`: the TypeScript half of bounded traversal is now in core, so `levels`/`limitPerAnchor`
+ * reach the executor instead of being dropped before the call — and the Rust half that answers
+ * them is on that same branch and **not on `dev`**, which is what `electron-package.yaml` defaults
+ * `ad4m_ref` to. Build the executor from the same branch, or pass `ad4m_ref` when packaging.
  */
-export const VERIFIED_AGAINST_AD4M = '0.13.0-test-model-layer';
+export const VERIFIED_AGAINST_AD4M = '0.13.0-test-inverse-relations';
 
 export const ad4mCapabilities: AdapterCapabilities = {
   /*
@@ -229,9 +253,21 @@ export const ad4mCapabilities: AdapterCapabilities = {
     this invalidates, which is worth more attention than the code change.
   */
   operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains'],
+  /*
+    Numbers only. The executor's `WhereOps` holds each bound as an `f64`, so `{ dueDate: { lt:
+    '2026-10-01' } }` fails to deserialise as an operator, is reread as a nested clause, and rejects
+    every row — the `exists` failure above, again. A number bound is compared against the stored
+    value after the executor parses it, which reads RFC 3339 timestamps but not the zone-less
+    `YYYY-MM-DD` WE writes, so a date range cannot be pushed down by converting the bound either.
+    Refused until the executor compares strings; see ad4m-follow-ups.
+  */
+  rangeBounds: ['number'],
   booleanCombinators: true, // OR / AND / NOT in `where` (#868)
   relationFilters: true, // `some` / `none` compile to a SPARQL EXISTS group (#923)
   scope: true, // drill-down via `parent`
+  // The executor's `Scope::Traverse`: several anchors in one query, `+` paths, inbound term
+  // order, and a per-anchor slice applied between selecting ids and hydrating them.
+  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true, levelWalk: true },
   include: { supported: true }, // nested include is a core ORM feature
   aggregate: ['count'], // count projections only; sum/min/max/avg → compute-up
   sort: { multiKey: false, byRelationPath: true, byAggregate: true }, // single sort key only (#867)
@@ -251,7 +287,7 @@ function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
  * resolver (`resolveParentPredicate`, broken for synced dynamic models). The predicate is available on
  * every relation (WE + synced) via `EntityManifestProperty.predicate`.
  */
-function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id: unknown; predicate: string } {
+function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Record<string, unknown> {
   const entry = scope.anchor ? models.find((m) => m.name === scope.anchor) : undefined;
   const prop = entry?.properties.find((p) => p.name === scope.via);
   if (!prop?.predicate) {
@@ -260,7 +296,28 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id
         `no such relation in the current perspective's model manifest`,
     );
   }
-  return { id: scope.anchorId, predicate: prop.predicate };
+
+  // The plain drill-down stays exactly as it was: one anchor, one step outward, and the `{ id,
+  // predicate }` shape every existing query already sends.
+  const bounded =
+    Array.isArray(scope.anchorId) ||
+    scope.transitive ||
+    scope.direction === 'in' ||
+    scope.limitPerAnchor !== undefined ||
+    scope.levels !== undefined;
+  if (!bounded) return { id: scope.anchorId, predicate: prop.predicate };
+
+  // Anything more is the executor's traverse form, which names its anchors as `ids`. An empty list
+  // stays an empty list rather than being dropped: "the replies to none of these" answers with
+  // nothing, where omitting the scope would answer with the whole space.
+  return {
+    ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
+    predicate: prop.predicate,
+    ...(scope.transitive ? { transitive: true } : {}),
+    ...(scope.direction === 'in' ? { direction: 'in' } : {}),
+    ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),
+    ...(scope.levels !== undefined ? { levels: scope.levels } : {}),
+  };
 }
 
 /**

@@ -7,7 +7,7 @@
  * the same graph run as a hundred rich cards or as ten thousand dots without the plugins knowing.
  */
 import type { GraphEdge, GraphNode } from './graph';
-import type { Point } from './layout';
+import type { Bounds, Point } from './layout';
 import type { CardShape, NodeStyle } from './style';
 
 /**
@@ -27,6 +27,7 @@ export interface NodeVisual {
   color: string;
   borderColor?: string;
   borderWidth?: number;
+  borderStyle?: 'solid' | 'dashed';
   opacity?: number;
   label?: string;
   labelColor?: string;
@@ -75,6 +76,15 @@ export interface BehaviourContext {
    * meant to click, and a caller that wants both asks for nodes first.
    */
   hitTestEdge(at: Point, tolerance?: number): string | null;
+  /**
+   * Every node overlapping a world rectangle — what a marquee asks.
+   *
+   * Overlapping rather than enclosed, which is the choice worth stating because the two behave
+   * differently on a canvas of cards. Enclosure asks a reader to lasso *past* the far edge of a card
+   * they are plainly pointing at, and a card wider than the viewport could never be caught at all.
+   * Overlap catches what the rectangle touches, which is what people draw a rectangle to mean.
+   */
+  within(bounds: Bounds): string[];
   select(ids: string[], mode?: 'replace' | 'add' | 'toggle'): void;
   /**
    * Open one edge's route for editing, or close whichever is open.
@@ -119,6 +129,15 @@ export interface BehaviourContext {
    * completely inert, and hoping.
    */
   drawConnection(from: string | null, to?: Point): void;
+  /**
+   * Show the rectangle a marquee is sweeping out; `null` clears it.
+   *
+   * The sibling of {@link drawConnection} and here for the identical reason: the renderer has to draw
+   * it and behaviours never touch the DOM. It matters more here, if anything — a connect gesture at
+   * least moves a line between two visible cards, where a selection sweep with nothing drawn is a
+   * press, a move across an inert canvas, and a set of rings appearing on release.
+   */
+  drawMarquee(bounds: Bounds | null): void;
   /** Emit a graph event to the host — what a template binds `onNodeClick` and friends to. */
   emit(event: GraphEvent): void;
 }
@@ -130,7 +149,18 @@ export type GraphEvent =
   | { type: 'nodeHover'; node: GraphNode | null }
   | { type: 'edgeClick'; edge: GraphEdge }
   | { type: 'selectionChange'; ids: string[] }
-  | { type: 'nodeDragEnd'; node: GraphNode; position: Point }
+  /**
+   * A drag ended, leaving the node here — and everything that travelled with it there.
+   *
+   * `moved` is the rest of the selection when several cards were dragged as one. It is on the event
+   * rather than left for the consumer to work out from the selection, because by the time a host
+   * hears about the drop the selection is merely *what is selected now*: it says nothing about which
+   * cards this gesture actually moved, and the two come apart the moment anything reselects.
+   *
+   * Absent for the ordinary single-card drag, so nothing that already handled this event had to
+   * learn about it.
+   */
+  | { type: 'nodeDragEnd'; node: GraphNode; position: Point; moved?: { id: string; position: Point }[] }
   /**
    * The user resized a card, giving it this box in world units.
    *
@@ -172,6 +202,14 @@ export interface PointerInput {
   at: Point;
   buttons: number;
   shiftKey: boolean;
+  /**
+   * Control on every platform, and Command on a Mac — the two spellings of one intent.
+   *
+   * Folded together by the adapter rather than reported separately, because every gesture that wants
+   * this wants "the platform's multi-select modifier" and no gesture wants to know which key that is.
+   * `metaKey` is still reported on its own for anything that genuinely means the Command key.
+   */
+  ctrlKey: boolean;
   metaKey: boolean;
   /** Wheel delta, `wheel` only. */
   delta?: number;

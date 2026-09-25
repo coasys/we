@@ -10,10 +10,11 @@
  * silent. Structural rather than behavioural, because the failure is structural — every piece
  * rendered exactly as written, in the wrong dependency.
  */
+import { moduleCapabilities } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { callModule } from './index';
+import { callModule, createModule } from './index';
 
 /** Every node in a tree, so a test can ask about a subtree without knowing where it sits. */
 function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
@@ -30,7 +31,8 @@ function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
   return out;
 }
 
-const slotNodes = (): SchemaNode[] => (callModule.slots ?? []).map((slot) => slot.node);
+const slotNodes = (): SchemaNode[] => (callModule.contributes?.slots ?? []).map((slot) => slot.node);
+const part = (name: string) => callModule.contributes?.parts?.[name];
 
 describe('audio', () => {
   it('plays from the chrome, which is mounted for the whole call', () => {
@@ -61,7 +63,7 @@ describe('audio', () => {
 
   it('keeps every tile silent, so nobody is decoded twice', () => {
     // An unmuted tile beside the sink is the same voice from two decoders, slightly apart.
-    const videos = walk(callModule.schemas?.tile).filter((node) => node.type === 'we-video');
+    const videos = walk(part('tile')).filter((node) => node.type === 'we-video');
 
     expect(videos).not.toHaveLength(0);
     for (const video of videos) expect((video.props as Record<string, unknown>).muted).toBe(true);
@@ -124,10 +126,16 @@ describe('the bar keeps to the screen', () => {
       expect(props(child).pointerEvents).toBe('auto');
     }
   });
+
+  it('paints above every panel, a full-screen call included', () => {
+    // Panels count up from `sticky` by how recently they were touched, and maximising touches. On
+    // `sticky` the bar lost to the full-screen call it controls and the hang-up button went under it.
+    const strips = walk(slotNodes()).filter((node) => props(node).position === 'fixed');
+    for (const strip of strips) expect(props(strip).zIndex).toBe('chrome');
+  });
 });
 
 describe('the compact bar', () => {
-  const COMPACT = { $: "surface.tier == 'base'" };
   const ROOMY = { $: "surface.tier != 'base'" };
   const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
 
@@ -143,23 +151,62 @@ describe('the compact bar', () => {
         node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $action: action }),
     ) as SchemaNode;
 
+  /** The menu's lines are a prop rather than child nodes, so they are read rather than walked. */
+  type MenuEntry = { id?: string; onToggle?: { $action: string }; onAction?: { $action: string }; hidden?: unknown };
+  const entries = (): MenuEntry[] => props(inCall()).items as MenuEntry[];
+
   it('folds screen share, show/hide and solo into one menu below the base tier', () => {
     const menu = inCall();
     expect(menu).toBeDefined();
-    const gates = tierGates(menu);
-    expect(gates.map((gate) => props(gate).condition)).toEqual([COMPACT]);
+
+    const toggles = entries().filter((entry) => entry.onToggle);
+    expect(toggles.map((entry) => entry.onToggle!.$action).sort()).toEqual([
+      'modules.call.toggleScreenShare',
+      'modules.call.toggleSolo',
+      'modules.call.toggleStage',
+    ]);
 
     /*
-      The menu's lines are a prop rather than child nodes, so they are read rather than walked —
-      and one of them is wrapped in a `$if`, since solo is only offered while something is focused.
-      Unwrapping the branch is what keeps this an assertion about *which three toggles fold*, which
-      is the thing worth pinning, rather than about how one of them is gated.
+      The fold is on the entries, not on the menu.
+
+      It used to be a `whenCompact` around the whole menu, which made the menu itself a thing that
+      only existed below `base` — see the next test for why that stopped being right. `hidden` says
+      the same thing one level down, so each of the three is still withdrawn from the menu at exactly
+      the width the row is showing it, and the invariant holds: the same three specs build both.
+
+      Tested as "the condition mentions the tier" rather than as its exact text, because solo's also
+      carries its own gate — it is offered only while something is focused — and that is a different
+      question from folding.
     */
-    const actions = (props(menu).items as unknown[])
-      .map((entry) => (entry as { $if?: { then: unknown } }).$if?.then ?? entry)
-      .map((item) => (item as { onToggle: { $action: string } }).onToggle.$action)
-      .sort();
-    expect(actions).toEqual(['modules.call.toggleScreenShare', 'modules.call.toggleSolo', 'modules.call.toggleStage']);
+    for (const entry of toggles) {
+      expect(JSON.stringify(entry.hidden), JSON.stringify(entry.onToggle)).toContain(ROOMY.$);
+    }
+  });
+
+  it('keeps the menu at every width, because it holds more than the fold now', () => {
+    /*
+      Starting a second call mid-call had nowhere to live. The join bar offers a `+` for it, and only
+      somebody *not* in a call ever sees that — so on a wide screen the control did not exist and a
+      breakout meant hanging up first.
+
+      A menu that existed only below `base` was the wrong home for it, so the menu stands at every
+      width and the fold moved onto the entries. Asserted on the tier gates *above* the menu, since
+      the failure being guarded against is somebody restoring the `whenCompact` wrapper and taking
+      the start away from every desktop with it.
+    */
+    expect(tierGates(inCall())).toEqual([]);
+
+    // By id rather than "the first entry that does something": the menu holds more than one of
+    // those now, and a positional find would silently start asserting about whichever was added last.
+    const start = entries().find((entry) => entry.id === 'start-another');
+    /*
+      `args` explicitly, and the empty string is the point: a handler with none forwards the click,
+      and `startCall` takes an optional anchor id — so it would be handed a PointerEvent and the
+      write refused. `''` is how the store spells "about the space rather than about a node in it".
+    */
+    expect(start?.onAction).toEqual({ $action: 'modules.call.startCall', args: [''] });
+    // Never folded: it is the one entry the row does not show somewhere else.
+    expect(start?.hidden).toBeUndefined();
   });
 
   it('takes the same three out of the row at that tier, so nothing is shown twice', () => {
@@ -193,6 +240,121 @@ describe('the compact bar', () => {
 });
 
 /**
+ * The order of the bar, which is a readability decision and therefore assertable.
+ *
+ * Nothing here was caught by a test before, because every existing one asks whether a control is
+ * *present* and none asks where. That is how two identical-looking `−  N  +` triples ended up either
+ * side of the fold button: each was correct on its own and the row was not.
+ */
+describe('how the bar reads left to right', () => {
+  /** The control row — the one holding the contributed-controls slot as a direct child. */
+  const row = (): SchemaNode =>
+    walk(slotNodes()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  /** One recognisable token per child of the row, in order. */
+  const reading = (): string[] =>
+    ((row().children ?? []) as SchemaNode[]).map((child) => {
+      const inner = walk(child);
+      if (child.type === '$slot') return `slot:${String(props(child).anchor)}`;
+      if (inner.some((node) => node.type === '$slot' && props(node).anchor === 'call-dev')) return 'dev';
+      if (child.type === 'we-divider') return 'divider';
+      if (inner.some((node) => node.type === 'DropdownMenu')) return 'fold';
+      const acted = inner.find((node) => typeof (props(node).onClick as { $action?: string })?.$action === 'string');
+      return acted ? String((props(acted).onClick as { $action: string }).$action) : String(child.type ?? '');
+    });
+
+  it('puts the fold after the controls it folds', () => {
+    const order = reading();
+    // `STAGE` is one of the things the menu swallows when the row is compact, so the button sits where
+    // its own contents just left rather than above them.
+    expect(order.indexOf('fold')).toBeGreaterThan(order.indexOf('modules.call.toggleStage'));
+  });
+
+  it('puts the development group last, after everything a shipped build has', () => {
+    const order = reading();
+    const dev = order.indexOf('dev');
+    expect(dev).toBeGreaterThan(-1);
+    /*
+      The whole arrangement in one assertion: a user's bar and a developer's differ by one trailing
+      group. So nothing shipped may follow it except the rule and the readout that close the row.
+    */
+    expect(order.slice(dev + 1)).toEqual(['divider', 'we-tooltip', 'modules.call.leave']);
+    expect(order.indexOf('fold')).toBeLessThan(dev);
+    expect(order.indexOf('slot:call-controls')).toBeLessThan(dev);
+  });
+
+  it('opens the development region straight after its own harness, so the two sit together', () => {
+    const group = walk(row()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-dev',
+        ),
+    ) as SchemaNode;
+    const children = (group.children ?? []) as SchemaNode[];
+
+    /*
+      Adjacency is the point, and it is the reason the region exists rather than an `order` in the
+      control region: contributions land at a single point, so this module's triple could never be
+      threaded in between another module's controls.
+
+      A rule, this module's triple, a rule, then whatever else is contributed. The region draws both
+      separators itself: a rule inside a contributed fragment is either missing or doubled depending on
+      what else is installed, and sits against that fragment's own tight gap rather than the bar's.
+    */
+    expect(children.map((child) => child.type)).toEqual(['we-divider', 'Row', 'we-divider', '$slot']);
+    expect(walk(children[1]).some((node) => props(node).name === 'users')).toBe(true);
+    expect(props(children[3]).anchor).toBe('call-dev');
+  });
+
+  it('draws no rule inside the triple, and hangs its tooltip on the glyph', () => {
+    const group = walk(row()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-dev',
+        ),
+    ) as SchemaNode;
+    const triple = ((group.children ?? []) as SchemaNode[])[1];
+
+    // The separators belong to the region, so the triple carries none of its own.
+    expect(walk(triple).filter((node) => node.type === 'we-divider')).toEqual([]);
+
+    /*
+      The tooltip explaining what this counts sits on the icon, not on the number.
+
+      The icon is the only part that says which of the two triples this is, so it is what a pointer
+      looking for an explanation lands on. The number is the part somebody is reading, and a tooltip
+      over it covers the value it is explaining.
+    */
+    const glyph = walk(triple).find((node) => props(node).name === 'users') as SchemaNode;
+    const holder = lineage(triple, glyph)?.find((step) => step.type === 'we-tooltip');
+    expect(props(holder).content).toBe('Fake participants — development only');
+
+    const number = walk(triple).find((node) => node.type === 'we-number') as SchemaNode;
+    expect(lineage(triple, number)?.some((step) => step.type === 'we-tooltip')).toBe(false);
+  });
+
+  it('declares the development region only in a build that has one', () => {
+    /*
+      Vitest is a development build, so the region is declared here. The assertion worth making is the
+      pairing: whatever draws the slot must declare the anchor, or a contribution to it is refused at
+      registration and disappears with no error anywhere — which is the failure mode that cost a day
+      when `view` was missing from the host's kernels.
+    */
+    const drawn = walk(slotNodes()).some((node) => node.type === '$slot' && props(node).anchor === 'call-dev');
+    expect(callModule.contributes?.anchors ?? []).toContain('call-dev');
+    expect(drawn).toBe(true);
+  });
+});
+
+/**
  * The way back into a call somebody is reading.
  *
  * Published as a part rather than drawn by a panel, and the reason is a category error that showed
@@ -204,13 +366,13 @@ describe('the compact bar', () => {
  * this is where the node is, and the panel's own suite asserts the button has not grown back there.
  */
 describe('picking a call back up', () => {
-  const part = () => callModule.schemas?.continueCallButton;
-  const json = () => JSON.stringify(part());
+  const button = () => part('continueCallButton');
+  const json = () => JSON.stringify(button());
 
   it('is published for an interface to place', () => {
     // A template cannot be reached into: the pill that draws a call's name is the Workshop shell's
     // own chrome and has no anchor. A named part is how a module offers chrome somebody else places.
-    expect(part()).toBeDefined();
+    expect(button()).toBeDefined();
   });
 
   it('refuses a pick-up that would tear down a call in progress, rather than hiding', () => {
@@ -260,9 +422,9 @@ describe('picking a call back up', () => {
   it('names itself for a screen reader, having no visible word to do it', () => {
     // Icon-only, so the accessible name has to be said rather than inherited from a label. The same
     // expression as the tooltip, so the two cannot drift into describing different acts.
-    const button = walk(part()).find((node) => node.type === 'we-button');
-    const label = (button?.props as { label?: { $?: string } } | undefined)?.label?.$;
-    const tooltip = walk(part()).find((node) => node.type === 'we-tooltip');
+    const pressed = walk(button()).find((node) => node.type === 'we-button');
+    const label = (pressed?.props as { label?: { $?: string } } | undefined)?.label?.$;
+    const tooltip = walk(button()).find((node) => node.type === 'we-tooltip');
     expect(label).toBeDefined();
     expect(label).toBe((tooltip?.props as { content?: { $?: string } } | undefined)?.content?.$);
   });
@@ -273,9 +435,156 @@ describe('picking a call back up', () => {
       whole point of a button that survives a call starting and ending underneath it. Choosing at
       render time would bake in whichever state the pill first drew in.
     */
-    const onClick = (walk(part()).find((n) => n.type === 'we-button')?.props as { onClick?: unknown })?.onClick;
+    const onClick = (walk(button()).find((n) => n.type === 'we-button')?.props as { onClick?: unknown })?.onClick;
     expect(Array.isArray(onClick)).toBe(true);
     expect(JSON.stringify(onClick)).toContain('modules.call.goToCall');
     expect(JSON.stringify(onClick)).toContain('modules.call.continueCall');
+  });
+});
+
+/**
+ * The declaration — what the manifest asks for and what the contributions name.
+ *
+ * These pin the places things moved to when the contract split one flat interface into a manifest,
+ * a set of contributions and a store. Each is a string the host reads, so a rename here fails
+ * silently at runtime as a launcher that does nothing or a panel that never opens; asserting them
+ * turns that into a test failure.
+ */
+describe('the declaration', () => {
+  const contributes = callModule.contributes!;
+
+  it('asks for exactly the kernels the store reaches', () => {
+    // A kernel not named here is absent from `deps.kernels`, so this list is the store's reach.
+    expect([...(callModule.manifest.requires?.kernels ?? [])].sort()).toEqual(
+      ['ephemeral', 'media', 'peerConnection', 'presence', 'records'].sort(),
+    );
+  });
+
+  it('declares the devices it opens, and derives the rest of what a person agrees to', () => {
+    // The three permissions are authored — they are the reason to think twice about a call module
+    // from a stranger. The dock and the slot used to be authored beside them and could go stale.
+    expect(callModule.manifest.requires?.permissions).toEqual(['microphone', 'camera', 'screen-share']);
+    const capabilities = moduleCapabilities(callModule);
+    expect(capabilities).toEqual(
+      expect.arrayContaining(['microphone', 'camera', 'screen-share', 'dock', 'slot:dock-bottom']),
+    );
+  });
+
+  it('owns whether its stage is up, and so declares how to close it', () => {
+    // A panel naming `open` must name `close`, or the titlebar cannot dismiss it. No `icon`: the
+    // rail entry is the launcher, whose press does more than open a panel.
+    const stage = contributes.panels?.find((panel) => panel.name === 'stage');
+    expect(stage).toMatchObject({ bid: 'stageBid', open: 'stageOpen', show: 'openStage', close: 'closeStage' });
+    expect(stage?.icon).toBeUndefined();
+  });
+
+  it('keeps its chrome up while a call runs, by a bare store key', () => {
+    // `holds` and `reserve` are keys into the store, not template paths — the one field that was
+    // spelt `modules.call.active` now reads like every other.
+    expect(contributes.holds).toBe('active');
+    expect(contributes.reserve).toBe('chromeReserve');
+    for (const key of [contributes.holds, contributes.reserve]) expect(key).not.toContain('.');
+  });
+
+  it('has one launcher, and it goes to the call', () => {
+    expect(contributes.launchers).toHaveLength(1);
+    expect(contributes.launchers?.[0]).toMatchObject({
+      action: 'goToCall',
+      activeWhen: 'active',
+      availableWhen: 'canCall',
+    });
+  });
+
+  it('declares the activity the transcriber reads off its roster', () => {
+    // `record` and `continued` were the two fields another module read by convention.
+    expect(contributes.activities?.call).toMatchObject({ record: 'string', continued: 'boolean', anchor: 'object' });
+  });
+
+  it('is what the package factory hands a host', () => {
+    expect(createModule({ components: {} })).toBe(callModule);
+  });
+});
+
+/**
+ * The device chooser, and the two places it is reached from.
+ *
+ * One fragment placed twice — the call bar's More menu, for somebody who cannot be heard right now,
+ * and the settings screen, for somebody choosing before they join. Those are genuinely different
+ * moments and the same control serves both; what must not happen is two controls that drift.
+ */
+describe('choosing a camera and microphone', () => {
+  it('is offered from the call bar, without folding at any width', () => {
+    /*
+      In the menu rather than beside the mute button, which the bar's own note explains: mute and
+      camera never fold because "a menu between a person and their microphone is a step too many".
+      Choosing a device is not that — it is done once and then forgotten.
+
+      Never hidden, unlike the two entries that fold when the row is roomy: those fold because the
+      row is showing them itself, and this one has no counterpart in the row at any width.
+    */
+    const menu = walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
+    const items = props(menu).items as { id?: string; onAction?: unknown; hidden?: unknown }[];
+    const entry = items.find((item) => item.id === 'devices');
+
+    expect(entry, 'the bar offers no way to change device').toBeDefined();
+    expect(entry?.onAction).toEqual({ $action: 'modules.call.openDeviceSettings' });
+    expect(entry?.hidden, 'the entry folds away at some width').toBeUndefined();
+  });
+
+  it('is published as a part, so a settings screen places the same one', () => {
+    // A part rather than a second copy: the settings page draws `call.deviceSettings` inline, and
+    // the sheet draws it inside a modal. Two pickers that could disagree is the failure this avoids.
+    const picker = part('deviceSettings');
+    expect(picker, 'nothing is published for a settings screen to place').toBeDefined();
+    expect(JSON.stringify(picker)).toContain('modules.call.setDevice');
+  });
+
+  it('draws its sheet as chrome, above the bar that opens it', () => {
+    // Chrome rather than a panel, for the audio sink's reason: it is opened from the bar and from a
+    // settings overlay, and neither can own a dialog the other also opens.
+    const sheet = (callModule.contributes?.slots ?? []).find((slot) =>
+      JSON.stringify(slot.node).includes('modules.call.deviceSettingsOpen'),
+    );
+    expect(sheet, 'the chooser has nowhere to render').toBeDefined();
+    expect(sheet?.anchor).toBe('overlay');
+  });
+});
+
+/**
+ * A chooser with nothing in it has two meanings, and only one of them is about hardware.
+ *
+ * The settings page said "No microphone found on this computer" on a machine with a working
+ * microphone plugged into it. Two causes, and both were ours: nothing asked the host what devices
+ * existed unless a call was joined or the call bar's sheet was opened, and the empty branch asserted
+ * a fact about the hardware from a list a browser had never been permitted to fill in.
+ */
+describe('a device list that is empty', () => {
+  const picker = () => JSON.stringify(part('deviceSettings'));
+
+  it('does not claim there is no hardware until the machine has been asked', () => {
+    /*
+      A browser lists no devices, and no names, until a capture has been allowed — so that a page
+      cannot fingerprint a machine by its hardware without asking. Before that, "none found" is a
+      claim made from a list that was never allowed to mention any.
+    */
+    const json = picker();
+    const claim = json.indexOf('No microphone found');
+    expect(claim, 'the picker no longer says anything about an empty list').toBeGreaterThan(-1);
+    expect(json, 'the claim is made unconditionally').toContain('modules.call.devicesProbed');
+
+    // The assertion sits inside a gate on having probed, not beside it.
+    const gate = json.lastIndexOf('modules.call.devicesProbed', claim);
+    expect(gate, 'the "none found" sentence is not behind a probe check').toBeGreaterThan(-1);
+  });
+
+  it('offers the way forward while there is one, and not after', () => {
+    /*
+      Two states reach it — devices listed but anonymous, or nothing listed at all — and both are the
+      same refusal seen from stricter and looser browsers. Both are fixed by asking once, and neither
+      is worth a button once the machine has been asked.
+    */
+    const json = picker();
+    expect(json).toContain('modules.call.nameDevices');
+    expect(json, 'the offer outlives the thing it fixes').toContain('!modules.call.devicesProbed');
   });
 });

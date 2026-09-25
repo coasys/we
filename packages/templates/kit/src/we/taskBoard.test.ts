@@ -36,12 +36,41 @@ describe('the task board', () => {
     expect(json).toContain('"type":"we-spinner"');
   });
 
-  it('marks a proposed card and offers Keep and Discard on it, through the transcribe module', () => {
+  it('marks a card a pass made and offers Keep and Discard on it, through the transcribe module', () => {
     // A staged record answers the board's query like an accepted one; the proposal list is the only
-    // thing that knows the difference, and the canvas already reads it the same way.
-    expect(json).toContain('modules.transcribe.pendingIds');
+    // thing that knows the difference. Only a record a pass *created* is provisional.
+    expect(json).toContain('card.id in (modules.transcribe.unconfirmedIds)');
+    expect(json).not.toContain('modules.transcribe.pendingIds');
     expect(json).toContain('"$action":"modules.transcribe.acceptProposal"');
     expect(json).toContain('"$action":"modules.transcribe.rejectProposal"');
+  });
+
+  it('shows a change suggested to an agreed card as lines on it, answered per field', () => {
+    // Not faded and not "suggested": the record is settled, and only the change is waiting.
+    expect(json).toContain('modules.transcribe.changedIds');
+    expect(json).toContain('"$action":"modules.transcribe.applyChange"');
+    expect(json).toContain('"$action":"modules.transcribe.dismissChange"');
+  });
+
+  it('draws from the pool less what nobody has kept, while the reader hides it', () => {
+    // Before the board is worked out, so the counts and Unplaced agree with what is shown.
+    expect(json).toContain(
+      "records: ((routeStore.params.suggestions == 'hide') ? local.pool.filter(r, !(r.id in modules.transcribe.unconfirmedIds)) : local.pool)",
+    );
+  });
+
+  it('offers the switch in the header only where asked for, after the people filter', () => {
+    expect(json).not.toContain('"label":"Pending acceptance"');
+    const offered = JSON.stringify(
+      taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true, suggestions: true }),
+    );
+    expect(offered).toContain('"label":"Pending acceptance"');
+    expect(offered.indexOf('Group by person')).toBeLessThan(offered.indexOf('"label":"Pending acceptance"'));
+    // Named before its switch, so it does not read as belonging to the control before it.
+    expect(offered.indexOf('"children":["Pending acceptance"]')).toBeLessThan(
+      offered.indexOf('"label":"Pending acceptance"'),
+    );
+    expect(offered).toContain('"args":["suggestions",{"$":"event.detail ? null : \'hide\'"}]');
   });
 
   it('reads every list off the host function rather than computing one in an expression', () => {
@@ -103,10 +132,29 @@ describe('a board read by who is on the work', () => {
     expect(plain.boardShow.persist).toBeUndefined();
   });
 
-  it('offers dimming first, then hiding, then a row per person', () => {
-    expect(text.indexOf('Dim others')).toBeGreaterThan(-1);
-    expect(text.indexOf('Dim others')).toBeLessThan(text.indexOf('Hide others'));
-    expect(text.indexOf('Hide others')).toBeLessThan(text.indexOf('Row per person'));
+  it('asks dim or hide only with somebody chosen and rows off, and grouping on its own', () => {
+    /*
+      One menu of dim, hide and rows offered a choice that did nothing with nobody chosen, and nothing
+      again with rows on. Dim | Hide now belongs to the filter's readout and is gated on rows being
+      off; grouping is a switch that is always there.
+    */
+    expect(text).toContain('"condition":{"$":"!local.boardGrouped"}');
+    expect(text.indexOf('"children":["Dim"]')).toBeLessThan(text.indexOf('"children":["Hide"]'));
+    expect(text).not.toContain('Row per person');
+    expect(text).toContain('"children":["Group by person"]');
+    expect(locals.boardGrouped).toMatchObject({ type: 'boolean', initial: false, persist: 'board.grouped' });
+    // Rows on is `rows` to the host function; otherwise anything but `hide` is `dim`.
+    expect(text).toContain("show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim')");
+  });
+
+  it('draws each header control as an icon, with its word only where the header has room', () => {
+    // Four labelled controls crowd a board in a docked panel; the tooltip and accessible name keep
+    // the words when the text is dropped.
+    for (const icon of ['circle-half', 'eye-slash', 'rows']) expect(text).toContain(`"name":"${icon}"`);
+    // A container query, not a branch on a tier read in JavaScript — see `headerLabel`.
+    expect(text).toContain('"display":"none","mdUpProps":{"display":"inline","ml":"100"}');
+    expect(text).not.toContain('surface.tier');
+    expect(text).toContain('"label":"Group by person"');
   });
 
   it('hands every drag the column’s whole order, so a filtered column cannot reorder what it hides', () => {
@@ -150,8 +198,18 @@ describe('a board read by who is on the work', () => {
 
   it('offers the people on this board as faces, and the mode as its own control', () => {
     expect(text).toContain('.involved');
-    expect(text).toContain('"triggerTitle":"How the others are shown"');
-    expect(text).toContain('"triggerTitle":"Everyone in this space"');
+    expect(text).not.toContain('"triggerTitle":"How the others are shown"');
+    // The member chip is a custom trigger, which the menu gives no tooltip of its own — so it carries one.
+    expect(text).toContain(
+      '{"type":"we-tooltip","props":{"content":"Find a member"},"children":[{"type":"DropdownMenu"',
+    );
+    // And the pending control's tooltip names it and wraps the whole control, not only its switch.
+    const offered = JSON.stringify(
+      taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true, suggestions: true }),
+    );
+    expect(offered).toContain(
+      '{"type":"we-tooltip","props":{"content":"Pending acceptance"},"children":[{"type":"Row"',
+    );
   });
 });
 

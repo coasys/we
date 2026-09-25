@@ -11,7 +11,8 @@
  * just the roster the module reads and the two write calls it makes.
  */
 import type { Activity, Peer } from '@we/backend-shared';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { markAction, markState, type ModuleStoreDeps } from '@we/module-shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 
@@ -42,7 +43,28 @@ function peer(agentId: string, ...activities: Activity[]): Peer {
   return { agentId, updatedAt: 0, availability: 'available', activities, liveness: 'online' };
 }
 
-function harness(peers: Peer[] = [], extraDeps: Record<string, unknown> = {}) {
+/**
+ * What a test may hand the store, over what the harness supplies.
+ *
+ * The kernels by their contract names — a test overriding `transcription` puts a port under
+ * `deps.kernels.transcription`, and `records` merges over the harness's recording writes so a test
+ * can replace one of the four without restating the others. Loosely typed on purpose: most tests
+ * hand over the two or three members they are about, not a whole kernel.
+ */
+interface HarnessDeps {
+  transcription?: Record<string, unknown>;
+  interpretation?: Record<string, unknown>;
+  media?: { input: () => MediaStream | null };
+  records?: Partial<Record<'create' | 'link' | 'update' | 'find', unknown>>;
+  presence?: Record<string, unknown>;
+  dataset?: () => unknown;
+  settings?: (() => Record<string, boolean | string | number>) | undefined;
+  onDispose?: (fn: () => void) => void;
+  /** Which call the address names — what the transcript's window is scoped to. */
+  callOnScreen?: () => string | null;
+}
+
+function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
   const created: Created[] = [];
   const linked: Linked[] = [];
   const published: Activity[] = [];
@@ -51,6 +73,46 @@ function harness(peers: Peer[] = [], extraDeps: Record<string, unknown> = {}) {
   const notified: { tone: string; message: string }[] = [];
   let nextId = 1;
   const effects: Array<() => void> = [];
+
+  const { transcription, interpretation, media, records, presence, ...core } = extraDeps;
+  /**
+   * The kernels the manifest names, as far as a test needs them.
+   *
+   * The smallest thing that satisfies the contract — the roster the module reads, the three write
+   * calls it makes, and a microphone. A kernel a test does not mention is still here where the store
+   * needs one to do anything at all (`records`, `presence`, `media`), and absent where its absence is
+   * a state worth testing (`transcription`, `interpretation`).
+   */
+  const kernels = {
+    /**
+     * Something to listen to, so the audio effect does not tear the session down on every tick.
+     *
+     * Without it that effect reads "no audio" and calls `stop`, which flushes — so any test that
+     * changes the roster while words are buffered had a second, concurrent flush racing its own for
+     * the buffer, and whichever lost saw nothing to write. The stream is never read here: the store
+     * only hands it to an `AudioContext`, which these tests never reach.
+     */
+    media: media ?? { input: () => ({}) as MediaStream },
+    presence: presence ?? {
+      peers: () => peers,
+      setActivity: (activity: Activity) => published.push(activity),
+      clearActivity: (type: string) => cleared.push(type),
+    },
+    records: {
+      create: async (entity: string, fields: Record<string, unknown>, options?: Created['options']) => {
+        created.push({ entity, fields, options });
+        return `id-${nextId++}`;
+      },
+      link: async (entity: string, id: string, relation: string, value: string) => {
+        linked.push({ entity, id, relation, value });
+      },
+      ...records,
+    },
+    ...(transcription ? { transcription } : {}),
+    ...(interpretation ? { interpretation } : {}),
+    // Through `unknown`: a test's `records` is the two or three writes it is about, never the whole
+    // kernel, and the store feature-tests each member it reaches.
+  } as unknown as ModuleStoreDeps['kernels'];
 
   const store = createTranscribeStore({
     signal: <T>(initial: T): [() => T, (next: T) => void] => {
@@ -63,30 +125,14 @@ function harness(peers: Peer[] = [], extraDeps: Record<string, unknown> = {}) {
       effects.push(fn);
       fn();
     },
+    // The real markers, so a test reads the store the way the host's bag does — and so a member
+    // marked with the wrong kind, or none, is the same object here as there.
+    state: markState,
+    action: markAction,
     selfId: () => ME,
-    /**
-     * Something to listen to, so the audio effect does not tear the session down on every tick.
-     *
-     * Without it that effect reads "no audio" and calls `stop`, which flushes — so any test that
-     * changes the roster while words are buffered had a second, concurrent flush racing its own for
-     * the buffer, and whichever lost saw nothing to write. The stream is never read here: the store
-     * only hands it to an `AudioContext`, which these tests never reach.
-     */
-    audioInput: () => ({}) as MediaStream,
     notify: (tone: string, message: string) => notified.push({ tone, message }),
-    presence: {
-      peers: () => peers,
-      setActivity: (activity) => published.push(activity),
-      clearActivity: (type) => cleared.push(type),
-    },
-    createEntity: async (entity, fields, options) => {
-      created.push({ entity, fields, options });
-      return `id-${nextId++}`;
-    },
-    linkEntity: async (entity, id, relation, value) => {
-      linked.push({ entity, id, relation, value });
-    },
-    ...extraDeps,
+    kernels,
+    ...core,
   }) as ReturnType<typeof createTranscribeStore> & Record<string, (...args: unknown[]) => unknown>;
 
   return {
@@ -540,7 +586,11 @@ describe('recording the call you are in', () => {
   });
 
   it('does not start when there is nothing to listen to', () => {
-    const h = harness(THEIR_TRANSCRIPT, { ...IN_A_SPACE, transcription: CAN_TRANSCRIBE, audioInput: () => null });
+    const h = harness(THEIR_TRANSCRIPT, {
+      ...IN_A_SPACE,
+      transcription: CAN_TRANSCRIBE,
+      media: { input: () => null },
+    });
 
     expect(h.store.enabled()).toBe(false);
   });
@@ -1409,8 +1459,8 @@ describe('staged suggestions', () => {
     await h.store.extract();
 
     expect(h.store.proposals()[0].fields).toEqual([
-      { name: 'title', value: 'One' },
-      { name: 'status', value: 'todo' },
+      { name: 'title', label: 'Title', value: 'One' },
+      { name: 'status', label: 'Status', value: 'todo' },
     ]);
   });
 
@@ -1432,9 +1482,11 @@ describe('staged suggestions', () => {
     const updates: Array<{ entity: string; id: string; fields: Record<string, unknown> }> = [];
     const h = harness(inCall, {
       interpretation: i.port,
-      updateEntity: async (entity: string, id: string, fields: Record<string, unknown>) => {
-        order.push('update');
-        updates.push({ entity, id, fields });
+      records: {
+        update: async (entity: string, id: string, fields: Record<string, unknown>) => {
+          order.push('update');
+          updates.push({ entity, id, fields });
+        },
       },
     });
     await h.say('hello');
@@ -1455,7 +1507,7 @@ describe('staged suggestions', () => {
     const i = interpreterWith([
       { id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One', status: 'todo' } },
     ]);
-    const h = harness(inCall, { interpretation: i.port, updateEntity: async () => void wrote++ });
+    const h = harness(inCall, { interpretation: i.port, records: { update: async () => void wrote++ } });
     await h.say('hello');
     await h.store.extract();
 
@@ -1471,8 +1523,10 @@ describe('staged suggestions', () => {
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
     const h = harness(inCall, {
       interpretation: i.port,
-      updateEntity: async () => {
-        throw new Error('offline');
+      records: {
+        update: async () => {
+          throw new Error('offline');
+        },
       },
     });
     await h.say('hello');
@@ -1489,7 +1543,7 @@ describe('staged suggestions', () => {
   it('forgets the draft when the suggestion it belonged to is rejected', async () => {
     // Otherwise a card's worth of edits stays attached to an id that no longer resolves.
     const i = interpreterWith([{ id: 'task-1', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
-    const h = harness(inCall, { interpretation: i.port, updateEntity: async () => {} });
+    const h = harness(inCall, { interpretation: i.port, records: { update: async () => {} } });
     await h.say('hello');
     await h.store.extract();
 
@@ -1636,6 +1690,49 @@ describe('staged suggestions', () => {
     expect(h.store.pendingIds()).toEqual([]);
   });
 
+  it('tells a record nobody has kept apart from an agreed one with a change suggested', async () => {
+    // One list of ids made an accepted task a pass merely had an opinion about look like a draft,
+    // and a "hide suggestions" built on it would have hidden agreed work.
+    const i = interpreterWith([
+      { id: 'task-new', kind: 'create', entity: 'TaskBlock', values: { title: 'New' } },
+      { id: 'task-old', kind: 'update', entity: 'TaskBlock', values: { dueDate: '2026-09-15' } },
+    ]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+    await h.store.extract();
+
+    expect(h.store.unconfirmedIds()).toEqual(['task-new']);
+    expect(h.store.changedIds()).toEqual(['task-old']);
+    expect(h.store.pendingIds()).toEqual(['task-new', 'task-old']);
+    expect(h.store.proposals()[1].fields[0]).toEqual({ name: 'dueDate', label: 'Due date', value: '2026-09-15' });
+  });
+
+  it('applies or dismisses one suggested change at a time, keeping the rest staged', async () => {
+    const calls: Array<[string, string, string | undefined]> = [];
+    const i = interpreterWith([
+      { id: 'task-old', kind: 'update', entity: 'TaskBlock', values: { dueDate: '2026-09-15', assignee: 'Ana' } },
+    ]);
+    const port = {
+      ...i.port,
+      accept: async (id: string, property?: string) => (calls.push(['accept', id, property]), true),
+      reject: async (id: string, property?: string) => (calls.push(['reject', id, property]), true),
+    };
+    const h = harness(inCall, { interpretation: port });
+    await h.say('hello');
+    await h.store.extract();
+
+    await h.store.applyChange('task-old', 'dueDate');
+    expect(h.store.proposals()[0].fields.map((f) => f.name)).toEqual(['assignee']);
+    expect(h.store.changedIds()).toEqual(['task-old']);
+
+    await h.store.dismissChange('task-old', 'assignee');
+    expect(calls).toEqual([
+      ['accept', 'task-old', 'dueDate'],
+      ['reject', 'task-old', 'assignee'],
+    ]);
+    expect(h.store.changedIds()).toEqual([]);
+  });
+
   it('stops marking a card a peer resolved, when the host says the suggestions moved', async () => {
     /*
       Settling a suggestion is not a pass, and a pass settling was the only thing that re-read the
@@ -1689,6 +1786,130 @@ describe('staged suggestions', () => {
     const h = harness(inCall, { interpretation: i.port });
 
     expect(h.store.canEditProposals()).toBe(false);
+  });
+
+  /**
+   * Keeping a change, and the account of it.
+   *
+   * A *create* survives being accepted — it is a record, and the call links it as `extracted`. An
+   * *update* did not: it applied its value to a record that was already agreed and resolved its
+   * overlay, and after that nothing anywhere said it had happened. The record held a new value with
+   * no provenance and the reviewer's decision left no mark, so the panel had three of the four
+   * quadrants a review surface has and no way to write the fourth.
+   *
+   * These are about the one fact that cannot be recovered afterwards: what the record held before.
+   */
+  describe('keeping a change writes it down', () => {
+    const change = {
+      id: 'task-1',
+      kind: 'update',
+      entity: 'TaskBlock',
+      values: { status: 'done', title: 'Ship the docs' },
+    };
+    /** The record as it stands before the change — what the store reads, and reads only once. */
+    const held = { id: 'task-1', status: 'todo', title: 'Ship the docs' };
+
+    /** A host whose records kernel can be read as well as written to. */
+    const withRecord = (i: ReturnType<typeof interpreterWith>, rows: Record<string, unknown>[] = [held]) =>
+      harness(inCall, { interpretation: i.port, records: { find: async () => rows } });
+
+    const amendments = (h: ReturnType<typeof harness>) => h.created.filter((c) => c.entity === 'ExtractionAmendment');
+
+    it('records the property, both values and the record it was to', async () => {
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)).toHaveLength(1);
+      expect(amendments(h)[0].fields).toMatchObject({
+        property: 'status',
+        previousValue: 'todo',
+        newValue: 'done',
+        nodeType: 'TaskBlock',
+        // A to-one relation, as the single-entry list the model layer takes.
+        node: ['task-1'],
+      });
+    });
+
+    it('hangs it off the call, so a panel open on one reads it with the same subject', async () => {
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(amendments(h)[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://extraction_amendment' });
+    });
+
+    it('writes nothing for a value equal to what the record already held', async () => {
+      /*
+        A staged update carries every value the pass proposed, including the ones that change
+        nothing — the panel filters those out of its diff for the same reason. Logged, they would
+        bury the one line somebody actually decided under a run of "Ship the docs → Ship the docs".
+      */
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'title');
+
+      expect(amendments(h)).toEqual([]);
+    });
+
+    it('records every changed property when the whole suggestion is kept at once', async () => {
+      // "Accept all" goes through `acceptProposal`, which is also how a create is kept — so the read
+      // has to happen there too, and only for a change.
+      const i = interpreterWith([change]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.acceptProposal('task-1');
+
+      expect(amendments(h).map((a) => a.fields.property)).toEqual(['status']);
+    });
+
+    it('writes nothing when a create is kept', async () => {
+      // A create has no previous values, so there is no amendment to make and no reason to spend a
+      // read finding that out.
+      const i = interpreterWith([{ id: 'task-2', kind: 'create', entity: 'TaskBlock', values: { title: 'One' } }]);
+      const h = withRecord(i);
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.acceptProposal('task-2');
+
+      expect(amendments(h)).toEqual([]);
+    });
+
+    it('still applies the change when the record cannot be read first', async () => {
+      /*
+        The order that matters, and the priority within it. Losing the log is a smaller harm than a
+        change somebody pressed accept on not being applied, so a failed read leaves the accept
+        alone and simply records nothing — rather than a row claiming a value came from nowhere.
+      */
+      const i = interpreterWith([change]);
+      const h = harness(inCall, {
+        interpretation: i.port,
+        records: {
+          find: async () => {
+            throw new Error('nope');
+          },
+        },
+      });
+      await h.say('hello');
+      await h.store.extract();
+
+      await h.store.applyChange('task-1', 'status');
+
+      expect(i.resolved).toContainEqual({ action: 'accept', id: 'task-1' });
+      expect(amendments(h)).toEqual([]);
+    });
   });
 });
 
@@ -1793,9 +2014,11 @@ describe('what is shown while an utterance is being written', () => {
     const written = new Promise<void>((resolve) => (release = resolve));
     let nextId = 1;
     const h = harness(peers, {
-      createEntity: async () => {
-        await written;
-        return `id-${nextId++}`;
+      records: {
+        create: async () => {
+          await written;
+          return `id-${nextId++}`;
+        },
       },
     });
     return { h, release: () => release() };
@@ -2108,14 +2331,16 @@ describe('typing into a transcript', () => {
 describe('mending a line somebody misheard', () => {
   let inCall: Peer[];
   let updates: Array<{ entity: string; id: string; fields: Record<string, unknown> }>;
-  let deps: Record<string, unknown>;
+  let deps: HarnessDeps;
 
   beforeEach(() => {
     inCall = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
     updates = [];
     deps = {
-      updateEntity: async (entity: string, id: string, fields: Record<string, unknown>) => {
-        updates.push({ entity, id, fields });
+      records: {
+        update: async (entity: string, id: string, fields: Record<string, unknown>) => {
+          updates.push({ entity, id, fields });
+        },
       },
     };
   });
@@ -2160,5 +2385,563 @@ describe('mending a line somebody misheard', () => {
     await h.store.editUtterance('block-1', '   ', 'spoken');
 
     expect(updates).toEqual([]);
+  });
+});
+
+/**
+ * Getting a model onto a node that has none, and waiting for one that is still arriving.
+ *
+ * Both used to fail in ways that looked like something else. A node with no model gave up silently
+ * when recording started on its own, so the panel never offered anything; and a model still
+ * downloading was opened anyway, which on AD4M blocks inside the call and times out with an error
+ * naming nothing.
+ */
+describe('models', () => {
+  const IN_CALL = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  interface FakeModel {
+    id: string;
+    name: string;
+    ready: boolean;
+    isDefault: boolean;
+    progress?: number;
+  }
+
+  /** A transcription port whose model list a test can change, and which records what it was asked. */
+  function port(initial: FakeModel[], { offer = true, refuse = false } = {}) {
+    let models = initial;
+    const opened: string[] = [];
+    let installs = 0;
+    return {
+      opened,
+      installs: () => installs,
+      setModels: (next: FakeModel[]) => (models = next),
+      transcription: {
+        available: () => true,
+        models: async () => models,
+        open: async (id: string) => {
+          opened.push(id);
+          return { feed: async () => {}, close: async () => {} };
+        },
+        offeredModel: () => (offer ? { name: 'Whisper small', downloadBytes: 967_000_000 } : null),
+        installOfferedModel: async () => {
+          installs += 1;
+          if (refuse) throw new Error('not permitted');
+          models = [{ id: 'small', name: 'Whisper small', ready: false, isDefault: false, progress: 0 }];
+        },
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('knows there is no model as soon as the panel opens, before anybody tries to record', async () => {
+    // The panel is where somebody goes to see whether this works here, so that is where the offer
+    // has to be — not only after a failed attempt to record.
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+
+    // The panel's `show`, as the rail calls it: the module owns the flag so it can read it here.
+    h.store.openPanel();
+    await h.settle();
+
+    expect(h.store.modelMissing()).toBe(true);
+  });
+
+  it('notices a model added elsewhere while the panel says there is none', async () => {
+    vi.useFakeTimers();
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+
+    h.store.openPanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.store.modelMissing()).toBe(true);
+
+    p.setModels([{ id: 'base', name: 'Whisper base', ready: true, isDefault: false }]);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(h.store.modelMissing()).toBe(false);
+  });
+
+  it('names the offered model and its size on the button', () => {
+    const h = harness([], { transcription: port([]).transcription });
+
+    expect(h.store.canInstallModel()).toBe(true);
+    expect(h.store.installModelLabel()).toBe('Download Whisper small (970 MB)');
+  });
+
+  it('offers no install where the backend offers no model', () => {
+    // A guest on somebody else's node: the adapter withholds the offer, and the panel falls back to
+    // settings or a sentence rather than a button that would be refused.
+    const h = harness([], { transcription: port([], { offer: false }).transcription });
+
+    expect(h.store.canInstallModel()).toBe(false);
+    expect(h.store.installModelLabel()).toBe('');
+  });
+
+  it('installs, and reports the download that follows', async () => {
+    const p = port([]);
+    const h = harness([], { transcription: p.transcription });
+
+    await h.store.installModel();
+
+    expect(p.installs()).toBe(1);
+    expect(h.store.modelMissing()).toBe(false);
+    expect(h.store.modelDownloading()).toBe(true);
+    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 0%');
+  });
+
+  it('says why an install failed, rather than leaving the button to do nothing', async () => {
+    const p = port([], { refuse: true });
+    const h = harness([], { transcription: p.transcription });
+
+    await h.store.installModel();
+
+    expect(h.store.installError()).toBe('not permitted');
+    expect(h.store.installingModel()).toBe(false);
+  });
+
+  it('waits for a model that is still downloading instead of opening it', async () => {
+    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 42 }]);
+    const h = harness([], { transcription: p.transcription });
+
+    h.store.toggle();
+    await h.settle();
+
+    expect(h.store.status()).toBe('downloading');
+    expect(h.store.modelDownloadText()).toBe('Downloading the speech model — 42%');
+    expect(p.opened).toEqual([]);
+  });
+
+  it('starts recording on its own once the download finishes', async () => {
+    vi.useFakeTimers();
+    const p = port([{ id: 'small', name: 'Whisper small', ready: false, isDefault: true, progress: 10 }]);
+    // In a call, in a space: recording that is waiting has to have somewhere it is waiting to write.
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.store.status()).toBe('downloading');
+
+    p.setModels([{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }]);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(p.opened).toEqual(['small']);
+  });
+
+  it('picks up a model added while `no-model` was showing, without another press', async () => {
+    // "Once one is, transcription starts on its own" — true of a model added in settings as well as
+    // one installed from the panel.
+    vi.useFakeTimers();
+    const p = port([]);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Auto-join gave up quietly; pressing record is what asks the question.
+    h.store.toggle();
+    // The stand-in host re-runs effects on demand, the way a reactive one would when state moves.
+    h.setPeers(IN_CALL);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.store.status()).toBe('no-model');
+
+    p.setModels([{ id: 'base', name: 'Whisper base', ready: true, isDefault: false }]);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(p.opened).toEqual(['base']);
+  });
+
+  it('lets an auto-join that gave up for want of a model try again after an install', async () => {
+    const p = port([]);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
+    await settle();
+    expect(h.store.enabled()).toBe(false);
+
+    await h.store.installModel();
+    await h.settle();
+
+    expect(h.store.enabled()).toBe(true);
+    expect(h.store.status()).toBe('downloading');
+  });
+});
+
+/**
+ * Saying that speech is with the model.
+ *
+ * Between somebody stopping and their words coming back there is a second or several in which the
+ * panel otherwise looks as it would had nobody spoken at all.
+ */
+describe('transcribing', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is transcribing from an utterance being sent until its text arrives', () => {
+    const h = harness();
+
+    h.store.markUtteranceSent(16_000);
+    expect(h.store.transcribing()).toBe(true);
+    expect(h.store.heard()).toBe(true);
+
+    h.store.receiveText('hello there');
+    expect(h.store.transcribing()).toBe(false);
+    // Still heard: the words are buffered, not yet in the record.
+    expect(h.store.heard()).toBe(true);
+  });
+
+  it('counts two utterances in flight as two', () => {
+    const h = harness();
+
+    h.store.markUtteranceSent(16_000);
+    h.store.markUtteranceSent(16_000);
+    h.store.receiveText('first');
+
+    expect(h.store.transcribing()).toBe(true);
+  });
+
+  it('stops claiming an utterance that never produced text', () => {
+    // A cough the backend's own gate threw away answers with nothing, and nothing says so.
+    vi.useFakeTimers();
+    const h = harness();
+
+    h.store.markUtteranceSent(16_000);
+    vi.advanceTimersByTime(1_000 + 5_000);
+
+    expect(h.store.transcribing()).toBe(false);
+    expect(h.store.heard()).toBe(false);
+  });
+});
+
+/**
+ * A stream that went away mid-call.
+ *
+ * An utterance is an HTTP request to a node that may be on the other side of the internet, so one
+ * failing says nothing about whether the session is over: the connection dropped, the request timed
+ * out, the node let the stream go. Recording used to end on the first of those it could not undo in
+ * one attempt, which is how transcription stopped at a different moment for each member of a call.
+ *
+ * Driven through a stand-in audio graph, since this is the listening half the rest of the file
+ * deliberately avoids.
+ */
+describe('a stream that went away', () => {
+  /** The worklet node the store builds, kept so a test can post an utterance through its port. */
+  let nodes: { port: { onmessage: ((event: { data: unknown }) => void) | null } }[];
+
+  beforeEach(() => {
+    nodes = [];
+    vi.stubGlobal(
+      'AudioContext',
+      class {
+        audioWorklet = { addModule: async () => {} };
+        createMediaStreamSource() {
+          return { connect() {}, disconnect() {} };
+        }
+        async close() {}
+      },
+    );
+    vi.stubGlobal(
+      'AudioWorkletNode',
+      class {
+        port = { onmessage: null, postMessage() {}, close() {} };
+        constructor() {
+          nodes.push(this as never);
+        }
+        disconnect() {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const IN_CALL = [peer(ME, { type: 'call', id: CALL, record: RECORD })];
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const utterance = () => ({ data: { kind: 'utterance', audio: new Float32Array(1600) } });
+
+  /**
+   * A backend whose nth stream behaves as the nth entry says — the last entry describing every
+   * attempt after it, so `['fails', 'fails']` is a node that stays unreachable.
+   */
+  function streams(behaviour: ('fails' | 'works')[]) {
+    const fed: number[] = [];
+    let opens = 0;
+    return {
+      fed,
+      opens: () => opens,
+      transcription: {
+        available: () => true,
+        models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+        open: async () => {
+          const index = opens++;
+          const how = behaviour[index] ?? behaviour[behaviour.length - 1] ?? 'works';
+          if (how === 'fails' && index > 0) throw new Error('model gone');
+          return {
+            feed: async () => {
+              if (how === 'fails') throw new Error('stream not found');
+              fed.push(index);
+            },
+            close: async () => {},
+          };
+        },
+      },
+    };
+  }
+
+  it('opens another stream and resends the utterance that found the first gone', async () => {
+    const s = streams(['fails', 'works']);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+    await settle();
+    expect(h.store.status()).toBe('listening');
+
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    await settle();
+
+    expect(s.opens()).toBe(2);
+    expect(s.fed).toEqual([1]);
+    expect(h.store.status()).toBe('listening');
+    expect(h.store.reconnecting()).toBe(false);
+  });
+
+  it('shares one reconnection between utterances that fail together', async () => {
+    const s = streams(['fails', 'works']);
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+    await settle();
+
+    nodes[0].port.onmessage?.(utterance());
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    await settle();
+
+    expect(s.opens()).toBe(2);
+    expect(s.fed).toEqual([1, 1]);
+    expect(h.store.status()).toBe('listening');
+  });
+
+  /**
+   * The case the hold exists for: somebody carries on talking while the stream is being put back.
+   * Their words are sent once it is, in the order they were said, rather than falling in the gap.
+   */
+  it('holds what is said while reconnecting, and sends it when the stream is back', async () => {
+    let releaseOpen = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    const fed: number[] = [];
+    let opens = 0;
+    const transcription = {
+      available: () => true,
+      models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+      open: async () => {
+        const index = opens++;
+        // The second open is kept in flight, so the utterances below arrive mid-reconnection.
+        if (index === 1) await held;
+        return {
+          feed: async () => {
+            if (index === 0) throw new Error('stream not found');
+            fed.push(index);
+          },
+          close: async () => {},
+        };
+      },
+    };
+
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription });
+    await settle();
+
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    expect(h.store.reconnecting()).toBe(true);
+
+    nodes[0].port.onmessage?.(utterance());
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    expect(fed).toEqual([]);
+
+    releaseOpen();
+    await settle();
+    await settle();
+
+    // All three: the one that found the stream gone, and the two said while it was being replaced.
+    expect(fed).toEqual([1, 1, 1]);
+    expect(h.store.reconnecting()).toBe(false);
+    expect(h.store.status()).toBe('listening');
+  });
+
+  /**
+   * The failure this was all found through: an utterance larger than the proxy in front of a hosted
+   * node would carry, refused with a 413 the browser reports as a failed fetch. Resending it was the
+   * whole recovery, so it failed identically and the session stopped — for the rest of the call, on
+   * the first long thing anybody said. One utterance is the correct price.
+   */
+  it('drops an utterance the far end keeps refusing, and keeps transcribing', async () => {
+    const fed: number[] = [];
+    let opens = 0;
+    const transcription = {
+      available: () => true,
+      models: async () => [{ id: 'small', name: 'Whisper small', ready: true, isDefault: true }],
+      // Opening always works: the node is reachable, which is what makes the utterance the suspect.
+      open: async () => {
+        opens += 1;
+        return {
+          feed: async (audio: Float32Array) => {
+            // Stands in for the proxy's body limit: anything long is refused, however often it is sent.
+            if (audio.length > 100_000) throw new Error('Failed to fetch');
+            fed.push(audio.length);
+          },
+          close: async () => {},
+        };
+      },
+    };
+
+    const h = harness(IN_CALL, { dataset: () => ({}), transcription });
+    await settle();
+
+    // Larger than the proxy in front of a hosted node will carry, and refused identically every time.
+    nodes[0].port.onmessage?.({ data: { kind: 'utterance', audio: new Float32Array(480_000) } });
+    // Real timers: the second attempt is a second away, and this test shares a file with one that
+    // runs the clock forward a minute. Long enough for the two refusals that settle it.
+    await new Promise((resolve) => setTimeout(resolve, 1_400));
+
+    // Dropped rather than retried for ever, and the session is still recording.
+    expect(h.store.status()).toBe('listening');
+    expect(h.store.reconnecting()).toBe(false);
+    expect(h.store.error()).toBe('');
+
+    // And the next thing said still lands.
+    nodes[0].port.onmessage?.(utterance());
+    await settle();
+    await settle();
+    expect(fed).toEqual([1600]);
+    // The one it started with, and the ones that proved the node was answering.
+    expect(opens).toBeLessThanOrEqual(3);
+  });
+
+  it('keeps trying, and stops only once a minute of attempts has failed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const s = streams(['fails', 'fails']);
+      const h = harness(IN_CALL, { dataset: () => ({}), transcription: s.transcription });
+      await settle();
+
+      nodes[0].port.onmessage?.(utterance());
+      await settle();
+
+      // Still recording, and saying why nothing is arriving, rather than over.
+      expect(h.store.reconnecting()).toBe(true);
+      expect(h.store.status()).toBe('listening');
+      expect(h.store.listening()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(s.opens()).toBeGreaterThan(2);
+      expect(h.store.status()).toBe('error');
+      expect(h.store.error()).toContain('could not be reached again');
+      expect(h.store.reconnecting()).toBe(false);
+      expect(h.store.listening()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+/**
+ * The transcript's window.
+ *
+ * A transcript is two documents with opposite anchors — a tail while the call runs, a document
+ * afterwards — and the window is what makes both bounded. Before it there was no limit at all, so
+ * every utterance re-read, re-hydrated and re-fingerprinted everything already said: the cost of
+ * speaking grew with the length of the conversation.
+ */
+describe('the transcript window', () => {
+  it('opens on a small page, following the live end', () => {
+    /*
+      Fifty, not the two hundred it grows by. Opening is paid by everybody on every call, and a
+      page that size is also a hundred-odd custom elements laying out in one pass — which is what
+      made the panel open a couple of lines short of the bottom.
+    */
+    const h = harness();
+    expect(h.store.transcriptShown()).toBe(50);
+    expect(h.store.transcriptFromStart()).toBe(false);
+  });
+
+  it('grows by more than it opened with, because the two answer different questions', () => {
+    /*
+      The asymmetry is the point. The window grows by re-running the query at a bigger limit rather
+      than by fetching a page and appending, so reading backwards is quadratic in the number of
+      loads — and the loads are automatic now, on scroll, rather than one press each. A small step
+      would turn a scroll through a long transcript into twenty re-fetches of a growing list.
+    */
+    const h = harness();
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(250);
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(450);
+  });
+
+  /*
+    Reading from the start is a different QUERY, not a longer scroll — the window is anchored to the
+    live end, so the top of what is loaded is not the beginning of the conversation and no amount of
+    scrolling reaches one from the other. It re-anchors and starts again at one page, which is what
+    makes reaching the beginning of a two-hour call cheap rather than a matter of pressing "earlier"
+    thirty times.
+  */
+  it('re-anchors to the beginning, at one page again', () => {
+    const h = harness();
+    h.store.showMoreTranscript();
+    h.store.showMoreTranscript();
+
+    h.store.readTranscriptFromStart();
+    expect(h.store.transcriptFromStart()).toBe(true);
+    expect(h.store.transcriptShown()).toBe(50);
+  });
+
+  it('goes back to following the end', () => {
+    const h = harness();
+    h.store.readTranscriptFromStart();
+    h.store.showMoreTranscript();
+
+    h.store.readTranscriptLive();
+    expect(h.store.transcriptFromStart()).toBe(false);
+    expect(h.store.transcriptShown()).toBe(50);
+  });
+
+  /*
+    A different conversation is a different document.
+
+    Without this the window is a high-water mark across calls: read six hundred lines of one and the
+    next opens by loading six hundred of its own — the cost the window exists to bound, arriving one
+    call late.
+  */
+  it('starts again when the call on screen changes', async () => {
+    let onScreen: string | null = 'call-one';
+    const h = harness([], { callOnScreen: () => onScreen });
+
+    // Read back into it, and from the other end — both are state the next call must not inherit.
+    h.store.readTranscriptFromStart();
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(250);
+    expect(h.store.transcriptFromStart()).toBe(true);
+
+    onScreen = 'call-two';
+    await h.settle();
+
+    expect(h.store.transcriptShown()).toBe(50);
+    expect(h.store.transcriptFromStart()).toBe(false);
+  });
+
+  /*
+    And does NOT start again for a tick that changed nothing — a reader who has just asked for more
+    in the call they are already in must not have it taken away by the next presence heartbeat.
+  */
+  it('leaves the window alone while the call on screen is the same', async () => {
+    const h = harness([], { callOnScreen: () => 'call-one' });
+
+    h.store.showMoreTranscript();
+    await h.settle();
+
+    expect(h.store.transcriptShown()).toBe(250);
   });
 });

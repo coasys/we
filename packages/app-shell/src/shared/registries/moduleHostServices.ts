@@ -1,22 +1,25 @@
 /**
- * The host services a module store may borrow, bound late.
+ * The host services a module store may borrow, bound late — and the kernels built over them.
  *
  * ## Why this exists at all
  *
- * Modules are registered in `PlatformProvider`, which sits *above* `StoreProvider` — the launcher
+ * Modules are registered in `PlatformProvider`, which sits *above* `StoreProvider`: the launcher
  * template has to be in the registry before the stores render, so registration cannot wait. But the
  * ports a module wants (transport, presence, the current dataset) all live in stores that do not
  * exist yet at that moment.
  *
  * Rather than reorder the tree, the deps handed to a module store are **stable objects whose methods
- * dereference at call time**. A module holds `deps.presence` forever; what it points at is filled in
- * when `PresenceStoreProvider` mounts. Every accessor answers safely before then — `peers()` returns
- * an empty array, `ephemeral()` returns `null` — which is the same degrade-don't-throw contract the
- * ports already require for a personal space with no neighbourhood.
+ * dereference at call time**. A module holds `deps.kernels.presence` forever; what it points at is
+ * filled in when `PresenceStoreProvider` mounts. Every accessor answers safely before then, which is
+ * the same degrade-don't-throw contract the kernels already require for a personal space with no
+ * neighbourhood.
  *
- * The alternative — activating modules after the stores mount — was rejected because it splits
- * registration into two phases with different capabilities, and "which phase am I in" is exactly the
- * kind of implicit state the last round of seam bugs came from.
+ * ## Kernels
+ *
+ * Each kernel in `ModuleKernels` is built here once, as a forwarding wrapper over the slice of
+ * services a host store publishes. The registry then hands each module only the kernels its manifest
+ * named — see `depsFor` in `moduleRegistry.ts`. What this file decides is what a host *implements*;
+ * `HOST_KERNELS` is that list, and it is what registration compares a manifest against.
  */
 import type {
   Activity,
@@ -25,20 +28,27 @@ import type {
   InterpretationPort,
   InterpretationProposal,
   InterpretationResult,
+  LanguageModelPort,
   Peer,
   TranscriptionPort,
 } from '@we/backend-shared';
 import type {
-  AgentDataAccess,
+  AgentDataKernel,
+  CopiedIn,
   CreateEntityOptions,
   DatasetTarget,
+  DocumentAccess,
   InterpretationActivitySummary,
+  KernelName,
   ModuleDatasetAccess,
   ModuleIdentityAccess,
+  ModuleKernels,
   ModuleStoreDeps,
+  RecordQuery,
+  ViewKernel,
 } from '@we/module-shared';
 
-import { moduleRegistry, moduleStores } from './moduleRegistry';
+import { addLiveMarks, addLivePointerListener } from '../liveView';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
 export interface ModuleHostServices {
@@ -47,31 +57,16 @@ export interface ModuleHostServices {
   /**
    * Resolve a dataset URI a module named, or `undefined` when this agent does not hold it.
    *
-   * The half of {@link DatasetTarget} only the host can supply. Distinguishes "not named" from
-   * "named and not found", because those must not have the same outcome: the first means the space
-   * on screen, and the second must refuse rather than silently write somewhere else.
+   * Distinguishes "not named" from "named and not found", because those must not have the same
+   * outcome: the first means the space on screen, and the second must refuse rather than silently
+   * write somewhere else.
    */
   datasetByUri?: (uri: string) => DatasetHandle | undefined;
   /**
    * The call record the address names, when the interface on screen is about one.
    *
-   * ## Why the host answers this and not the module
-   *
-   * A module store has no route access, deliberately — and the answer lives in the address, because
-   * the address is what survives a reload. The template that put it there cannot tell a module
-   * either: a store signal set on a click is empty after a refresh, which is precisely the case
-   * this exists for. So the one thing that reads routes publishes it, once.
-   *
-   * `?call=<recordId>` was already a convention two modules read from their schemas, agreed by
-   * coincidence rather than contract. Naming it here makes it one contract in one place instead of
-   * a string every surface has to spell the same way.
-   *
-   * Specifically a *call* rather than "the record on screen", which was the tempting generalisation
-   * and is a worse one: the reader would have to trust that whatever is named is a call, and a
-   * caller acting on a task id would anchor a meeting to it without complaint.
-   *
-   * Absent, or null, means the address names no call — which is the ordinary case everywhere but a
-   * template built around one.
+   * A module store has no route access, deliberately, and the answer lives in the address because
+   * the address is what survives a reload. So the one thing that reads routes publishes it, once.
    */
   callOnScreen?: () => string | null;
   selfId?: () => string | null;
@@ -81,97 +76,48 @@ export interface ModuleHostServices {
     setActivity: (activity: Activity) => void;
     clearActivity: (type: string, id?: string) => void;
   };
+  /**
+   * The screen: where this agent's pointer is, what is in view, and what to draw on top.
+   *
+   * Bound by the component that can see all three — the router, the DOM and the shell's insets — and
+   * forwarded to the `view` kernel below. See `shared/liveView.ts` for why none of it can be a
+   * module's own.
+   */
+  view?: ViewKernel;
   transcription?: TranscriptionPort;
   interpretation?: InterpretationPort;
+  languageModel?: LanguageModelPort;
+  /** Where a module's `notify` lands — a toast, in this host. */
+  notify?: (tone: 'success' | 'warning' | 'error', message: string) => void;
   /**
    * Gather a collection's children and interpret them, published by whichever store can read the
    * dataset's models. Separate from `interpretation` because the port takes turns and only the host
-   * can produce them — see `shared/interpretation/transcriptTurns.ts`.
+   * can produce them.
    */
-  /** Where a module's `notify` lands — a toast, in this host. */
-  notify?: (tone: 'success' | 'warning' | 'error', message: string) => void;
   interpretCollection?: (collectionId: string) => Promise<InterpretationResult>;
-  /**
-   * The suggestions staged on one collection's contents, published by the same store as
-   * `interpretCollection` and for the same reason: narrowing to a collection needs the containment
-   * predicate, which only a store that can read the dataset's models can resolve.
-   *
-   * Absent means a host that cannot narrow, and the unscoped port call stands in — the behaviour
-   * every caller had before, and too much rather than too little.
-   */
+  /** The suggestions staged on one collection's contents. Absent means a host that cannot narrow. */
   proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
-  /**
-   * What one call extracts and what else it could, published by the store that can see all three
-   * layers. Absent reads as an empty list — see `ModuleInterpretationAccess.targets`.
-   */
+  /** What one call extracts and what else it could. Absent reads as an empty list. */
   extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
-  /** Add or remove one model from what a call extracts. Absent means the host cannot record it. */
   setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   watchCollection?: (collectionId: string) => Promise<void>;
   unwatchCollection?: (collectionId: string) => Promise<void>;
   reconcileCollection?: (collectionId: string) => Promise<number>;
   /**
-   * Make sure a collection has a board, once it holds a task.
-   *
-   * Extraction's hook. A pass that leaves a call holding work needs somewhere for that work to be
-   * arranged, and the alternative — creating the board when somebody opens the route — is a write
-   * as a side effect of navigating, which on a neighbourhood means every member who opened the tab
-   * racing to create the same board. A pass runs on exactly one node, so it is the right writer.
-   *
-   * Takes an optional dataset for a host that knows one, and otherwise resolves the same dataset
-   * `interpretCollection` does — which is the one the pass just wrote its records into, so the board
-   * cannot land somewhere its own cards did not.
+   * What follows a pass, on the host's side: today, once a collection holds a task, give it a board
+   * to be arranged on. A pass runs on exactly one node, so it is the right writer; creating the board
+   * when somebody opens a route would race every member who opened the tab.
    */
   ensureBoardFor?: (collectionId: string, dataset?: string) => Promise<string>;
-  /**
-   * Live extraction activity for the current space, published by the store that holds the feed.
-   *
-   * Separate from `interpretation` for the same reason `interpretCollection` is: the port reports
-   * only what this node can see, and merging in what peers report needs the ephemeral transport and
-   * the profile cache — neither of which the port has, and both of which the host does.
-   */
+  /** Live extraction activity for the current space, published by the store that holds the feed. */
   interpretationActivity?: () => InterpretationActivitySummary[];
-  /**
-   * Whether the backend can interpret, as the store learned it from the backend itself.
-   *
-   * Published separately from the port's own `available()` because the answer arrives
-   * asynchronously and has to be *reactive*: a module reads it inside a derived value, and the
-   * probe resolves a round trip after the dataset changes. A plain port call would be read once and
-   * never re-read.
-   */
+  /** Whether the backend can interpret, as the store learned it from the backend itself. Reactive. */
   interpretationAvailable?: () => boolean;
-  /**
-   * Whether this space has automatic extraction switched on — the community's decision, reactive.
-   *
-   * Separate from `interpretationAvailable`, which is what the *node* can do. Both are needed, and
-   * conflating them put the wrong sentence on screen: a space with the setting off reported that
-   * this node could not auto-extract, which is neither true nor something anybody can act on.
-   */
-  /**
-   * Whether a call is extracted as it happens — its participants' answer, else the space's.
-   *
-   * Takes a collection because the answer is per call: a community's standing decision is the
-   * default, and the people in one conversation may turn it off for that conversation. Omit it to
-   * ask about the space itself.
-   */
+  /** Whether a call is extracted as it happens — its participants' answer, else the space's. */
   autoInterpretEnabled?: (collectionId?: string) => boolean;
-  /** Turn it on or off for one call, for everyone in it. */
   setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
-  /**
-   * Whether this space shares the model exchange between peers — the space setting, reactive.
-   *
-   * What a module reads to explain a peer's row that cannot be opened. Separate from the rows
-   * themselves because a row without detail is not evidence about the setting: see
-   * `InterpretationStore` on why the two were conflated and what that showed.
-   */
-  interpretationDetailShared?: () => boolean;
-  /**
-   * A count that moves whenever the staged suggestions in the current space may have changed —
-   * staged by a pass, or accepted or rejected by anybody. Reactive; see
-   * `ModuleInterpretationAccess.proposalsRevision`.
-   */
   interpretationProposalsRevision?: () => number;
-  /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
+  /** The profile cache, so a module can put a face to an agent id. */
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces, for a module whose state can outlive the space on screen. */
   datasets?: ModuleDatasetAccess;
@@ -181,44 +127,87 @@ export interface ModuleHostServices {
     fields: Record<string, unknown>,
     options?: CreateEntityOptions,
   ) => Promise<string | null>;
-  /** Add one value to a to-many relation on an existing record. See `ModuleStoreDeps.linkEntity`. */
   linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
-  /** Change named scalar fields of an existing record. See `ModuleStoreDeps.updateEntity`. */
   updateEntity?: (
     entity: string,
     id: string,
     fields: Record<string, unknown>,
     options?: DatasetTarget,
   ) => Promise<void>;
-  /** This agent's own records, in the root dataset. See `AgentDataAccess`. */
-  agentData?: AgentDataAccess;
-  /** How the current dataset is named in a record reference. See `ModuleStoreDeps.datasetRefKey`. */
+  removeEntity?: (entity: string, id: string, options?: DatasetTarget) => Promise<void>;
+  /** Read records once — the read half of the records kernel. */
+  findEntities?: (entity: string, query?: RecordQuery, options?: DatasetTarget) => Promise<Record<string, unknown>[]>;
+  /** Read records and keep reading. Returns the unsubscribe. */
+  subscribeEntities?: (
+    entity: string,
+    query: RecordQuery,
+    cb: (rows: Record<string, unknown>[]) => void,
+    options?: DatasetTarget,
+  ) => () => void;
+  /** Composed documents in the space on screen — the records kernel's `documents`. */
+  documents?: DocumentAccess;
+  /** This agent's own records, in their personal space. */
+  agentData?: AgentDataKernel;
+  /** How the current dataset is named in a record reference. */
   datasetRefKey?: () => string;
 }
 
 const services: ModuleHostServices = {};
 
 /**
+ * A signal every late-bound accessor reads, so an effect over one is never born dead.
+ *
+ * ## The failure this exists for
+ *
+ * A module store is built before the host stores publish their slices, so at construction
+ * `services.dataset` is `undefined` and `() => services.dataset?.() ?? null` reads **nothing
+ * reactive**. A module doing the obvious thing —
+ *
+ * ```ts
+ * effect(() => attach(deps.dataset?.() ?? null));
+ * ```
+ *
+ * gets an effect whose first run tracks zero dependencies, which Solid therefore never runs again.
+ * The module is handed `null` once, for ever. Nothing throws, nothing warns, and the feature simply
+ * does not exist — which is how the live module shipped with no controls on the rail at all: its
+ * availability was derived from a transport that had never been opened, because the effect that would
+ * have opened it ran before there was a dataset to open one for.
+ *
+ * Reading the revision inside every forwarding closure means the closure always touches *a* signal,
+ * so the effect has at least one dependency however early it runs. Bumping it after every
+ * `provideModuleHostServices` re-runs those effects against the slice that has just arrived.
+ *
+ * The alternative — telling module authors not to use `effect` over a service — is a rule nobody can
+ * see they have broken.
+ */
+let readServicesRevision: (() => void) | null = null;
+let bumpServicesRevision: (() => void) | null = null;
+
+/**
+ * Read the revision, then the service — see {@link readServicesRevision}.
+ *
+ * At module scope rather than inside `createModuleStoreDeps`, because the kernels are built above it and
+ * need it just as much: `presence.peers` is a reactive read, and an effect over it before presence is
+ * bound is the same dead effect as one over `dataset`.
+ */
+function tracked<T>(read: () => T): () => T {
+  return () => {
+    readServicesRevision?.();
+    return read();
+  };
+}
+
+/**
  * Publish a slice of host services to registered modules.
  *
- * Merges rather than replaces, because the slices arrive from different stores at different times —
- * `DatasetStore`/`SessionStore` have the dataset and the transport, `PresenceStore` has the roster.
+ * Merges rather than replaces, because the slices arrive from different stores at different times.
+ * Returns the withdrawal, and withdraws only what is still ours — a provider that unmounts must take
+ * back only the entries it still owns, or its cleanup would blank its replacement's.
  */
 export function provideModuleHostServices(slice: ModuleHostServices): () => void {
   Object.assign(services, slice);
-
-  /*
-    Returns the withdrawal, and withdraws only what is still ours.
-
-    Six stores merge slices into one global object and nothing ever removed one. A provider that
-    unmounted — `TemplateProvider` does, on every template switch — left its closures here, bound to
-    signals from a scope that had been disposed, and a module going through them wrote against the
-    previous template's stores with nothing anywhere reporting it.
-
-    Key by key rather than wholesale, because the slices genuinely overlap in time: a store that has
-    already been superseded must take back only the entries it still owns, or its cleanup would blank
-    its replacement's.
-  */
+  // After the assignment, so an effect re-running here sees the slice rather than the frame before it.
+  bumpServicesRevision?.();
   const mine = Object.entries(slice) as [keyof ModuleHostServices, unknown][];
   return () => {
     for (const [key, value] of mine) {
@@ -230,22 +219,19 @@ export function provideModuleHostServices(slice: ModuleHostServices): () => void
 /** Test seam: drop everything between cases so one test's bindings cannot leak into the next. */
 export function resetModuleHostServices(): void {
   for (const key of Object.keys(services)) delete services[key as keyof ModuleHostServices];
+  readServicesRevision = null;
+  bumpServicesRevision = null;
+  publishedMedia = null;
+  mediaListeners.clear();
+  copiedInListeners.clear();
 }
 
 /**
  * The dataset a module's call means: the one it named, or the space on screen.
  *
- * ## Why a missing one is `null` rather than the current dataset
- *
- * Falling back is the bug this exists to fix. A module names a dataset precisely when its work does
- * *not* belong to whatever is on screen — a transcript belongs to the call, and the call's space may
- * be two navigations behind. Resolving a name it does not hold and quietly writing to the current
- * dataset instead is how a transcript ended up in the wrong space with a `children` link to a record
- * that space does not hold.
- *
- * So there are three answers, not two: unnamed means here, named-and-found means there, and
- * named-and-missing means nowhere. A caller that gets nothing does nothing — which loses one
- * utterance, where the alternative loses the transcript and corrupts a second space.
+ * Three answers, not two: unnamed means here, named-and-found means there, and named-and-missing
+ * means nowhere. Falling back is the bug this exists to fix — a transcript written into whichever
+ * space the reader had wandered to.
  */
 function targeted(target?: DatasetTarget): DatasetHandle | null {
   if (!target?.dataset) return services.dataset?.() ?? null;
@@ -257,90 +243,286 @@ function targeted(target?: DatasetTarget): DatasetHandle | null {
   return found;
 }
 
+/*
+  What a module is capturing, for another to hear.
+
+  Held here rather than read off a module's store by a declared key, so the two never reference each
+  other and the host never scans stores for a magic member. One publisher: a second replaces the
+  first and says so, since a transcriber hearing two streams at once would be worse than hearing the
+  newer one.
+*/
+let publishedMedia: MediaStream | null = null;
+let publishedBy: string | null = null;
+const mediaListeners = new Set<(stream: MediaStream | null) => void>();
+
+/*
+  Posts written into a space from elsewhere, for the modules that asked to hear. Held here, beside
+  the kernels that hand the subscription out, so the store that writes the post and the module that
+  listens never name each other.
+*/
+const copiedInListeners = new Set<(event: CopiedIn) => void>();
+
+/** Tell listening modules that a post arrived from elsewhere. Each listener in its own `try`. */
+export function notifyCopiedIn(event: CopiedIn): void {
+  for (const listener of copiedInListeners) {
+    try {
+      listener(event);
+    } catch (error) {
+      console.error('module host: a copied-in listener failed', error);
+    }
+  }
+}
+
+/**
+ * A document surface that reads the live one on every call — the same late binding every kernel
+ * here has, because the providers mount after the module stores are built.
+ */
+function forwardDocuments(live: () => DocumentAccess | undefined): DocumentAccess {
+  return {
+    create: async (document, options) => (await live()?.create(document, options)) ?? null,
+    update: async (id, document) => {
+      await live()?.update(id, document);
+    },
+    remove: async (id) => {
+      await live()?.remove(id);
+    },
+    read: async (id) => (await live()?.read(id)) ?? null,
+  };
+}
+
+/**
+ * The kernels this host implements — what a manifest's `requires.kernels` is checked against.
+ *
+ * **Adding a kernel means adding it here too**, and forgetting is silent in the worst way: a module
+ * naming one this list omits is *refused at registration*, so it has no store, no launcher, no slot and
+ * no panel. The feature is simply absent, and because a refusal reads as a console line in an app that
+ * then works fine, the obvious conclusion is that the module is switched off somewhere. That is exactly
+ * how the live module's controls went missing from the rail — `view` was implemented in the bag below
+ * and never declared up here.
+ *
+ * A test asserts this list against the keys the bag actually builds, in both directions, because two
+ * hand-maintained copies of one fact is what caused it.
+ */
+export const HOST_KERNELS: readonly KernelName[] = [
+  'records',
+  'agentData',
+  'presence',
+  'view',
+  'ephemeral',
+  'media',
+  'peerConnection',
+  'transcription',
+  'languageModel',
+  'interpretation',
+  'secrets',
+];
+
 /**
  * Build the deps bag handed to every module store.
  *
  * `signal` and `effect` come from the framework, because only the host knows which one it is running.
- * Everything else reads through the late-bound registry above.
+ * Everything else reads through the late-bound registry above. The registry narrows `kernels` per
+ * module and injects `state`, `action`, `onDispose` and `settings`; the placeholders here are what a
+ * store built with the bag directly — a test — gets.
  */
 export function createModuleStoreDeps(framework: {
   signal: <T>(initial: T) => [() => T, (next: T) => void];
   effect: (fn: () => void) => void;
 }): ModuleStoreDeps {
-  return {
-    signal: framework.signal,
-    effect: framework.effect,
+  // A signal for the published stream, so a consumer reading `input()` inside a derived value re-runs
+  // when the publisher changes it.
+  const [mediaInput, setMediaInput] = framework.signal<MediaStream | null>(null);
+  mediaListeners.add(setMediaInput);
 
-    dataset: () => services.dataset?.() ?? null,
-    datasetUri: () => services.datasetUri?.() ?? null,
-    // Read through rather than captured, like every accessor here: the address changes under a
-    // module store that outlives every route it is asked about.
-    callOnScreen: () => services.callOnScreen?.() ?? null,
-    datasetRefKey: () => services.datasetRefKey?.() ?? '',
-    selfId: () => services.selfId?.() ?? null,
+  const kernels: Partial<ModuleKernels> = {
+    records: {
+      create: async (entity, fields, options) => (await services.createEntity?.(entity, fields, options)) ?? null,
+      link: async (entity, id, relation, value, target) => {
+        await services.linkEntity?.(entity, id, relation, value, target);
+      },
+      update: async (entity, id, fields, target) => {
+        await services.updateEntity?.(entity, id, fields, target);
+      },
+      remove: async (entity, id, target) => {
+        await services.removeEntity?.(entity, id, target);
+      },
+      find: async (entity, query, target) => (await services.findEntities?.(entity, query, target)) ?? [],
+      subscribe: (entity, query, cb, target) => services.subscribeEntities?.(entity, query, cb, target) ?? (() => {}),
+      documents: forwardDocuments(() => services.documents),
+      onCopiedIn: (cb) => {
+        copiedInListeners.add(cb);
+        return () => copiedInListeners.delete(cb);
+      },
+    },
 
-    // Forwarded rather than captured, like every accessor here: a module that takes `deps.notify` at
-    // construction still reaches the host's own once one is provided.
-    notify: (tone, message) => services.notify?.(tone, message),
-
-    // A stable function that forwards, so a module capturing `deps.ephemeral` at construction still
-    // reaches the real port once one exists.
-    ephemeral: (handle) => services.ephemeral?.(handle) ?? null,
+    // Forwarded rather than captured: a module store is built before the personal space has been found.
+    agentData: {
+      // Reactive reads, so they are tracked for the reason `dataset` is — see `readServicesRevision`.
+      ready: tracked(() => services.agentData?.ready() ?? false),
+      refKey: tracked(() => services.agentData?.refKey() ?? ''),
+      create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
+      find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
+      update: async (entity, id, fields) => {
+        await services.agentData?.update(entity, id, fields);
+      },
+      remove: async (entity, id) => {
+        await services.agentData?.remove(entity, id);
+      },
+      documents: forwardDocuments(() => services.agentData?.documents),
+    },
 
     presence: {
-      peers: () => services.presence?.peers() ?? [],
+      /*
+        Tracked, and this is the one that cost a debugging session.
+
+        `peers` is a reactive read — every module that cares who is here puts it in an effect or a memo
+        — and an effect reading it before `services.presence` is bound tracks nothing, so it never runs
+        again. The live module's publish rate was derived that way and stayed at "nobody is watching"
+        for the life of the session, so it never sent a cursor at all.
+      */
+      peers: tracked(() => services.presence?.peers() ?? []),
       setActivity: (activity) => services.presence?.setActivity(activity),
       clearActivity: (type, id) => services.presence?.clearActivity(type, id),
     },
 
-    // Forwarding wrappers rather than the ports themselves, so a module that captured its deps at
-    // construction still reaches whatever the host has bound by the time it calls — the same
-    // late-binding contract as `ephemeral` above.
+    /*
+      Forwarded, like every other kernel here, and the degraded answers are the interesting part: a
+      host with no view binding reports a pointer that never moves, a frame with an empty path, and
+      accepts decorations nobody draws. A module must survive all three — which is the ordinary case
+      on a host that has not finished booting, and the permanent case on one with no screen at all.
+    */
+    /*
+      Half of this is a registry and half of it needs a component, and they are wired differently.
+
+      `decorate` and `onPointer` are **registrations**, and a module makes them when its store is built
+      — which `PlatformProvider` does before `App` renders. Forwarded through `services.view` they were
+      `undefined?.decorate(…)`, answering with a no-op unsubscribe for ever: nothing a module asked to
+      draw was drawn, and this agent's pointer was never reported. So they land in the shared registry,
+      where there is nothing to be early for.
+
+      `frame` and `apply` genuinely need the component — the router, the DOM, the shell's insets — so
+      they forward, and degrade honestly: a frame with an empty path, and an `apply` that does nothing.
+      A module calls those later, in response to something, rather than at construction.
+    */
+    view: {
+      onPointer: addLivePointerListener,
+      decorate: addLiveMarks,
+      frame: () => services.view?.frame() ?? { path: '' },
+      apply: (frame) => services.view?.apply(frame),
+    },
+
+    // A stable function that forwards, so a module capturing the port at construction still reaches
+    // the real one once it exists.
+    ephemeral: (handle) => services.ephemeral?.(handle) ?? null,
+
+    media: {
+      getUserMedia: (constraints) => {
+        const devices = globalThis.navigator?.mediaDevices;
+        if (!devices) return Promise.reject(new Error('media: this host has no media devices'));
+        return devices.getUserMedia(constraints);
+      },
+      getDisplayMedia: (constraints) => {
+        const devices = globalThis.navigator?.mediaDevices;
+        if (!devices?.getDisplayMedia) return Promise.reject(new Error('media: this host cannot share a screen'));
+        return devices.getDisplayMedia(constraints);
+      },
+      /*
+        `[]` rather than a rejection, on every path that cannot answer.
+
+        A machine with no media devices, a browser that has not been given permission, and a host
+        with no `navigator` are all states a chooser has to draw something sensible for — "no
+        microphones found" — and an error would turn each of them into a fault report. The two calls
+        above reject because *asking for a device and not getting one* is a failure; asking what
+        there is and being told nothing is not.
+
+        Narrowed to inputs, and to the four fields a chooser reads. `MediaDeviceInfo` also carries
+        `toJSON` and, on outputs, a routing id that nothing here uses — passing the browser's object
+        through would put a wider surface in front of every module than the kernel means to offer.
+      */
+      enumerateDevices: async () => {
+        const devices = globalThis.navigator?.mediaDevices;
+        if (!devices?.enumerateDevices) return [];
+        try {
+          const found = await devices.enumerateDevices();
+          return found
+            .filter((device) => device.kind === 'audioinput' || device.kind === 'videoinput')
+            .map((device) => ({
+              deviceId: device.deviceId,
+              kind: device.kind as 'audioinput' | 'videoinput',
+              label: device.label,
+              groupId: device.groupId,
+            }));
+        } catch {
+          return [];
+        }
+      },
+      /*
+        A no-op unsubscribe where the host cannot report changes, so a caller's teardown is the same
+        shape either way and nothing has to test whether it got a real subscription.
+      */
+      onDevicesChanged: (listener) => {
+        const devices = globalThis.navigator?.mediaDevices;
+        if (!devices?.addEventListener) return () => {};
+        devices.addEventListener('devicechange', listener);
+        return () => devices.removeEventListener('devicechange', listener);
+      },
+      publish: (stream) => {
+        publishedMedia = stream;
+        for (const listener of mediaListeners) listener(stream);
+      },
+      input: mediaInput,
+    },
+
+    peerConnection: {
+      create: (configuration) => {
+        if (typeof RTCPeerConnection === 'undefined') throw new Error('peerConnection: this host has no WebRTC');
+        return new RTCPeerConnection(configuration);
+      },
+    },
+
+    // The wrapper is always present so late binding works; `available` is how a module asks whether
+    // there is anything behind it.
     transcription: {
-      // The wrapper is always present so late binding works; this is how a module asks whether
-      // there is anything behind it. Without it, `if (!transcription)` never fired and a backend
-      // that cannot transcribe at all told the user to go and install a model.
-      available: () => services.transcription !== undefined,
+      available: () => services.transcription !== undefined && (services.transcription.available?.() ?? true),
       models: async () => (await services.transcription?.models()) ?? [],
       open: async (modelId, onText, tuning) => {
         const port = services.transcription;
         if (!port) throw new Error('transcription: this backend cannot transcribe');
         return port.open(modelId, onText, tuning);
       },
+      offeredModel: () => services.transcription?.offeredModel?.() ?? null,
+      installOfferedModel: async () => {
+        const install = services.transcription?.installOfferedModel;
+        if (!install) throw new Error('transcription: this backend cannot install a model');
+        return install();
+      },
     },
 
-    // Binds the dataset as well as forwarding, so a module never handles a dataset handle. The
-    // dataset is resolved per call rather than captured, for the same reason the port is: a module
-    // store outlives a space switch, and a captured handle would keep writing into the space the
-    // user has left.
-    interpretation: {
-      // Asks the port rather than testing for its presence. The host always publishes a forwarding
-      // wrapper so late binding works, which makes `!== undefined` true even on a backend that
-      // cannot interpret — the trap the transcription wrapper above still falls into. Delegating to
-      // `available()` lets the forwarder answer for the backend actually connected.
-      /*
-        The store's answer first, the port's second, and "a port exists" last.
+    languageModel: {
+      available: async () => (await services.languageModel?.available()) ?? false,
+      prompt: async (system, input) => {
+        const port = services.languageModel;
+        if (!port) throw new Error('languageModel: this backend has no language model');
+        return port.prompt(system, input);
+      },
+    },
 
-        That order is the fix for what shipped: the last of the three is what actually ran, because
-        the adapter implemented no `available()` at all — so the question "can this node interpret"
-        was answered by "is a port object present", which is true on every node including one whose
-        executor has never heard of the feature.
-      */
+    // Binds the dataset as well as forwarding, so a module never handles a dataset handle. Resolved
+    // per call rather than captured: a module store outlives a space switch.
+    interpretation: {
+      // The store's answer first, the port's second, and "a port exists" last — the last of the three
+      // is what used to run, and it is true on every node including one that has never heard of the
+      // feature.
       available: () =>
         services.interpretationAvailable?.() ??
         services.interpretation?.available?.() ??
         services.interpretation !== undefined,
-      // The community's decision, read through on every call so a module's standing watch follows a
-      // mid-call toggle. Absent reads as off, matching the gate in DatasetStore — the right way
-      // round for something that spends somebody's LLM budget.
-      autoEnabled: (collectionId?: string) => services.autoInterpretEnabled?.(collectionId) ?? false,
-      setAuto: async (collectionId: string, on: boolean) => {
+      autoEnabled: (collectionId) => services.autoInterpretEnabled?.(collectionId) ?? false,
+      setAuto: async (collectionId, on) => {
         const set = services.setAutoInterpret;
         if (!set) throw new Error('interpretation: this host cannot record a call’s extraction settings');
         await set(collectionId, on);
       },
-      // Read through on every call rather than captured, like every accessor here: a module store
-      // outlives a space switch, and a captured list would offer the previous space's models.
       targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
       setTarget: async (collectionId, entity, on) => {
         const set = services.setExtractionTarget;
@@ -352,18 +534,6 @@ export function createModuleStoreDeps(framework: {
         if (!run) throw new Error('interpretation: this backend cannot interpret');
         return run(collectionId);
       },
-      /*
-        Keep interpreting this collection as it grows — the standing counterpart to
-        `runOnCollection`.
-
-        A module names a collection and nothing else: no watch id, no dataset, no classes→URI
-        conversion, no SPARQL. That is what makes this consistent with the contract's refusal to
-        hand a module a watch rather than a hole in it — the registration is the host's, shared with
-        every peer, and outlives the module store that asked for it.
-
-        Rejects on a backend that cannot hold one, so a module can offer the affordance only where
-        it means something instead of silently doing nothing.
-      */
       watchCollection: async (collectionId) => {
         const start = services.watchCollection;
         if (!start) throw new Error('interpretation: this backend cannot run a standing watch');
@@ -373,13 +543,9 @@ export function createModuleStoreDeps(framework: {
         await services.unwatchCollection?.(collectionId);
       },
       reconcileCollection: async (collectionId) => (await services.reconcileCollection?.(collectionId)) ?? 0,
-      /*
-        What follows a pass, in order: attach what it left unattached, then — the host deciding
-        whether the collection now holds a task — give it a board. The reconcile goes first because
-        the board question is answered by looking for tasks on the collection, and the reconcile is
-        what attaches them. Each half is best-effort on its own: a board that could not be made is not
-        a failed extraction, and neither is worth an error reaching the module.
-      */
+      // What follows a pass, in order: attach what it left unattached, then whatever host policy
+      // follows from the collection's new contents. Each half best-effort on its own — a board that
+      // could not be made is not a failed extraction.
       passSettled: async (collectionId) => {
         try {
           await services.reconcileCollection?.(collectionId);
@@ -389,42 +555,15 @@ export function createModuleStoreDeps(framework: {
         try {
           await services.ensureBoardFor?.(collectionId);
         } catch (error) {
-          console.warn('moduleHostServices: could not prepare a board for a settled pass', error);
+          console.warn('moduleHostServices: could not act on a settled pass', error);
         }
       },
-      /*
-        Reads through on every call rather than capturing, like every accessor here — a module store
-        outlives a space switch, and a captured array would keep showing the passes of the space the
-        user has left.
-
-        Empty when the store has not published yet, which a module must read as "nothing running".
-        It is indistinguishable from a backend that cannot report progress, and deliberately so:
-        neither is a state worth a module branching on.
-      */
       activity: () => services.interpretationActivity?.() ?? [],
-      // False until the store publishes, which reads as "not shared" — the conservative answer,
-      // and the one the footnote it gates should give while the setting is still unknown.
-      detailShared: () => services.interpretationDetailShared?.() ?? false,
-      // 0 until the store publishes, and for ever on a backend that cannot report changes — a count
-      // that never moves, which a module reads as "re-read when you otherwise would".
       proposalsRevision: () => services.interpretationProposalsRevision?.() ?? 0,
-      /*
-        `target` names the dataset, and an unresolvable one refuses rather than falling through.
-
-        Interpretation follows the *call*, and a call outlives the space on screen — so reading
-        proposals from `dataset()` answered about wherever the reader had wandered to, and accepting
-        one committed it there. `targeted` is the one place that decision is made; see it for why a
-        named-and-missing dataset is not the same as an unnamed one.
-      */
       proposals: async (target, collection) => {
         const dataset = targeted(target);
         if (!dataset || !services.interpretation) return [];
-        // Narrowed where the host can say what containment is here, and unscoped where it cannot —
-        // the same feature test every other optional service in this file makes, and the fallback is
-        // the answer this returned before there was a scope at all.
-        if (collection && services.proposalsForCollection) {
-          return services.proposalsForCollection(dataset, collection);
-        }
+        if (collection && services.proposalsForCollection) return services.proposalsForCollection(dataset, collection);
         return services.interpretation.proposals(dataset);
       },
       accept: async (id, property, target) => {
@@ -438,65 +577,63 @@ export function createModuleStoreDeps(framework: {
         return services.interpretation.reject(dataset, id, property);
       },
     },
+    // `secrets` is built per module by the registry, which knows the module's group.
+  };
 
-    // Forwarding, like the ports above: a module store is built before `ProfileStore` mounts, so
-    // capturing the directory itself would capture nothing.
+  /*
+    Created on the first call, with the host's own signal, so it lives in the same reactive graph as
+    the effects that will read it through the closures below.
+  */
+  if (!readServicesRevision) {
+    const [revision, setRevision] = framework.signal(0);
+    let count = 0;
+    readServicesRevision = () => void revision();
+    bumpServicesRevision = () => setRevision(++count);
+  }
+
+  return {
+    signal: framework.signal,
+    effect: framework.effect,
+    // Placeholders the registry replaces per module; present so a store built straight from this bag
+    // — a test — has the markers to hand.
+    state: ((accessor: unknown, _doc: string) => (typeof accessor === 'function' ? accessor : () => accessor)) as never,
+    action: ((fn: unknown) => fn) as never,
+
+    dataset: tracked(() => services.dataset?.() ?? null),
+    datasetUri: tracked(() => services.datasetUri?.() ?? null),
+    callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
+    datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
+    selfId: tracked(() => services.selfId?.() ?? null),
+    notify: (tone, message) => services.notify?.(tone, message),
     datasets: {
       get: (uri) => services.datasets?.get(uri),
       open: (uri) => services.datasets?.open(uri),
       openRef: (ref) => services.datasets?.openRef(ref),
-      // No-op unsubscribe where the host cannot report removals, so a module's cleanup is
-      // unconditional rather than another thing to guard.
       onRemoved: (cb) => services.datasets?.onRemoved?.(cb) ?? (() => {}),
     },
-
     identities: {
       get: (agentId) => services.identities?.get(agentId),
       fetch: (agentId) => services.identities?.fetch(agentId),
     },
 
-    audioInput: () => audioInput(),
-
-    createEntity: async (entity, fields, options) => (await services.createEntity?.(entity, fields, options)) ?? null,
-
-    // Forwarded rather than captured, like every other port here: a module store is built before
-    // the root dataset has been found, and an agent-scoped module reading it at construction would
-    // capture nothing and never notice.
-    agentData: {
-      ready: () => services.agentData?.ready() ?? false,
-      create: async (entity, fields, options) => (await services.agentData?.create(entity, fields, options)) ?? null,
-      find: async (entity, query) => (await services.agentData?.find(entity, query)) ?? [],
-      update: async (entity, id, fields) => {
-        await services.agentData?.update(entity, id, fields);
-      },
-      remove: async (entity, id) => {
-        await services.agentData?.remove(entity, id);
-      },
-    },
-
-    linkEntity: async (entity, id, relation, value, options) => {
-      await services.linkEntity?.(entity, id, relation, value, options);
-    },
-
-    updateEntity: async (entity, id, fields, options) => {
-      await services.updateEntity?.(entity, id, fields, options);
-    },
+    kernels,
   };
 }
 
-/**
- * The audio a module has published via {@link ModuleDefinition.audioSource}.
- *
- * Resolved on every read rather than captured, because the producing module's store may not exist
- * when a consumer is constructed, and the stream itself comes and goes as calls start and end.
- */
-function audioInput(): MediaStream | null {
-  for (const { definition } of moduleRegistry.all()) {
-    if (!definition.audioSource) continue;
-    const store = moduleStores[definition.id] as Record<string, unknown> | undefined;
-    const source = store?.[definition.audioSource];
-    if (typeof source !== 'function') continue;
-    return ((source as () => unknown)() as MediaStream | null) ?? null;
+/** Who published the media stream other modules hear, or null. For the settings screen and tests. */
+export function mediaPublisher(): string | null {
+  return publishedBy;
+}
+
+/** The stream some module is capturing, or null — the non-reactive read, for host code. */
+export function publishedMediaInput(): MediaStream | null {
+  return publishedMedia;
+}
+
+/** Record who is publishing, so a second publisher can be reported. Called by the registry's media wrapper. */
+export function notePublisher(moduleId: string, stream: MediaStream | null): void {
+  if (stream && publishedBy && publishedBy !== moduleId) {
+    console.warn(`media: "${moduleId}" is publishing audio while "${publishedBy}" already was; the newer stream wins`);
   }
-  return null;
+  publishedBy = stream ? moduleId : publishedBy === moduleId ? null : publishedBy;
 }

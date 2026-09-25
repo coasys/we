@@ -1,3 +1,7 @@
+import type { HostFileSaver } from '@we/design-utils';
+
+export type { HostFileSaver };
+
 export interface AppConfig {
   id: string;
   name: string;
@@ -203,4 +207,48 @@ export interface PlatformAdapter {
    * start one — the settings page feature-detects and shows nothing.
    */
   executor?: ExecutorHost;
+
+  /**
+   * Save a file through the host's own dialog. Absent on web, where `saveFile` in
+   * `@we/design-utils` uses the browser's save picker or a download instead.
+   *
+   * Every download in the app goes through that one helper, which the shell hands this to at boot
+   * (`PlatformProvider`), so a host that can do better supplies it once and every export benefits.
+   */
+  saveFile?: HostFileSaver;
+
+  /**
+   * Choosing which screen or window to share, where the OS will not ask.
+   *
+   * Absent on web, where `getDisplayMedia` raises the browser's own picker and there is nothing for
+   * the app to draw. Present on a desktop host, and even there only *used* on machines with no
+   * system picker — macOS 15+ and Wayland both draw their own, and where they do the source list
+   * never reaches the renderer at all, which is worth keeping.
+   *
+   * The host asks rather than the app: only the host knows the ask is needed, because the branch
+   * that needs it is the one the OS did not take.
+   */
+  screenSources?: ScreenSourceHost;
+}
+
+/** One thing that could be shared, as the host describes it. */
+export interface ScreenSource {
+  id: string;
+  /** The OS's own name for it — "Entire screen", a window title. Nothing is invented here. */
+  name: string;
+  /** A small still of it, as a data URL, or empty where the host could not take one. */
+  thumbnail: string;
+}
+
+export interface ScreenSourceHost {
+  /**
+   * The host needs somebody to choose. Returns its own unsubscribe.
+   *
+   * A request outstanding is a `getDisplayMedia` the page is waiting on, so an answer has to come —
+   * `choose('')` is the one that means "nothing", and the host treats not answering at all as the
+   * same thing after a minute.
+   */
+  onRequest(listener: (sources: ScreenSource[]) => void): () => void;
+  /** Answer the outstanding request. An empty id cancels the share. */
+  choose(sourceId: string): void;
 }

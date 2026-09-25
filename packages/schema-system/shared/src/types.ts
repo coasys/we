@@ -243,6 +243,18 @@ export type TemplateMeta = {
    * stray drag somebody made once.
    */
   panels?: TemplatePanel[];
+  /**
+   * What this interface depends on that a deployment might not have.
+   *
+   * `modules` names the feature modules whose stores or parts this template reaches —
+   * `modules.call.*` in an expression, a `$part` of theirs, a `meta.panels` entry placing one. The
+   * host cannot derive that: it can walk the component types a schema mounts, and it does, but an
+   * expression naming a module store and a part naming a module are invisible to that walk. So a
+   * template that leans on one says so, and a deployment omitting the module sees the reason instead
+   * of a blank panel. Reported through `spaceStore.missingModules`, and checked by the validator
+   * against the deployment's module list.
+   */
+  requires?: { modules?: string[] };
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };
@@ -405,8 +417,47 @@ export type QueryToken = {
      * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
      * `via` relation. The adapter resolves `via` to a backend handle (AD4M: → the relation's predicate).
      */
-    scope?: { via: string; anchorId: string | number | Record<string, unknown>; anchor?: string };
-    subscribe?: boolean;
+    scope?: {
+      via: string;
+      /**
+       * The anchor, or several of them. A list asks the same question of every anchor in one query,
+       * which is how a level of a tree stays one round trip and one subscription rather than one of
+       * each per parent. An expression answering with a list works — `local.replies.map(r, r.id)`.
+       */
+      anchorId: string | number | Array<string | number> | Record<string, unknown>;
+      anchor?: string;
+      /**
+       * Follow `via` all the way down rather than one step. The result is flat: it says which rows
+       * are under the anchor, never where, so include the inverse relation to rebuild a tree.
+       */
+      transitive?: boolean;
+      /** `'in'` searches among what points *at* the anchor, rather than what it points at. */
+      direction?: 'out' | 'in';
+      /** At most this many per anchor — "the top five replies under each of these". Pair with `order`. */
+      limitPerAnchor?: number;
+      /**
+       * Walk `via` depth by depth, keeping this many per anchor at each — `[10, 5, 3]`.
+       *
+       * One question for a whole tree: the backend walks it and answers once, so the rows arrive
+       * together rather than a level at a time. Flat and breadth-first, so include the inverse
+       * relation to rebuild the shape.
+       */
+      levels?: Array<number | Record<string, unknown>>;
+    };
+    /**
+     * Follow the answer as it changes. Defaults to true; `false` fetches once.
+     *
+     * An **expression** is allowed here, and it is what lets a surface be live only while its
+     * subject is. A call's transcript is the case: while somebody is in the call it has to follow
+     * every utterance, and once the call is over the record is settled — so
+     * `{ $: 'modules.transcribe.callOnScreenLive' }` reads a past transcript with no subscription
+     * registered at all, where before it held one open over the whole thing for as long as it was
+     * on screen. Reading is the commonest thing anybody does to a long transcript, so this is
+     * where most of the cost of one was.
+     *
+     * Changing it re-asks the query, which is what tears the subscription down when a call ends.
+     */
+    subscribe?: boolean | SchemaProp;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
     dataset?: string;
     /**
@@ -510,7 +561,12 @@ export type QueryDescriptor = {
    */
   entity: unknown;
   params: Record<string, unknown>;
-  subscribe: boolean;
+  /**
+   * As authored: `true`/`false`, or an expression the framework layer resolves — see
+   * `QueryToken.subscribe`. `unknown` for the same reason `entity` is: this resolver is pure, and
+   * only the framework layer holds the stores an expression is evaluated against.
+   */
+  subscribe: unknown;
   dataset?: string;
   include?: Record<string, boolean | Record<string, unknown>>;
   /** The query runs only while this resolves truthy — see `QueryToken.when`. Kept out of `params`. */
