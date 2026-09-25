@@ -1,0 +1,27 @@
+/*
+  What is on an artboard is placed, not flowed.
+
+  `x` / `y` are translate offsets — they move an element from wherever it would otherwise have been —
+  and inside a coordinate space "wherever it would otherwise have been" is the wrong origin: the
+  second scrap on a scrapbook would be measured from below the first, so a spread authored as a set
+  of coordinates would come out as a column with the coordinates added to it. Nobody writing
+  `{ "x": 620, "y": 700 }` means "620 to the right of whatever precedes me".
+
+  So every direct child of an artboard starts at its origin, and `x`/`y` are absolute coordinates in
+  the declared space. Which is also what makes the numbers *stored* coordinates rather than deltas:
+  a placement record can be written straight onto a scrap, and read back off it.
+
+  A rule rather than something the component could do itself: a parent cannot position its children
+  through inline styles, and the alternative — making every author write `position: 'absolute'` on
+  every scrap — is boilerplate that fails silently when forgotten (one flowed child moves every
+  absolute sibling after it, because their static position follows what is still in flow).
+
+  Inline styles still win, so a child that genuinely wants to be in flow can say so. Wanting flow
+  *and* the artboard's coordinates at once is the case with no coherent answer, and the shape for it
+  is a placed `Column` holding the flowed content.
+*/
+[data-we-artboard] > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+}

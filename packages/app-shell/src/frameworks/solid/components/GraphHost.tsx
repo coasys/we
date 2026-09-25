@@ -20,19 +20,32 @@
 */
 import '@we/graph-solid/styles';
 
-import type { EntityClass, EntityManifestEntry, QueryOptions } from '@we/backend-shared';
-import { manifestEntries } from '@we/backend-shared';
+import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shared';
+import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { placementStyle } from '@we/graph-expanders';
-import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
+import { placementPosition, placementStyle } from '@we/graph-expanders';
+import type { GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
-import { createMemo, Show } from 'solid-js';
+import type { RenderProps } from '@we/schema-solid';
+import { RenderSchema } from '@we/schema-solid';
+import { fillForSemantic } from '@we/template-kit';
+import { createComputed, createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 
+import { toEntityShape } from '../../../shared/graphEntityShape';
+import { chromeBag } from '../../../shared/registries/templateBag';
+import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
+import { componentRegistry } from '../registries/componentRegistry';
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
+import { useShapeStore } from '../stores/ShapeStore';
+import { useShellStore } from '../stores/ShellStore';
+import { useSpaceStore } from '../stores/SpaceStore';
+import { nodeControls } from './graphControls';
+import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -55,30 +68,6 @@ interface ScopeRequest {
   direction?: 'in' | 'out';
 }
 
-/** Translate a backend model manifest entry into the neutral shape the graph reads. */
-function toEntityShape(entry: EntityManifestEntry): EntityShape {
-  const properties: EntityShape['properties'] = [];
-  const relations: EntityShape['relations'] = [];
-
-  for (const property of entry.properties) {
-    if (property.relatedEntity) {
-      relations.push({
-        name: property.name,
-        target: property.relatedEntity,
-        cardinality: property.isCollection ? 'many' : 'one',
-      });
-    } else {
-      properties.push({
-        name: property.name,
-        type: property.type,
-        ...(property.required ? { required: true } : {}),
-      });
-    }
-  }
-
-  return { name: entry.name, properties, relations };
-}
-
 /**
  * A card that draws its own contents, rather than its first sixty characters.
  *
@@ -91,8 +80,25 @@ function toEntityShape(entry: EntityManifestEntry): EntityShape {
  * resolves to a `data:…;base64,…` blob rather than to JSON, and `BlockRenderer` already knows to
  * decode a string; parsing it here first threw on every card and rendered nothing, which is why they
  * all looked empty.
+ *
+ * ## Why it draws the label when there is no document
+ *
+ * A style rule names `content` for every card it matches, and a board holds more than one kind of
+ * record: the workshop board is `TaskBlock`s and `EventBlock`s beside composed cards, and only a
+ * `CollectionBlock` has an `editorState` at all. The renderer's own fallback does not cover this —
+ * it draws the label when the *component* is missing, which is not the same as a component that
+ * renders nothing — so a freshly extracted task arrived as a card with nothing in it, and a board of
+ * them read as an empty canvas. That is the worst possible rendering of "extraction worked".
+ *
+ * The same class the renderer's fallback uses, so a card that falls back here is indistinguishable
+ * from one whose rule never asked for content.
  */
 function BlockCard(props: { node: GraphNode }) {
+  return <DocumentCard node={props.node} fallback={<span class="we-graph__card-text">{props.node.label}</span>} />;
+}
+
+/** A composed document drawn in full, or `fallback` for a record that has none. */
+function DocumentCard(props: { node: GraphNode; fallback: JSX.Element }) {
   const datasetStore = useDatasetStore();
 
   const editorState = createMemo(() => {
@@ -101,15 +107,89 @@ function BlockCard(props: { node: GraphNode }) {
   });
 
   return (
-    <Show when={editorState()}>
-      {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
+    <Show when={editorState()} fallback={props.fallback}>
+      {(state) => <BlockRenderer editorState={state() as never} dataset={datasetStore.currentDataset()?.handle} />}
     </Show>
+  );
+}
+
+/*
+  The card fragment names no store and no registered component — native elements and two
+  primitives, which resolve by tag — so it is rendered with neither. Nothing it could name would be
+  reachable, which is the right answer for host chrome drawn inside a template's canvas.
+*/
+const NO_STORES: RendererStores = {};
+const NO_COMPONENTS: RenderProps['registry'] = {};
+
+/**
+ * The `content: 'record'` a canvas names: a note drawn as its document, and any other record drawn
+ * as what it is — its kind, its name and every value it holds. See `shared/shapes/canvasCard`.
+ *
+ * `block` stays as it was, for a canvas that wants a record to be one line.
+ *
+ * ## Why a store, reconciled
+ *
+ * `RenderSchema` takes its context once, as plain values, so a card handed a fresh object when a
+ * task's state changed would go on drawing the old one. A store the fragment reads through tracks
+ * every path it reads, and `reconcile` keyed by field name changes only the line that moved — so a
+ * state dragged on a board repaints one span on the card rather than remounting it.
+ */
+function RecordCard(props: { node: GraphNode }) {
+  const recordStore = useRecordStore();
+  const spaceStore = useSpaceStore();
+
+  // A state's colour is the community's where it chose one, else the fill its semantic implies — the
+  // board's column headings and the workshop's key read the same table.
+  const states = createMemo(() =>
+    spaceStore.taskStates().map((state) => ({
+      slug: state.slug,
+      name: state.name,
+      fill: state.color || fillForSemantic(state.semantic),
+    })),
+  );
+
+  const [card, setCard] = createStore<CanvasCard>({
+    icon: 'cube',
+    kind: '',
+    title: '',
+    lines: [],
+    prose: [],
+    pending: false,
+    signals: 0,
+    comments: 0,
+  });
+  createComputed(() =>
+    setCard(
+      reconcile(
+        canvasCard({
+          type: props.node.type,
+          label: props.node.label ?? '',
+          data: props.node.data,
+          display: recordStore.displays()[props.node.type],
+          states: states(),
+        }),
+        { key: 'name' },
+      ),
+    ),
+  );
+
+  return (
+    <DocumentCard
+      node={props.node}
+      fallback={RenderSchema({
+        node: CANVAS_RECORD_CARD,
+        stores: NO_STORES,
+        registry: NO_COMPONENTS,
+        context: { card },
+      })}
+    />
   );
 }
 
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const datasetStore = useDatasetStore();
   const recordStore = useRecordStore();
+  const shellStore = useShellStore();
   const sessionStore = useSessionStore();
   const profileStore = useProfileStore();
 
@@ -126,6 +206,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
       profiles: profileStore.profiles,
+      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+      profileFor: profileStore.profileFor,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
     }),
@@ -145,10 +227,25 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    *
    * Core first, so a foreign schema that happens to share a name cannot shadow WE's own.
    */
+  const shapeStore = useShapeStore();
   const manifest = createMemo(() => {
     const core = manifestEntries(CORE_MANIFEST);
     const known = new Set(core.map((entry) => entry.name));
-    return [...core, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
+    /*
+      The space's own models, from the shape records rather than only from the dataset's schemas.
+
+      `currentDatasetEntities` is read when a space is entered, so a model somebody defines while
+      the space is open is not in it until a reload — and a canvas asks only for types it can find
+      here. A record of a model made a minute ago was created, placed on the canvas and parented
+      into it, and never drawn: its type was skipped as undeclared. The shape list is live.
+    */
+    const shapes = shapeStore
+      .spaceShapes()
+      .filter((shape) => shape.manifest && !shape.problems.length && !known.has(shape.name))
+      .flatMap((shape) => manifestEntries(shape.manifest!, { parents: CORE_MANIFEST }))
+      .filter((entry) => !known.has(entry.name));
+    for (const entry of shapes) known.add(entry.name);
+    return [...core, ...shapes, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
   });
 
   function modelFor(entity: string, dataset?: string): EntityClass | undefined {
@@ -161,7 +258,30 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       dataset && dataset !== datasetStore.currentDataset()?.id
         ? datasetStore.datasets().find((d) => d.id === dataset || d.sharedId === dataset)?.handle
         : datasetStore.currentDataset()?.handle;
-    return bound.$getEntitiesForPerspective?.(entity, handle) ?? bound.$getEntity?.(entity);
+    return bound.$getEntityForDataset?.(entity, handle) ?? bound.$getEntity?.(entity);
+  }
+
+  /**
+   * A neutral read, as the ORM's options — the one translation, shared by the fetch and the watch.
+   *
+   * They must not drift: a watch subscribes in order to fingerprint the rows the fetch would
+   * return, so a difference between the two is a change the graph is never told about. `undefined`
+   * means the read resolves to nothing at all, which is a scope this dataset cannot name.
+   */
+  function queryOptions(request: WatchQuery): QueryOptions | undefined {
+    const { where, order, limit, offset, include, scope } = request;
+    const options: QueryOptions = {};
+    if (where) options.where = where;
+    if (order) options.order = order;
+    if (limit !== undefined) options.limit = limit;
+    if (offset !== undefined) options.offset = offset;
+    if (include) options.include = include;
+    if (scope) {
+      const parent = parentFor(scope);
+      if (!parent) return undefined;
+      (options as Record<string, unknown>).parent = parent;
+    }
+    return options;
   }
 
   /** Resolve a neutral drill-down to the parent handle the ORM takes. Mirrors the query adapter. */
@@ -206,8 +326,102 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     });
   }
 
+  /**
+   * The canvas this graph is showing, if it is showing one — the surface a peer's mark is addressed to.
+   *
+   * Read out of the `canvas` seed's own options rather than taken as a prop, because that is already
+   * where a template says which canvas it is drawing: a second way of saying it would be a second
+   * thing to keep in step, and the one that fell behind would silently address marks to a canvas
+   * nobody is looking at. A graph with no canvas seed — a schema map, a static diagram — has no
+   * shared coordinate space, so it registers nothing and draws no marks.
+   */
+  const canvasId = createMemo(() => {
+    const seeds = Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : [];
+    for (const seed of seeds) {
+      if (!('source' in seed) || seed.source !== 'canvas') continue;
+      const id = seed.options?.canvas;
+      if (typeof id === 'string' && id) return id;
+    }
+    return null;
+  });
+
+  /**
+   * Register with the live-view host for as long as this graph is showing one canvas.
+   *
+   * Re-registered when the canvas changes, which is what keeps the surface key honest: a graph whose
+   * template switches canvas is a different shared coordinate space, and marks addressed to the old one
+   * must stop being drawn rather than being placed in the new one's units.
+   *
+   * ## An effect, emphatically not a memo
+   *
+   * This was a memo, and a memo is computed *lazily* — on first read, inside whatever computation
+   * happened to read it. That read was the graph's own decorations memo, which also depends on the
+   * registry's version signal. So registering bumped a signal from inside a computation that depends on
+   * it, which invalidated that computation from within itself, which registered again: `markDownstream`
+   * recursion until the stack went, and a frozen tab with no clue but a stack of one repeated frame. It
+   * bit hardest on a space change, where the canvas id changes and the whole cycle starts again.
+   *
+   * An effect runs in the effects queue, outside anybody's tracking scope, so the write is an ordinary
+   * update. The result goes in a signal because a value is still wanted downstream.
+   */
+  const [live, setLive] = createSignal<ReturnType<typeof registerLiveCanvas> | null>(null);
+  createEffect(() => {
+    const id = canvasId();
+    if (!id) {
+      setLive(null);
+      return;
+    }
+    const surface = registerLiveCanvas(id);
+    setLive(surface);
+    onCleanup(() => {
+      surface.dispose();
+      setLive(null);
+    });
+  });
+
   const host: GraphViewProps['host'] = {
-    nodeContent: { block: BlockCard },
+    nodeContent: { block: BlockCard, record: RecordCard },
+    // The header controls a template may name — colour, shape, scale. See `graphControls`.
+    nodeControls,
+
+    /**
+     * Peers' marks, and anything else a capability has put on this canvas.
+     *
+     * Turned from what a module declares — a `SchemaNode` and a point — into what the graph draws.
+     * The node is rendered against the **chrome** bag, not a template's: a mark comes from a
+     * capability the person installed, so it is repo-authored chrome wherever it happens to land, and
+     * grants follow authorship rather than render site.
+     */
+    decorations: () => {
+      const surface = live();
+      const bag = chromeBag();
+      if (!surface || !bag) return [];
+      return liveSurfaceMarks(surface.key).map((mark) => ({
+        id: mark.id,
+        x: mark.at.x,
+        y: mark.at.y,
+        ease: mark.ease,
+        // Passed through rather than defaulted here: only the producer knows the gap it is covering,
+        // and the graph's own stylesheet owns what a mark that does not say gets.
+        easeMs: mark.easeMs,
+        render: () => RenderSchema({ node: mark.node, stores: bag, registry: componentRegistry }),
+      }));
+    },
+
+    /**
+     * The parts of the graph's box the shell's floating panels are sitting over.
+     *
+     * A floating panel takes no room, so the graph is handed the whole content region and every
+     * pixel of it counts as on screen — including the ones behind a transcript panel. The board's
+     * `manual` layout parks an unplaced card in the top-left of what it believes is in view, which
+     * is exactly where a left-snapped panel is, so every freshly extracted record appeared
+     * underneath one: drawn, draggable, and invisible until somebody moved the panel.
+     *
+     * Supplied here rather than by the template because it is the *shell's* arrangement, which a
+     * template cannot see and should not have to restate. Every graph in the app is mounted through
+     * this component, so they all get it.
+     */
+    obscured: () => shellStore.coveredInset(),
 
     /**
      * What the board has just written and not yet seen come back.
@@ -220,7 +434,11 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     pendingData: () => {
       const pending = recordStore.pendingCardStyle();
       const out: Record<string, Record<string, GraphValue>> = {};
-      for (const [nodeId, patch] of Object.entries(pending)) out[nodeId] = placementStyle(patch);
+      // Style and coordinate both: an undone move is a placement write like any other, and the
+      // `manual` layout reads a card's position off the same data bag its colour comes from.
+      for (const [nodeId, patch] of Object.entries(pending)) {
+        out[nodeId] = { ...placementStyle(patch), ...placementPosition(patch) };
+      }
       return out;
     },
 
@@ -234,21 +452,49 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
 
     /**
-     * Tell the graph when records of a type change here.
+     * Tell the graph when the answer to one of its reads changes here.
      *
      * The same live path `$query` uses — `EntityClass.query(...).subscribe(...)` — which is why a
      * post appears in the cards route the moment it is written. The graph took `findAll` instead,
      * so it read once and never again; that is the whole difference between a map of a space and a
      * picture of one.
      *
-     * `limit: 1` because the rows are thrown away. What is wanted is the *notification*, and the
-     * engine's response is to re-run its own seeds with their own filters and paging — asking for
-     * the full set here would fetch every row twice on every change.
+     * ## Why it subscribes to the seed's own query
+     *
+     * It used to subscribe to `{ limit: 1 }` over the type, on the reasoning that the rows are
+     * thrown away and only the notification matters. That is not what an AD4M model subscription
+     * is. It re-runs *its own* query on a change and fingerprints the rows, and calls back **only
+     * when that fingerprint differs** — so a one-row probe over a type is silent for every change
+     * that leaves its single row alone. A space with one task in it already: extract a second, and
+     * the probe's answer is the same first row, so nothing fires and the board stays as loaded.
+     * The extraction panel beside it updated, because its `$query` subscribes to its own narrower
+     * question and that question's answer really had changed — which is what made this look like a
+     * board bug rather than a notification one.
+     *
+     * So the engine hands over the read it made and this subscribes to exactly that. The rows are
+     * still thrown away; what they are for is the fingerprint, and it now covers the same records
+     * the seed drew. Cost is one subscription per distinct read — four for a board — each paging
+     * exactly what the seed would have fetched anyway.
      */
     watch(request, onChange) {
       const model = modelFor(request.entity, request.dataset);
       const handle = datasetStore.currentDataset()?.handle;
-      if (!model || !handle) return () => undefined;
+      if (!model || !handle) {
+        // A watch that never attached is the other silence: the graph then never hears about
+        // anything, and looks exactly like a graph whose data has not changed.
+        trace('graph', 'watch:not-attached', {
+          entity: request.entity,
+          model: Boolean(model),
+          handle: Boolean(handle),
+        });
+        return () => undefined;
+      }
+
+      const options = queryOptions(request);
+      // A read whose scope cannot be resolved reads as nothing; watching it would be a subscription
+      // to a question with no answer.
+      if (!options) return () => undefined;
+      trace('graph', 'watch', { entity: request.entity, parent: (options as { parent?: { id?: string } }).parent?.id });
 
       let live = true;
       /*
@@ -263,7 +509,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       let primed = false;
       let pending = false;
 
-      const subscription = model.query(handle, { limit: 1 });
+      const subscription = model.query(handle, options);
       subscription
         .subscribe(() => {
           if (!live) return;
@@ -288,6 +534,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         subscription.dispose();
       };
     },
+
+    /*
+      The same `graph` scope the reads above report into, so one `we:trace` switch covers the whole
+      path: what a seed asked the backend, and what it made of the answer. Rows arriving and nodes
+      appearing are two different claims, and until both are on one timeline the gap between them
+      is invisible.
+    */
+    trace: (event, detail) => trace('graph', event, detail),
 
     defaultDataset: () => {
       const current = datasetStore.currentDataset();
@@ -320,26 +574,60 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       }
 
       const model = modelFor(entity, dataset);
-      if (!model) return [];
+      /*
+        Both of these return nothing and say nothing, which is how a board comes to draw an empty
+        canvas over a space full of records. The seed cannot report them — it never learns *why* a
+        read was empty — so they are traced here, where the reason is known.
 
-      const options: QueryOptions = {};
-      if (where) options.where = where;
-      if (order) options.order = order;
-      if (limit !== undefined) options.limit = limit;
-      if (offset !== undefined) options.offset = offset;
-      if (include) options.include = include;
-      if (scope) {
-        const parent = parentFor(scope);
-        if (!parent) return [];
-        (options as Record<string, unknown>).parent = parent;
+        Turned on with `localStorage.setItem('we:trace', 'graph')` and a reload; every read then
+        prints its entity, the parent it asked under and how many rows came back. See
+        `installConsoleTrace`.
+      */
+      if (!model) {
+        trace('graph', 'read:no-model', { entity, dataset });
+        return [];
+      }
+
+      const options = queryOptions({ entity, dataset, where, order, limit, offset, include, scope });
+      if (!options) {
+        trace('graph', 'read:unresolved-scope', { entity, scope });
+        return [];
       }
 
       const rows = await model.findAll(handle, options);
+      trace('graph', 'read', {
+        entity,
+        rows: (rows as unknown[]).length,
+        parent: (options as { parent?: { id?: string } }).parent?.id,
+        where,
+        limit,
+      });
       return rows as Record<string, unknown>[];
     },
   };
 
-  return <GraphView {...props} host={host} />;
+  /*
+    The three seams the live-view host needs from a canvas, bound only while there is one.
+
+    `props` wins where a template bound the same callback: a template asking for the pointer is asking
+    for its own reason, and this has to forward rather than replace it. Nothing in the app binds either
+    today, so the spread is about not surprising whoever does.
+  */
+  return (
+    <GraphView
+      {...props}
+      host={host}
+      onPointerAt={(at) => {
+        live()?.reportPointer(at);
+        props.onPointerAt?.(at);
+      }}
+      onViewport={(region) => {
+        live()?.reportRegion(region);
+        props.onViewport?.(region);
+      }}
+      region={props.region ?? (live() ? liveSurfaceRegion(live()!.key) : null)}
+    />
+  );
 }
 
 export default GraphHost;

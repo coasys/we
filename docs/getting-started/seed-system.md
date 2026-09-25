@@ -1,7 +1,7 @@
 # The Seed System
 
 Every WE deployment starts from a **seed file** — `we-seed.json` at the
-workspace root. It declares what this deployment *is*: project metadata, which
+workspace root. It declares what this deployment _is_: project metadata, which
 feature modules ship, which external apps are embedded, how the bundled AD4M
 executor is wired, and the shared spaces a fresh install is offered.
 White-labeling a deployment is a matter of swapping the seed.
@@ -28,12 +28,99 @@ Pure metadata.
 
 ### `modules`
 
-The feature modules this deployment ships, by id — e.g.
-`["globe", "graph", "notes", "call", "transcribe"]`. Declaring what the
-deployment includes is what a seed is *for*; ids are matched against the
-bundled module set at boot, and an unknown id is reported rather than silently
-ignored. (Per-agent and per-space choices layer on top:
-`AgentSettings.installedModules` and `Space.enabledModules`.)
+The feature modules this deployment ships — e.g.
+`["globe", "graph", "notes", "call", "transcribe", { "id": "polls", "enabled": false }]`.
+Declaring what the deployment includes is what a seed is _for_, and this list is the
+_source_ of the shell's module registry rather than a filter over a hand-written one:
+`pnpm --filter @we/app-shell generate-modules` reads it and writes the imports, so a
+module nobody listed is not in the build at all. An entry is an id, or an object:
+
+- `id` — the module id. The package is `@we/module-<id>` unless `package` says otherwise.
+- `package` — a package outside this repository that exports `createModule`, e.g.
+  `"@acme/we-module-polls"`. The deployment adds the dependency and rebuilds; the
+  registry trusts it the way it trusts a bundled module.
+- `enabled: false` — ship it for communities to opt into rather than switching it on
+  in every space that has not decided. The default is on. It is a statement about
+  **spaces**: every agent still has the module installed, so a community can switch it
+  on from the space's settings without each member installing it first. It applies to
+  modules a community decides about — a panel, a section or a block. An agent-scoped
+  module (the Pocket, notes) is the person's to turn off in Settings → Modules.
+
+(Per-agent and per-space choices layer on top: `AgentSettings.installedModules` and
+`Space.enabledModules`.) `pnpm validate:seed` checks the entries.
+
+**The order is load-bearing.** Modules register in the order listed here, and
+the chrome rail renders their launchers in registration order — so this list is
+also the top-to-bottom order of the rail. Reordering it for tidiness rearranges
+the interface. The rail sorts rather than reshuffling on load order, so the
+result is stable; it is simply this list's order.
+
+### `settings`
+
+What this deployment believes each capability's settings should start as, keyed by module id
+and then by setting key:
+
+```json
+"settings": {
+  "call": {
+    "iceServers": "stun:stun.l.google.com:19302\nturn:USER:PASSWORD@turn.example.org:3478"
+  }
+}
+```
+
+This is the **least specific** of the four levels — a community, and then an agent, can still
+decide differently where the module's declaration allows it (see
+`docs/architecture/capabilities-and-surfaces.md`). It is the right place for a fact about the
+deployment rather than about any one space.
+
+**`call.iceServers` is the one worth knowing about**, because the thing it fixes is otherwise
+invisible. WE's calls ship with public STUN and no TURN relay, and two peers behind symmetric
+NAT — ordinary on mobile carriers and corporate networks — cannot reach each other without one.
+It does not look like a missing relay from inside the app; it looks like a peer who never
+finishes connecting, and only that pair is affected, so the same call works for everybody else.
+(Hovering a tile's connection badge says which it is: `relay` means TURN is carrying that pair,
+and nothing at all means no route was found.)
+
+A module cannot _ship_ a relay — infrastructure somebody has to run is not a module's to
+require — so a deployment that runs one says so here. One URL per line, or a JSON array of
+`RTCIceServer` objects if that is the shape your relay provider hands you.
+
+### `elements`
+
+Custom elements from libraries the deployment bundles — a chart, a rating, a map — which
+templates may then name like any primitive:
+
+```json
+"elements": [
+  {
+    "package": "@shoelace-style/shoelace",
+    "define": ["@shoelace-style/shoelace/dist/components/rating/rating.js"],
+    "tags": ["sl-rating"]
+  }
+]
+```
+
+A template is data and cannot load code, so a visual element WE does not ship used to mean a
+merge into this repository. The renderer already mounts any hyphenated tag; what this adds is
+the deployment saying it trusts the code that defines one — the same trust it extends to a
+bundled module.
+
+- `package` — the npm package. Add it to `packages/app-shell/package.json`.
+- `define` — modules imported for their side effect of defining the elements. Defaults to the
+  package itself; name per-component entry points where the library has them, so the build
+  carries only what is listed.
+- `tags` — the tags templates may name. Defaults to every element the package's
+  custom-elements manifest declares.
+- `manifest` — the manifest's path in the package, when its `package.json` has no
+  `customElements` field.
+
+`pnpm --filter @we/app-shell generate-elements` writes the imports (the build runs it), and
+`pnpm --filter @we/ai-context generate-context` reads each manifest into the reference and the
+validator — props, events, description — so the tags validate and an author can see how to use
+them. Two things differ from a primitive: a foreign element takes **no design-system props**
+(wrap it in a `Column` for spacing and colour), and its events keep their library's names, so a
+handler is written with the exact name — `"on:sl-change"` — since `onSlChange` would listen for
+`slchange`.
 
 ### `features`
 

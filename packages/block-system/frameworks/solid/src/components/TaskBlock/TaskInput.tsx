@@ -14,9 +14,17 @@ interface TaskInputProps {
   isSelected: () => boolean;
 }
 
+/*
+  The default states, as a block composed into a document rather than one on a board.
+
+  Hardcoded here on purpose: this component is part of the block system, which knows nothing about
+  spaces and cannot read a community's own vocabulary without acquiring a dependency on the host. A
+  task composed inline gets the three defaults; a task on a board is offered whatever its space
+  defines. Worth revisiting if inline tasks become the common case, and not worth a store edge now.
+*/
 const STATUS_OPTIONS = [
   { label: 'To Do', value: 'todo' },
-  { label: 'In Progress', value: 'in-progress' },
+  { label: 'Doing', value: 'doing' },
   { label: 'Done', value: 'done' },
 ];
 

@@ -1,5 +1,6 @@
 import { designSystemKeys, filterProps, mergeProps, tierKeys } from '@we/design-utils';
 import { buildLayoutStyles, getBgImageAttrs, type LayoutProps, useStateProps } from '@we/design-utils/solid';
+import { type ThemeFamily, themeFamily } from '@we/tokens';
 import { createMemo, type JSX, splitProps } from 'solid-js';
 
 /**
@@ -26,7 +27,25 @@ import { createMemo, type JSX, splitProps } from 'solid-js';
  */
 const LAYOUT_DEFAULTS: Partial<LayoutProps> = { overflowWrap: 'anywhere' };
 
-export interface LayoutComponentConfig<P extends LayoutProps> {
+export interface LayoutComponentConfig<P extends LayoutProps, H = unknown> {
+  /**
+   * The theme family this component belongs to — the layer-4 counterpart of `COMPONENT_CASCADE`.
+   *
+   * A primitive says this once and never mentions it again: `we-modal` is registered as a surface
+   * and gets radius, padding and gap from the theme without a prop at any call site. Layer-4
+   * components had no equivalent, because they build inline styles rather than adopting a generated
+   * stylesheet — so the only way for `Card` to say "I am a surface" was to say it three times, once
+   * per axis, and the components that did not bother said it as raw `var()` strings instead.
+   *
+   * Declared here rather than as a prop because it is a fact about the component, not about the
+   * call. A `Card` is a surface; no caller should be able to say otherwise. What varies per call —
+   * `EditableImage` being an avatar here and a banner there — is what the family *names* are for,
+   * and those stay available on `r`, `p` and `gap`.
+   *
+   * Expands to whichever axes the family carries (see `themeFamily.ts`), beneath `defaults` and the
+   * caller's own props, so both still override it.
+   */
+  family?: ThemeFamily;
   /** DS-prop defaults merged beneath the caller's props. */
   defaults?: Partial<P>;
   /** Component-own prop names: split off with the DS props but excluded from style building. */
@@ -43,13 +62,52 @@ export interface LayoutComponentConfig<P extends LayoutProps> {
    * from the box it ends up occupying, and no amount of prop inspection can answer that. Runs in the
    * component body, so it may hold signals and register cleanup like any other Solid code.
    */
-  hook?: (props: P) => { ref?: (el: HTMLElement) => void; style?: () => JSX.CSSProperties };
+  hook?: (props: P) => {
+    ref?: (el: HTMLElement) => void;
+    style?: () => JSX.CSSProperties;
+    /** Anything else the hook computed, handed on to {@link wrapChildren}. */
+    extra?: H;
+  };
+  /**
+   * A layer of the component's own between the box and its children.
+   *
+   * `Canvas` needs one and nothing else does: a scaled artboard is two elements, because a
+   * transform does not change the box a parent lays out against — so the outer element is what
+   * gets measured and takes the DS props, and the inner one is the coordinate space, sized in the
+   * author's units and scaled to fit. Squeezing both onto one element is not a matter of taste; it
+   * cannot be done.
+   *
+   * Handed the hook's `extra`, because the layer is usually a function of the same measurement the
+   * hook is making and calling the hook a second time would observe a second element — which is to
+   * say, none.
+   *
+   * `children` arrives as an accessor rather than as a value, and must be read inside JSX. Reading
+   * it eagerly here would resolve a `$each` once and leave it resolved.
+   */
+  wrapChildren?: (children: () => JSX.Element, props: P, extra: H | undefined) => JSX.Element;
 }
 
-export function createLayoutComponent<P extends LayoutProps>(
-  config: LayoutComponentConfig<P>,
+/**
+ * A family name on every axis the family carries — `{ r: 'surface', p: 'surface', gap: 'surface' }`.
+ *
+ * Derived from the table so a family gaining an axis reaches its components with no edit here, and
+ * so a family that has no padding (see `themeFamily.ts` for why `control` and `input` do not) cannot
+ * accidentally be given one.
+ */
+const AXIS_PROP = { radius: 'r', padding: 'p', gap: 'gap' } as const;
+
+function familyDefaults(family: ThemeFamily | undefined): Record<string, string> {
+  if (!family) return {};
+  return Object.fromEntries(
+    Object.keys(themeFamily[family]).map((axis) => [AXIS_PROP[axis as keyof typeof AXIS_PROP], family]),
+  );
+}
+
+export function createLayoutComponent<P extends LayoutProps, H = unknown>(
+  config: LayoutComponentConfig<P, H>,
 ): (allProps: P) => JSX.Element {
   const ownKeys = config.ownKeys ?? [];
+  const family = familyDefaults(config.family);
   const keys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children', ...ownKeys];
   const styleKeys = keys.filter((key) => key !== 'children' && !ownKeys.includes(key as keyof P & string));
 
@@ -62,7 +120,7 @@ export function createLayoutComponent<P extends LayoutProps>(
 
     const baseStyle = createMemo(() => {
       const usedProps = filterProps(designSystemProps as Record<string, unknown>, styleKeys);
-      const merged = mergeProps(usedProps, { ...LAYOUT_DEFAULTS, ...config.defaults }) as P;
+      const merged = mergeProps(usedProps, { ...LAYOUT_DEFAULTS, ...family, ...config.defaults }) as P;
       const style = buildLayoutStyles(merged, direction());
       return config.finalizeStyle ? config.finalizeStyle(style, designSystemProps as P) : style;
     });
@@ -96,7 +154,9 @@ export function createLayoutComponent<P extends LayoutProps>(
         {...(hasVariantProps() ? attrs : {})}
         ref={composedRef}
       >
-        {designSystemProps.children}
+        {config.wrapChildren
+          ? config.wrapChildren(() => designSystemProps.children, designSystemProps as P, extras?.extra)
+          : designSystemProps.children}
       </div>
     );
   };

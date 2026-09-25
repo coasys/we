@@ -182,7 +182,11 @@ const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>
 };
 
 /** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
-const THEME_CSS_MAP: Record<ParametricKey, string> = {
+/**
+ * Exported so `themeFamily.test.ts` can cross-check it: every shape and density group declared here
+ * has to be nameable from a call site, and the test fails when one is not.
+ */
+export const THEME_CSS_MAP: Record<ParametricKey, string> = {
   // Color
   primaryHue: '--we-color-primary-hue',
   successHue: '--we-color-success-hue',
@@ -197,6 +201,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   warningLightness: '--we-warning-lightness',
 
   borderWidth: '--we-theme-border-width',
+  stateDuration: '--we-theme-state-duration',
   focusRingWidth: '--we-theme-focus-ring-width',
   // Typography
   fontFamily: '--we-font-family',
@@ -1028,9 +1033,38 @@ const neutralAt = (lightness: number) => {
 
 export const DARK_SURFACES: Partial<Record<ThemeRole, string>> = {
   page: neutralAt(10),
-  surface: neutralAt(14),
+  /*
+    Two and a half points, then one and a half — the steps `role.ts` states, at the page pinned
+    above.
+
+    They were 4 and 9, set when the parametric steps were 0.045 and 0.06 and disagreeing with even
+    those. A theme flipped in the editor would have taken the old distances while every unflipped
+    theme took the new ones, so "make the cards a little closer" would have applied to some themes
+    and not others — with nothing on screen to say which kind you were looking at.
+
+    `surfaceSunken` is left where it is: its 1.5-point disagreement with the parametric `-0.035`
+    predates this and moving a well is not part of moving a card. It is the same fault, and it is
+    written up as Problem 2 in `docs/internal/plans/prs/SURFACE_STACK_DERIVATION.md` rather than
+    fixed halfway here.
+  */
+  surface: neutralAt(12.5),
   surfaceSunken: neutralAt(8),
-  surfaceRaised: neutralAt(19),
+  surfaceRaised: neutralAt(14),
+  /*
+    Three points below the page, which is the same gap the parametric default takes above it.
+
+    `chrome` is the anchor `page` derives from, so a theme that pins one and not the other has no
+    relationship left between them — the pin would answer for the page while the chrome went off and
+    computed itself from the inverted scale. Pinned together, at the distance `role.ts` states, the
+    two mechanisms say the same thing instead of two things.
+
+    That agreement is the point. An earlier version of this role was pinned here and *only* here,
+    with a parametric default pointing the other way, on the assumption that a polarity change was
+    the only path into a dark theme. It is not — a built-in dark preset ships its own parameters and
+    never goes through `surfacesForPolarity` — so every dark theme took the default and drew the
+    app's furniture lighter than the content it frames.
+  */
+  chrome: neutralAt(7),
 };
 
 export function surfacesForPolarity(

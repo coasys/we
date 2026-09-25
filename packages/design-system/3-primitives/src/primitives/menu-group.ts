@@ -70,7 +70,15 @@ export default class MenuGroup extends LayoutElement {
 
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) open = false;
-  @property({ type: String, reflect: true }) title = '';
+  /**
+   * The group's visible heading.
+   *
+   * Not `title`, which it was: that is a global HTML attribute, so reflecting it put the browser's
+   * own tooltip on the group as well as painting the heading — a bubble repeating, a second later
+   * and unstyled, the words already on screen. `we-tooltip` had the same collision from the other
+   * direction. See the note on its `content`.
+   */
+  @property({ type: String }) heading = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   /*
@@ -93,12 +101,12 @@ export default class MenuGroup extends LayoutElement {
         }}
         part="base"
         role="group"
-        aria-label=${this.title || nothing}
+        aria-label=${this.heading || nothing}
         style=${styleMap(inline)}
       >
         <summary part="summary">
           <slot part="start" name="start"></slot>
-          <div part="title">${this.title}</div>
+          <div part="title">${this.heading}</div>
           <slot part="end" name="end"></slot>
         </summary>
         <div part="content">
@@ -111,10 +119,10 @@ export default class MenuGroup extends LayoutElement {
   normal() {
     const inline = this.styles || {};
     return html`
-      <div part="base" role="group" aria-label=${this.title || nothing} style=${styleMap(inline)}>
+      <div part="base" role="group" aria-label=${this.heading || nothing} style=${styleMap(inline)}>
         <div part="summary">
           <slot part="start" name="start"></slot>
-          <div part="title">${this.title}</div>
+          <div part="title">${this.heading}</div>
           <slot part="end" name="end"></slot>
         </div>
         <div part="content">

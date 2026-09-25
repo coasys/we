@@ -36,7 +36,24 @@ This will:
 The production build creates:
 
 - AppImage for Linux
-- Can be configured for Windows (NSIS) and Mac (DMG)
+- DMG and ZIP for macOS
+- Can be configured for Windows (NSIS)
+
+### Builds from CI
+
+`.github/workflows/electron-package.yaml` packages both whenever something merges to `dev`. It does
+not run on pull requests. Download the builds from the workflow run's **Artifacts** section in the
+Actions tab (signed-in GitHub account required); they are kept for 14 days.
+
+To package a branch before it merges, or to build against a different AD4M branch, run the workflow
+manually from the Actions tab: pick the branch, and set `ad4m_ref`.
+
+The macOS build is **unsigned**, so a downloaded copy is quarantined and macOS reports it as
+damaged. Clear the quarantine flag after moving the app to Applications:
+
+```bash
+xattr -cr /Applications/WE.app
+```
 
 ## Optional: Embedding External Apps (e.g., Flux)
 
@@ -144,6 +161,19 @@ See `electron/main.js` for implementation details.
 Embedded apps receive AD4M credentials via postMessage. See [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the complete protocol.
 
 ## Troubleshooting
+
+### Executor Logs
+
+Every executor run is logged to `ad4m.log` in the active account's data directory — `~/.ad4m/ad4m.log`
+for the default account, `~/.ad4m/we-accounts/<slug>/ad4m.log` for one WE created. The path is
+printed at startup (`[main] Executor log: …`).
+
+- The last five runs are kept: `ad4m.log` is the current one, `ad4m.1.log` the one before, down to `ad4m.4.log`.
+- Lines marked `HOST` come from `electron/main.js` — the path and binary it chose, the stale files it
+  cleaned up, the exit code — and sit beside the executor's own output.
+- Each file stops at 50 MB and says so. Raise detail with the per-crate log levels in Settings.
+
+The Tauri host writes the same files by the same rules. See `electron/executorLog.js`.
 
 ### Executor Binary Not Found
 

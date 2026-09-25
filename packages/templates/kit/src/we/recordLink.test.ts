@@ -13,7 +13,24 @@ import { RECORD_ROUTE_PATH, recordLink } from './recordLink.ts';
  */
 describe('recordLink', () => {
   const node = recordLink({ $: "'CollectionBlock'" }, { $: 'post.id' }) as Record<string, never>;
-  const button = (node as unknown as { props: { then: { props: Record<string, { $: string }> } } }).props.then.props;
+
+  /**
+   * The button, found by what it is rather than by how deep it sits.
+   *
+   * It used to be read at a fixed path, which broke the day a `we-tooltip` was wrapped around it —
+   * a failure about the assertion's route to the node, not about the href it exists to check. What
+   * this test is *for* survives any amount of wrapping, so the lookup should too.
+   */
+  const find = (n: unknown, type: string): Record<string, { $: string }> | undefined => {
+    if (Array.isArray(n)) return n.map((v) => find(v, type)).find(Boolean);
+    if (!n || typeof n !== 'object') return undefined;
+    const rec = n as { type?: string; props?: Record<string, { $: string }> };
+    if (rec.type === type) return rec.props ?? {};
+    return Object.values(rec)
+      .map((v) => find(v, type))
+      .find(Boolean);
+  };
+  const button = find(node, 'we-button')!;
 
   it('puts the id in the query, never in the path', () => {
     expect(button.href.$).toBe("`${spaceStore.spacePath}/record/${'CollectionBlock'}?id=${post.id}`");

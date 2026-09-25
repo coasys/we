@@ -7,7 +7,7 @@
  * the same graph run as a hundred rich cards or as ten thousand dots without the plugins knowing.
  */
 import type { GraphEdge, GraphNode } from './graph';
-import type { Point } from './layout';
+import type { Bounds, Point } from './layout';
 import type { CardShape, NodeStyle } from './style';
 
 /**
@@ -27,6 +27,7 @@ export interface NodeVisual {
   color: string;
   borderColor?: string;
   borderWidth?: number;
+  borderStyle?: 'solid' | 'dashed';
   opacity?: number;
   label?: string;
   labelColor?: string;
@@ -43,6 +44,8 @@ export interface NodeVisual {
   cardShape?: CardShape;
   /** Multiplier on the size the card's content is drawn at. See `NodeStyle.contentScale`. */
   contentScale?: number;
+  /** Stacking order among nodes, a whole number. Absent is 0. See `NodeStyle.z`. */
+  z?: number;
 }
 
 /**
@@ -73,7 +76,23 @@ export interface BehaviourContext {
    * meant to click, and a caller that wants both asks for nodes first.
    */
   hitTestEdge(at: Point, tolerance?: number): string | null;
+  /**
+   * Every node overlapping a world rectangle — what a marquee asks.
+   *
+   * Overlapping rather than enclosed, which is the choice worth stating because the two behave
+   * differently on a canvas of cards. Enclosure asks a reader to lasso *past* the far edge of a card
+   * they are plainly pointing at, and a card wider than the viewport could never be caught at all.
+   * Overlap catches what the rectangle touches, which is what people draw a rectangle to mean.
+   */
+  within(bounds: Bounds): string[];
   select(ids: string[], mode?: 'replace' | 'add' | 'toggle'): void;
+  /**
+   * Open one edge's route for editing, or close whichever is open.
+   *
+   * Separate from {@link select}, which is about nodes: the two are alternatives, and selecting
+   * either closes the other. See `GraphEngine.selectEdge`.
+   */
+  selectEdge(id: string | null): void;
   selection(): string[];
   /** Ask the engine to expand a node — the click-to-explore behaviour's whole job. */
   expand(id: string, direction?: 'in' | 'out' | 'both'): void;
@@ -110,6 +129,15 @@ export interface BehaviourContext {
    * completely inert, and hoping.
    */
   drawConnection(from: string | null, to?: Point): void;
+  /**
+   * Show the rectangle a marquee is sweeping out; `null` clears it.
+   *
+   * The sibling of {@link drawConnection} and here for the identical reason: the renderer has to draw
+   * it and behaviours never touch the DOM. It matters more here, if anything — a connect gesture at
+   * least moves a line between two visible cards, where a selection sweep with nothing drawn is a
+   * press, a move across an inert canvas, and a set of rings appearing on release.
+   */
+  drawMarquee(bounds: Bounds | null): void;
   /** Emit a graph event to the host — what a template binds `onNodeClick` and friends to. */
   emit(event: GraphEvent): void;
 }
@@ -121,13 +149,24 @@ export type GraphEvent =
   | { type: 'nodeHover'; node: GraphNode | null }
   | { type: 'edgeClick'; edge: GraphEdge }
   | { type: 'selectionChange'; ids: string[] }
-  | { type: 'nodeDragEnd'; node: GraphNode; position: Point }
+  /**
+   * A drag ended, leaving the node here — and everything that travelled with it there.
+   *
+   * `moved` is the rest of the selection when several cards were dragged as one. It is on the event
+   * rather than left for the consumer to work out from the selection, because by the time a host
+   * hears about the drop the selection is merely *what is selected now*: it says nothing about which
+   * cards this gesture actually moved, and the two come apart the moment anything reselects.
+   *
+   * Absent for the ordinary single-card drag, so nothing that already handled this event had to
+   * learn about it.
+   */
+  | { type: 'nodeDragEnd'; node: GraphNode; position: Point; moved?: { id: string; position: Point }[] }
   /**
    * The user resized a card, giving it this box in world units.
    *
    * Intent rather than a mutation, like every other event here: the engine has no write path, and
-   * where a card's box *lives* is the consumer's business — on a board it belongs to the placement,
-   * so the same note can be a wide banner on one board and a small square on another.
+   * where a card's box *lives* is the consumer's business — on a canvas it belongs to the placement,
+   * so the same note can be a wide banner on one canvas and a small square on another.
    *
    * The position travels with the size because resizing from one edge anchors the other, and a card
    * drawn from its centre has to move that centre to hold an edge still.
@@ -141,7 +180,7 @@ export type GraphEvent =
    *
    * Intent, never a mutation — the same rule `we-sortable` follows. What connecting two things
    * *means* is the consumer's business and differs completely: a knowledge map creates a
-   * relationship record somebody can argue with, a board might draw an arrow that is only ever
+   * relationship record somebody can argue with, a canvas might draw an arrow that is only ever
    * decoration, an outline would reparent. A gesture that wrote one of those would be useless to the
    * others, and the engine has no write path anyway.
    */
@@ -151,7 +190,7 @@ export type GraphEvent =
    *
    * Intent again, and the position is the whole of it: "make something here" is a different request
    * from "make something", and a surface where position is the data cannot ask the second one. What
-   * gets made is the consumer's business — a board creates a card, an outline might do nothing.
+   * gets made is the consumer's business — a canvas creates a card, an outline might do nothing.
    */
   | { type: 'canvasDoubleClick'; at: Point }
   | { type: 'expanded'; id: string; added: number; total?: number }
@@ -163,6 +202,14 @@ export interface PointerInput {
   at: Point;
   buttons: number;
   shiftKey: boolean;
+  /**
+   * Control on every platform, and Command on a Mac — the two spellings of one intent.
+   *
+   * Folded together by the adapter rather than reported separately, because every gesture that wants
+   * this wants "the platform's multi-select modifier" and no gesture wants to know which key that is.
+   * `metaKey` is still reported on its own for anything that genuinely means the Command key.
+   */
+  ctrlKey: boolean;
   metaKey: boolean;
   /** Wheel delta, `wheel` only. */
   delta?: number;
@@ -251,7 +298,7 @@ export interface ControlContext {
   /**
    * Whether node movement by the user is blocked.
    *
-   * Deliberately about the user rather than the layout: locking a board stops it being rearranged by
+   * Deliberately about the user rather than the layout: locking a canvas stops it being rearranged by
    * accident, and freezing a force simulation is a different request that nobody has made.
    */
   isLocked(): boolean;

@@ -14,8 +14,9 @@
  * metadata for forms and prompts — not compiled, since SHACL carries no enum the executor reads.
  */
 import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
-import type { EntityManifest, EntitySchema } from '@we/backend-shared';
+import { type EntityManifest, type EntitySchema, resolvesPolymorphically } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { EntityManifestEntry } from './manifestTypes';
 
@@ -123,6 +124,10 @@ export function buildEntityFromEntry(
       decorator({
         through: p.predicate,
         ...(resolver && related !== undefined ? { target: () => resolver(related) as never } : {}),
+        // The declaration says the members are in a chosen order; the strategy naming *how* that
+        // order survives concurrent edits is AD4M's, and belongs here rather than in the manifest.
+        ...(p.ordered ? { ordering: { strategy: 'linkedList' as const } } : {}),
+        ...(p.polymorphic ? { polymorphic: true } : {}),
       })(proto as never, p.name as never);
     } else {
       // Only what the declaration states. `null` is itself a declared default (an unset file
@@ -158,6 +163,21 @@ export function buildEntityFromEntry(
 }
 
 /**
+ * An entity this manifest declares, or — for a parent it names but does not declare — the core one.
+ *
+ * A space shape or a module entity is compiled from a manifest holding only itself, so `extends:
+ * 'WeNode'` named something the manifest could not see, and the lookup threw on `undefined`.
+ * `validateManifest` already accepted it, which made the refusal a crash at adoption rather than a
+ * message at save. Reading the parent from the core manifest is what lets a community's model be a
+ * complete social object — commented on, reacted to, RSVP'd — the way every built-in content type is.
+ */
+function schemaOf(manifest: EntityManifest, name: string): EntitySchema {
+  const entity = manifest.entities[name] ?? CORE_MANIFEST.entities[name];
+  if (!entity) throw new Error(`manifest: "${name}" is not declared here or in the core vocabulary`);
+  return entity;
+}
+
+/**
  * Project a neutral manifest onto AD4M-side entries: resolve each property/relation to a concrete
  * predicate (override → core vocabulary → mint under the module subtree).
  */
@@ -168,7 +188,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
 
   /** Everything an entity declares, including whatever it inherits. */
   const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+    const entity = schemaOf(manifest, name);
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {
@@ -212,8 +232,13 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           type: 'uri' as const,
           isCollection: spec.cardinality === 'many',
           required: false,
-          writable: true,
+          // A `reverseOf` relation reads a link the other entity owns, so it is read-only here:
+          // AD4M's `@BelongsTo*` generates no `add`/`remove`/`set`, and an entry claiming otherwise
+          // would build a runtime-adopted class that offers writes the hand-written one refuses.
+          writable: !spec.reverseOf,
           ...(spec.target ? { relatedEntity: spec.target } : {}),
+          ...(spec.ordered ? { ordered: true } : {}),
+          ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),
         })),
       ],
     };

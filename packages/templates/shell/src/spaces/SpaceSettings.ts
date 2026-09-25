@@ -117,7 +117,7 @@ const pageHeader: SchemaNode = {
  */
 const notAWeSpaceNotice: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['Nothing to configure yet'] },
     {
@@ -335,7 +335,7 @@ const communitySection: SchemaNode = {
     condition: { $: 'space.canAdminister' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       $localState: {
         editName: { type: 'string', initial: { $: 'space.name' } },
         editDescription: { type: 'string', initial: { $: 'space.description' } },
@@ -458,7 +458,7 @@ const shareSection: SchemaNode = {
     condition: { $: 'space.shareLink' },
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       children: [
         {
           type: 'Column',
@@ -488,7 +488,7 @@ const shareSection: SchemaNode = {
                 minWidth: '0',
                 truncate: true,
                 p: '200',
-                bg: 'surface-sunken',
+                bg: 'surface',
                 r: '200',
               },
               children: [{ $: 'space.shareLink' }],
@@ -538,7 +538,7 @@ const shareSection: SchemaNode = {
                         minWidth: '0',
                         truncate: true,
                         p: '200',
-                        bg: 'surface-sunken',
+                        bg: 'surface',
                         r: '200',
                       },
                       children: [{ $: 'space.guestLink' }],
@@ -579,7 +579,7 @@ const shareSection: SchemaNode = {
  */
 const personalAppearanceSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -710,7 +710,7 @@ const moduleRow: SchemaNode = {
 
 const modulesSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -733,6 +733,189 @@ const modulesSection: SchemaNode = {
 };
 
 /**
+ * One capability setting's control, for one level.
+ *
+ * Written once and used for both columns, because the two differ only in what they read and what
+ * they write — and because the personal column used to render a `we-switch` whatever the setting's
+ * type was, which would have bound a select's string to a checkbox the moment anything but a boolean
+ * was declared.
+ */
+function settingControl(options: {
+  value: SchemaProp;
+  disabled: SchemaProp;
+  action: string;
+  args: SchemaProp[];
+}): SchemaNode {
+  const { value, disabled, action, args } = options;
+  // A bare `event.detail`, never wrapped: an operator object around it would be evaluated at render
+  // time, before the event exists. The same rule as the module switches above.
+  const write = { $action: action, args: [...args, { $: 'event.detail' }] };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: "setting.type == 'boolean'" },
+      then: { type: 'we-switch', props: { size: 'sm', checked: value, disabled, onChange: write } },
+      else: {
+        type: '$if',
+        props: {
+          condition: { $: "setting.type == 'enum'" },
+          then: {
+            type: 'we-select',
+            props: { size: 'sm', options: { $: 'setting.options' }, value, disabled, onChange: write },
+          },
+          else: { type: 'we-input', props: { size: 'sm', value, disabled, onInput: write } },
+        },
+      },
+    },
+  };
+}
+
+/** A control under the word saying who it answers for — the shape the module rows above use. */
+function settingColumn(label: string, control: SchemaNode): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '100', ax: 'center' },
+    children: [{ type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [label] }, control],
+  };
+}
+
+/** This agent's own answer to the setting the row is about, or nothing where they have no say. */
+const MINE = 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key })';
+
+/**
+ * What each capability lets this space decide — rendered from what the modules declare.
+ *
+ * Nothing here names a setting. The rows come from `spaceStore.spaceModuleSettings`, which is built
+ * from every installed module's `settings` declaration, so a module that adds one gets a control
+ * with nothing to register anywhere — the step whose omission is otherwise silent, and the same
+ * trick `recordStore.displays` plays for a record's own form.
+ *
+ * Two answers per row where both apply, under `For me` and `For everyone`, exactly as the module
+ * list above does — the labels are what make a pair of switches legible as a pair rather than as two
+ * unexplained controls.
+ *
+ * Two things a row has to say that a plain switch cannot. **Whether this level has an opinion at
+ * all**, since silence is not `false` and a reset has to be able to restore it — hence `Use default`
+ * beside a row that has been set. And **whether a level it answers to has already refused**: a
+ * community that has switched recording off cannot be overruled from the personal column, and a
+ * control that took the press and sprang back would read as broken rather than as a rule.
+ */
+const moduleSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.spaceModuleSettings)' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'spaceStore.spaceModuleSettings' }, as: 'setting' },
+          children: [
+            {
+              type: 'Row',
+              props: { width: '100%', gap: '400', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'setting.label' }] },
+                        { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'setting.groupLabel' }] },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        {
+                          /*
+                            The reason, or — where a level this space answers to has taken the
+                            decision away — what took it. Saying nothing there leaves a disabled
+                            control with no account of itself, which is the failure the whole row
+                            shape exists to avoid.
+                          */
+                          $: `setting.locked ? 'Set by this deployment, so it cannot be changed here.' : (${MINE}.locked ? 'Switched off for everyone in this space, so you cannot turn it on for yourself.' : (setting.description ?? ''))`,
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    // Something to undo only where this level itself has spoken — a value inherited
+                    // from the deployment is not this screen's to reset.
+                    condition: { $: 'setting.set && space.canAdminister' },
+                    then: {
+                      type: 'we-tooltip',
+                      props: { content: 'Stop deciding this here' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'xs',
+                            onClick: {
+                              $action: 'spaceStore.setSpaceModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                            },
+                          },
+                          children: ['Use default'],
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '400', ay: 'center', flexShrink: '0' },
+                  children: [
+                    {
+                      /*
+                        Mine, and only where this setting is mine to answer. The two lists are
+                        filtered by level, so a setting the community owns alone has nothing here
+                        rather than a control that does nothing.
+                      */
+                      type: '$if',
+                      props: {
+                        condition: { $: MINE },
+                        then: settingColumn(
+                          'For me',
+                          settingControl({
+                            value: { $: `${MINE}.value` },
+                            disabled: { $: `${MINE}.locked` },
+                            action: 'spaceStore.setMyModuleSetting',
+                            args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                          }),
+                        ),
+                      },
+                    },
+                    settingColumn(
+                      'For everyone',
+                      settingControl({
+                        value: { $: 'setting.value' },
+                        disabled: { $: '!space.canAdminister || setting.locked' },
+                        action: 'spaceStore.setSpaceModuleSetting',
+                        args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                      }),
+                    ),
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * Automatic extraction — a community decision, and priced like one.
  *
  * Its own section rather than a row in Modules, because it is not a module: it is what one of them
@@ -745,7 +928,7 @@ const modulesSection: SchemaNode = {
  */
 const autoInterpretSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Row',
@@ -802,6 +985,63 @@ const autoInterpretSection: SchemaNode = {
  * standing default and a very reasonable thing to switch on while working on extraction.
  */
 /**
+ * How deep conversations go here.
+ *
+ * Beside automatic extraction because it is the same kind of decision: a community answering for
+ * everyone about what one of WE's own capabilities does, rather than a module being switched on.
+ *
+ * The wording is careful about what changes, because the honest answer is "less than you would
+ * think": replies are stored as a tree either way, so flat withholds the button that grows one and
+ * nothing else. A thread already three deep stays three deep and stays readable, and turning
+ * fractal back on lets it grow again. Said plainly, because a setting that sounded like it
+ * restructured a year of conversation is one nobody would touch.
+ */
+const threadModeSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+  children: [
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Replies to replies'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                {
+                  $: "space.canAdminister ? 'Whether a reply can itself be replied to, the way a forum thread branches — or whether answers all hang off the thing itself. Nothing is rewritten either way: threads that already branch stay as they are, and turning this back on lets them grow again.' : 'Whether a reply can itself be replied to. Changing this needs someone who administers the space.'",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-select',
+          props: {
+            size: 'sm',
+            width: '180px',
+            // Anything but the stored 'flat' reads as fractal, so a space that predates the setting
+            // shows what it has always done rather than an empty picker.
+            value: { $: "spaceStore.currentSpace.threadMode == 'flat' ? 'flat' : 'fractal'" },
+            disabled: { $: '!space.canAdminister' },
+            options: [
+              { label: 'Branching', value: 'fractal' },
+              { label: 'One level', value: 'flat' },
+            ],
+            onChange: { $action: 'spaceStore.setThreadMode', args: [{ $: 'event.detail' }, { $: 'space.uuid' }] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * Which models this community's calls extract into.
  *
  * The middle of three layers, and the only one a community owns. The codebase decides what is a
@@ -822,7 +1062,7 @@ const autoInterpretSection: SchemaNode = {
  */
 const extractionTargetsSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -898,48 +1138,6 @@ const extractionTargetsSection: SchemaNode = {
           children: ['Nothing in this space can be extracted yet. Models declare it, in Vocabulary.'],
         },
       },
-    },
-  ],
-};
-
-const shareExtractionDetailSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
-  children: [
-    {
-      type: 'Row',
-      props: { width: '100%', gap: '400', ay: 'center' },
-      children: [
-        {
-          type: 'Column',
-          props: { gap: '100', flex: '1' },
-          children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Share extraction detail'] },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [
-                {
-                  $: "space.canAdminister ? 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.' : 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.'",
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'we-switch',
-          props: {
-            size: 'sm',
-            checked: { $: 'spaceStore.shareExtractionDetail' },
-            disabled: { $: '!space.canAdminister' },
-            // Bare `$event.detail`, for the reason the switch above it gives.
-            onChange: {
-              $action: 'spaceStore.setShareExtractionDetail',
-              args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
-            },
-          },
-        },
-      ],
     },
   ],
 };
@@ -1059,7 +1257,14 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
     */
     type: 'Column',
     props: { width: '100%', ...fills },
-    $localState: { tab: { type: 'string', initial: 'about' } },
+    /*
+      Where this opens, from whoever opened it — see `shellStore.spaceSettingsTab`.
+
+      An `initial` rather than a bound value, and the difference is the whole point: a control
+      elsewhere can point at the tab holding the setting it is about, and the reader is then free to
+      walk away from it. Bound, they would be dragged back the moment anything re-evaluated.
+    */
+    $localState: { tab: { type: 'string', initial: { $: 'shellStore.spaceSettingsTab' } } },
     children: [
       {
         type: '$each',
@@ -1164,9 +1369,10 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           groupHeading('Everyone in this space', 'What this space does on its own, for every member.', {
                             $: 'space.canAdminister',
                           }),
+                          moduleSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
-                          shareExtractionDetailSection,
+                          threadModeSection,
                         ],
                         fill,
                       ),

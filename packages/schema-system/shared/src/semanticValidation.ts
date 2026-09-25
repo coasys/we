@@ -1,5 +1,5 @@
 import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
-import { role } from '@we/tokens';
+import { role, semanticValues, space } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
@@ -21,6 +21,19 @@ export type ValidationContext = {
   dsPropToLayer: Map<string, string>;
   /** Functions the host lends to expressions, from the generated context's `sources`. */
   hostFunctions: Set<string>;
+  /**
+   * The module catalogue, when the context carries one. Every check keyed on it is skipped when it
+   * is absent, so a context built without a seed judges `modules.*`, `$part` and `meta.panels` as
+   * leniently as it always did.
+   */
+  modules?: {
+    /** Public store members by module id — or `null` for the module whose own chrome is being judged. */
+    members: Map<string, Set<string> | null>;
+    /** Part ids, `<moduleId>.<name>`. */
+    parts: Set<string>;
+    /** Panel names by module id. */
+    panels: Map<string, Set<string>>;
+  };
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -158,6 +171,17 @@ const DS_PROP_TYPE_OVERRIDES: Record<string, string> = {
   opacity: 'number',
   bgImageOpacity: 'number',
   zIndex: 'string|number',
+  /*
+    Coordinates, and a number is the ordinary way to write one.
+
+    `number | string` classifies as `string` on its own — the general rule is that a union
+    containing `string` is a string, which is right for `SpaceValue | string` and wrong here, where
+    the number is the *primary* spelling and the string is the escape hatch for a unit that is not
+    px. Left to classify itself, every `"x": 620` in a canvas warned.
+  */
+  x: 'string|number',
+  y: 'string|number',
+  rotate: 'string|number',
 };
 
 function classifyPropType(typeText: string): string {
@@ -287,6 +311,26 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     if (propAllowed.size > 0) componentPropAllowedValues.set(prim.tagName, propAllowed);
   }
 
+  /*
+    Custom elements the seed allows. Their props are whatever their manifest documents, and nothing
+    of the design system's: they are not built on its base classes, so a `p` or a `bg` would be set
+    as a property the element ignores.
+  */
+  for (const element of data.foreignElements ?? []) {
+    componentNames.add(element.tagName);
+    const props = new Set<string>();
+    const propTypes = new Map<string, string>();
+    for (const p of element.props) {
+      props.add(p.name);
+      propTypes.set(p.name, classifyPropType(p.type));
+    }
+    // An element whose manifest documents nothing is judged by name alone, not reported prop by prop.
+    if (props.size) {
+      componentProps.set(element.tagName, props);
+      componentPropTypes.set(element.tagName, propTypes);
+    }
+  }
+
   // Components and widgets
   for (const comp of data.components) {
     componentNames.add(comp.name);
@@ -374,6 +418,24 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   const hostFunctions = new Set((data.sources ?? []).map((source) => source.name));
 
+  /*
+    The module catalogue, folded into every list a module can add to — and kept as its own map for
+    the checks only a module has. Entities a module declares are queryable like core ones; functions
+    it lends are callable like host sources; components it contributes are mountable like the shell's.
+  */
+  let modules: ValidationContext['modules'];
+  if (data.modules) {
+    modules = { members: new Map<string, Set<string> | null>(), parts: new Set(), panels: new Map() };
+    for (const entry of data.modules) {
+      modules.members.set(entry.id, new Set(entry.members.map((member) => member.name)));
+      for (const part of entry.parts) modules.parts.add(`${entry.id}.${part.name}`);
+      modules.panels.set(entry.id, new Set(entry.panels.map((panel) => panel.name)));
+      for (const entity of entry.entities) entityNames.add(entity.name);
+      for (const fn of entry.functions) hostFunctions.add(fn.name);
+      for (const component of entry.components) componentNames.add(component);
+    }
+  }
+
   return {
     componentNames,
     componentProps,
@@ -386,6 +448,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     entityNames,
     dsPropToLayer,
     hostFunctions,
+    ...(modules ? { modules } : {}),
   };
 }
 
@@ -416,6 +479,11 @@ interface WalkState {
    */
   contextScope: Set<string>;
   hasRoutesAncestor: boolean;
+  /**
+   * Inside a `meta.panels` entry's node — a section's own tree. What refuses a `$panels` outlet
+   * there: lanes hold sections, sections do not hold lanes.
+   */
+  insidePanel?: boolean;
   /** True only for the root template node and for route entry nodes — the positions the router
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
    *  a routes array; if they do, nothing will render (the router never sees it). */
@@ -463,6 +531,59 @@ function walkNode(
   }
 
   /**
+   * A node type the renderer draws ONE child of, given several.
+   *
+   * `$each` renders `children[0]` as its row template and drops the rest; `$animate` does the same
+   * with the child it wraps. Both are documented as taking one child, and both discard the others in
+   * silence — no warning, no fallback, nothing in the DOM.
+   *
+   * That silence is the whole reason this check exists. `commentThread` built each row as *two*
+   * nodes — the reply, then the thread hanging off it — so every level of every thread below the
+   * first was expanded, validated, and never mounted. The symptom was a reply to a reply appearing
+   * nowhere at all, with nothing anywhere to say a node had been dropped, and the fragment's own
+   * tests could not see it: the expansion was correct, and what was wrong was what the renderer did
+   * with it.
+   *
+   * The fix at a call site is always the same — wrap the children in one box.
+   */
+  if ((type === '$each' || type === '$animate') && Array.isArray(n.children) && n.children.length > 1) {
+    errors.push({
+      path: `${path}.children`,
+      message:
+        `{ type: "${type}" } renders only its first child and silently drops the other ` +
+        `${n.children.length - 1}. Wrap them in one node — a Column or a Row — so the whole ` +
+        `${type === '$each' ? 'row' : 'subject'} is one child.`,
+      severity: 'error',
+    });
+  }
+
+  /**
+   * `$part` — a module's named fragment, placed by an interface.
+   *
+   * The host expands the marker before the renderer sees it, so an unknown id renders nothing and
+   * warns once in a console nobody is reading. With a catalogue the id is checked here, where the
+   * author is; without one only its shape is.
+   */
+  if (type === '$part') {
+    const id = (n.props as { id?: unknown } | undefined)?.id;
+    if (typeof id !== 'string' || !id.includes('.')) {
+      errors.push({
+        path: `${path}.props.id`,
+        message: '{ type: "$part" } needs an "id" of the form "<moduleId>.<partName>"',
+        severity: 'error',
+      });
+    } else if (ctx.modules && !ctx.modules.parts.has(id)) {
+      const hint = suggest(id, ctx.modules.parts);
+      errors.push({
+        path: `${path}.props.id`,
+        message: `No module publishes part "${id}"${hint ? ` — did you mean "${hint}"?` : ''}`,
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
+  /**
    * `$slot` outlet — where a module lets other modules contribute chrome.
    *
    * Checked rather than waved through with the other `$` types because the failure is silent in a
@@ -478,6 +599,36 @@ function walkNode(
       errors.push({
         path: `${path}.props.anchor`,
         message: '{ type: "$slot" } needs a non-empty "anchor" string naming the anchor it renders',
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
+  /**
+   * `$panels` outlet — a home lane, where a template lets sections live in its own flow.
+   *
+   * Checked for the reason `$slot` is: the host rewrites the marker before the renderer sees it, so
+   * a missing `lane` renders an empty outlet that is indistinguishable from a lane nobody has put a
+   * section in. And refused inside a panel's own node: lanes hold sections, sections do not hold
+   * lanes. That is what keeps a position a few integers, which is what keeps two arrangements
+   * mergeable per panel — make it recursive and the template's declaration stops being a suggestion
+   * a drag can overrule.
+   */
+  if (type === '$panels') {
+    const lane = (n.props as { lane?: unknown } | undefined)?.lane;
+    if (typeof lane !== 'string' || !lane) {
+      errors.push({
+        path: `${path}.props.lane`,
+        message: '{ type: "$panels" } needs a non-empty "lane" string naming the home lane it renders',
+        severity: 'error',
+      });
+    }
+    if (state.insidePanel) {
+      errors.push({
+        path: `${path}.type`,
+        message:
+          '{ type: "$panels" } cannot be inside a panel\'s node: lanes hold sections, sections do not hold lanes',
         severity: 'error',
       });
     }
@@ -645,6 +796,7 @@ function checkExpressionToken(
     contextNames: state.contextScope,
     strict: !state.isFragment,
     hostFunctions: ctx.hostFunctions,
+    moduleMembers: ctx.modules?.members,
   });
   for (const issue of issues) {
     errors.push({
@@ -821,6 +973,61 @@ function checkColourValue(propName: string, value: unknown, path: string, errors
 }
 
 /**
+ * A spacing value that is neither a step of the scale, a theme family nor CSS.
+ *
+ * `gap: '050'` reads as "half of 100" and is not a token — the scale starts `0`, `100`, `200`. It
+ * resolved to `var(--we-space-050)`, a variable nothing declares, so the gap was silently zero, and
+ * nothing said so: the prop is typed `SpaceValue`, which classifies as a plain string, and the
+ * runtime's unknown-token warning only fired on names made of letters. Six call sites shipped it,
+ * one of them inside a segmented control whose padding was therefore never there.
+ *
+ * Families are per axis: `p: 'surface'` and `gap: 'control'` resolve, `m: 'surface'` does not.
+ */
+const SPACE_SCALE = new Set(Object.keys(space));
+const PADDING_PROPS = new Set(['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl']);
+const MARGIN_AND_OFFSET_PROPS = new Set(['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml', 'top', 'right', 'bottom', 'left']);
+const SPACE_FAMILIES = {
+  padding: new Set(Object.keys(semanticValues('padding'))),
+  gap: new Set(Object.keys(semanticValues('gap'))),
+};
+/** The bags whose keys are DS props in their own right, so a `mdUpProps: { gap: '050' }` is caught too. */
+const PROP_BAGS = new Set(['hoverProps', 'activeProps', 'focusProps', 'disabledProps', ...tierKeys]);
+const CSS_KEYWORD_RE = /^(auto|inherit|initial|unset|revert)$/i;
+
+function checkSpaceValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  const isPadding = PADDING_PROPS.has(propName);
+  if (!isPadding && propName !== 'gap' && !MARGIN_AND_OFFSET_PROPS.has(propName)) return;
+  // A spacing computed by an expression is one of its string literals — `open ? '400' : '050'`.
+  if (isExpressionToken(value)) {
+    for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
+      checkSpaceValue(propName, literal[1] ?? literal[2], path, errors);
+    }
+    return;
+  }
+  if (typeof value !== 'string') return;
+  const families = isPadding ? SPACE_FAMILIES.padding : propName === 'gap' ? SPACE_FAMILIES.gap : undefined;
+  if (
+    SPACE_SCALE.has(value) ||
+    families?.has(value) ||
+    CSS_LENGTH_RE.test(value) ||
+    CSS_COMPUTED_LENGTH_RE.test(value) ||
+    CSS_KEYWORD_RE.test(value) ||
+    // A shorthand of several lengths is raw CSS, and passes through the resolver untouched.
+    /\s/.test(value.trim())
+  ) {
+    return;
+  }
+  const familyHint = families ? `, a theme family (${[...families].join(', ')})` : '';
+  errors.push({
+    path,
+    message:
+      `"${value}" is not a space token. Use a step of the scale (${[...SPACE_SCALE].join(', ')})${familyHint} ` +
+      `or a CSS length. As written it resolves to var(--we-space-${value}), which nothing declares, so no space is applied.`,
+    severity: 'error',
+  });
+}
+
+/**
  * A string that was a reference in the old spelling — `'$post.title'`, `'$event.detail'`, `'$me.did'`.
  *
  * A plain string is text now, so this would render as the characters themselves — a title reading
@@ -867,11 +1074,31 @@ function checkProps(
     if (COLOUR_PROPS.has(propName) || BORDER_PROPS.has(propName)) {
       checkColourValue(propName, propValue, propPath, errors);
     }
+    checkSpaceValue(propName, propValue, propPath, errors);
+    if (PROP_BAGS.has(propName) && propValue && typeof propValue === 'object' && !isTokenObject(propValue)) {
+      for (const [bagProp, bagValue] of Object.entries(propValue)) {
+        checkSpaceValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
+      }
+    }
 
     // Universal props are always valid
     if (ctx.universalProps.has(propName)) continue;
     // Event handlers are always valid
     if (propName.startsWith('on') && propName.length > 2 && propName[2] === propName[2].toUpperCase()) continue;
+    /*
+      A data attribute is always valid, on anything.
+
+      They are how a consumer marks something for a primitive to find — `data-we-handle` says which
+      part of a sortable row is the grab area, `data-we-more` says a scroller has unloaded content
+      beyond an end — and the design system documents several. Nothing declares them as props,
+      because they are not props: they are attributes the renderer spreads through, and the element
+      that reads one is looking at the DOM rather than at a prop bag.
+
+      Refusing them pushed authors onto a bare `div` to carry a marker, which is why the existing
+      conventions are all documented against native elements. That is a workaround for this check
+      rather than a design.
+    */
+    if (propName.startsWith('data-')) continue;
 
     // Check if prop is known
     if (knownProps && !knownProps.has(propName)) {
@@ -994,7 +1221,20 @@ function checkValuePositionIf(
   propTypes: Map<string, string> | undefined,
   errors: ValidationError[],
 ): void {
-  if (/^on[A-Z]/.test(propName)) return;
+  /*
+    Two spellings of "this prop is an event handler", and the second is easy to forget.
+
+    `onClick` is the delegated DOM event. `on:submit` is Solid's direct-listener syntax, which is
+    how a schema reaches a **custom event a Lit primitive declares** — `we-textarea`'s `submit`,
+    `we-menu-item`'s `select` — and which the design system's own guidance tells authors to prefer
+    there, because delegation is unreliable across a shadow boundary and the browser's top layer.
+
+    Only the first was exempt, so a `$if` guarding a custom-event handler was refused with advice to
+    use a ternary, which cannot hold a handler and would not have worked. `$action` in the same
+    position was always accepted, so the rule was not even self-consistent — it was rejecting the
+    conditional form of something it already allowed.
+  */
+  if (/^on[A-Z]/.test(propName) || propName.startsWith('on:')) return;
   const declared = propTypes?.get(propName);
   if (declared === 'function') return;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
@@ -1041,9 +1281,7 @@ function checkTokenValue(
   // $query token — the entity is checked against the manifest's known models.
   if ('$query' in obj && typeof obj.$query === 'object' && obj.$query !== null) {
     const query = obj.$query as Record<string, unknown>;
-    if (typeof query.entity === 'string' && entityIsCheckable(query)) {
-      checkEntityRef(query.entity, `${path}.$query.entity`, ctx, errors);
-    }
+    if (entityIsCheckable(query)) checkEntityRefs(query.entity, `${path}.$query.entity`, ctx, errors);
     checkQueryInternals(query, `${path}.$query`, ctx, state, errors);
   }
 
@@ -1119,7 +1357,7 @@ function checkHoistedQueries(
     if (!query || typeof query !== 'object') continue;
     const q = query as Record<string, unknown>;
     const qPath = `${path}.$queries.${name}`;
-    if (typeof q.entity === 'string' && entityIsCheckable(q)) checkEntityRef(q.entity, `${qPath}.entity`, ctx, errors);
+    if (entityIsCheckable(q)) checkEntityRefs(q.entity, `${qPath}.entity`, ctx, errors);
     checkQueryInternals(q, qPath, ctx, state, errors);
   }
 }
@@ -1252,6 +1490,29 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
     return;
   }
 
+  // A module's action is one segment deeper: `modules.<id>.<member>`.
+  if (storeName === 'modules' && ctx.modules) {
+    const at = methodName.indexOf('.');
+    const id = at === -1 ? methodName : methodName.slice(0, at);
+    const member = at === -1 ? undefined : methodName.slice(at + 1);
+    const known = ctx.modules.members.get(id);
+    if (known === undefined) {
+      errors.push({
+        path,
+        message: `Unknown module "${id}" in $action "${ref}". This deployment ships: ${[...ctx.modules.members.keys()].join(', ')}`,
+        severity: 'error',
+      });
+    } else if (known !== null && (!member || !known.has(member))) {
+      const hint = member ? suggest(member, known) : undefined;
+      errors.push({
+        path,
+        message: `Unknown action "${member ?? ''}" on modules.${id}${hint ? ` — did you mean "${hint}"?` : ''}. A module's store is private unless it marks a member public`,
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
   const members = ctx.storeMembers.get(storeName);
   if (members && !members.has(methodName)) {
     // Filter to actions only (not state)
@@ -1280,6 +1541,19 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
  */
 function entityIsCheckable(query: Record<string, unknown>): boolean {
   return query.dataset === undefined;
+}
+
+/**
+ * Check the names a query's `entity` spells out: one name, or each name of a literal list — a query
+ * over several entities is only as valid as each one it asks. An expression is not checkable here,
+ * which is the cost the docs name for writing one.
+ */
+function checkEntityRefs(entity: unknown, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (typeof entity === 'string') return checkEntityRef(entity, path, ctx, errors);
+  if (!Array.isArray(entity)) return;
+  entity.forEach((name, index) => {
+    if (typeof name === 'string') checkEntityRef(name, `${path}[${index}]`, ctx, errors);
+  });
 }
 
 function checkEntityRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
@@ -1593,6 +1867,22 @@ function walkChildren(
 
 // ── Public API ─────────────────────────────────────────────────────
 
+/**
+ * The context for judging a module's **own** chrome.
+ *
+ * A module's panels and parts render against the chrome bag and see every member of its store,
+ * marked or not — that is what "private" means: private to the module's own chrome. A space
+ * template reaches only the public members, and that is what the catalogue holds. So a module's own
+ * schema files are judged with its member set left open, and every other module's as public. Without
+ * this the pocket's own panel failed on twenty reads of members it deliberately keeps to itself.
+ */
+export function withOwnModule(context: ValidationContext, moduleId: string): ValidationContext {
+  if (!context.modules) return context;
+  const members = new Map(context.modules.members);
+  members.set(moduleId, null);
+  return { ...context, modules: { ...context.modules, members } };
+}
+
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
   // If the schema declares custom stores/components in meta, extend the known sets for this validation
   // meta.stores supports two formats:
@@ -1656,6 +1946,99 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   };
 
   walkNode(schema, '', context, state, errors);
+
+  /*
+    A template's sections are trees of their own, declared beside the tree rather than in it.
+
+    Walked with the same scope as the root — a section reads the template's stores and its own
+    `$localState`, nothing of the route it happens to render in — and marked so that a `$panels`
+    outlet inside one is refused. That is the one rule that keeps the arrangement model flat.
+  */
+  /*
+    The modules an interface says it needs, checked against the deployment's catalogue where there
+    is one. A declaration naming a module this deployment does not ship is the case the declaration
+    exists to make visible — reported here rather than left to `missingModules` at runtime.
+  */
+  const requires = (schema as { meta?: { requires?: { modules?: unknown } } })?.meta?.requires?.modules;
+  if (context.modules && Array.isArray(requires)) {
+    requires.forEach((id, index) => {
+      if (typeof id === 'string' && !context.modules!.members.has(id)) {
+        errors.push({
+          path: `meta.requires.modules[${index}]`,
+          message: `Requires module "${id}", which this deployment does not ship. This deployment ships: ${[...context.modules!.members.keys()].join(', ')}`,
+          severity: 'warning',
+        });
+      }
+    });
+  }
+
+  const panels = (
+    schema as {
+      meta?: { panels?: { id?: unknown; node?: unknown; open?: unknown; module?: unknown; dock?: unknown }[] };
+    }
+  )?.meta?.panels;
+  if (Array.isArray(panels)) {
+    panels.forEach((panel, index) => {
+      if (!panel || typeof panel !== 'object') return;
+
+      /*
+        A placed module panel names a module and, where the module has several, which panel. Both
+        used to fail silently — an entry naming a panel the module does not have fell back to the
+        module's own bid and nothing said so. With a catalogue, both are checked here.
+      */
+      if (context.modules && typeof panel.module === 'string') {
+        const names = context.modules.panels.get(panel.module);
+        if (!names) {
+          errors.push({
+            path: `meta.panels[${index}].module`,
+            message: `Places a panel of module "${panel.module}", which this deployment does not ship`,
+            severity: 'warning',
+          });
+        } else if (typeof panel.dock === 'string' && !names.has(panel.dock)) {
+          errors.push({
+            path: `meta.panels[${index}].dock`,
+            message: `Module "${panel.module}" has no panel named "${panel.dock}". It has: ${[...names].join(', ') || 'none'}`,
+            severity: 'error',
+          });
+        } else if (panel.dock === undefined && names.size > 1) {
+          errors.push({
+            path: `meta.panels[${index}]`,
+            message: `Module "${panel.module}" has ${names.size} panels; name one with "dock": ${[...names].join(', ')}`,
+            severity: 'error',
+          });
+        }
+      }
+
+      /*
+        `open` is a module's word, and on anything else it is a declaration that does nothing.
+
+        Opening a MODULE's panel means invoking the action its launcher declares, and that action is
+        not always "open a panel" — the call module's is `goToCall`, which joins a call when there is
+        not one — so `open: false` exists to place such a panel without invoking it. An authored
+        panel has no launcher to suppress: the host places it and it is up, and nothing anywhere
+        reads the flag for it.
+
+        Which made it the failure this codebase keeps naming. It typechecks (the entry is one flat
+        type, and `node`/`module` being mutually exclusive is a comment rather than a constraint), it
+        validates, it reads exactly as intended, and the panel opens anyway — with no diagnostic. The
+        one entry in this repo that wrote it has been documenting a behaviour it does not have.
+
+        A warning rather than an error: the panel it is on works, and refusing a whole interface over
+        a field with no effect would be the worse trade for a template arriving from a stranger.
+      */
+      if (panel.node && panel.open !== undefined) {
+        errors.push({
+          path: `meta.panels[${index}].open`,
+          message:
+            '"open" only applies to a panel placed with "module": a panel supplied with "node" has no launcher to invoke and is always placed open',
+          severity: 'warning',
+        });
+      }
+
+      if (!panel.node || typeof panel.node !== 'object') return;
+      walkNode(panel.node, `meta.panels[${index}].node`, context, { ...state, insidePanel: true }, errors);
+    });
+  }
 
   return {
     valid: errors.filter((e) => e.severity === 'error').length === 0,

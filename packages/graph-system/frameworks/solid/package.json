@@ -26,12 +26,14 @@
     "dist"
   ],
   "dependencies": {
+    "@we/drag": "workspace:*",
     "@we/graph-core": "workspace:*",
     "@we/graph-expanders": "workspace:*",
     "@we/graph-layouts": "workspace:*"
   },
   "peerDependencies": {
     "@we/components": "^0.1.0",
+    "@we/design-utils": "workspace:*",
     "@we/graph-protocol": "workspace:*",
     "@we/primitives": "workspace:*",
     "solid-js": "^1.9.15"
@@ -43,11 +45,11 @@
     "@we/graph-protocol": "workspace:*",
     "@we/primitives": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.12.0",
     "sass": "^1.103.1",
     "solid-js": "^1.9.15",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
     "vitest": "^4.1.11"

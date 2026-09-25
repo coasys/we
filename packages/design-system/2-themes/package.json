@@ -39,7 +39,7 @@
     "@we/tokens": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.3.0",
+    "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
     "@we/tokens": "workspace:*",
     "jsdom": "^30.0.1",
@@ -48,7 +48,7 @@
     "postcss-import": "^17.0.0",
     "rimraf": "^6.1.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
   "publishConfig": {

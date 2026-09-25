@@ -25,6 +25,7 @@ export { discordTemplate } from './DiscordTemplate.schema.ts';
 export { eventsTemplate } from './EventsTemplate.schema.ts';
 export { instagramTemplate } from './InstagramTemplate.schema.ts';
 export { kanbanTemplate } from './KanbanTemplate.schema.ts';
+export { scrapbookTemplate } from './ScrapbookTemplate.schema.ts';
 export { twitterTemplate } from './TwitterTemplate.schema.ts';
 export { workshopTemplate } from './WorkshopTemplate.schema.ts';
 export { youtubeTemplate } from './YoutubeTemplate.schema.ts';

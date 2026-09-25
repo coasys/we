@@ -11,7 +11,7 @@
  * - {@link collectionExpander} — an untyped to-many relation, via the drill-down path.
  * - {@link propertyExpander} — the level below an entity: its own fields, and shared value nodes.
  * - {@link schemaExpander} — the level *above* an entity: a type node, opened into its instances.
- * - {@link querySeed} / {@link schemaSeed} / {@link datasetSeed} / {@link boardSeed} — where a graph starts.
+ * - {@link querySeed} / {@link schemaSeed} / {@link datasetSeed} / {@link canvasSeed} — where a graph starts.
  */
 export { collectionExpander } from './collection';
 export type { CollectionExpanderOptions } from './collection';
@@ -30,11 +30,17 @@ export {
   type ReifiedEdgeSpec,
   reifiedEdgeFrom,
 } from './reified';
-export { boardSeed, type BoardSeedOptions, PLACEMENT_UNSET, placementStyle } from './board';
+export { canvasSeed, type CanvasSeedOptions, PLACEMENT_UNSET, placementPosition, placementStyle } from './canvas';
+/*
+  Exported because the canvas is not the only surface that will ask a set of placements where a node
+  sits — a freeform canvas asks the same question of the same records, and "which of these applies"
+  is a rule rather than a query, so the two must not answer it differently.
+*/
+export { type PlacementRow, placementsFor, resolvePlacement } from './placements';
 export { datasetSeed, querySeed, schemaSeed } from './seeds';
 export type { QuerySeedOptions, SchemaSeedOptions } from './seeds';
 
-import { boardSeed } from './board';
+import { canvasSeed } from './canvas';
 import { collectionExpander } from './collection';
 import { entityExpander } from './entity';
 import { propertyExpander } from './property';
@@ -56,6 +62,6 @@ export function defaultExpanders(options: { reified?: ReifiedEdgeMap } = {}) {
       schemaExpander(),
       propertyExpander(),
     ],
-    seeds: [querySeed({ reified: options.reified }), schemaSeed(), datasetSeed(), boardSeed()],
+    seeds: [querySeed({ reified: options.reified }), schemaSeed(), datasetSeed(), canvasSeed()],
   };
 }

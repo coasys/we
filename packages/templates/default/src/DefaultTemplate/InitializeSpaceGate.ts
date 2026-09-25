@@ -48,8 +48,22 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
             },
           ],
         },
-        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true, touchOnBlur: true }),
-        field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
+        // Judged on submit, not on blur — the guard below touches everything, so the error arrives
+        // on the click that was refused rather than at somebody who clicked through an empty field.
+        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true }),
+        /*
+        A textarea, at two rows. A description is prose and an input is one line, so anything past a
+        short phrase scrolled sideways inside a field with no sign there was more of it. Two rows
+        rather than the default three: enough to show that it wraps, without a box that looks like it
+        is asking for a paragraph.
+        */
+        field({
+          name: 'description',
+          label: 'Description',
+          placeholder: 'Description (optional)',
+          control: 'textarea',
+          props: { rows: 2 },
+        }),
         {
           type: 'we-button',
           props: {

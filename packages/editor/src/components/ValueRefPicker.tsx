@@ -92,7 +92,7 @@ export function ValueRefPicker(props: {
       <we-button variant="outline" size="xs" width="100%" onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" width="100%" minWidth="0">
           <we-icon name={operandIcon(props.value)} size="xs" color="text-faint" />
-          <we-text flex="1" truncate fontSize="200" color={props.value ? 'neutral-800' : 'neutral-400'}>
+          <we-text flex="1" truncate fontSize="200" color={props.value ? 'text' : 'text-faint'}>
             {label()}
           </we-text>
           <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
@@ -178,7 +178,7 @@ export function ValueRefPicker(props: {
               </we-scroll-area>
 
               <Show when={props.allowCount}>
-                <Column borderTop={`1px solid ${tokenVar('color', 'neutral-100')}`} pt="100">
+                <Column borderTop={`1px solid ${tokenVar('color', 'border')}`} pt="100">
                   <we-menu-item on:select={() => choose({ kind: 'count', items: { kind: 'context', path: '' } })}>
                     <Row ay="center" gap="200">
                       <we-icon name="hash" size="xs" color="text-faint" />
@@ -338,7 +338,7 @@ export function OperandInput(props: {
   const modeButtons = () => (
     <Row gap="0" flex="none">
       <Show when={props.allowText !== false}>
-        <we-tooltip title="Use a fixed value">
+        <we-tooltip content="Use a fixed value">
           <we-button
             variant={mode() === 'literal' ? 'secondary' : 'ghost'}
             size="xs"
@@ -354,7 +354,7 @@ export function OperandInput(props: {
           </we-button>
         </we-tooltip>
       </Show>
-      <we-tooltip title="Pick a value from data">
+      <we-tooltip content="Pick a value from data">
         <we-button
           variant={mode() === 'literal' ? 'ghost' : 'secondary'}
           size="xs"

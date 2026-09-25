@@ -1,4 +1,5 @@
 // Layout
+export { type Artboard, Canvas, type CanvasFit, type CanvasProps } from '../../components/layout/Canvas/Canvas.solid';
 export { Card, type CardProps } from '../../components/layout/Card/Card.solid';
 export {
   CollapsedContent,
@@ -54,6 +55,8 @@ export {
 } from '../../components/feedback/Toast/Toast.solid';
 
 // Signals
+export { aggregateFor, tallyEverything, tallySignals } from '../../components/signals/aggregate';
+export { CountMark, type CountMarkProps } from '../../components/signals/CountMark/CountMark.solid';
 export {
   SignalControl,
   type SignalControlProps,

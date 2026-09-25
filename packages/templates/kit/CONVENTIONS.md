@@ -138,6 +138,16 @@ A single-field form — "name this board", "name this channel". The guard costs 
 one word is worth, and adding it everywhere is how the dialog stops being read. Say so at the call
 site so the omission reads as a decision rather than an oversight.
 
+## Panels open with `panelShell`
+
+Anything rendered as a docked panel — a module's `docks` node, a template's `meta.panels` body —
+opens with `panelHeader` or `panelShell` from `@we/schema-kit`, and names regions inside itself with
+`sectionLabel`. The host's titlebar draws no text, so the name is the panel's to draw; it is not the
+panel's to design, and seventeen of them had arrived at five treatments before the fragment existed.
+
+The rules, the two standing exceptions and the reason the title is not simply in the titlebar are in
+`docs/architecture/chrome-and-panels.md` § "A panel names itself, once, at the top".
+
 ## Ambient scope
 
 Fragments may read locals from ancestors and write results into them — that is what makes

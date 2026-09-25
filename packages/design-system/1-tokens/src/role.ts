@@ -29,7 +29,7 @@
  * coordinate, not a brightness, so the same five points is 3.6 L* near black and 6.3 L* in the
  * mid-dark range. One constant cannot serve themes sitting at different places on that curve.
  *
- * OKLCH lightness *is* perceptual, so `calc(l + 0.045)` means the same visible step everywhere, at
+ * OKLCH lightness *is* perceptual, so `calc(l + 0.025)` means the same visible step everywhere, at
  * any hue. The relative form also inherits `c` and `h` from whatever `page` resolves to, so a theme
  * that tints its neutrals gets a tinted stack for free — which the scale positions did not do, and
  * which three hand-pinned presets were approximating by eye.
@@ -38,28 +38,100 @@
  * steps are spaced is a separate decision, and one that changes how every theme looks.
  *
  * Two themes still pin their stacks and both have a reason. `black` sits at the sRGB floor, where a
- * +0.045 step and the page round to the same 8-bit value — no formula can help there. `channels`
+ * step this size and the page round to the same 8-bit value — no formula can help there. `channels`
  * wants its page and its cards identical, separating them with borders, which is a design.
  */
 export const role = {
-  /** The page/app background behind everything. The stack below is measured from this. */
-  page: 'var(--we-color-neutral-50)',
-  /** Default surface (cards, panels) — one step above the page, in both polarities. */
-  surface: 'oklch(from var(--we-role-page) calc(l + 0.045) c h)',
+  /**
+   * The plane a space's own content sits on, a step above the chrome framing it. The stack below is
+   * measured from this.
+   *
+   * ## Why this is derived and `chrome` is the anchor
+   *
+   * It was the other way round — `page` held the scale position and `chrome` was `page` minus a
+   * step — and it could not express the thing it was asked for twice in a row: lift the content
+   * without lifting the furniture. Every offset from `page` moves when `page` moves, so "raise one,
+   * hold the other" had no spelling at all, and tuning either knob silently retuned the other.
+   *
+   * Anchoring the app's ground and lifting the content off it gives two independent numbers, which
+   * is what the two questions actually are: *how dark is this app* (the scale position on `chrome`)
+   * and *how far does a space stand off it* (the step here).
+   *
+   * The whole surface stack still hangs off `page` rather than off `chrome`, and that is deliberate:
+   * a card is measured from what it sits on, and it sits on a space's content, not on the rail down
+   * the side of the window.
+   */
+  page: 'oklch(from var(--we-role-chrome) calc(l + 0.03) c h)',
+  /**
+   * The app's own furniture — the sidebar, the module rail, a docked panel's frame.
+   *
+   * `page` was doing both jobs. It is the background of the plane a *space's template* renders on,
+   * and it was also what the host painted its own chrome with, so the two were the same colour by
+   * construction and there was nowhere to say otherwise. Every showcase template writes `bg: 'page'`
+   * on its root; none of them could express that the workspace is not the furniture around it.
+   *
+   * Splitting them makes both answers cheap. A theme that wants them identical writes
+   * `chrome: var(--we-role-page)` — one line, and the relationship survives the page moving. A theme
+   * that wants the content set into its chrome moves this, which is the default below.
+   *
+   * ## Darker in both polarities, which is why this needs no pin
+   *
+   * The furniture is the ground and a space's content sits a step above it — a greyer rail against
+   * lighter content in a light theme, a darker one in a dark theme. That is the same direction at
+   * both ends, so it is an ordinary offset like the rest of the stack.
+   *
+   * It was written the other way first, as a step toward each polarity's *extreme*, which meant it
+   * had to invert and so needed a `DARK_SURFACES` pin to say so. That pin never fired: the pins are
+   * applied by `surfacesForPolarity`, which runs when a theme *changes* polarity in the editor, and
+   * a built-in dark preset ships its own parameters and never goes through it. So every dark theme
+   * fell through to the parametric default and drew the chrome *lighter* than the content — the
+   * exact disagreement between the two mechanisms that
+   * `docs/internal/plans/prs/SURFACE_STACK_DERIVATION.md` is about. Stated as one direction, there
+   * is nothing left to disagree with.
+   *
+   * ## The anchor, and the offset that is not here
+   *
+   * This holds the scale position and `page` is a step above it — see there for why round that way.
+   * So *this* number is "how dark is the app" and the step on `page` is "how far does a space stand
+   * off it", and neither moves the other.
+   *
+   * The subtraction that used to be here (`page` minus a step) is gone with the inversion, and with
+   * it the last of the pair's tuning problems: the two were the same knob wearing two names, so
+   * every adjustment to one was an unasked-for adjustment to the other.
+   *
+   * A step *above* neutral-50 rather than below it, which is the whole app coming up: everything is
+   * measured from here, so `page` and the surfaces on it rise by the same amount and every gap
+   * above is unchanged. That is the intended shape of this knob — it answers "how dark is this
+   * app", and the answers to "how far apart are its planes" live on the roles that step off it.
+   */
+  chrome: 'oklch(from var(--we-color-neutral-50) calc(l + 0.01) c h)',
+  /**
+   * Default surface (cards, panels) — one step above the page, in both polarities.
+   *
+   * `0.025`, down from `0.045`. The wider step was set while the page sat directly on the app's
+   * ground; now that a space's content is itself lifted off the `chrome` beneath it, a card at the
+   * old distance was two large steps from the furniture and read as floating rather than resting.
+   * Tuned by eye against the stack as it now stands.
+   */
+  surface: 'oklch(from var(--we-role-page) calc(l + 0.025) c h)',
   /**
    * A surface elevated above its parent. Light themes pair it with shadow; dark themes lighten it.
    *
    * The step above `surface` is deliberately *smaller* than the step from `page` to `surface`
-   * (0.015 against 0.045). Elevation tapers: the first level has to establish that there is a
+   * (0.015 against 0.025). Elevation tapers: the first level has to establish that there is a
    * stack at all, the second only has to sit above one, and it is not competing with the page.
    * This was `+0.1` — a second step of 0.055, wider than the first — which is felt almost entirely
    * in dark themes, where lightness is the only elevation currency (a shadow is invisible on a
    * near-black page) and a floating panel read as glowing rather than raised.
    *
+   * So this follows `surface` down: at `0.06` against a surface of `0.025` the second step would be
+   * `0.035` and the taper would be inverted — the same shape, and the same glow, that the figure
+   * above replaced. It is a ratio to hold, not a number to leave alone.
+   *
    * The other half of the separation is the border a popover already carries, which is the same
    * bargain `channels` makes deliberately when it sets its page and its cards to one value.
    */
-  surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.06) c h)',
+  surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.04) c h)',
   /**
    * A surface recessed below its parent (wells, input troughs).
    *
@@ -103,16 +175,78 @@ export const role = {
    * A surface deliberately opposite to the page — the tooltip, and anything else that must read as
    * "not part of the document".
    *
-   * Like `onInverse`, pinned in lightness so it does not flip. The tooltip hardcoded `#222` for
-   * exactly this reason and the dark theme carried a CSS override to undo it in dark mode; both are
-   * gone, and a theme can now move the pair together.
+   * ## A distance, not a point — which is what "opposite" means
+   *
+   * This was pinned at an absolute `oklch(24.8%)`, on the same reasoning as `onInverse`: a scale
+   * position flips with the theme, so a dark tooltip in light mode became a white one in dark. True,
+   * and the pin is the wrong correction, because *opposite to the page* is a relationship and a
+   * fixed point cannot hold one. The page moved and the tooltip did not:
+   *
+   * | theme     | chrome | page | surface | sunken | tooltip |
+   * |-----------|-------:|-----:|--------:|-------:|--------:|
+   * | light     |   97.0 |100.0 |   100.0 |   96.5 |    24.8 |
+   * | dark      |   25.0 | 28.0 |    30.5 |   24.5 |    24.8 |
+   * | channels  |   24.1 | 27.1 |    29.6 |   23.6 |    24.8 |
+   * | black     |   15.7 | 18.7 |    21.2 |   15.2 |    24.8 |
+   * | cyberpunk |   28.4 | 31.4 |    33.9 |   27.9 |    24.8 |
+   *
+   * In `dark` the tooltip sat **0.2 points from the chrome and 0.3 from a sunken well** — not close,
+   * identical — so a tooltip over the rail or over an input trough had no edge at all. In `channels`
+   * and `black` it came out *lighter* than the chrome, and in `black` lighter than every plane in
+   * the theme, which is the inverse inverted. `cyberpunk` read correctly by accident: its floor is
+   * 23.5%, so the page floated up and away from the pin. One polarity was served and three themes
+   * got noise.
+   *
+   * ## Why `clamp` rather than a signed step
+   *
+   * Both polarities want the chip *darker* — a light tooltip in a dark theme was tried and rejected
+   * — so there is nothing for a polarity flag to decide. What differs is only the magnitude, and
+   * that is because the page itself has moved: nine points below the page is the whole rule, with
+   * the upper bound holding light themes at the dark chip they already had (page 100 − 9 would be a
+   * pale grey, which is not a tooltip) and the lower bound keeping a theme that is already near the
+   * sRGB floor off literal black.
+   *
+   * So the bounds are not a fudge around a formula that does not work — they are the two ends of the
+   * ramp stating what they need, and the middle term is the relationship. Resolved: light 25.0,
+   * cyberpunk 22.4, dark 19.0, channels 18.1, black 9.7 — every one of them clear of its own chrome.
+   *
+   * Nine because `chrome` is three below the page, so the chip lands twice as far below the stack as
+   * the stack's own ground is: a step that reads as somewhere else rather than as one more plane.
+   * Twelve was tried first, on the reasoning that the chip should clear the whole spread (chrome 25
+   * → raised 32 in `dark`), and it overshot — a bubble noticeably inkier than anything else on
+   * screen, which draws attention to itself rather than to what it says. The distance only has to
+   * beat the largest in-document step, which is three.
+   *
+   * `c h` from the page, like every other derived surface, so a theme that tints its neutrals gets a
+   * tinted chip for free. That replaces an explicit chroma expression whose taper was baked for
+   * 24.8% and would have been measured at the wrong lightness from here on; the two differ by about
+   * 0.0007 chroma in `dark`, which is why it is not worth a second expression to keep.
+   *
+   * `onInverse` is re-derived against whatever this resolves to (`AUTO_CONTRAST` in `themeStyles`),
+   * so the label follows on its own and needs nothing said here.
    */
-  surfaceInverse:
-    'oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue))',
+  surfaceInverse: 'oklch(from var(--we-role-page) clamp(0.04, calc(l - 0.09), 0.25) c h)',
   /** Default border/divider. */
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
   borderStrong: 'var(--we-color-neutral-500)',
+  /**
+   * The edge of an interactive box under the pointer.
+   *
+   * `border` and `borderStrong` are three steps apart on the ramp — 200 to 500 — because they answer
+   * different questions: one is "where does this box end", the other is "these two regions are
+   * genuinely separate". Neither is "the pointer is here", and borrowing the second for it made a
+   * field's outline jump on hover, loud enough to read as a state change rather than as
+   * acknowledgement.
+   *
+   * Between the two rather than a step from either, for the reason `surfaceSunkenHover` is: it
+   * cannot overshoot `borderStrong`, whichever direction the ramp runs, and it needs no signed
+   * direction to stay right when the polarity flips.
+   *
+   * `borderStrong` keeps its own meaning and its own users — the scrollbar thumb, the checkbox, the
+   * menu-group dividers — which is why this is a new role rather than a change to that one.
+   */
+  borderHover: 'color-mix(in oklab, var(--we-role-border) 60%, var(--we-role-border-strong))',
   /**
    * The accent (interactive emphasis) — a filled button, a selected disc.
    *
@@ -225,6 +359,33 @@ export const role = {
   surfaceHover: 'var(--we-color-neutral-100)',
   /** Pressed tint on a surface. */
   surfaceActive: 'var(--we-color-neutral-200)',
+
+  /**
+   * The lifted state of a *well* — an input, a textarea, a select trigger.
+   *
+   * One state, not the hover/pressed pair every other role here comes in, because a field is not
+   * pressed. A button is: you push it, it responds, it springs back. A field is clicked *into* and
+   * then focused, and the focus is what persists — so a distinct pressed fill is a flash on
+   * mousedown that snaps back on release, which reads as the control losing its place rather than
+   * as feedback. Hover, press and focus therefore all resolve here, and the ring is what says
+   * "focused". Material, Fluent, Carbon and Primer all draw text fields this way.
+   *
+   * `surfaceHover` is measured for something sitting ON a surface: a menu item, a list row, a ghost
+   * button. Applied to a well it lands at about surface level, so hovering a field made it the same
+   * colour as the sheet behind it and the recess vanished under the pointer — the one moment the
+   * control should be most clearly a place you put something.
+   *
+   * Expressed as a mix *toward* `surface` rather than as a signed lightness step, which is what
+   * makes it right in both polarities without being told which it is. `STATE_STEPS` is negative in
+   * light and dark alike, so `calc(l + step)` darkens either way — correct for a row on a surface,
+   * and backwards for a well, where hovering should lift it toward the sheet rather than deepen it.
+   * Defining the value in terms of the two things it must sit between makes that structural: it
+   * cannot land past `surface`, whichever direction the ramp runs.
+   *
+   * The same argument the `color-mix` note in `design-utils/isRawCSSValue` makes for control states,
+   * and the same one `accentHover` makes for stepping from the role instead of from the scale.
+   */
+  surfaceSunkenHover: 'color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface))',
 
   /**
    * The filled neutral of a *control* — a slider track, a switch track, a progress trough, a
@@ -434,6 +595,10 @@ export const ROLE_ALIASES: Record<string, string> = {
  *   *fill*, and flashes transparent mid-click.
  * - **`onAccentMuted`** falls back to `onAccent`. The tier is gone and the hierarchy flattens, but
  *   every word is still legible, which is the property worth keeping when only one can be.
+ * - **`surfaceInverse`** falls back to the absolute pin it used to be. That is right in light and
+ *   indistinguishable from the chrome in dark — which is the defect the relative form fixes, so the
+ *   fallback is the old behaviour rather than a new one, and nobody on such a browser is worse off
+ *   than they were. A dropped declaration here is a tooltip with no background at all.
  *
  * Deliberately not `color-mix`, which is more widely supported and wrong for the job: mixing a
  * percentage toward white moves by a share of the distance remaining, so the same 8% is 0.4 points
@@ -443,6 +608,8 @@ export const ROLE_RELATIVE_FALLBACK = {
   surface: 'var(--we-color-neutral-0)',
   surfaceRaised: 'var(--we-color-neutral-0)',
   surfaceSunken: 'var(--we-color-neutral-100)',
+  surfaceInverse:
+    'oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue))',
   onAccentMuted: 'var(--we-role-on-accent)',
   accentHover: 'var(--we-role-accent)',
   accentActive: 'var(--we-role-accent)',

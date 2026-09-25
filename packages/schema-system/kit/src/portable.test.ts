@@ -39,7 +39,7 @@ describe('@we/schema-kit names no store, as a package', () => {
 
     The checks below it are `/\$store\s*:/` — a token #169 deleted — and `'$agent'`, so between them
     they matched nothing a fragment would write today and this walk passed for everything. Live
-    evidence: `lists/kanbanBoard.ts` hard-coded `$action: 'spaceStore.moveChild'` inside the package
+    evidence: `lists/kanbanBoard.ts` (since retired) hard-coded `$action: 'spaceStore.moveChild'` inside the package
     whose one promise is that it names no store, in the file the README points at as the example,
     and the guard was green.
 

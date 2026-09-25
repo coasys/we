@@ -61,7 +61,9 @@ kbd {
 
 .counters {
   color: var(--we-color-neutral-500);
-  font: 12px ui-monospace, monospace;
+  font:
+    12px ui-monospace,
+    monospace;
 }
 
 .grid {
@@ -102,7 +104,9 @@ kbd {
   cursor: pointer;
   color: var(--we-color-neutral-900);
   background-color: transparent;
-  transition: background-color 50ms ease-out, color 50ms ease-out;
+  transition:
+    background-color 50ms ease-out,
+    color 50ms ease-out;
 }
 
 .control:hover {
@@ -139,7 +143,9 @@ kbd {
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  font: 12px ui-monospace, monospace;
+  font:
+    12px ui-monospace,
+    monospace;
 }
 
 .findings li {
@@ -153,7 +159,9 @@ kbd {
   padding: 12px;
   border-radius: 8px;
   background: var(--we-color-neutral-100);
-  font: 11px/1.45 ui-monospace, monospace;
+  font:
+    11px/1.45 ui-monospace,
+    monospace;
   white-space: pre;
   overflow-x: auto;
 }
@@ -184,7 +192,9 @@ kbd {
 
 /* Duration held at 50ms, curve changed — the 150ms column varies both, so it cannot separate them. */
 .control.ease50 {
-  transition: background-color 50ms ease, color 50ms ease;
+  transition:
+    background-color 50ms ease,
+    color 50ms ease;
 }
 
 /*
@@ -201,11 +211,15 @@ kbd {
 }
 
 .control.fadein:hover {
-  transition: background-color 50ms ease-out, color 50ms ease-out;
+  transition:
+    background-color 50ms ease-out,
+    color 50ms ease-out;
 }
 
 .control.fadeout {
-  transition: background-color 50ms ease-out, color 50ms ease-out;
+  transition:
+    background-color 50ms ease-out,
+    color 50ms ease-out;
 }
 
 .control.fadeout:hover {
@@ -248,7 +262,9 @@ kbd {
 
 /* The resting transition, read back off the element — see the note at its construction. */
 .running {
-  font: 11px ui-monospace, monospace;
+  font:
+    11px ui-monospace,
+    monospace;
   color: var(--we-color-danger-600, crimson);
 }
 

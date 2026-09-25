@@ -25,6 +25,43 @@ import {
 import { useEditorHost } from '../host';
 import { deepClone } from '../utils';
 
+/**
+ * The colours this overlay annotates with.
+ *
+ * role-audit: palette — and the one place in the app where a fixed colour is the *correct* answer
+ * rather than a shortcut. Everything here is drawn ON TOP of the template being edited, in whatever
+ * theme its author is designing. A selection ring made of `accent` would be the same colour as the
+ * accent they are choosing, and would vanish the moment they picked a blue; a dashed `border` would
+ * disappear against their border. Editor chrome has to stay legible against a surface it cannot
+ * predict, which is the same reason a browser's own find-in-page highlight is not themeable.
+ *
+ * It is also a palette in the ordinary sense: four kinds of node told apart by hue, which is a
+ * category and not a meaning.
+ *
+ * Named here rather than written at each of the twenty call sites that used to hold them, so the
+ * four hues are four decisions instead of twenty literals, and so the reasoning above has somewhere
+ * to live. The graph engine's node colours are the same shape of thing.
+ */
+const ANNOTATION = {
+  /** A node selected or hovered, and the insertion cursor. */
+  node: '#3b82f6',
+  /** A control-flow node — `$each`, `$if` — which has no box of its own to outline. */
+  logic: '#a855f7',
+  /** The `$each` whose template a drop would land in, ringed around all of its iterations. */
+  eachParent: '#f59e0b',
+  /** A boundary somebody cannot edit from here: another view, shown and explained rather than hidden. */
+  boundary: '#94a3b8',
+  /** The chip that names one, and its text. */
+  boundaryChip: '#334155',
+  boundaryChipText: '#f1f5f9',
+  /** A resize grip's fill, and the ink on the dark readout below. */
+  grip: 'white',
+  /** The live size readout that follows a resize drag. Near-black, so it reads over any preview. */
+  readout: 'rgba(15, 15, 15, 0.9)',
+  /** A wash of `node`, for a region rather than an edge. */
+  wash: (alpha: number) => `rgba(59, 130, 246, ${alpha})`,
+} as const;
+
 // Logic node types rendered differently — dashed purple outline
 const LOGIC_TYPES = new Set(['$each', '$if', '$animate', '$single', '$routes']);
 
@@ -422,7 +459,7 @@ function VisualEditorLayer() {
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
       session.pushSnapshot();
       templateStore.updateTemplate(updated);
-      templateStore.persistCurrentTemplate();
+      void session.commitEdit();
     } catch (e) {
       console.error('[ResizeCommit] error:', e);
     }
@@ -627,8 +664,8 @@ function VisualEditorLayer() {
       position: 'fixed',
       'pointer-events': 'none',
       'z-index': '9999',
-      background: 'rgba(59, 130, 246, 0.12)',
-      border: '2px solid #3b82f6',
+      background: ANNOTATION.wash(0.12),
+      border: `2px solid ${ANNOTATION.node}`,
       'border-radius': '4px',
       'box-sizing': 'border-box',
       display: 'flex',
@@ -636,7 +673,7 @@ function VisualEditorLayer() {
       'justify-content': 'center',
       'font-family': 'system-ui, sans-serif',
       'font-size': '11px',
-      color: '#3b82f6',
+      color: ANNOTATION.node,
       'user-select': 'none',
       width: rect ? `${rect.width}px` : '80px',
       height: rect ? `${rect.height}px` : '40px',
@@ -833,7 +870,7 @@ function VisualEditorLayer() {
 
       session.pushSnapshot();
       templateStore.updateTemplate(clone);
-      templateStore.persistCurrentTemplate();
+      void session.commitEdit();
     } catch (err) {
       console.error('[DnD] commit error:', err);
     }
@@ -880,7 +917,7 @@ function VisualEditorLayer() {
 
       session.pushSnapshot();
       templateStore.updateTemplate(clone);
-      templateStore.persistCurrentTemplate();
+      void session.commitEdit();
       visualEditor.onSelect(null);
       setEnteredEachParentId(null);
     } catch (e) {
@@ -1130,8 +1167,8 @@ function VisualEditorLayer() {
             left: selectRelRect()!.left,
             width: selectRelRect()!.width,
             height: selectRelRect()!.height,
-            background: 'rgba(59, 130, 246, 0.05)',
-            border: '1px dashed rgba(59, 130, 246, 0.3)',
+            background: ANNOTATION.wash(0.05),
+            border: `1px dashed ${ANNOTATION.wash(0.3)}`,
             'border-radius': '2px',
             'pointer-events': 'none',
             'box-sizing': 'border-box',
@@ -1158,8 +1195,8 @@ function VisualEditorLayer() {
             left: dragDropTargetRelRect()!.left,
             width: dragDropTargetRelRect()!.width,
             height: dragDropTargetRelRect()!.height,
-            background: 'rgba(59, 130, 246, 0.07)',
-            border: '1px dashed rgba(59, 130, 246, 0.5)',
+            background: ANNOTATION.wash(0.07),
+            border: `1px dashed ${ANNOTATION.wash(0.5)}`,
             'border-radius': '3px',
             'pointer-events': 'none',
             'box-sizing': 'border-box',
@@ -1285,8 +1322,8 @@ function ResizeHandles(props: ResizeHandlesProps) {
                 left: pos().left,
                 width: `${HANDLE_SIZE}px`,
                 height: `${HANDLE_SIZE}px`,
-                background: 'white',
-                border: '1.5px solid #3b82f6',
+                background: ANNOTATION.grip,
+                border: `1.5px solid ${ANNOTATION.node}`,
                 'border-radius': '1px',
                 cursor: handleCursor(handle),
                 'pointer-events': 'auto',
@@ -1307,8 +1344,8 @@ function ResizeHandles(props: ResizeHandlesProps) {
             top: tooltipTop(),
             left: tooltipLeft(),
             transform: 'translateX(-50%)',
-            background: 'rgba(15, 15, 15, 0.9)',
-            color: 'white',
+            background: ANNOTATION.readout,
+            color: ANNOTATION.grip,
             'font-size': '11px',
             'font-family': 'system-ui, sans-serif',
             padding: '2px 6px',
@@ -1379,7 +1416,7 @@ function InsertionLine(props: { x: number; y: number; w: number; h: number }) {
           left: `${props.x}px`,
           width: `${props.w}px`,
           height: `${props.h}px`,
-          background: '#3b82f6',
+          background: ANNOTATION.node,
           'pointer-events': 'none',
         }}
       />
@@ -1390,7 +1427,7 @@ function InsertionLine(props: { x: number; y: number; w: number; h: number }) {
           left: `${startDotLeft()}px`,
           width: `${DOT}px`,
           height: `${DOT}px`,
-          background: '#3b82f6',
+          background: ANNOTATION.node,
           'border-radius': '50%',
           'pointer-events': 'none',
         }}
@@ -1402,7 +1439,7 @@ function InsertionLine(props: { x: number; y: number; w: number; h: number }) {
           left: `${endDotLeft()}px`,
           width: `${DOT}px`,
           height: `${DOT}px`,
-          background: '#3b82f6',
+          background: ANNOTATION.node,
           'border-radius': '50%',
           'pointer-events': 'none',
         }}
@@ -1445,7 +1482,7 @@ function ViewBoundary(props: { rect: HighlightRect; name: string }) {
         left: props.rect.left,
         width: props.rect.width,
         height: props.rect.height,
-        outline: '1px dashed #94a3b8',
+        outline: `1px dashed ${ANNOTATION.boundary}`,
         'outline-offset': '-1px',
         'pointer-events': 'none',
         'box-sizing': 'border-box',
@@ -1462,8 +1499,8 @@ function ViewBoundary(props: { rect: HighlightRect; name: string }) {
           'align-items': 'baseline',
           padding: '2px 8px',
           'border-radius': '4px',
-          background: '#334155',
-          color: '#f1f5f9',
+          background: ANNOTATION.boundaryChip,
+          color: ANNOTATION.boundaryChipText,
           font: '500 11px/1.4 system-ui, sans-serif',
           'white-space': 'nowrap',
           'max-width': 'calc(100% - 8px)',
@@ -1472,7 +1509,7 @@ function ViewBoundary(props: { rect: HighlightRect; name: string }) {
         }}
       >
         <span>{props.name}</span>
-        <span style={{ color: '#94a3b8', 'font-weight': '400' }}>a separate view — edit it on its own</span>
+        <span style={{ color: ANNOTATION.boundary, 'font-weight': '400' }}>a separate view — edit it on its own</span>
       </div>
     </div>
   );
@@ -1482,13 +1519,13 @@ function NodeHighlight(props: { rect: HighlightRect; style: HighlightStyle; sele
   const color = () => {
     switch (props.style) {
       case 'logic':
-        return '#a855f7';
+        return ANNOTATION.logic;
       case 'each-parent':
-        return '#f59e0b';
+        return ANNOTATION.eachParent;
       case 'each-instance':
-        return '#3b82f6';
+        return ANNOTATION.node;
       default:
-        return '#3b82f6';
+        return ANNOTATION.node;
     }
   };
   const borderStyle = () =>

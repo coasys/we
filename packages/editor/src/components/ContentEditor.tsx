@@ -224,7 +224,7 @@ export function ContentEditor(props: {
           <we-text fontSize="100" color="text-faint">
             Custom expression — edit as JSON, or switch to another mode to replace it.
           </we-text>
-          <Column border={`1px solid ${tokenVar('color', 'neutral-100')}`} r="200" overflow="hidden" maxHeight="250px">
+          <Column border={`1px solid ${tokenVar('color', 'border')}`} r="200" overflow="hidden" maxHeight="250px">
             <CodeViewer
               json={JSON.stringify(props.content ?? [], null, 2)}
               onSave={(json) => props.onChildrenChange(JSON.parse(json))}

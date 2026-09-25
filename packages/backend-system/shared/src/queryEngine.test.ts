@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- result rows are Record<string, unknown>; tests cast to read hydrated relations */
 import { describe, expect, it } from 'vitest';
 
+import { compileQuery } from './queryCompiler';
 import { executeQueryIR, type InMemoryDataset } from './queryEngine';
 import type { QueryIR } from './queryIR';
 
@@ -242,5 +243,321 @@ describe('untyped relations', () => {
     );
     expect((rows[0].$cover as { id: string }).id).toBe('i1');
     expect((rows[1].$cover as { id: string }).id).toBe('i2');
+  });
+});
+
+describe('an ordered relation', () => {
+  // Children deliberately sit in the table in an order nobody chose, with the parent recording the
+  // order somebody did choose. Reading by foreign key alone gives the first; that is the bug.
+  const ordered: InMemoryDataset = {
+    tables: {
+      Collection: [{ id: 'c1', children: ['b3', 'b1', 'b2'] }],
+      Block: [
+        { id: 'b1', collectionId: 'c1', text: 'first written' },
+        { id: 'b2', collectionId: 'c1', text: 'second written' },
+        { id: 'b3', collectionId: 'c1', text: 'third written' },
+      ],
+    },
+    relations: {
+      Collection: { children: { target: 'Block', cardinality: 'many', foreignKey: 'collectionId', ordered: true } },
+    },
+  };
+
+  const childrenOf = (data: InMemoryDataset) =>
+    (executeQueryIR({ irVersion: 1, entity: 'Collection', include: { children: true } }, data)[0] as any).children.map(
+      (c: { id: string }) => c.id,
+    );
+
+  it('reads back in the order the parent recorded, not the order the members were written', () => {
+    expect(childrenOf(ordered)).toEqual(['b3', 'b1', 'b2']);
+  });
+
+  it('keeps a member the order does not mention, at the end', () => {
+    // Position and membership are separate facts, so an unlisted member is still a member. This is
+    // the partially-migrated collection: some order written, the rest not yet.
+    const partial = structuredClone(ordered);
+    partial.tables.Block.push({ id: 'b4', collectionId: 'c1', text: 'never positioned' });
+    expect(childrenOf(partial)).toEqual(['b3', 'b1', 'b2', 'b4']);
+  });
+
+  it('ignores an id in the order that is no longer a member', () => {
+    const stale = structuredClone(ordered);
+    (stale.tables.Collection[0].children as string[]).unshift('deleted');
+    expect(childrenOf(stale)).toEqual(['b3', 'b1', 'b2']);
+  });
+
+  it('reads exactly as before when no order has been recorded', () => {
+    // The migration case: a collection that predates ordering must not change what it shows.
+    const unwritten = structuredClone(ordered);
+    delete unwritten.tables.Collection[0].children;
+    expect(childrenOf(unwritten)).toEqual(['b1', 'b2', 'b3']);
+  });
+
+  it('leaves an unordered relation alone', () => {
+    const unordered = structuredClone(ordered);
+    delete unordered.relations!.Collection.children.ordered;
+    expect(childrenOf(unordered)).toEqual(['b1', 'b2', 'b3']);
+  });
+});
+
+/**
+ * The engine has always evaluated relation quantifiers and nothing could reach them: the flat
+ * dialect had no spelling, so `compileQuery` never produced one. These drive the whole chain a
+ * template now takes — a flat `where` in, rows out — rather than handing the engine an IR built by
+ * hand, because the half that was missing is the translation and an IR fixture would skip it.
+ */
+describe('relation quantifiers, from the flat where a template writes', () => {
+  const run = (where: Record<string, unknown>) => ids(executeQueryIR(compileQuery({ entity: 'Post', where }).ir, data));
+
+  it('finds records with none of a relation, and with any of it', () => {
+    // p3 is the only post nobody signalled — previously answerable only by fetching every post with
+    // its signals and counting client-side.
+    expect(run({ signals: { none: {} } })).toEqual(['p3']);
+    expect(run({ signals: { some: {} } })).toEqual(['p1', 'p2']);
+  });
+
+  it('filters on a property of the related record', () => {
+    expect(run({ signals: { some: { signalTypeId: 'star' } } })).toEqual(['p2']);
+    // "nobody starred this" is the negation of the above, not of `some: {}` — p1 has signals, just
+    // no stars, so it belongs in the answer.
+    expect(run({ signals: { none: { signalTypeId: 'star' } } })).toEqual(['p1', 'p3']);
+  });
+
+  it('composes with a scalar condition on the parent', () => {
+    expect(run({ title: { contains: 'graph' }, signals: { some: { signalTypeId: 'like' } } })).toEqual(['p1']);
+  });
+
+  it('reaches a relation of the related record', () => {
+    // Agents who wrote something somebody liked — a quantifier whose nested clause is itself one.
+    expect(
+      ids(
+        executeQueryIR(
+          compileQuery({ entity: 'Agent', where: { posts: { some: { signals: { some: {} } } } } }).ir,
+          data,
+        ),
+      ),
+    ).toEqual(['a1', 'a2']);
+  });
+});
+
+describe('range bounds in the engine', () => {
+  const tasks: InMemoryDataset = {
+    tables: {
+      TaskBlock: [
+        { id: 't1', dueDate: '2026-09-14', estimate: 2 },
+        { id: 't2', dueDate: '2026-09-30T18:00', estimate: 5 },
+        { id: 't3', dueDate: '2026-10-02', estimate: '8' },
+        { id: 't4', estimate: 13 },
+      ],
+    },
+  };
+  const ids = (where: Record<string, unknown>) =>
+    executeQueryIR(compileQuery({ entity: 'TaskBlock', where }).ir, tasks).map((r) => r.id);
+
+  it('compares ISO dates as text, so a day bound works against a value carrying a time', () => {
+    expect(ids({ dueDate: { gte: '2026-09-15', lt: '2026-10-01' } })).toEqual(['t2']);
+  });
+
+  it('compares numbers numerically and refuses a mixed pair rather than coercing it', () => {
+    // t3 stores its estimate as the string '8'; t4 has no due date at all.
+    expect(ids({ estimate: { gt: 4 } })).toEqual(['t2', 't4']);
+    expect(ids({ dueDate: { lt: '2027' } })).toEqual(['t1', 't2', 't3']);
+  });
+});
+
+/**
+ * Bounded traversal — several anchors, a transitive walk, the inverse direction, and a per-anchor
+ * limit. The reference implementation answers all four, so a store's tests are about the store
+ * rather than about which backend happens to be underneath it.
+ */
+describe('executeQueryIR — bounded traversal', () => {
+  /**
+   * A comment tree, self-referential through `parentId`:
+   *
+   * ```text
+   * root ── c1 ── r1 ── rr1
+   *   │      └─── r2
+   *   ├──── c2
+   *   └──── c3
+   * ```
+   */
+  const tree: InMemoryDataset = {
+    tables: {
+      Comment: [
+        { id: 'c1', parentId: 'root', text: 'one' },
+        { id: 'c2', parentId: 'root', text: 'two' },
+        { id: 'c3', parentId: 'root', text: 'three' },
+        { id: 'r1', parentId: 'c1', text: 'reply one' },
+        { id: 'r2', parentId: 'c1', text: 'reply two' },
+        { id: 'rr1', parentId: 'r1', text: 'deep' },
+      ],
+    },
+    relations: {
+      Comment: { comments: { target: 'Comment', cardinality: 'many', foreignKey: 'parentId' } },
+    },
+  };
+
+  const run = (scope: QueryIR['scope']) => ids(executeQueryIR({ irVersion: 1, entity: 'Comment', scope }, tree));
+
+  it('answers for every anchor in one query', () => {
+    expect(run({ via: 'comments', anchorId: ['c1', 'r1'], anchor: 'Comment' }).sort()).toEqual(['r1', 'r2', 'rr1']);
+  });
+
+  it('walks the whole subtree when transitive, excluding the anchor', () => {
+    expect(run({ via: 'comments', anchorId: 'root', anchor: 'Comment', transitive: true }).sort()).toEqual([
+      'c1',
+      'c2',
+      'c3',
+      'r1',
+      'r2',
+      'rr1',
+    ]);
+  });
+
+  it('stays one step when not transitive', () => {
+    expect(run({ via: 'comments', anchorId: 'root', anchor: 'Comment' }).sort()).toEqual(['c1', 'c2', 'c3']);
+  });
+
+  it('finds the parent when reading inward', () => {
+    expect(run({ via: 'comments', anchorId: 'rr1', anchor: 'Comment', direction: 'in' })).toEqual(['rr1']);
+  });
+
+  /**
+   * Per anchor, not overall: two anchors with a limit of one must give one *each*, where a global
+   * limit of two could legitimately take both from the same anchor.
+   */
+  it('keeps the limit per anchor rather than across the result', () => {
+    const rows = run({ via: 'comments', anchorId: ['root', 'c1'], anchor: 'Comment', limitPerAnchor: 1 });
+    expect(rows).toHaveLength(2);
+    expect(rows).toContain('c1');
+    expect(rows).toContain('r1');
+  });
+
+  /**
+   * The failure worth guarding: an empty anchor list must not read as "no scope" and return the
+   * whole entity. It arises whenever a level reads the ids of the level above and that level is
+   * empty or has not arrived yet.
+   */
+  it('answers with nothing for an empty anchor list', () => {
+    expect(run({ via: 'comments', anchorId: [], anchor: 'Comment' })).toEqual([]);
+  });
+
+  it('terminates on a cycle rather than walking it forever', () => {
+    const cyclic: InMemoryDataset = {
+      tables: {
+        Comment: [
+          { id: 'x', parentId: 'y' },
+          { id: 'y', parentId: 'x' },
+        ],
+      },
+      relations: { Comment: { comments: { target: 'Comment', cardinality: 'many', foreignKey: 'parentId' } } },
+    };
+    const rows = executeQueryIR(
+      {
+        irVersion: 1,
+        entity: 'Comment',
+        scope: { via: 'comments', anchorId: 'x', anchor: 'Comment', transitive: true },
+      },
+      cyclic,
+    );
+    expect(ids(rows).sort()).toEqual(['x', 'y']);
+  });
+});
+
+describe('executeQueryIR — level walk', () => {
+  /** Four top-level replies, four under each, four under each of those: 4 + 16 + 64. */
+  const wide: InMemoryDataset = {
+    tables: {
+      Comment: (() => {
+        const rows: { id: string; parentId: string }[] = [];
+        for (let a = 0; a < 4; a++) {
+          rows.push({ id: `a${a}`, parentId: 'root' });
+          for (let b = 0; b < 4; b++) {
+            rows.push({ id: `b${a}${b}`, parentId: `a${a}` });
+            for (let c = 0; c < 4; c++) rows.push({ id: `c${a}${b}${c}`, parentId: `b${a}${b}` });
+          }
+        }
+        return rows;
+      })(),
+    },
+    relations: {
+      Comment: { comments: { target: 'Comment', cardinality: 'many', foreignKey: 'parentId' } },
+    },
+  };
+
+  const walk = (levels: number[]) =>
+    ids(
+      executeQueryIR(
+        { irVersion: 1, entity: 'Comment', scope: { via: 'comments', anchorId: 'root', anchor: 'Comment', levels } },
+        wide,
+      ),
+    ) as string[];
+
+  it('bounds the breadth of each depth', () => {
+    const got = walk([3, 2, 1]);
+    expect(got.filter((id) => id.startsWith('a'))).toHaveLength(3);
+    expect(got.filter((id) => id.startsWith('b'))).toHaveLength(6);
+    expect(got.filter((id) => id.startsWith('c'))).toHaveLength(6);
+  });
+
+  /** Per anchor, not per level: two under EACH parent, not the first two the table held. */
+  it('spreads each level’s limit across every parent', () => {
+    const got = walk([3, 2]);
+    for (let a = 0; a < 3; a++) {
+      expect(got.filter((id) => id.startsWith(`b${a}`))).toHaveLength(2);
+    }
+  });
+
+  it('stops at the depth it was given', () => {
+    expect(walk([2])).toEqual(['a0', 'a1']);
+  });
+
+  it('ends when the tree does, however many levels are asked for', () => {
+    const got = walk([10, 10, 10, 10, 10]);
+    expect(got).toHaveLength(4 + 16 + 64);
+    expect(new Set(got).size).toBe(got.length);
+  });
+});
+
+/**
+ * "Nothing I answer to" — the shape a feed of top-level posts is asked for.
+ *
+ * A self-referential to-one, which is the case the earlier quantifier tests do not reach: both a
+ * post and a reply are the same entity, and what separates them is whether the relation resolves.
+ * WE's feed turned every comment in a space into a post of its own for want of exactly this clause,
+ * so the test is about a relation pointing at its own table rather than about `none` in general.
+ */
+describe('a quantifier over a self-referential relation', () => {
+  const thread: InMemoryDataset = {
+    tables: {
+      Node: [
+        { id: 'p1', text: 'a post' },
+        { id: 'p2', text: 'another post' },
+        { id: 'c1', parentId: 'p1', text: 'a reply' },
+        { id: 'c2', parentId: 'c1', text: 'a reply to a reply' },
+      ],
+    },
+    relations: {
+      Node: {
+        comments: { target: 'Node', cardinality: 'many', foreignKey: 'parentId' },
+        inReplyTo: { target: 'Node', cardinality: 'one', foreignKey: 'parentId' },
+      },
+    },
+  };
+
+  const run = (filter: QueryIR['filter']) =>
+    ids(executeQueryIR({ irVersion: 1, entity: 'Node', filter } as QueryIR, thread) as { id: unknown }[]);
+
+  it('keeps only what answers nothing', () => {
+    expect(run({ rel: 'inReplyTo', op: 'none' })).toEqual(['p1', 'p2']);
+  });
+
+  it('and the same clause inverted finds every reply, at any depth', () => {
+    expect(run({ rel: 'inReplyTo', op: 'some' })).toEqual(['c1', 'c2']);
+  });
+
+  it('round-trips through the flat spelling a schema writes', () => {
+    const { ir } = compileQuery({ entity: 'Node', where: { inReplyTo: { none: {} } } });
+    expect(ids(executeQueryIR(ir, thread) as { id: unknown }[])).toEqual(['p1', 'p2']);
   });
 });

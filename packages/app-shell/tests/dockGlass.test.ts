@@ -95,22 +95,68 @@ describe('a floating panel is glass', () => {
    * never is. Nothing failed in either direction, because a role that resolves is a role that
    * paints; this is the assertion instead.
    */
-  it('paints the page, not a well and not a card', () => {
+  it('paints the chrome, not a well and not a card', () => {
     const bg = (surface!.bg as { $: string }).$;
 
     // The *roles* named, not the string: the glass branch legitimately reads the theme's
     // `--we-theme-surface-opacity`, which is a knob rather than a surface.
     expect(bg).not.toContain('--we-role-surface');
     expect(bg).not.toMatch(/'surface(-\w+)?'/);
-    expect(bg).toContain('--we-role-page');
-    expect(bg).toContain("'page'");
+    /*
+      `chrome`, where this used to say `page`.
+
+      A panel is the app's own ground extended, which is what the role means — and while the two
+      were one role it was also the colour of the template docked beside it, so the frame's border
+      was the only thing between them. Naming the ground is the point of the assertion either way:
+      a panel that paints `surface` reads as a card floating on the page, which is the thing this
+      was written to stop.
+    */
+    expect(bg).toContain('--we-role-chrome');
+    expect(bg).toContain("'chrome'");
   });
 
   it('carries the titlebar with it, so the card is one piece of glass', () => {
     // The titlebar is the box with a bottom border and a move handle under it.
     const bar = props.find((p) => p.borderBottom === '1px solid border' && p.bg !== undefined);
     expect(gateOf(bar!.bg)?.then).toContain('color-mix');
-    expect(gateOf(bar!.bg)?.else).toBe("'page'");
+    expect(gateOf(bar!.bg)?.else).toBe("'chrome'");
+  });
+});
+
+/** The panel body: the one box carrying both a background and a backdrop-filter. */
+const bodyProps = (frame: unknown) => allProps(frame).find((p) => p.bg !== undefined && p.styles !== undefined);
+const bodyStyles = (frame: unknown) => bodyProps(frame)?.styles as Record<string, { $?: string }> | undefined;
+
+describe('a tab in the background', () => {
+  /*
+    `visibility`, not `display`, and the reason is the glass above.
+
+    A card carries `backdrop-filter`. `display: none` tears the backdrop layer down and rebuilds it
+    on the way back, which the compositor shows as the whole frame — titlebar, tab strip and all —
+    dissolving in. Switching tabs is not a transition and should not look like one.
+
+    It hides as thoroughly either way: a `visibility: hidden` subtree is unpainted, untabbable and
+    out of the accessibility tree, unlike `opacity: 0`. And it costs nothing to leave a box behind,
+    since every frame is `position: fixed`.
+  */
+  const styles = bodyStyles(dockFrame(entry as DockEntry, { type: 'Column' }));
+
+  it('is hidden without its backdrop layer being torn down', () => {
+    expect(String(styles?.visibility?.$ ?? '')).toContain("'hidden' : 'visible'");
+    expect(styles?.display).toBeUndefined();
+  });
+});
+
+describe('a panel that has just changed seat', () => {
+  it('lands rather than travels', () => {
+    /*
+      A drop into a stack changes two things at once: the panel that was showing goes hidden, and the
+      newcomer's box becomes the seat's. The first is instant; easing the second emptied the stack
+      and flew the arrival in across the gap. The drag was already the animation.
+    */
+    const body = bodyProps(dockFrame(entry as DockEntry, { type: 'Column' }));
+
+    expect(String((body?.transition as { $?: string } | undefined)?.$ ?? '')).toContain('.settling');
   });
 });
 

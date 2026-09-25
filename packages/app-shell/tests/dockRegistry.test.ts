@@ -11,6 +11,7 @@ import {
   unregisterHostDockStore,
 } from '../src/shared/registries/dockRegistry';
 import { EDITOR_STORE_ID, registerEditorDocks } from '../src/shared/registries/editorDocks';
+import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerShellDocks, SHELL_DOCK_STORE_ID } from '../src/shared/registries/shellDocks';
 import { onSlotRegistryChanged, slotRegistry } from '../src/shared/registries/slotRegistry';
@@ -94,37 +95,43 @@ describe('dock registry notifications', () => {
 describe('a panel declares how it closes', () => {
   const stub = { components: { CesiumGlobe: () => null, GraphView: () => null } };
   const host = { backend: 'ad4m', framework: 'solid' };
-  const storeDeps = {
+  const storeDeps = createModuleStoreDeps({
     signal: <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
-      return [() => value, (next: T) => (value = next)];
+      return [() => value, (next: T) => void (value = next)];
     },
     effect: (fn: () => void) => fn(),
-  };
-
-  beforeEach(() => {
-    for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
   });
 
-  it.each(Object.entries(bundledModules))('%s names a close its own store has', (id, factory) => {
+  beforeEach(() => {
+    for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
+  });
+
+  it.each(Object.entries(bundledModules))('%s names open, show and close members its own store has', (id, factory) => {
     const definition = factory(stub);
     moduleRegistry.register(definition, host, storeDeps);
     const store = moduleStores[id] as Record<string, unknown> | undefined;
 
-    for (const dock of definition.docks ?? []) {
-      // Optional by contract — a panel may genuinely have no way to be dismissed. What is not
-      // allowed is naming one that is not there.
-      if (!dock.close) continue;
-      expect(typeof store?.[dock.close], `${id} declares close: '${dock.close}'`).toBe('function');
+    for (const panel of definition.contributes?.panels ?? []) {
+      // A panel that leaves openness to the host names nothing and needs nothing. One that claims it
+      // has to name members that exist, or the titlebar's close and the rail's toggle do nothing.
+      if (!panel.open) continue;
+      for (const key of [panel.open, panel.show, panel.close]) {
+        if (!key) continue;
+        expect(typeof store?.[key], `${id}:${panel.name} names '${key}'`).toBe('function');
+      }
+      if (typeof panel.bid === 'string') expect(typeof store?.[panel.bid]).toBe('function');
     }
   });
 
-  it('gives every bundled panel one, so the set is consistent', () => {
+  it('gives every bundled panel a way to close, so the set is consistent', () => {
     // The point of moving these onto the titlebar was that they were not: three panels drew their
-    // own at three sizes and the video stage had none at all.
+    // own at three sizes and the video stage had none at all. A host-owned panel closes through the
+    // host; a module-owned one has to say how.
     for (const [id, factory] of Object.entries(bundledModules)) {
-      for (const dock of factory(stub).docks ?? []) {
-        expect(dock.close, `${id} contributes a panel with no way to close it`).toBeTruthy();
+      for (const panel of factory(stub).contributes?.panels ?? []) {
+        if (!panel.open) continue;
+        expect(panel.close, `${id}:${panel.name} owns its open flag but names no close`).toBeTruthy();
       }
     }
   });
@@ -260,5 +267,33 @@ describe('a slot contributed after the first render', () => {
     stop();
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Registering a host dock store announces to the dock registry.
+ *
+ * Which is correct — the geometry has to re-resolve when the keys behind it change — and it is a
+ * loaded gun for anything that *reads* the registry from inside the effect that registers. That is
+ * exactly what happened: a memo resolving "which dock does this declaration mean" started consulting
+ * the registry, the effect that registers an interface's own panels read that memo, and each run
+ * invalidated itself. It ran until the stack gave out, froze the app for five seconds on entering
+ * the interface, and left the docks half-built — no dragging, no geometry, nothing following the
+ * window.
+ *
+ * The rule this pins is the one that keeps it fixed: the announcement is real, so a reader inside a
+ * registering effect must resolve from somewhere that cannot move.
+ */
+describe('registering a host dock store', () => {
+  it('announces, so anything reading the registry inside a registering effect will re-run', () => {
+    const seen: number[] = [];
+    const off = onDockRegistryChanged(() => seen.push(1));
+
+    registerHostDockStore('test:panels', { 'edge:a': () => 'left' });
+    registerHostDockStore('test:panels', { 'edge:a': () => 'right' });
+
+    expect(seen.length).toBe(2);
+    off();
+    unregisterHostDockStore('test:panels');
   });
 });

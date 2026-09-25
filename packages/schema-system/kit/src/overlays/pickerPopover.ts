@@ -129,7 +129,13 @@ export function pickerPopover(opts: PickerPopoverOptions): SchemaNode {
               top: '0',
               ...(opts.side === 'right' ? { left: '100%', ml: '200' } : { right: '100%', mr: '200' }),
               minWidth: opts.width ?? '300px',
-              bg: 'surface-sunken',
+              /*
+                `surface-raised`, the role for something floating above its ground with a shadow.
+                It was `surface-sunken`, which is `page` *minus* lightness — so the one popover the
+                shell opens from its own rail, where the ground is `chrome`, came out within half a
+                lightness point of what it floated over and was carried entirely by its border.
+              */
+              bg: 'surface-raised',
               border: '1px solid border',
               r: 'var(--we-theme-surface-radius, var(--we-radius-400))',
               shadow: 'md',

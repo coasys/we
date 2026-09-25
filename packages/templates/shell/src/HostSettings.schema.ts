@@ -87,7 +87,7 @@ const credits: SchemaNode = {
     condition: { $: 'sessionStore.hostAccount && !sessionStore.hostAccount.freeAccess' },
     then: {
       type: 'Row',
-      props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+      props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface', r: '300', px: '300', py: '200' },
       children: [
         {
           type: 'Row',
@@ -197,7 +197,7 @@ export const hostSection: SchemaNode = {
                 credits,
                 {
                   type: 'Column',
-                  props: { gap: '150' },
+                  props: { gap: '100' },
                   children: [
                     detail('Address', { $: 'sessionStore.host.url' }),
                     detail('Location', { $: 'sessionStore.host.location' }),

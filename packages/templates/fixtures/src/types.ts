@@ -89,7 +89,20 @@ export interface FixtureNode {
   images?: { src: string; alt?: string; width?: number; height?: number }[];
   /** Reactions, by signal-type slug, listing who reacted. */
   signals?: { slug: string; by: string[] }[];
+  /** What this node owns, written as `we://children`. */
   children?: FixtureNode[];
+  /**
+   * The vocabulary term this node stands for — a board column bound to a task state. Omit for a
+   * column that is a lane. Nothing in the showcase binds one; the field is here so a fixture can.
+   */
+  slug?: string;
+  /**
+   * Ids of nodes elsewhere in the fixture that this node **arranges without owning** — a column's
+   * cards, in this order. Written as `we://arranges` after every node exists, since a card may be
+   * declared after the column that places it. The cards themselves live wherever the fixture puts
+   * them, usually loose at the top level, which is what makes deleting the column safe.
+   */
+  arranges?: string[];
 }
 
 /** A signal type the community has defined — what a reaction *means* in this space. */

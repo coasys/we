@@ -36,6 +36,13 @@ export function registerBlock(registration: BlockRegistration): void {
 }
 
 /**
+ * Withdraw a block type — a module being unregistered. Safe when nothing was registered.
+ */
+export function unregisterBlock(nodeType: string): void {
+  blockRegistry.delete(nodeType);
+}
+
+/**
  * Look up the block registration for a given serialized node type.
  */
 export function getBlockRegistration(nodeType: string): BlockRegistration | undefined {

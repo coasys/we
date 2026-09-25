@@ -10,12 +10,13 @@
  * boot controller via `onSessionUnlocked` — this store only knows *when* the session becomes
  * usable, not what the app loads into it.
  */
-import type {
-  AgentIdentity,
-  AgentSessionPort,
-  BackendPorts,
-  DatasetLifecyclePort,
-  EphemeralPort,
+import {
+  type AgentIdentity,
+  type AgentSessionPort,
+  type BackendPorts,
+  type DatasetLifecyclePort,
+  type EphemeralPort,
+  isSessionTimeout,
 } from '@we/backend-shared';
 import { devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
@@ -34,6 +35,10 @@ import { startAppBridge } from '../services/appBridge';
  */
 export type BootState = 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error';
 
+/** What a session call that outlasted the backend's patience says, on either form. */
+const SESSION_TIMEOUT_MESSAGE =
+  'Your account is taking longer than usual to start. It may still be finishing — try again in a moment.';
+
 /** The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
  * (`did` is template-facing vocabulary: `$me.did`). */
 export type SessionIdentity = AgentIdentity & { did?: string; perspective?: unknown };
@@ -44,6 +49,12 @@ export interface SessionStore {
   /** Why the boot failed, when it did. Empty otherwise. */
   bootError: Accessor<string>;
   passwordError: Accessor<boolean>;
+  /**
+   * Why the last sign-in failed when the password was not the problem — the backend took too long.
+   * Empty otherwise. Never set together with `passwordError`: a timed-out unlock says nothing about
+   * the password, and reporting it as "Incorrect password" sent people to retype a correct one.
+   */
+  loginError: Accessor<string>;
   loginLoading: Accessor<boolean>;
   /** Set when `createAgent` failed; carries the backend's message for display. */
   createAgentError: Accessor<string>;
@@ -166,6 +177,7 @@ export function SessionStoreProvider(props: ParentProps) {
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [bootError, setBootError] = createSignal('');
   const [passwordError, setPasswordError] = createSignal(false);
+  const [loginError, setLoginError] = createSignal('');
   const [loginLoading, setLoginLoading] = createSignal(false);
   const [createAgentError, setCreateAgentError] = createSignal('');
   const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
@@ -325,6 +337,7 @@ export function SessionStoreProvider(props: ParentProps) {
     sessionPassword = password;
     setLoginLoading(true);
     setPasswordError(false);
+    setLoginError('');
 
     try {
       // Only this can be wrong about the password. Everything after it has already been let in.
@@ -332,7 +345,9 @@ export function SessionStoreProvider(props: ParentProps) {
         await session.unlock(password);
       } catch (err) {
         console.error('SessionStore: agent unlock failed', err);
-        setPasswordError(true);
+        // Except when it timed out, which is a verdict on the backend rather than the password.
+        if (isSessionTimeout(err)) setLoginError(SESSION_TIMEOUT_MESSAGE);
+        else setPasswordError(true);
         // Rethrown so the caller's `onSuccess` does not run. `login` used to swallow every failure,
         // so a schema chaining a navigation off a successful sign-in navigated on a failed one.
         throw err;
@@ -376,7 +391,13 @@ export function SessionStoreProvider(props: ParentProps) {
         console.error('SessionStore: agent creation failed', err);
         // Leave bootState on 'createAgent' so the user can retry against the same screen.
         settingUp = false;
-        setCreateAgentError(err instanceof Error ? err.message : 'Could not create your agent');
+        setCreateAgentError(
+          isSessionTimeout(err)
+            ? SESSION_TIMEOUT_MESSAGE
+            : err instanceof Error
+              ? err.message
+              : 'Could not create your agent',
+        );
         throw err;
       }
 
@@ -475,6 +496,7 @@ export function SessionStoreProvider(props: ParentProps) {
     bootState,
     bootError,
     passwordError,
+    loginError,
     loginLoading,
     createAgentError,
     createAgentLoading,

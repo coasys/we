@@ -3,18 +3,25 @@
  * panel visibility and widths, preview/visual mode, unified template+theme undo/redo, pending
  * (buffered) changes for read-only templates, and the fork/fresh picker.
  *
- * The AI half of a session is deliberately elsewhere: the Anthropic client, streaming, prompt
- * assembly and tool definition live in `shared/ai/aiInfra`, and patch application in
- * `shared/ai/schemaPatches` — this store orchestrates them against its own signals. That split is
- * what keeps a future backend-executed assistant a drop-in: it would replace the infra modules
- * and the `sendViaClaude` orchestration, not the session state.
+ * The AI half of a session is deliberately elsewhere: the model runs on the node, reached through
+ * `LanguageModelPort.converse`; prompt assembly and the tool definition live in `shared/ai/aiInfra`,
+ * and patch application in `shared/ai/schemaPatches` — this store orchestrates them against its own
+ * signals, and never learns which model or provider answered.
  */
-import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/aiInfra';
+import { chatSystemPrompt, formatExternalManifestForPrompt, updateSchemaTool } from '@shared/ai/aiInfra';
 import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
-import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import {
+  type EditingTheme,
+  useDatasetStore,
+  useSessionStore,
+  useShapeStore,
+  useTemplateStore,
+  useThemeStore,
+} from '@solid/stores';
+import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -59,7 +66,18 @@ export interface EditorStore {
   isOpen: Accessor<boolean>;
   isStreaming: Accessor<boolean>;
   streamingContent: Accessor<string>;
-  apiKeyConfigured: Accessor<boolean>;
+  /**
+   * The node has a language model this editor can hold a conversation with. What the composer
+   * gates on — and says so, rather than hiding — when it is false.
+   */
+  assistantAvailable: Accessor<boolean>;
+  /**
+   * Which model answers the chat and whether it can right now — checked when the panel opens and
+   * after a failed send, without spending tokens. Null until the first check.
+   */
+  assistantStatus: Accessor<LanguageModelStatus | null>;
+  /** Check again — after changing models in settings, or to see whether a failure has cleared. */
+  refreshAssistant: () => Promise<void>;
 
   // --- Template context ---
   templateName: Accessor<string>;
@@ -75,7 +93,8 @@ export interface EditorStore {
   pickerShowDestination: Accessor<boolean>;
 
   // --- Session management ---
-  sessions: Accessor<ChatSessionRecord[]>;
+  /** The saved sessions, to name and address — never to read messages off. See the signal's note. */
+  sessions: Accessor<NewRecord<ChatSessionRecord>[]>;
   activeSessionId: Accessor<string | null>;
   newChat: () => void;
   switchSession: (sessionId: string) => void;
@@ -93,6 +112,17 @@ export interface EditorStore {
   undo: () => Promise<void>;
   redo: () => Promise<void>;
   pushSnapshot: () => void;
+  /**
+   * Keep the edit just made — persisted where it can be, buffered where it cannot.
+   *
+   * The visual editor and the code panel called `templateStore.persistCurrentTemplate` directly,
+   * which no-ops on a template with no record of its own. So editing a built-in in the visual editor
+   * changed the canvas, wrote nothing, buffered nothing, and lost the lot on the next switch —
+   * silently, since a no-op has nothing to report. `isReadOnly` says those edits should become
+   * pending changes, which the AI path and undo/redo both already do; this is the same branch, in
+   * one place, for the surfaces that were missing it.
+   */
+  commitEdit: () => Promise<void>;
 
   // --- Template actions ---
   startFork: () => void;
@@ -154,9 +184,6 @@ export interface EditorStore {
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
   clearHistory: () => void;
-
-  // --- Settings ---
-  setApiKey: (key: string) => Promise<boolean>;
 }
 
 /**
@@ -214,20 +241,28 @@ const starterTemplate: SchemaNode = {
 };
 
 export function EditorStoreProvider(props: ParentProps) {
+  const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
 
-  // Reactive validation context — perspective-accurate model allowlist.
-  // When a perspective is active its full manifest (WE + external) is used to
-  // narrow entityNames to only what is actually registered there.  WE models
-  // not present in the manifest (e.g. CollectionBlock in we-root) are excluded.
-  // Falls back to the all-WE base context when no perspective is set.
+  const shapeStore = useShapeStore();
+
+  /*
+    The models a template edited here may query: WE's own and the modules', plus what the space on
+    screen adds — the models other apps synced into it, and the ones its community defined.
+
+    It used to *replace* the WE names with the dataset's, on the belief that the dataset's list was
+    its full manifest. It is not: `currentDatasetEntities` is the foreign models only, since WE's own
+    are filtered out as native. So in any space holding one synced or community-defined model, every
+    `$query` on a `TaskBlock` read as an unknown model — and in a space with none, a query on the
+    community's own `Sighting` did, which is the case a validator is most needed for.
+  */
   const getValidationCtx = createMemo(() => {
-    const manifest = datasetStore.currentDatasetEntities();
-    if (manifest.length === 0) return baseValidationCtx;
-    const perspectiveEntityNames = new Set(manifest.map((m) => m.name));
-    return { ...baseValidationCtx, entityNames: perspectiveEntityNames };
+    const foreign = datasetStore.currentDatasetEntities().map((m) => m.name);
+    const shapes = shapeStore.spaceShapes().map((s) => s.name);
+    if (foreign.length === 0 && shapes.length === 0) return baseValidationCtx;
+    return { ...baseValidationCtx, entityNames: new Set([...baseValidationCtx.entityNames, ...foreign, ...shapes]) };
   });
 
   // --- Chat state ---
@@ -235,15 +270,61 @@ export function EditorStoreProvider(props: ParentProps) {
   const [isOpen, setIsOpen] = createSignal(false);
   const [isStreaming, setIsStreaming] = createSignal(false);
   const [streamingContent, setStreamingContent] = createSignal('');
-  const [apiKey, setApiKeySignal] = createSignal('');
 
-  const apiKeyConfigured = () => apiKey().length > 0;
+  /*
+    Asked of the node rather than read off the agent. This used to be "the agent pasted an Anthropic
+    key", which made the editor the one AI surface that ignored the models its node runs — and
+    handed a secret to the browser to send from there.
+  */
+  const languageModel = () => session.backendPorts()?.languageModel;
+  const [nodeHasModel, setNodeHasModel] = createSignal(false);
+  const [assistantStatus, setAssistantStatus] = createSignal<LanguageModelStatus | null>(null);
+  const assistantAvailable = () => nodeHasModel() && !!languageModel()?.converse;
 
-  // --- Session management ---
-  const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
+  /*
+    Asked again rather than once at boot: models are added and swapped in settings while the app
+    runs, and a chat panel that only learned about the node on startup went on saying "no model"
+    after one was added.
+  */
+  async function refreshAssistant(): Promise<void> {
+    const port = languageModel();
+    if (!port?.converse) {
+      setNodeHasModel(false);
+      setAssistantStatus(null);
+      return;
+    }
+    const [available, status] = await Promise.all([
+      port.available().catch(() => false),
+      port.status?.().catch(() => null) ?? Promise.resolve(null),
+    ]);
+    setNodeHasModel(available);
+    setAssistantStatus(status);
+  }
+
+  createEffect(() => {
+    // When the port arrives — so the answer is ready before anyone opens the chat — and each time
+    // the panel opens, since that is when a stale answer would be read.
+    languageModel();
+    if (isOpen() || !assistantStatus()) void refreshAssistant();
+  });
+
+  /*
+    --- Session management ---
+
+    `NewRecord`, and that is the whole of the fix below: these rows are here to be named, addressed
+    and deleted, never to be read for their messages. A session's `messages` is a relation, so it
+    holds whatever it held at the moment the record was read — nothing for one this run created, and
+    the state at load for one it loaded — and `persistMessage` appends without touching it.
+
+    Reading it back off a held row was why leaving a conversation and returning to it showed an empty
+    one, and why deleting a chat walked an empty list and left every message behind with nothing
+    pointing at it. Both cleared on reload, which is what kept them. Messages now come from
+    `messagesFor`, which asks.
+  */
+  const [sessions, setSessions] = createSignal<NewRecord<ChatSessionRecord>[]>([]);
   const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
   // Track the AD4M ChatSession model instance for the active session
-  let activeSessionRecord: ChatSessionRecord | null = null;
+  let activeSessionRecord: NewRecord<ChatSessionRecord> | null = null;
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
@@ -255,7 +336,7 @@ export function EditorStoreProvider(props: ParentProps) {
   const templateIcon = () => templateStore.currentTemplate.meta?.icon || 'cube';
   const isReadOnly = () => {
     const id = templateStore.currentTemplate.id;
-    return !!id && templateStore.isBuiltInTemplate(id);
+    return !!id && templateStore.isBuiltInTemplateId(id);
   };
 
   // --- Pending changes (buffered edits for read-only templates) ---
@@ -280,6 +361,22 @@ export function EditorStoreProvider(props: ParentProps) {
       return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
     });
     setRedoStack([]);
+  }
+
+  /**
+   * See `commitEdit` on the interface.
+   *
+   * Deliberately *not* the AI path's shape. That one buffers **instead of** updating, so a proposed
+   * patch does not silently alter what is on screen — but the visual editor's caller has already
+   * applied the edit to the working copy, because direct manipulation that does not move the thing
+   * being manipulated is not an edit at all. So the working copy is what gets buffered.
+   */
+  async function commitEdit() {
+    if (!isReadOnly()) {
+      await templateStore.persistCurrentTemplate();
+      return;
+    }
+    setPendingTemplate(deepClone(templateStore.currentTemplate) as TemplateSchema);
   }
 
   async function undo() {
@@ -370,10 +467,37 @@ export function EditorStoreProvider(props: ParentProps) {
   // Session management — load, create, switch, delete
   // ----------------------------------------------------------------
 
+  /**
+   * One session's messages, asked for rather than read off a held record.
+   *
+   * The session row is re-read with its `messages` included — the same query `loadSessionsForTemplate`
+   * makes for all of them — because a relation on a held instance is a snapshot of when that instance
+   * was read, and every message written since is missing from it. See the note on `sessions`.
+   *
+   * Answers `[]` for a session that has gone, which is what a caller wants: an empty conversation,
+   * not a thrown one.
+   */
+  async function messagesFor(sessionId: string): Promise<ChatMessage[]> {
+    const perspective = datasetStore.rootDataset()?.handle;
+    if (!perspective) return [];
+    try {
+      const fresh = await ChatSessionRecord.findOne(perspective, {
+        where: { id: sessionId },
+        include: { messages: { order: { createdAt: 'ASC' } } },
+      });
+      // One fallback, not two: the inner `?? []` already makes this non-nullish, so the outer one was
+      // unreachable. TypeScript 6 reports that (TS2869) where 5 accepted it in silence.
+      return (fresh?.messages ?? []) as ChatMessage[];
+    } catch (err) {
+      console.error('Failed to read messages for session', sessionId, err);
+      return [];
+    }
+  }
+
   /** Load sessions for a given template and activate the most recent one */
   async function loadSessionsForTemplate(templateId: string) {
     // Core (read-only) templates use ephemeral in-memory sessions
-    if (templateStore.isBuiltInTemplate(templateId)) {
+    if (templateStore.isBuiltInTemplateId(templateId)) {
       setSessions([]);
       setActiveSessionId(null);
       activeSessionRecord = null;
@@ -426,7 +550,7 @@ export function EditorStoreProvider(props: ParentProps) {
   /** Create a new chat session for the current template */
   async function newChat() {
     const templateId = templateStore.currentTemplate.id;
-    if (!templateId || templateStore.isBuiltInTemplate(templateId)) {
+    if (!templateId || templateStore.isBuiltInTemplateId(templateId)) {
       // For core templates, clear in-memory messages (ephemeral sessions)
       setMessages([]);
       setMessages((prev) => [...prev, createMessage('assistant', 'Chat cleared. Start a new conversation!')]);
@@ -467,7 +591,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
     activeSessionRecord = target;
     setActiveSessionId(sessionId);
-    setMessages((target.messages as ChatMessage[]) || []);
+    setMessages(await messagesFor(sessionId));
   }
 
   /** Delete a session and its messages */
@@ -483,8 +607,10 @@ export function EditorStoreProvider(props: ParentProps) {
       const target = sessions().find((s) => s.id === sessionId);
       if (!target) return;
 
-      // Delete all hydrated messages in the session
-      for (const msg of target.messages || []) {
+      // Asked for, not read off `target`: its `messages` is a snapshot from whenever that row was
+      // read, so a chat created or added to this run walked an empty list here and left every
+      // message behind in the root dataset with nothing left pointing at it.
+      for (const msg of await messagesFor(sessionId)) {
         await (msg as ChatMessageRecord).delete();
       }
 
@@ -499,7 +625,7 @@ export function EditorStoreProvider(props: ParentProps) {
           const next = remaining[0];
           activeSessionRecord = next;
           setActiveSessionId(next.id);
-          setMessages((next.messages as ChatMessage[]) || []);
+          setMessages(await messagesFor(next.id));
         } else {
           setActiveSessionId(null);
           activeSessionRecord = null;
@@ -741,24 +867,6 @@ export function EditorStoreProvider(props: ParentProps) {
   );
 
   // ----------------------------------------------------------------
-  // API key management (persisted to AgentSettings)
-  // ----------------------------------------------------------------
-  // Returns the write rather than dropping it, so a schema's `onError`/`onFinally` can fire and a
-  // caller can await. `updateAgentSettings` toasts a failure of its own; this is the other channel.
-  function setApiKey(key: string): Promise<boolean> {
-    setApiKeySignal(key);
-    return datasetStore.updateAgentSettings({ claudeApiKey: key });
-  }
-
-  // Load persisted API key when agentSettings become available
-  createEffect(() => {
-    const settings = datasetStore.agentSettings();
-    if (settings?.claudeApiKey) {
-      setApiKeySignal(settings.claudeApiKey);
-    }
-  });
-
-  // ----------------------------------------------------------------
   // Template actions — Fork / Start Fresh / Picker
   // ----------------------------------------------------------------
   function startFork() {
@@ -827,12 +935,12 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Chat — send message (Claude primary, AD4M fallback)
+  // Chat — send message
   // ----------------------------------------------------------------
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
     const templateId = templateStore.currentTemplate.id;
-    if (templateId && !templateStore.isBuiltInTemplate(templateId) && !activeSessionRecord) {
+    if (templateId && !templateStore.isBuiltInTemplateId(templateId) && !activeSessionRecord) {
       await newChat();
     }
 
@@ -849,9 +957,12 @@ export function EditorStoreProvider(props: ParentProps) {
     setStreamingContent('<span class="shimmer">*Thinking...*</span>');
 
     try {
-      await sendViaClaude(text);
+      await sendViaNode(text);
     } catch (err) {
       console.error('[EditorStore] sendMessage caught error:', err);
+      // A failure is often the model's — a revoked key, a removed default — so the status line
+      // should stop claiming it is fine.
+      void refreshAssistant();
       const errorText = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
     } finally {
@@ -860,7 +971,7 @@ export function EditorStoreProvider(props: ParentProps) {
       /*
         Resolve any placeholder still marked `streaming`.
 
-        `sendViaClaude` creates one before the first token and clears it only on the paths that
+        `sendViaNode` creates one before the first token and clears it only on the paths that
         finish — so a 401, a 429 or a timeout appended an error message *beside* an empty bubble
         that shimmered for the life of the panel. Every escape from that function passes through
         here, which is why the cleanup belongs here and not beside each throw.
@@ -878,11 +989,16 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Claude API path (client + streaming live in shared/ai/aiInfra)
+  // The conversation, on the node's language model
   // ----------------------------------------------------------------
 
-  async function sendViaClaude(text: string) {
-    const claudeMessages: Array<{ role: string; content: unknown }> = buildClaudeMessages(text);
+  async function sendViaNode(text: string) {
+    const port = languageModel();
+    if (!port?.converse || !nodeHasModel()) {
+      throw new Error('This node has no language model to talk to. Add one in Settings → AI.');
+    }
+    const turns: ConversationTurn[] = buildTurns(text);
+    const system = await chatSystemPrompt();
 
     // Create a placeholder assistant message — shows streaming content as tokens arrive
     const streamMsg = createMessage('assistant', '', 'streaming');
@@ -917,26 +1033,22 @@ export function EditorStoreProvider(props: ParentProps) {
     };
 
     for (let turn = 0; turn <= maxContinuations; turn++) {
-      let streamResult;
+      let reply;
       try {
-        streamResult = await sendClaudeRequest(
-          apiKey(),
-          claudeMessages,
-          (accumulated) => {
+        reply = await port.converse({
+          system,
+          turns,
+          tools: [updateSchemaTool],
+          onText: (accumulated) => {
             const sep = allTextContent && accumulated ? '\n\n' : '';
             setStreamingContent(allTextContent + sep + accumulated);
           },
-          (textSoFar) => {
-            const base = allTextContent + (allTextContent && textSoFar ? '\n\n' : '') + textSoFar;
-            const sep = base ? '\n\n' : '';
-            setStreamingContent(base + sep + '<span class="shimmer">*Updating template...*</span>');
-          },
-        );
+        });
       } catch (err) {
-        console.error(`[EditorStore] Turn ${turn}: sendClaudeRequest threw`, err);
+        console.error(`[EditorStore] Turn ${turn}: the conversation failed`, err);
         throw err;
       }
-      const { textContent, toolCalls, stopReason } = streamResult;
+      const { text: textContent, calls: toolCalls, finish } = reply;
 
       if (textContent) {
         allTextContent += (allTextContent ? '\n\n' : '') + textContent;
@@ -951,7 +1063,7 @@ export function EditorStoreProvider(props: ParentProps) {
         be labelled, because the difference between "here is your change" and "here is most of a
         change I did not make" is the whole message.
       */
-      if (stopReason === 'max_tokens') {
+      if (finish === 'truncated') {
         setStreamingContent('');
         updateAssistantMessage(
           streamMsg.id,
@@ -961,30 +1073,19 @@ export function EditorStoreProvider(props: ParentProps) {
       }
 
       // No tool calls — text-only response, we're done
-      if (stopReason === 'end_turn' || toolCalls.length === 0) {
+      if (toolCalls.length === 0) {
         setStreamingContent('');
         updateAssistantMessage(streamMsg.id, allTextContent || 'No response from AI');
         return;
       }
 
-      // Show working indicator while tool calls are processed
-      // (already shown via onToolUseStart callback during streaming)
+      showInlineStatus('Updating template...');
 
-      // Process tool calls (stop_reason === 'tool_use')
-      // Build assistant message content blocks for conversation history
-      const assistantContent: Array<Record<string, unknown>> = [];
-      if (textContent) {
-        assistantContent.push({ type: 'text', text: textContent });
-      }
-      for (const tc of toolCalls) {
-        assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
-      }
+      // The assistant's turn, calls included, goes into history before their results
+      turns.push({ role: 'assistant', text: textContent, calls: toolCalls });
 
-      // Add assistant message to conversation history
-      claudeMessages.push({ role: 'assistant', content: assistantContent });
-
-      // Execute each tool call and collect results
-      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }> = [];
+      // One result per call, in the order they were made
+      const toolResults: Array<{ callId: string; content: string; isError?: boolean }> = [];
 
       // --- Atomic patching: accumulate all patches before applying ---
       // We clone the template once and apply all tool calls' patches to it.
@@ -1000,14 +1101,13 @@ export function EditorStoreProvider(props: ParentProps) {
 
       for (const tc of toolCalls) {
         if (tc.name === 'update_schema') {
-          const patches = (tc.input as { patches: SchemaPatch[] }).patches;
+          const patches = (tc.arguments as { patches?: SchemaPatch[] }).patches;
 
           if (!patches || !Array.isArray(patches)) {
             toolResults.push({
-              type: 'tool_result',
-              tool_use_id: tc.id,
+              callId: tc.id,
               content: 'Invalid input: patches must be an array',
-              is_error: true,
+              isError: true,
             });
             allPatchesValid = false;
             continue;
@@ -1028,10 +1128,9 @@ export function EditorStoreProvider(props: ParentProps) {
             allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
-              type: 'tool_result',
-              tool_use_id: tc.id,
+              callId: tc.id,
               content: `Patching failed: ${result.error}`,
-              is_error: true,
+              isError: true,
             });
             allPatchesValid = false;
             continue;
@@ -1042,18 +1141,9 @@ export function EditorStoreProvider(props: ParentProps) {
           ensureNodeIds(accumulatedSchema);
 
           // Mark success for this tool call (actual store apply deferred)
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: tc.id,
-            content: 'Patches applied.',
-          });
+          toolResults.push({ callId: tc.id, content: 'Patches applied.' });
         } else {
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: tc.id,
-            content: `Unknown tool: ${tc.name}`,
-            is_error: true,
-          });
+          toolResults.push({ callId: tc.id, content: `Unknown tool: ${tc.name}`, isError: true });
         }
       }
 
@@ -1077,7 +1167,7 @@ export function EditorStoreProvider(props: ParentProps) {
           setStreamingContent(allTextContent);
           for (const tr of toolResults) {
             tr.content = `Structural validation failed (${structural.errors.length} issues). Top issues: ${top5}. Fix the schema structure and retry.`;
-            tr.is_error = true;
+            tr.isError = true;
           }
         } else {
           devLog('[EditorStore] Structural validation passed');
@@ -1108,7 +1198,7 @@ export function EditorStoreProvider(props: ParentProps) {
             setStreamingContent(allTextContent);
             for (const tr of toolResults) {
               tr.content = `Semantic validation failed (${newIssues.length} issues). Top issues: ${top5}. Fix the invalid tokens/props and retry.`;
-              tr.is_error = true;
+              tr.isError = true;
             }
           } else if (isReadOnly()) {
             if (import.meta.env.DEV)
@@ -1136,11 +1226,13 @@ export function EditorStoreProvider(props: ParentProps) {
         }
       }
 
-      // Add tool results to conversation history
-      claudeMessages.push({ role: 'user', content: toolResults });
+      // Add tool results to conversation history — one turn each, so every call is answered by name
+      for (const tr of toolResults) {
+        turns.push({ role: 'tool', callId: tr.callId, result: tr.isError ? `Error: ${tr.content}` : tr.content });
+      }
 
       // Inject inline status if this round succeeded
-      const hasErrors = toolResults.some((r) => r.is_error);
+      const hasErrors = toolResults.some((r) => r.isError);
       if (!hasErrors) {
         const pended = isReadOnly() && pendingTemplate() !== null;
         const statusLine = pended
@@ -1150,9 +1242,9 @@ export function EditorStoreProvider(props: ParentProps) {
         setStreamingContent(allTextContent);
       }
 
-      // Continue the loop — Claude will either:
+      // Continue the loop — the model will either:
       // - send closing text (end_turn) → caught at top of next iteration
-      // - send more tool_use calls → processed in next iteration
+      // - call the tool again → processed in next iteration
       // - retry after errors → processed in next iteration
       showInlineStatus(hasErrors ? 'Retrying...' : 'Thinking...');
     }
@@ -1166,23 +1258,26 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Build Claude messages array from chat history.
+   * The conversation so far, as turns.
    * The currentSchema is included in the latest user message so the AI
    * always sees the current template state.
    */
-  function buildClaudeMessages(latestText: string): Array<{ role: string; content: unknown }> {
-    const history: Array<{ role: string; content: unknown }> = [];
+  function buildTurns(latestText: string): ConversationTurn[] {
+    const history: ConversationTurn[] = [];
 
     // Include prior conversation (skip system messages)
     for (const msg of messages()) {
       if (msg.role === 'system') continue;
+      // The request being sent is already in the list, marked `sending`, and goes last below with
+      // the schema attached. Reading it here too sent every request to the model twice.
+      if (msg.status === 'sending') continue;
       if (msg.role === 'user') {
         history.push({
           role: 'user',
-          content: JSON.stringify({ request: msg.content, currentSchema: {} }),
+          text: JSON.stringify({ request: msg.content, currentSchema: {} }),
         });
       } else {
-        history.push({ role: 'assistant', content: msg.content });
+        history.push({ role: 'assistant', text: msg.content });
       }
     }
 
@@ -1212,7 +1307,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
     history.push({
       role: 'user',
-      content: JSON.stringify(payload),
+      text: JSON.stringify(payload),
     });
 
     return history;
@@ -1243,7 +1338,7 @@ export function EditorStoreProvider(props: ParentProps) {
       // id is the template identifier, not an internal node id — restore it.
       const schema = { ...stripNodeIds(parsed as SchemaNode), id: templateStore.currentTemplate.id } as TemplateSchema;
       templateStore.updateTemplate(schema);
-      templateStore.persistCurrentTemplate();
+      void commitEdit();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {
       setMessages((prev) => [...prev, createMessage('assistant', 'Invalid JSON — changes not applied.')]);
@@ -1255,14 +1350,17 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   async function clearHistory() {
     // If persisted session, delete messages from AD4M
-    if (activeSessionRecord) {
+    const record = activeSessionRecord;
+    if (record) {
       try {
-        // Messages are already hydrated on the session model
-        for (const msg of activeSessionRecord.messages || []) {
-          await activeSessionRecord.removeMessages(msg as ChatMessageRecord);
+        // Asked for, not read off the held record — its `messages` is a snapshot of whenever that
+        // row was read, and every message written since is missing from it. The comment here used to
+        // say they were "already hydrated on the session model", which is what made Clear History a
+        // no-op on any conversation this run had started.
+        for (const msg of await messagesFor(record.id)) {
+          await record.removeMessages(msg as ChatMessageRecord);
           await (msg as ChatMessageRecord).delete();
         }
-        activeSessionRecord.messages = [];
       } catch (err) {
         console.error('Failed to clear persisted messages', err);
       }
@@ -1314,7 +1412,9 @@ export function EditorStoreProvider(props: ParentProps) {
     isOpen,
     isStreaming,
     streamingContent,
-    apiKeyConfigured,
+    assistantAvailable,
+    assistantStatus,
+    refreshAssistant,
 
     // Template context
     templateName,
@@ -1348,6 +1448,7 @@ export function EditorStoreProvider(props: ParentProps) {
     undo,
     redo,
     pushSnapshot,
+    commitEdit,
 
     // Template actions
     startFork,
@@ -1401,9 +1502,6 @@ export function EditorStoreProvider(props: ParentProps) {
     // Chat actions
     sendMessage,
     clearHistory,
-
-    // Settings
-    setApiKey,
   };
 
   /*

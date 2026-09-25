@@ -1,17 +1,17 @@
 import type { CoreEntityDef } from './defs';
 
 /**
- * Where something sits, on one board.
+ * Where something sits, on one canvas.
  *
  * A position is a fact about a **pair** — this view, this node — and not about either one alone.
  * Every design that stores it on one side loses information the moment the other side multiplies:
- * `x`/`y` on a block means a record can be on one board only, and the same note pinned to two
- * boards in two places is the ordinary case rather than the exotic one. So the coordinate lives on
+ * `x`/`y` on a block means a record can be on one canvas only, and the same note pinned to two
+ * canvases in two places is the ordinary case rather than the exotic one. So the coordinate lives on
  * the relation, which is what this is.
  *
- * ## Why many small records rather than a map on the board
+ * ## Why many small records rather than a map on the canvas
  *
- * A board holding `{ nodeId: {x, y} }` in one field is a read-modify-write, and a shared board is
+ * A canvas holding `{ nodeId: {x, y} }` in one field is a read-modify-write, and a shared canvas is
  * the worst possible place for one: two people dragging two *different* cards would clobber each
  * other, and the loser would watch their card snap back with no explanation. `MutedAgent` made the
  * same call for the same reason — one record per fact, so two independent changes are two
@@ -29,12 +29,12 @@ import type { CoreEntityDef } from './defs';
  *
  * It is still authored, because every expression is — which is what makes "everybody shares one
  * arrangement" and "everybody keeps their own" a difference of one `where` clause rather than a
- * migration. Shared is the default, since a board is a shared artifact; per-agent stays free.
+ * migration. Shared is the default, since a canvas is a shared artifact; per-agent stays free.
  *
  * ## What it does not decide
  *
- * A board is the container today. It should not be the container forever: the general thing is a
- * *saved view*, and a board is its degenerate case — one where every node happens to be placed and
+ * A canvas is the container today. It should not be the container forever: the general thing is a
+ * *saved view*, and a canvas is its degenerate case — one where every node happens to be placed and
  * the layout is `manual`. The evidence is already in the engine, where pinning a node on a knowledge
  * map holds it exactly until the page reloads. When that becomes durable it wants this record and a
  * different thing on the other end of the parent link, which costs a query rather than a model.
@@ -49,18 +49,18 @@ export const Placement: CoreEntityDef = {
        *
        * The same fact `Relationship` carries beside its endpoints, for the same reason: a graph
        * address is minted from a dataset, a type and an id, and an untyped relation supplies no
-       * type. Storing it means the board can work out what to query without first resolving every
+       * type. Storing it means the canvas can work out what to query without first resolving every
        * reference to ask it what it is.
        */
       nodeType: { type: 'string', predicate: 'we://node_type', default: '' },
       x: { type: 'number', predicate: 'we://x', default: 0 },
       y: { type: 'number', predicate: 'we://y', default: 0 },
       /*
-        How the card is presented on this board — and only on this board.
+        How the card is presented on this canvas — and only on this canvas.
 
         Here rather than on the record for the same reason the coordinate is: this is a fact about a
         pair. Somebody shrinking a post to fit six of them on a wall is not editing the post, and the
-        same post on somebody else's board must not change size because of it. It is also what makes
+        same post on somebody else's canvas must not change size because of it. It is also what makes
         these safe to offer at all — every one of them is undoable by deleting a placement, and none
         of them can damage the thing being displayed.
 
@@ -73,18 +73,34 @@ export const Placement: CoreEntityDef = {
       height: { type: 'number', predicate: 'we://height', default: 0 },
       /** Multiplier on the content drawn inside the card. 0 is unset; see `NodeStyle.contentScale`. */
       contentScale: { type: 'number', predicate: 'we://content_scale', default: 0 },
-      /** Design token or CSS colour. Empty is unset, so the board's own rules decide. */
+      /*
+        Degrees clockwise, and where in the stack it sits.
+
+        The same "fact about a pair" argument as everything above, and the one that most obviously
+        needed making: a photo is rotated *on this canvas*, and rotating it here must not rotate it
+        on somebody else's. Neither existed anywhere in the model — a canvas could not express a
+        tilted card at all, and overlap was an accident of load order rather than something anybody
+        chose, which is fine on a knowledge map and the entire point of a scrapbook.
+
+        `0` is unset for both, consistent with the sizes above, and it costs nothing to read that
+        way: an unrotated card and one nobody has rotated are the same card, and a stacking order
+        of zero is the auto the renderer would pick anyway. Rotation is signed, so the drop rule
+        for these is "zero" rather than "not positive".
+      */
+      rotation: { type: 'number', predicate: 'we://rotation', default: 0 },
+      z: { type: 'number', predicate: 'we://z', default: 0 },
+      /** Design token or CSS colour. Empty is unset, so the canvas's own rules decide. */
       color: { type: 'string', predicate: 'we://color', default: '' },
       /** `note`, `square` or `round`. Empty is unset; anything else is ignored by the renderer. */
       cardShape: { type: 'string', predicate: 'we://card_shape', default: '' },
     },
     relations: {
       /**
-       * What is placed. Untyped, because a board holds whatever its community puts on it.
+       * What is placed. Untyped, because a canvas holds whatever its community puts on it.
        *
-       * Read as a bare URI rather than hydrated — deliberately, and it is why the board never asks
+       * Read as a bare URI rather than hydrated — deliberately, and it is why the canvas never asks
        * for `include` on this. An untyped relation has no target class for the ORM to hydrate into,
-       * and the board wants the id anyway: it queries the placed records by type, in batches, and
+       * and the canvas wants the id anyway: it queries the placed records by type, in batches, and
        * matches them up here.
        */
       node: { target: '', cardinality: 'one', predicate: 'we://placed_node' },

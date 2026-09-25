@@ -49,6 +49,8 @@ export type {
   TokenCategory,
   PluginCatalog,
   PluginEntry,
+  ModuleCatalogEntry,
+  ForeignElementEntry,
   SourceEntry,
 } from './contextTypes';
 
@@ -62,6 +64,7 @@ export {
   resolveProp,
   resolveProps,
   pruneUnresolvedWhere,
+  scopeIsAnchored,
   resolveQueryProp,
   splitProps,
   markReactive,
@@ -108,6 +111,8 @@ export { createStoredTemplate, listSections, getSection, updateSection } from '.
 export {
   expandViewRoutes,
   hasViewsMarker,
+  SPACE_ROUTE_DEPTH,
+  SPACE_ROUTE_PATH,
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
   VIEWS_MARKER,

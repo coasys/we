@@ -141,9 +141,9 @@ export class Relationship extends WeNode {
   })
   targetType: string = '';
 
-  @HasOne({ through: 'we://relationship_source' })
+  @HasOne({ through: 'we://relationship_source', polymorphic: true })
   source?: string;
 
-  @HasOne({ through: 'we://relationship_target' })
+  @HasOne({ through: 'we://relationship_target', polymorphic: true })
   target?: string;
 }

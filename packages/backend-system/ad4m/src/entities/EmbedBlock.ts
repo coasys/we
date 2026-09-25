@@ -43,6 +43,19 @@ export class EmbedBlock extends WeNode {
   @Property({ through: 'we://thumbnail' })
   thumbnail: string = '';
 
+  /**
+   * Who made the thing embedded, as a DID — the attribution a quote owes.
+   *
+   * The embed is written by whoever brought the thing in, so its own `author` is theirs. Without
+   * this, a post quoting somebody else would show the person quoting as the only name on it.
+   */
+  @Property({ through: 'we://source_author' })
+  sourceAuthor: string = '';
+
+  /** The space it was in, by name — a snapshot, so a reader who has not joined it still sees where. */
+  @Property({ through: 'we://source_name' })
+  sourceName: string = '';
+
   @Property({ through: 'we://display_mode' })
   displayMode: string = 'card';
 

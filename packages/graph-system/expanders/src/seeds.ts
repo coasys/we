@@ -23,7 +23,7 @@ export interface QuerySeedOptions {
   /**
    * Drill down from one record through one of its relations, instead of loading a type wholesale.
    *
-   * What a board needs, and the case a `where` clause cannot express: a board's cards are its
+   * What a canvas needs, and the case a `where` clause cannot express: a canvas's cards are its
    * children, which is a link rather than a field, so there is nothing to filter on. The same
    * neutral shape `$query` already takes.
    */
@@ -65,7 +65,7 @@ export function querySeed(defaults: { reified?: ReifiedEdgeMap } = {}): SeedSour
       // there is nothing to attach them to.
       if (seedingAnEdge) for (const name of endpointRelations(options.entity, reified!)) include[name] = true;
 
-      // A scope naming no anchor yet is a template whose `$local` has not been chosen — a board
+      // A scope naming no anchor yet is a template whose `$local` has not been chosen — a canvas
       // nobody has picked. Loading the type wholesale there would fill the canvas with every card
       // in the space, so it loads nothing and waits.
       if (options.scope && !options.scope.anchorId) return { nodes: [], edges: [], total: 0 };
@@ -87,8 +87,8 @@ export function querySeed(defaults: { reified?: ReifiedEdgeMap } = {}): SeedSour
       if (seedingAnEdge) {
         for (const row of rows) {
           const resolved = reifiedEdgeFrom(row, options.entity, reified![options.entity], dataset, shapes, 'query');
-          if (!resolved) {
-            context.warn(`${options.entity} ${String(row.id)} is missing an endpoint — skipped`);
+          if ('reason' in resolved) {
+            context.warn(`${options.entity} ${String(row.id)} not drawn: ${resolved.reason}`);
             continue;
           }
           nodes.push(...resolved.nodes);

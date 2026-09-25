@@ -1,10 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing, type PropertyValues } from 'lit';
+import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
@@ -58,11 +59,17 @@ const styles = css`
     the accessibility tree. Sizing this way rather than from the current value is what keeps the
     control from resizing every time somebody picks something.
 
-    The width itself is set inline, in the updated() hook — not here. The design system's generated sheet
-    re-declares width in its own interaction rules, so a :host rule held until the pointer arrived
-    and then lost: the control sat at its fitted width and jumped to full width on hover. Measured,
-    not guessed; the same cascade is why an equivalent rule on we-number-input never applied at all.
+    The width is a :host rule reading the design system's own variables, so an explicit width or
+    minWidth still wins, a breakpoint's width wins above it, and fit is only the default-sizing
+    opinion. It was set inline for a while, because the generated hover rule used to re-declare
+    width and a fitted control jumped to full width under the pointer; states now roll back what
+    they do not set (see "Cascade layers" in 'shared/helpers.ts'), and an inline width also beat
+    every breakpoint.
   */
+  :host([fit]) {
+    width: var(--we-select-width, fit-content);
+    min-width: var(--we-select-min-width, 0);
+  }
 
   [part='sizer'] {
     display: grid;
@@ -84,28 +91,24 @@ const styles = css`
     position: relative;
     display: flex;
     align-items: center;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-theme-input-radius, var(--we-radius-400));
-    /* Recessed, not raised. This was neutral-0 — the *darkest* step in a dark theme, i.e. a well —
-       and reading it as "the lightest, therefore a card" inverted it. */
-    background: var(--we-role-surface-sunken);
   }
 
-  /* One perimeter, the same one we-input draws: the resting outline recoloured to the ring, plus a
-     single pixel of ring outside it. This was a 2px accent-muted outline inset by -1px — a third
-     spelling of the same idea, which read as a halo *inside* the edge rather than as the edge
-     thickening, and made this the one control in a row of them answering focus differently.
-     --we-ring-color rather than the accent directly, so a theme's ringColor reaches this too. */
-  [part='input-wrapper']:focus-within {
-    border-color: var(--we-ring-color);
-    box-shadow: 0 0 0 1px var(--we-ring-color);
-    /* On the arrival rule, not the resting one, so focus eases in and blur snaps — the split the DS
-       state rules make, for the reason argued at STATE_TRANSITION in shared/helpers.ts. Both
-       properties travel together or the ring pops in over an edge that is still moving. */
-    transition:
-      border-color var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out,
-      box-shadow var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out;
-  }
+  /*
+    The recessed well, the ring, and — new here — a hover that answers with the fill as well as the
+    edge. These three rules were written on this control first and copied outward from it, which is
+    how the family drifted; they now come from the one definition instead, and this is the last
+    control to stop restating them.
+
+    The hover is the half that had gone missing at the source rather than in a copy. we-input's own
+    note argues for lifting the fill by pointing at this control ("that variant is what a Select
+    trigger is, so an input sitting in a row of them was the one control whose edge did not answer
+    the pointer") — and the trigger had no hover rule at all, so after that change it was the only
+    field in the family that did not respond to the pointer.
+
+    Focus-within rather than focus-visible: the focusable thing is the native input inside this
+    wrapper, and the ring has to follow the caret whether it was reached by click or by Tab.
+  */
+  ${fieldSurface("[part='input-wrapper']", ':focus-within')}
 
   input[part='native'] {
     all: unset;
@@ -191,7 +194,9 @@ const styles = css`
     overflow-y: auto;
     background: var(--we-role-surface-raised);
     border: 1px solid var(--we-role-border);
-    border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
+    /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
+       Through the table rather than by hand, so it cannot drift from every other surface. */
+    border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
     box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
     margin-top: var(--we-space-100);
     padding: var(--we-space-100) 0;
@@ -322,6 +327,18 @@ export default class Select extends DesignSystemElement {
    * carries an id.
    */
   @state() private _active = -1;
+  /**
+   * Whether the keyboard has been used since the listbox opened — what decides if the highlight is
+   * drawn.
+   *
+   * The highlight starts on the current value so that opening and pressing Enter changes nothing,
+   * and it was drawn from that first frame however the list opened. Opened with a click, that put a
+   * focus-coloured ring on the chosen row that nothing the person did had asked for — it read as a
+   * stray focus ring, or as a second selection. It is the keyboard's cursor, so it appears once the
+   * keyboard is in use, the same distinction `:focus-visible` makes for focus. `_active` itself is
+   * unchanged, so `aria-activedescendant` still tells a screen reader where it is.
+   */
+  @state() private _keyboard = false;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -350,13 +367,6 @@ export default class Select extends DesignSystemElement {
    */
   updated(changed: PropertyValues) {
     super.updated(changed);
-
-    // Read through the design system rather than off the element: `width` is assigned by whoever
-    // mounts this, not declared here. A consumer asking for a width means it, and `fit` is only the
-    // default-sizing opinion, so an explicit one wins.
-    const fitting = this.fit && !(this.getInstanceProps() as { width?: string }).width;
-    this.style.width = fitting ? 'fit-content' : '';
-    this.style.minWidth = fitting ? '0' : '';
 
     if (changed.has('_open')) {
       if (this._open) {
@@ -432,6 +442,7 @@ export default class Select extends DesignSystemElement {
   }
 
   private _toggle() {
+    this._keyboard = false;
     this._open = !this._open;
     if (this._open) this._syncActive();
     else this._active = -1;
@@ -469,6 +480,7 @@ export default class Select extends DesignSystemElement {
    */
   private _onKeyDown(e: KeyboardEvent) {
     if (this.disabled) return;
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(e.key)) this._keyboard = true;
 
     switch (e.key) {
       case 'ArrowDown':
@@ -566,7 +578,10 @@ export default class Select extends DesignSystemElement {
                     aria-controls="listbox"
                     aria-activedescendant=${activeId}
                     @input=${this._onInput}
-                    @focus=${() => (this._open = true)}
+                    @focus=${() => {
+                      this._keyboard = false;
+                      this._open = true;
+                    }}
                     @keydown=${this._onKeyDown}
                   />
                 `
@@ -630,7 +645,7 @@ export default class Select extends DesignSystemElement {
                               part="option"
                               role="option"
                               id=${this._optionId(index)}
-                              data-active=${index === this._active ? 'true' : nothing}
+                              data-active=${this._keyboard && index === this._active ? 'true' : nothing}
                               aria-selected=${opt.value === this.value ? 'true' : 'false'}
                               aria-disabled=${opt.disabled ? 'true' : nothing}
                               @click=${() => this._select(opt)}

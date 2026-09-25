@@ -1,40 +1,15 @@
 export type * from './AvatarStack.types';
 
-import { avatarToneRing } from '@we/tokens';
-import { createMemo, For, Show } from 'solid-js';
+import { tokenVar } from '@we/design-utils';
+import { createMemo, Index, Show } from 'solid-js';
 
 import type { AvatarInfo, AvatarStackProps } from './AvatarStack.types';
 
-/**
- * There is no default ring. A ring reads as a deliberate mark — selection, presence, a tone — so a
- * stack that paints one nobody asked for is making a claim about the avatars it does not have.
- *
- * It once defaulted to `neutral-0`, on the reasoning that overlapping faces need separating. That
- * colour is only the surface colour on a surface that happens to be `neutral-0`; on any other card
- * it is a visible band, and because the neutral scale inverts under the dark themes it landed at 8%
- * lightness there — a black ring around every stacked avatar. Separation is the caller's call to
- * make against the surface they know they are on: pass `ring`, or set `overlap: 0`.
- */
 /*
-  The tone → ring map used to live here, as five hand-written box-shadows. It is the token layer's
-  now, because it was never only this component's: the rail draws the same kind of ring around the
-  same kind of face, and the two spellings had already diverged — scale positions here, role names
-  there — so the same word meant two colours depending on which grammar you wrote it in.
-
-  Why the colours stay scale positions rather than becoming roles is argued at `avatarToneRing`.
+  A face's ring is `we-avatar`'s own now — a tone drawn inside the face — rather than a box-shadow
+  this component assembled and painted outside it. See `ringColor` on the primitive.
 */
-function ringFor(avatar: AvatarInfo, fallback?: string): string | undefined {
-  return avatar.tone ? avatarToneRing(avatar.tone) : fallback;
-}
 
-/**
- * Who an entry is, for the purpose of "have we already drawn them".
- *
- * `hash` first because that is the identity: callers seed it with a DID precisely so the generated
- * avatar is stable per agent. The rest are fallbacks for stacks built from something other than
- * agents, and an entry with none of them is treated as its own person rather than folded in with
- * every other blank — a stack of unidentified faces should still show how many there are.
- */
 function identityOf(avatar: AvatarInfo, index: number): string {
   return avatar.hash || avatar.image || avatar.initials || avatar.icon || `#${index}`;
 }
@@ -69,27 +44,46 @@ export function AvatarStack(props: AvatarStackProps) {
   const sizeVar = () => `var(--we-avatar-size-${props.size ?? 'xs'})`;
 
   return (
-    <div style={{ display: 'flex', 'align-items': 'center', ...props.styles }}>
-      <For each={visible()}>
+    /*
+      The first face on top, each after it tucked behind the one before, and the count at the back.
+
+      The lists this draws are ordered by importance — the viewer first, whoever is responsible
+      before whoever is reviewing — so the face that must be whole is the first. It used to be the
+      reverse by accident: document order put each face over the last, and the count, being the one
+      unpositioned child beside positioned avatars, painted under the last face instead. The order is
+      explicit now, and `isolation` keeps these numbers from competing with anything outside the row.
+    */
+    <div style={{ display: 'flex', 'align-items': 'center', isolation: 'isolate', ...props.styles }}>
+      {/*
+        By position, not by object. The avatars arrive as a list built fresh by an expression, so every
+        recompute is a list of new objects; a `For` keyed on them replaced every face each time — a
+        card's faces were rebuilt whenever anybody's involvement anywhere on the board changed, and a
+        ring could be seen to blink. Each slot keeps its element and follows whoever is in it now.
+      */}
+      <Index each={visible()}>
         {(avatar, i) => (
           <div
             style={{
               display: 'flex',
-              'margin-left': i() > 0 ? overlapPx() : '0',
+              'margin-left': i > 0 ? overlapPx() : '0',
               'flex-shrink': '0',
+              position: 'relative',
+              'z-index': String(visible().length - i + 1),
             }}
           >
             <we-avatar
-              image={avatar.image ?? ''}
-              hash={avatar.hash ?? ''}
-              initials={avatar.initials ?? ''}
-              icon={avatar.icon ?? ''}
+              image={avatar().image ?? ''}
+              hash={avatar().hash ?? ''}
+              initials={avatar().initials ?? ''}
+              icon={avatar().icon ?? ''}
               size={props.size ?? 'xs'}
-              ring={ringFor(avatar, props.ring)}
+              prop:ringColor={avatar().tone || ''}
+              prop:ringWidth={props.ringWidth ?? ''}
+              prop:edgeColor={props.edge ?? ''}
             />
           </div>
         )}
-      </For>
+      </Index>
       {/*
         The overflow count.
 
@@ -108,17 +102,20 @@ export function AvatarStack(props: AvatarStackProps) {
             'justify-content': 'center',
             'margin-left': visible().length > 0 ? overlapPx() : '0',
             'flex-shrink': '0',
+            position: 'relative',
+            'z-index': '1',
             width: sizeVar(),
             height: sizeVar(),
             // The avatar group, not a literal circle: this chip sits in the row *as* one of the
             // faces, so a theme that squares them off has to square this too or the row ends in an
             // odd one out. Safe as a percentage for the same reason the avatars are — it is square.
-            'border-radius': 'var(--we-theme-avatar-radius, 50%)',
+            'border-radius': tokenVar('radius', 'avatar'),
             background: 'var(--we-role-control-surface)',
             color: 'var(--we-role-text)',
             'font-size': 'var(--we-font-size-100)',
             'font-weight': '600',
-            'box-shadow': props.ring ?? '',
+            // The same band the faces carry, drawn the same way — inside — so the chip is their size.
+            'box-shadow': props.edge ? `inset 0 0 0 1.5px ${props.edge}` : '',
           }}
         >
           +{hidden()}

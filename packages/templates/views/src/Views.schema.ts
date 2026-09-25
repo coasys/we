@@ -14,4 +14,4 @@
  * A view installed from a marketplace is beyond this, necessarily: it did not exist when the build
  * ran. It is validated at install instead, which is the same boundary a template already crosses.
  */
-export { aboutView, calendarView, cardsView, fluxView, globeView, graphView, tasksView } from './index.ts';
+export { aboutView, boardsView, calendarView, cardsView, fluxView, globeView, graphView } from './index.ts';

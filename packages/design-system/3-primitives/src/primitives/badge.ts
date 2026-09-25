@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { ComponentSize, ComponentVariant } from '../types';
+import type { BadgeAppearance, ComponentSize, ComponentVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'surface-sunken',
@@ -19,12 +19,55 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
 };
 
-const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
-  neutral: { bg: 'surface-sunken', color: 'text-muted' },
-  primary: { bg: 'accent-muted', color: 'accent-text' },
-  success: { bg: 'success-surface', color: 'success-text' },
-  warning: { bg: 'warning-surface', color: 'warning-text' },
-  danger: { bg: 'danger-surface', color: 'danger-text' },
+/*
+  Two appearances of the same five meanings — see `BadgeAppearance` for why both exist.
+
+  `soft` is what the badge has always painted: the tinted panel and the status colour used *as
+  text*. It is right for an annotation on something else — "Retired", "Not a WE space", "Anna
+  editing" — and wrong for a badge that is itself the news. In a dark theme the tint is a very dark
+  green and the text a pale one, which reads as a label about a call rather than as "this call is
+  live".
+
+  `solid` is the fill and the label measured against it. The labels are the `on<Fill>` roles rather
+  than white, and that is the whole reason this is safe to offer: `LABEL_FOR_FILL` corrects every
+  one of them at apply time against wherever the fill actually landed, so a `warning` fill at
+  lightness 76 gets a dark label and a `danger` fill at 62 keeps a light one, in any theme. Pinning
+  white here — which is what the role file's default value looks like in isolation — would fail on
+  the two light fills.
+
+  `neutral` solid is `control-surface`, the filled neutral a count chip already uses, not
+  `surface-sunken`: a well is a hole in a surface and a solid badge is a thing sitting on it.
+*/
+export const BADGE_APPEARANCE_DEFAULTS: Record<
+  BadgeAppearance,
+  Record<ComponentVariant, Partial<DesignSystemProps>>
+> = {
+  soft: {
+    /*
+      `control-surface`, not `surface-sunken`, and the difference is whether the badge is visible.
+
+      `surface-sunken` is the fill of a *well* — an inset box, a code block, an input trough — and
+      it is also what a row inset into a card is painted with. So a neutral badge on any such row
+      was drawn in exactly its own background colour and disappeared: the transcript's `typed` mark
+      is where this surfaced, and it would have been true of every neutral badge on a sunken row.
+
+      `control-surface` is the role for precisely this — the vocabulary names "a count chip" among
+      its uses — and it is a step away from both `surface` and `surface-sunken`, so the badge reads
+      as a quiet chip on either rather than vanishing into one of them.
+    */
+    neutral: { bg: 'control-surface', color: 'text-muted' },
+    primary: { bg: 'accent-muted', color: 'accent-text' },
+    success: { bg: 'success-surface', color: 'success-text' },
+    warning: { bg: 'warning-surface', color: 'warning-text' },
+    danger: { bg: 'danger-surface', color: 'danger-text' },
+  },
+  solid: {
+    neutral: { bg: 'control-surface', color: 'text' },
+    primary: { bg: 'accent', color: 'on-accent' },
+    success: { bg: 'success', color: 'on-success' },
+    warning: { bg: 'warning', color: 'on-warning' },
+    danger: { bg: 'danger', color: 'on-danger' },
+  },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -35,9 +78,18 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
   xl: { fontSize: '500', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
 };
 
+/*
+  A badge is one atomic word, so it never gives up room and never breaks.
+
+  The same rule `we-timestamp` carries, for the same reason: a flex item's automatic minimum size is
+  its content, so a short label is the thing a tight row squeezes — and a wrapped badge is simply
+  broken. Consumers were patching this by hand a row at a time.
+*/
 const styles = css`
   :host {
     --we-badge-host-display: inline-flex;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   /* Provide icon sizing context and size-specific padding/gap for slotted we-icon children */
@@ -82,6 +134,7 @@ export default class Badge extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) variant: ComponentVariant = 'neutral';
+  @property({ type: String, reflect: true }) appearance: BadgeAppearance = 'soft';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -93,7 +146,8 @@ export default class Badge extends DesignSystemElement {
     const ctor = this.constructor as typeof Badge & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
-    const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
+    const appearance = BADGE_APPEARANCE_DEFAULTS[this.appearance] ?? BADGE_APPEARANCE_DEFAULTS.soft;
+    const variantDefaults = appearance[this.variant] ?? {};
     const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
     return mergeProps(
       usedProps,

@@ -1,5 +1,5 @@
 export { resolveProp, resolveProps } from './dispatcher';
-export { pruneUnresolvedWhere, resolveQueryProp } from './query';
+export { pruneUnresolvedWhere, resolveQueryProp, scopeIsAnchored } from './query';
 export { markReactive, REACTIVE_ACCESSOR, deepUnwrap } from './reactive';
 export { splitProps } from './splitProps';
 export { setLocalWarningSink } from './local';

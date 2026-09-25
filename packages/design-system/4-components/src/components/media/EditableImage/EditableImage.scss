@@ -1,3 +1,17 @@
+// The tile is a `role="button"` div rather than a `we-button` (see the component for why), so it
+// inherits none of the ring every primitive carries and the browser paints its own instead — which
+// on Chrome is a white-cored double ring, matching nothing else in the app and reading worst of all
+// against the dark overlay this component fades in underneath it.
+//
+// `outline` rather than the `ring` box-shadow `we-button` and `we-input` use, for one reason: `ring`
+// is a DS prop a caller may already have set on the tile — the create-space avatar pins one as its
+// resting style — and that arrives as an inline style, which a stylesheet box-shadow cannot beat.
+// The geometry is the same either way: 2px, outside the border box, following the tile's radius.
+.editable-image:focus-visible {
+  outline: 2px solid var(--we-ring-color);
+  outline-offset: 0;
+}
+
 .editable-image__overlay {
   inset: 0;
   background: var(--we-role-overlay);

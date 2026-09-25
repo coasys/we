@@ -83,12 +83,67 @@ const styles = css`
     min-height: 1lh;
   }
 
+  /*
+    No margin unless something asks for one — the user agent's are not this element's to inherit.
+
+    The --we-text-margin variable was declared below and consumed nowhere, so every we-text rendering a
+    heading or a paragraph carried the browser's own margins instead: an h5 is 1.67em 0, which
+    put 44px of nothing inside a chrome pill that had asked for 8px of padding.
+
+    It went unnoticed because the tag is almost never set — six call sites in the app — and the ones
+    that do sit in scrolling pages where loose headings read as deliberate. The docs meanwhile tell
+    every author to pair a variant with a semantic tag, so this was a trap waiting on whoever did
+    it inside a fixed-height box.
+
+    Zero rather than a reset to something: spacing in this design system belongs to the layout that
+    owns it — the gap on the Column or Row around this — and a margin here would add to that gap
+    rather than replace it, which is the arithmetic DS props exist to avoid.
+  */
+  [part='base'] {
+    margin: var(--we-text-margin, 0);
+  }
+
+  /*
+    Prose keeps the space under it, for the reader that wants stacked paragraphs rather than a
+    gapped column. Inert today: nothing in the app sets tag=p, so this rule has never applied and
+    does not change anything now — it becomes live the first time somebody writes one, which is
+    worth knowing in a layout that also carries a gap.
+  */
   :host([tag='p']) {
     --we-text-margin: 0 0 1em 0;
   }
 
+  /*
+    Truncation has to be allowed to happen.
+
+    Clipping the inner box was never enough in a row, and a row is where truncation is almost always
+    asked for. A flex item's automatic minimum size is its content, and the content of a nowrap line
+    is the whole line — so the host refused to be narrower than its text, the ellipsis never
+    appeared, and the row either ran off its container or took the room out of a sibling that could
+    give it up. The extraction readout did both: its label pushed past the panel while the elapsed
+    clock beside it folded "1:23" onto two lines. Only a handful of the call sites had patched it
+    with a minWidth: '0' of their own.
+
+    Overflow on the host rather than min-width: 0, because a scroll container's automatic
+    minimum is zero while its min-width stays the author's: a minWidth prop, at any tier, still
+    wins. The host's own overflow is not a DS prop, so nothing else writes it.
+  */
+  :host([truncate]) {
+    overflow: hidden;
+  }
+
+  /*
+    Truncated, in every state.
+
+    This is an attribute-gated rule in the base layer. The generated state rules used to outrank it:
+    a hover resolved 'white-space' to its initial 'normal', the line unwrapped onto two, and every row
+    under it moved. 'overflow' once carried '!important' against the same rule, which fixed one
+    property of the three this block needs. Breakpoints and states now sit in cascade layers above
+    this one and roll back whatever they do not set (see "Cascade layers" in 'shared/helpers.ts'), so
+    none can undo it — while one that does set 'whiteSpace' still wins, as an explicit ask should.
+  */
   :host([truncate]) [part='base'] {
-    overflow: hidden !important;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

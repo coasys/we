@@ -48,8 +48,15 @@ export interface CollectionFeedOptions {
    * Sort direction on `createdAt`. `'asc'` reads as a transcript (chat), `'desc'` as a feed
    * (timeline). Defaults to `'desc'`.
    *
-   * Only `createdAt` — manual ordering waits for the AD4M CRDT ordering work, and a `position`
-   * scalar written now would be a shape that design supersedes.
+   * Only `createdAt`, and that is a property of what a scoped query *is* rather than a missing
+   * capability. The order somebody arranged a container's children into lives on the **relation** —
+   * `CollectionBlock.children` is declared `ordered`, so reading the parent returns it — while a
+   * `scope` lowers to a filter by parent link, which knows nothing about position.
+   *
+   * So the two are for different jobs, and this is the paging one: a feed of hundreds of rows wants
+   * a limit and a `Load more`, which an ordered relation read cannot give. A surface whose whole
+   * point is the arrangement reads the parent instead — see `BoardsView`, which hydrates
+   * `children` and gets the order as data.
    */
   order?: 'asc' | 'desc';
   /** Extra `where` conditions, ANDed with the kind filter. */

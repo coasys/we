@@ -9,9 +9,11 @@
  * - a bare join returns early on the call you are already in, so the control was silently dead.
  * - On any *other* call — one anchored to a post, or one in a space you had navigated away from —
  *   the ids differ, so it tore that call down to start a new one. No confirmation.
- * - `resume` does not fail quietly at all. It re-points the live transcript at the record it was
- *   given and announces the claim, and peers adopt an announced record in preference to their own.
- *   A stray click on an old card moved everybody's live transcript into an old meeting.
+ * - `resume` did not fail quietly at all. It re-pointed the live transcript at the record it was
+ *   given and announced the claim, and peers adopt an announced record in preference to their own.
+ *   A stray click on an old card moved everybody's live transcript into an old meeting. That action
+ *   no longer exists — a continued call's activity says so and the transcriber adopts the record
+ *   itself — so the test below asserts it stays gone rather than that it stays guarded.
  *
  * All three now make the same promise once a call is running: go to the call. These assert it on
  * the *serialised* schema, because that is the only thing that would notice someone reasonably
@@ -23,6 +25,7 @@ import { transcribeModule } from '@we/module-transcribe';
 import { cardsView } from '@we/template-views';
 import { describe, expect, it } from 'vitest';
 
+import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 
 /*
@@ -34,13 +37,13 @@ import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleReg
 const view = JSON.stringify(cardsView);
 
 /** The reactivity a host lends a module, reduced to the smallest thing that satisfies it. */
-const storeDeps = {
+const storeDeps = createModuleStoreDeps({
   signal: <T>(initial: T): [() => T, (next: T) => void] => {
     let value = initial;
-    return [() => value, (next: T) => (value = next)];
+    return [() => value, (next: T) => void (value = next)];
   },
   effect: (fn: () => void) => fn(),
-};
+});
 
 /**
  * The conditions of every `$if` whose `then` contains this text — what gates a given control.
@@ -82,7 +85,7 @@ function actionsIn(node: unknown): string[] {
 describe('the rail launcher', () => {
   it('goes to the call rather than joining one', () => {
     // The declaration is the whole of the coupling — the host calls whatever method this names.
-    expect(callModule.launcher!.action).toBe('goToCall');
+    expect(callModule.contributes!.launchers![0].action).toBe('goToCall');
   });
 });
 
@@ -116,23 +119,30 @@ describe('the Cards header Call button', () => {
 });
 
 describe('the Continue button on a call card', () => {
-  it('never reassigns a live transcript', () => {
+  it('never reassigns a live transcript, because it can no longer ask to', () => {
     /*
-      The worst of the three, and the reason this file leads with `resume`. It is not a no-op
-      mid-call — it moves the record the words are going into, for everyone, because announcing a
-      claim is how peers converge. So `resume` must never be reachable from a click that happens
-      while a call is running.
+      The worst of the three, and the reason this file was written. `resume` was not a no-op
+      mid-call — it moved the record the words were going into, for everyone, because announcing a
+      claim is how peers converge. A stray click on an old card moved everybody's live transcript
+      into an old meeting.
+
+      The guard was a click-time branch that kept it unreachable while a call ran. The hazard is now
+      gone by construction instead: the call module marks a continued call's activity `continued`
+      and the transcriber adopts the record off that, so `resume` was deleted. This card went on
+      naming it for a while afterwards, which resolved to nothing and did nothing, under a comment
+      saying it was load-bearing.
+
+      Asserted as absence rather than deleted along with the method, because the failure it guards
+      against is somebody reintroducing the action, and a test that is gone guards nothing.
     */
-    expect(view).toContain('modules.transcribe.resume');
-    // Both of the old unconditional pair, adjacent, is exactly the shape that had the bug.
-    expect(view).not.toContain('"onClick":[{"$action":"modules.call.goToCall"},{"$action":"modules.transcribe.resume"');
+    expect(view).not.toContain('modules.transcribe.resume');
   });
 
   it('still continues a finished call', () => {
     // The other half: none of this should have made the feature the button exists for harder.
     const actions = actionsIn(cardsView);
     expect(actions).toContain('modules.call.goToCall');
-    expect(actions).toContain('modules.transcribe.resume');
+    expect(actions).toContain('modules.call.continueCall');
   });
 
   it('goes to the call instead, while one is running', () => {
@@ -155,7 +165,7 @@ describe('the Continue button on a call card', () => {
     */
     const guards = guardsAround('Continue this call');
     expect(guards.length).toBeGreaterThan(0);
-    expect(guards.some((guard) => guard.includes('modules.transcribe.liveCollectionId'))).toBe(true);
+    expect(guards.some((guard) => guard.includes('modules.call.callRecordId'))).toBe(true);
     // And still gated on the space being able to hold a call at all — the older guard, still needed.
     expect(guards.some((guard) => guard.includes('modules.call.canCall'))).toBe(true);
   });
@@ -165,11 +175,17 @@ describe('the Continue button on a call card', () => {
       Without it every card looks finished, and the one whose button behaves differently is
       indistinguishable from the rest — which reads as the button behaving at random.
 
-      Compared against the transcript's live *record*, not against `modules.call.active`: a
-      space-wide call publishes one id derived from the space, so "am I in a call" cannot tell this
-      morning's meeting from this afternoon's, and every card would light up at once.
+      Compared against the call's own *record*, not against `modules.call.active`: a space-wide call
+      publishes one id derived from the space, so "am I in a call" cannot tell this morning's meeting
+      from this afternoon's, and every card would light up at once.
+
+      And the call module's record rather than the transcriber's. `liveCollectionId` means "what I am
+      writing into", which the transcriber only adopts once there is something to write — so for the
+      opening stretch of every meeting the running call was marked as finished, and the button beside
+      it offered nothing.
     */
-    expect(view).toContain('modules.transcribe.liveCollectionId');
+    expect(view).toContain('modules.call.callRecordId');
+    expect(view).not.toContain('modules.transcribe.liveCollectionId');
     expect(view).not.toContain('"condition":{"$store":"modules.call.active"},"then":{"type":"we-badge"');
   });
 
@@ -187,5 +203,12 @@ describe('the Continue button on a call card', () => {
     // Empty rather than null with no call, so `$eq` against a record id can never accidentally match
     // an absent one — two falsy values would otherwise read as equal enough.
     expect((store.liveCollectionId as () => unknown)()).toBe('');
+
+    // The key the list actually compares against, and the same rule about emptiness.
+    moduleRegistry.register(callModule, { backend: 'ad4m', framework: 'solid' }, storeDeps);
+    const call = moduleStores.call as Record<string, unknown>;
+
+    expect(typeof call.callRecordId).toBe('function');
+    expect((call.callRecordId as () => unknown)()).toBe('');
   });
 });

@@ -14,9 +14,11 @@ import type { RecordInstance, WeNodeRecord } from './base';
 
 export type { RecordInstance, WeNodeRecord };
 
+export type InvolvementSemantic = 'responsible' | 'reviewing' | 'committed' | 'interested' | 'declined';
 export type SignalMode = 'toggle' | 'vote' | 'rating' | 'slider';
 export type SignalAggregate = 'count' | 'mean' | 'sum' | 'median';
 export type SignalSemantic = 'approval' | 'quality' | 'relevance' | 'agreement' | 'custom';
+export type TaskStateSemantic = 'open' | 'active' | 'blocked' | 'done' | 'cancelled';
 
 export interface AgentSettingsRecord extends RecordInstance {
   currentTemplateId: string;
@@ -33,6 +35,7 @@ export interface AgentSettingsRecord extends RecordInstance {
   useTemplateTheme: boolean;
   themeScope: string;
   installedModules: string;
+  moduleSettings: string;
   installedTemplates: TemplateRecord[];
   installedThemes: ThemeRecord[];
   spaceTemplatePreferences: SpaceTemplatePreferenceRecord[];
@@ -66,6 +69,7 @@ export interface CalloutBlockRecord extends WeNodeRecord {
 export interface CallExtractionRecord extends WeNodeRecord {
   callId: string;
   entities: string;
+  auto: string;
 }
 
 export interface ChatMessageRecord extends WeNodeRecord {
@@ -95,18 +99,38 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   kind: string;
   mode: string;
   title: string;
+  slug: string;
   description: string;
   version: number;
   textContent: string;
+  sourceRef: string;
+  sourceName: string;
   children: string[];
+  arranges: string[];
+  gathers?: string;
+  board?: CollectionBlockRecord;
+  extractionPasses: string[];
+  extracted: string[];
+  amendments: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   setChildren(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+  addArranges(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeArranges(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setArranges(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface DividerBlockRecord extends WeNodeRecord {
   style: string;
   version: number;
+}
+
+export interface EdgeRouteRecord extends RecordInstance {
+  sourceAnchor: string;
+  targetAnchor: string;
+  points: string;
+  connection?: string;
 }
 
 export interface EmbedBlockRecord extends WeNodeRecord {
@@ -115,6 +139,8 @@ export interface EmbedBlockRecord extends WeNodeRecord {
   targetType: string;
   label: string;
   thumbnail: string;
+  sourceAuthor: string;
+  sourceName: string;
   displayMode: string;
   version: number;
 }
@@ -125,9 +151,10 @@ export interface EventBlockRecord extends WeNodeRecord {
   description: string;
   startDate: string;
   endDate: string;
-  location: string;
   allDay: boolean;
   version: number;
+  location?: LocationBlockRecord;
+  setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface FileBlockRecord extends WeNodeRecord {
@@ -147,6 +174,26 @@ export interface ImageBlockRecord extends WeNodeRecord {
   version: number;
 }
 
+export interface InvolvementRecord extends RecordInstance {
+  agent: string;
+  kind: string;
+  note: string;
+  node?: string;
+}
+
+export interface InvolvementTypeRecord extends WeNodeRecord {
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  semantic: 'responsible' | 'reviewing' | 'committed' | 'interested' | 'declined';
+  reflexive: boolean;
+  appliesTo: string;
+  retired: boolean;
+  schemaVersion: number;
+}
+
 export interface LinkBlockRecord extends WeNodeRecord {
   url: string;
   title: string;
@@ -157,8 +204,8 @@ export interface LinkBlockRecord extends WeNodeRecord {
 
 export interface LocationBlockRecord extends WeNodeRecord {
   name: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   address: string;
   city?: string;
   countryCode?: string;
@@ -178,6 +225,8 @@ export interface PlacementRecord extends RecordInstance {
   width: number;
   height: number;
   contentScale: number;
+  rotation: number;
+  z: number;
   color: string;
   cardShape: string;
   node?: string;
@@ -258,14 +307,23 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
-  shareExtractionDetail: boolean;
+  threadMode: string;
+  moduleSettings: string;
   location?: LocationBlockRecord;
-  setLocation(value: LocationBlockRecord): Promise<unknown>;
+  board?: CollectionBlockRecord;
+  taskStates: string[];
+  typeStyles: string[];
+  setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
+  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
+  addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setTaskStates(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
 export interface SpacePreferenceRecord extends WeNodeRecord {
   spaceUuid: string;
   mutedModules: string;
+  moduleSettings: string;
   hiddenViews: string;
   templateId: string;
   themeId: string;
@@ -290,6 +348,17 @@ export interface TaskBlockRecord extends WeNodeRecord {
   dueDate: string;
   assignee: string;
   version: number;
+}
+
+export interface TaskStateRecord extends WeNodeRecord {
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  semantic: 'open' | 'active' | 'blocked' | 'done' | 'cancelled';
+  retired: boolean;
+  schemaVersion: number;
 }
 
 export interface TemplateRecord extends WeNodeRecord {
@@ -317,7 +386,15 @@ export interface TextBlockRecord extends WeNodeRecord {
   direction: string;
   text: string;
   marks: string;
+  source: string;
   version: number;
+}
+
+export interface TopicRecord extends WeNodeRecord {
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
 }
 
 export interface ThemeRecord extends WeNodeRecord {
@@ -333,6 +410,24 @@ export interface ThemeRecord extends WeNodeRecord {
   addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+}
+
+export interface ExtractionAmendmentRecord extends RecordInstance {
+  property: string;
+  previousValue: string;
+  newValue: string;
+  nodeType: string;
+  node?: string;
+}
+
+export interface ExtractionPassRecord extends RecordInstance {
+  outcome: string;
+  recordCount: number;
+  targets: string;
+  error: string;
+  trigger: string;
+  prompt: string;
+  response: string;
 }
 
 export interface TypeStyleRecord extends RecordInstance {

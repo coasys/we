@@ -37,7 +37,7 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'bare', onClick: { $action: 'routeStore.navigate', args: ['/'] } },
+          props: { variant: 'bare', onClick: { $action: 'routeStore.navigate', args: ['.'] } },
           children: [
             {
               type: 'we-text',
@@ -54,7 +54,7 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['/mine'] } },
+          props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['./mine'] } },
           children: [{ type: 'we-icon', props: { name: 'user' } }],
         },
         {
@@ -89,7 +89,7 @@ const grid = (opts: { author?: SchemaProp; empty: SchemaNode }): SchemaNode =>
     overlay: tileOverlay,
     onTileClick: (as) => ({
       $action: 'routeStore.navigate',
-      args: [{ $: `'/photo/' + ${as}.id` }],
+      args: [{ $: `'./photo/' + ${as}.id` }],
     }),
     empty: opts.empty,
   });
@@ -111,7 +111,7 @@ const photoDetail: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $action: 'routeStore.navigate', args: ['/'] },
+            onClick: { $action: 'routeStore.navigate', args: ['.'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },
@@ -121,7 +121,7 @@ const photoDetail: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.segments[1]' } },
+                where: { id: { $: 'routeStore.templateSegments[1]' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -173,7 +173,7 @@ const photoDetail: RouteSchema = {
                   saveLabel: 'Comment',
                 }),
                 commentThread({
-                  anchorId: { $: 'routeStore.segments[1]' },
+                  anchorId: { $: 'routeStore.templateSegments[1]' },
                   empty: noReplies(),
                   depth: 2,
                   reply: (as) => [

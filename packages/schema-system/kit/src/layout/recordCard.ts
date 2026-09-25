@@ -211,7 +211,8 @@ function caption(opts: RecordCardOptions): SchemaNode[] {
   if (opts.date !== undefined) {
     secondLine.push({
       type: 'we-timestamp',
-      props: { value: opts.date, relative: true, fontSize: '100', color: 'text-faint', flexShrink: '0' },
+      // No `flexShrink` — `we-timestamp` never gives up room, as the primitive's own note explains.
+      props: { value: opts.date, relative: true, fontSize: '100', color: 'text-faint' },
     });
   }
 

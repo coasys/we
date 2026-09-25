@@ -7,11 +7,17 @@
 import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
 import { entityAddress } from '@we/graph-protocol';
 
-/** Property names worth trying as a label, in descending order of how likely they are to be one. */
+/**
+ * Property names worth trying as a label, in descending order of how likely they are to be one.
+ *
+ * The same list as `NAME_CANDIDATES` in `@we/backend-shared`, which is the authority. Duplicated
+ * rather than imported because this package is backend-agnostic by construction, and kept only as
+ * the fallback for a host that supplies shapes with no `nameProperty` — WE's own always does.
+ */
 /*
   Ordered by how deliberately a value names the thing.
 
-  `textContent` is last and was missing, which is why every composed card on a board read
+  `textContent` is last and was missing, which is why every composed card on a canvas read
   "CollectionBlock": a post has no `title` — the composer writes its text into `editorState` and a
   flattened copy into `textContent`, which exists "for search and preview" and is exactly a preview.
   With nothing matching, the label fell through to the entity name, so a wall of notes announced
@@ -25,16 +31,23 @@ const LABEL_CANDIDATES = ['name', 'title', 'label', 'handle', 'subgroupName', 't
 /**
  * The property that best names an instance of a shape.
  *
- * Prefers what the backend *declares* — AD4M's interpretation classes mark one property as the
- * identity used for dedup, which is by construction the title-like field. Only when nothing is
- * declared does it fall back to guessing, and the guess is ordered so a `name` beats a `text` that
- * happens to sort first.
+ * `nameProperty` is the host's own answer and wins: it is resolved once for every surface that
+ * needs a record's name — a card, a drag chip, a record page — so a graph that guessed instead
+ * could caption a node differently from the page it opens, and did. The rest is the fallback for a
+ * host that supplies shapes without one (a fixture, a test).
+ *
+ * `identityProperty` is consulted *after* the conventional names, which is a correction rather than
+ * an ordering preference. It is a **dedup key**, not a name: an event's is its title and day glued
+ * together, so preferring it captioned a card `Standup|2026-09-14`. Past the conventional names it
+ * is still better than nothing, since a model whose author named nothing conventionally has usually
+ * dedup'd on the field a person would recognise.
  */
 export function labelProperty(shape: EntityShape | undefined): string | undefined {
   if (!shape) return undefined;
-  if (shape.identityProperty) return shape.identityProperty;
+  if (shape.nameProperty) return shape.nameProperty;
   const names = new Set(shape.properties.map((p) => p.name));
   for (const candidate of LABEL_CANDIDATES) if (names.has(candidate)) return candidate;
+  if (shape.identityProperty) return shape.identityProperty;
   return shape.properties.find((p) => p.type === 'string' && p.required)?.name;
 }
 

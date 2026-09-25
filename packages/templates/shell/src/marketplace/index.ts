@@ -75,7 +75,7 @@ const marketplaceBrowser = {
 export const marketplaceTemplate: TemplateSchema = {
   meta: { name: 'Module Marketplace', description: 'Browse and install community modules', icon: 'storefront' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'page' },
+  props: { width: '100%', minHeight: '100%', bg: 'chrome' },
   children: [
     {
       type: '$if',

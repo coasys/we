@@ -83,7 +83,7 @@ export function ValueEditor(props: {
                 Custom expression — edit as JSON
               </we-text>
             </Row>
-            <we-tooltip title="Pick a value from data">
+            <we-tooltip content="Pick a value from data">
               <we-button
                 variant="ghost"
                 size="xs"
@@ -95,7 +95,7 @@ export function ValueEditor(props: {
               </we-button>
             </we-tooltip>
           </Row>
-          <Column border={`1px solid ${tokenVar('color', 'neutral-100')}`} r="200" overflow="hidden" maxHeight="250px">
+          <Column border={`1px solid ${tokenVar('color', 'border')}`} r="200" overflow="hidden" maxHeight="250px">
             <CodeViewer json={JSON.stringify(props.value ?? null, null, 2)} onSave={(json) => emit(JSON.parse(json))} />
           </Column>
         </Column>

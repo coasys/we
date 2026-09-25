@@ -35,3 +35,23 @@ export function sameDataset(a: DatasetIdentity | null, b: DatasetIdentity | null
   if (!a || !b) return false;
   return a.id === b.id && a.handle === b.handle && a.sharedUri === b.sharedUri;
 }
+
+/**
+ * Whether a `/space/<segment>` URL names this dataset.
+ *
+ * **Both forms resolve.** A shared space is addressed by its shared id — that is the one that
+ * travels, and `canonicalSpaceId` is what builds a link — but its local id keeps working as an
+ * alias, because a URL somebody already holds must not stop resolving the day the rule was written
+ * down. So the question "is the address on screen about this dataset?" is two comparisons, not one.
+ *
+ * Written here rather than spelled out at each site because it is now load-bearing in a place where
+ * getting it wrong is silent: an effect that reads one space's state and writes another space's URL
+ * does not fail, it navigates. See the section guard in `TemplateProvider`.
+ */
+export function datasetAddressedBy(
+  dataset: { id: string; sharedId?: string } | null | undefined,
+  segment: string | undefined,
+): boolean {
+  if (!dataset || !segment) return false;
+  return dataset.id === segment || dataset.sharedId === segment;
+}

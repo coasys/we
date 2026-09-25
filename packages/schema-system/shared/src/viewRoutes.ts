@@ -45,6 +45,32 @@ import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 export const VIEWS_MARKER = '$views';
 
 /**
+ * Where every space template lives, and the one place this literal is written.
+ *
+ * The URL is what answers "which space am I in" — `SpaceStore`'s dataset effect reads
+ * `segments[0] === 'space'` and does nothing otherwise — so a template mounted anywhere else has no
+ * space at all, whatever its content assumes. That is a property of the prefix and not of routing
+ * your own screens, which is why the host supplies it to every template rather than each one
+ * remembering: a template declaring it (the marker kind) matches this, and one that does not is
+ * wrapped in it.
+ *
+ * Four places spelled this by hand before — this route, `spacePath`, `navigateToSpace` and
+ * `switchTemplate` — which is the shape `RECORD_ROUTE_PATH`'s note records going wrong: two strings
+ * that must agree, a typechecker that sees only strings, and a mismatch whose sole symptom is a
+ * catch-all that says nothing about why.
+ */
+export const SPACE_ROUTE_PATH = '/space/:spaceId';
+
+/**
+ * How many segments that prefix occupies — what a relative link inside a space resolves against.
+ *
+ * Derived rather than written, so it cannot drift from the path above. Read by `TemplateLayout` to
+ * give a template's own chrome a base to navigate from: chrome renders outside the router, so it
+ * has no route of its own to take a depth from, and a self-routing template's nav strip is chrome.
+ */
+export const SPACE_ROUTE_DEPTH = SPACE_ROUTE_PATH.split('/').filter(Boolean).length;
+
+/**
  * A section, resolved: which view template renders, and at which segment.
  *
  * The pairing is the point — `segment` comes from the space's section list rather than from the
@@ -174,6 +200,34 @@ function viewAsRoute(view: ResolvedView, gate?: ViewGate): RouteSchema {
 }
 
 /**
+ * The space's own address — `/space/<id>`, with no section named.
+ *
+ * A route has to match it or the shell around the sections never renders at all: the router mounts a
+ * layout route only when one of its children matches too, so a bare space address fell past the whole
+ * table and onto the host's not-found. That is the address every share link carries, and the join
+ * prompt is *inside* the shell — so a stranger following a link to a space got "Page not found" and
+ * no way in, while a member never saw it, because the host's redirect moves anyone whose space is
+ * already open onto its first section.
+ *
+ * It renders whatever the gate draws for a section this space does not have, which is exactly right
+ * for both cases that land here: with sections, the redirect is already on its way and that node
+ * deliberately draws nothing for the frame or two it takes; with none, there is nowhere to redirect
+ * to and "this space has no sections yet" is the true answer to a bare address as much as to a
+ * section's.
+ *
+ * Not a redirect to the first section, which is what this replaced. A redirect names a section, so
+ * the table changed whenever one was switched on or off — and rebuilding the table remounts the
+ * router and everything under it, including the settings overlay somebody was flicking the switch in.
+ * A route that names nothing is stable.
+ */
+function indexRoute(gate?: ViewGate): RouteSchema {
+  // Without a gate there is nothing to draw and no list to consult, so the route exists purely to be
+  // matched. `display: contents` generates no box.
+  const body: SchemaNode = gate?.notInSpace ?? { type: 'Column', props: { styles: { display: 'contents' } } };
+  return { ...(body as Record<string, unknown>), path: '/' } as RouteSchema;
+}
+
+/**
  * Replace every `$views` marker in a route tree with the resolved section list.
  *
  * Recurses into nested `routes`, because a shell may put its sections below a layout route — which
@@ -192,6 +246,9 @@ export function expandViewRoutes(routes: RouteSchema[], views: ResolvedView[], g
       // After the sections, so a section that happens to be segmented `record` still wins its own
       // path — a community's own section is more theirs than the host's page is.
       for (const extra of gate?.extraRoutes ?? []) out.push(extra);
+      // Last, and position is not what makes it work: the router matches on the path, and no section
+      // can hold this one. See `indexRoute`.
+      out.push(indexRoute(gate));
       continue;
     }
 

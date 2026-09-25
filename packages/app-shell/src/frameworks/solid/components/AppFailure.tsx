@@ -8,6 +8,12 @@
  *
  * The message is shown rather than hidden behind a "details" affordance. Somebody has to be able to
  * report this, and the first thing anyone will be asked for is what it said.
+ *
+ * The same reasoning covers where it sits. This was an ordinary block element, so it took its width
+ * from whatever it was mounted inside — and inside a flex row it is an item that shrinks to fit,
+ * which put the whole screen in a column down the left with the rest of the window blank. A fallback
+ * that inherits the layout of the thing that just failed is not a fallback, so it takes itself out of
+ * flow: fixed to the viewport, over everything, owing nothing to any parent.
  */
 export function AppFailure(props: { error: unknown }) {
   const message = props.error instanceof Error ? props.error.message : String(props.error);
@@ -16,13 +22,20 @@ export function AppFailure(props: { error: unknown }) {
   return (
     <div
       style={{
+        position: 'fixed',
+        inset: '0',
+        // Above anything the failed app may have left painted. A literal rather than a token, for
+        // the reason the colours below are literals: the token layer is a thing that could have
+        // been what failed.
+        'z-index': '2147483647',
         display: 'flex',
         'flex-direction': 'column',
         'align-items': 'center',
         'justify-content': 'center',
         gap: '16px',
         padding: '32px',
-        'min-height': '100dvh',
+        // A message long enough to outgrow the window still has to be readable, and reportable.
+        'overflow-y': 'auto',
         'font-family': 'system-ui, sans-serif',
         'text-align': 'center',
         background: '#111',

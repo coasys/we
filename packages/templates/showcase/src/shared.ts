@@ -71,11 +71,17 @@ export function composerModal(opts: {
   /** `we://children` (inside a container) or `we://comment` (a reply). */
   predicate?: string;
   saveLabel?: string;
+  /**
+   * Handlers run after a successful save, beside the kit's own close — `result` is what `createPost`
+   * answered with, the new record's id. How a board arranges the card it just composed.
+   */
+  onClose?: SchemaProp[];
 }): SchemaNode {
   return kitComposerModal({
     openLocal: opts.openLocal,
     title: opts.title,
     saveLabel: opts.saveLabel ?? 'Post',
+    ...(opts.onClose && { onClose: opts.onClose }),
     saveAction: {
       $action: 'spaceStore.createPost',
       // `'$arg'` first: `createPost(json, options)`.
@@ -156,6 +162,8 @@ export function newContainerModal(opts: {
  * imposition the design refuses.
  */
 export function signalRow(nodeRef: string): SchemaNode {
+  /** Offered types nobody has used on this node — what the row is not already showing. */
+  const unused = `${OFFERED_SIGNAL_TYPES}.filter(t, !count(filter(${nodeRef}.signals, { signalTypeId: t.id })))`;
   return {
     type: '$if',
     props: {
@@ -163,6 +171,12 @@ export function signalRow(nodeRef: string): SchemaNode {
       then: {
         type: 'Row',
         props: { gap: '400', ay: 'center' },
+        /*
+          Per row, because the node is inside an `$each` and `$localState` there is created per
+          mount — so "show me the rest" is about *this* message and closes again when the feed
+          re-renders, which is the right lifetime for a control somebody opened to use once.
+        */
+        $localState: { showAllSignals: { type: 'boolean', initial: false } },
         children: [
           {
             type: '$each',
@@ -170,22 +184,26 @@ export function signalRow(nodeRef: string): SchemaNode {
             children: [
               {
                 /*
-                  Only the signals somebody actually gave. A control per defined type on every row —
-                  "0" beside a heart, "0" beside a compass, all the way down a channel — is a lot of
-                  furniture asserting nothing, and it roughly doubled the height of a one-line
-                  message. Every chat client hides an empty reaction for the same reason.
+                  Only the signals somebody actually gave — until the plus is pressed.
 
-                  The cost is real and worth naming: with nothing to react *to*, there is no longer a
-                  control to react *with*, so a first reaction cannot be given from the feed. The
-                  usual answer is to reveal the controls when the row is hovered, and that is not
-                  expressible — `hoverProps` styles an element on its own `:hover`, and there is no
-                  way to say "when my ancestor is hovered". Worth having as a DS capability; until
-                  then this is the better of two wrong options, because the reference it is being
-                  matched against does exactly this.
+                  A control per defined type on every row — "0" beside a heart, "0" beside a compass,
+                  all the way down a channel — is a lot of furniture asserting nothing, and it roughly
+                  doubled the height of a one-line message. Every chat client hides an empty reaction
+                  for the same reason.
+
+                  The cost used to be that a *first* reaction could not be given from a feed at all:
+                  with nothing to react to there was no control to react with, so a type a community
+                  had just defined was unreachable from every row in the space. The note here called
+                  for hover to solve it, which props cannot express — `hoverProps` answers for the
+                  element it is on, and there is no way to say "when my ancestor is hovered". A press
+                  says the same thing, works on a touchscreen, and needs nothing from the design
+                  system: see the button below.
                 */
                 type: '$if',
                 props: {
-                  condition: { $: `count(filter(${nodeRef}.signals, { signalTypeId: sig.id }))` },
+                  condition: {
+                    $: `local.showAllSignals || count(filter(${nodeRef}.signals, { signalTypeId: sig.id }))`,
+                  },
                   then: {
                     type: 'SignalControl',
                     props: {
@@ -201,6 +219,36 @@ export function signalRow(nodeRef: string): SchemaNode {
                 },
               },
             ],
+          },
+          /*
+            The way in to a reaction nobody here has given yet.
+
+            Only while there is one to reveal, so a row already showing every type the community
+            offers does not carry a button that would change nothing — and it disappears once
+            pressed, since what it opens is the rest of the row.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: `!local.showAllSignals && count(${unused})` },
+              then: {
+                type: 'we-tooltip',
+                props: { content: 'React' },
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      size: 'sm',
+                      square: true,
+                      label: 'React',
+                      onClick: { $setLocal: 'showAllSignals', value: true },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'smiley' } }],
+                  },
+                ],
+              },
+            },
           },
         ],
       },

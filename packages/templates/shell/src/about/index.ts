@@ -441,7 +441,9 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
       ay: 'center',
       p: '400',
       bg: 'surface',
-      border: '1px solid var(--we-role-border)', //  done ? '1px solid var(--we-role-border)' : '2px dashed var(--we-color-neutral-400)',
+      // `border` resolves role names itself, so the bare word is the spelling — and the commented
+      // alternative it carried named a scale position, which is what this file is not doing.
+      border: '1px solid border',
     },
     children: [
       {
@@ -482,7 +484,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
 export const landingPageTemplate: TemplateSchema = {
   meta: { name: 'About WE', description: 'What WE is and why it exists', icon: 'info' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
+  props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
   children: [
     {
       type: 'Column',

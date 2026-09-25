@@ -1,9 +1,9 @@
 /**
  * Runtime administration — the settings that belong to the *backend process*, not to any dataset.
  *
- * Trust, peer networking, and which external apps hold credentials against this agent. On AD4M
- * these are what the launcher owns; a host that bundles the executor has no launcher to open, so
- * without this port those settings are unreachable rather than merely inconvenient.
+ * Trust, peer networking, and which external apps hold credentials against this agent. These are
+ * what a backend's own launcher owns; a host that bundles the backend process has no launcher to
+ * open, so without this port those settings are unreachable rather than merely inconvenient.
  *
  * Deliberately not neutral, and deliberately shaped like {@link BackendInterop}: the whole port is
  * optional, every member on it is optional, and callers feature-detect. A backend with no notion
@@ -14,9 +14,25 @@
  *
  * What is NOT here, on purpose: anything requiring privileged access to the host machine —
  * switching agents between config directories, log levels, data paths. Those are properties of how
- * a *host* launched the backend, not of the backend connection, and a port over a GraphQL client
- * cannot honestly answer them.
+ * a *host* launched the backend, not of the backend connection, and a port over a client
+ * connection cannot honestly answer them.
  */
+
+/**
+ * Peer-discovery records, in the two forms they are needed in.
+ *
+ * `records` are exactly what the backend handed out, and exactly what `addPeerInfos` on another
+ * node takes back. Opaque, and never to be re-serialized: each one may carry a signature over its
+ * own bytes, so a record reformatted on the way through is a record the receiver rejects.
+ *
+ * `readable` is the same records decoded for a person — indented, with whatever the backend packs
+ * inside them unpacked. Display only; nothing reads it back. Separate from `records` rather than
+ * derived in the shell because only the backend knows what a record contains.
+ */
+export interface PeerRecords {
+  records: string[];
+  readable: string;
+}
 
 /** An external app holding a credential against this agent. */
 export interface AuthorizedApp {
@@ -52,8 +68,8 @@ export interface ConsentRequest {
 /**
  * A language plugin installed in this backend.
  *
- * "Language" is AD4M's word for the adapter that stores and retrieves a kind of expression — what
- * makes an image URL resolvable, or a neighbourhood's links syncable. They are addressed by content
+ * "Language" is the backend's word for the plugin that stores and retrieves a kind of content — what
+ * makes an image URL resolvable, or a shared dataset's links syncable. They are addressed by content
  * hash, which is why installing one is a matter of pasting an address rather than picking a package.
  */
 export interface InstalledLanguage {
@@ -77,13 +93,29 @@ export type AiModelKind = 'llm' | 'embedding' | 'transcription';
  * up guessing.
  */
 export type AiModelSource =
-  /** An OpenAI-compatible endpoint. */
-  | { kind: 'api'; baseUrl: string; apiKey: string; model: string }
+  /** A remote endpoint, spoken to in the wire format `protocol` names. */
+  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; apiKey: string; model: string }
   /** A build the backend knows by name and fetches itself — see `aiModelPresets`. */
   | { kind: 'preset'; name: string }
   | { kind: 'huggingface'; repo: string; revision: string; fileName: string; tokenizer?: TokenizerSource }
   /** A file already on the machine running the backend. */
   | { kind: 'file'; fileName: string; tokenizer?: TokenizerSource };
+
+/**
+ * The wire format a remote model is reached through.
+ *
+ * Not the vendor: OpenRouter, Groq, Gemini's compatibility surface and a local vLLM all speak
+ * `openai`. `anthropic` exists because Claude's own format carries things the OpenAI one cannot —
+ * prompt-cache breakpoints and native tool calls among them.
+ */
+export type AiApiProtocol = 'openai' | 'anthropic';
+
+/** The endpoint details a model list is asked for, before any model exists to hold them. */
+export interface AiModelDiscoveryQuery {
+  protocol: AiApiProtocol;
+  baseUrl: string;
+  apiKey: string;
+}
 
 /** An explicit tokenizer, for the local sources whose weights do not carry one. */
 export interface TokenizerSource {
@@ -127,6 +159,12 @@ export interface RuntimeAdminPort {
   aiModels?(): Promise<AiModel[]>;
   /** Model names this backend can fetch on its own, for the kind asked about. */
   aiModelPresets?(kind: AiModelKind): Promise<string[]>;
+  /**
+   * The models a remote endpoint serves, asked of the endpoint itself. Rejects when it cannot be
+   * reached or refuses the key, with the endpoint's own reason — which makes this the credential
+   * check too. Omitted where the backend cannot ask.
+   */
+  discoverAiModels?(query: AiModelDiscoveryQuery): Promise<string[]>;
   addAiModel?(draft: AiModelDraft): Promise<void>;
   updateAiModel?(id: string, draft: AiModelDraft): Promise<void>;
   removeAiModel?(id: string): Promise<void>;
@@ -160,12 +198,18 @@ export interface RuntimeAdminPort {
   untrustAgent?(id: string): Promise<void>;
 
   // ── Peer network ────────────────────────────────────────────────────────────
-  /** A backend-formatted diagnostic blob. Opaque to the shell — displayed, never parsed. */
+  /**
+   * A backend-formatted diagnostic blob. Opaque to the shell — displayed, never parsed.
+   *
+   * Formatted means readable as it stands: indented, with anything only the backend can decode (a
+   * hash that arrived as bytes) already decoded. The shell shows it in a JSON viewer, so JSON is
+   * what reads best, but text that is not JSON is shown as it is.
+   */
   networkMetrics?(): Promise<string>;
   /** Restart the peer-networking layer without restarting the app. */
   restartNetwork?(): Promise<void>;
-  /** This node's peer-discovery records, for out-of-band exchange when discovery fails. */
-  peerInfos?(): Promise<string[]>;
+  /** The peer-discovery records this node holds, for out-of-band exchange when discovery fails. */
+  peerInfos?(): Promise<PeerRecords>;
   addPeerInfos?(infos: string[]): Promise<void>;
 
   // ── External apps holding credentials ───────────────────────────────────────
@@ -187,4 +231,60 @@ export interface RuntimeAdminPort {
   /** Grant a pending request. Returns a secret to relay back to the asker, when there is one. */
   approve?(request: ConsentRequest): Promise<string | void>;
   deny?(request: ConsentRequest): Promise<void>;
+
+  // ── What this backend turned out not to have ────────────────────────────────
+  /**
+   * Capabilities WE asked this backend for and it does not have.
+   *
+   * ## Why the shell is told at all
+   *
+   * An adapter degrades rather than failing where a backend predates a feature — a review list
+   * without model names beats no review list — and until this existed it degraded *silently*, so
+   * the symptom reached a person as a cosmetic bug with nothing anywhere connecting it to a stale
+   * node. Somebody has to be able to find out; this is how they do.
+   *
+   * ## Why it reports names rather than consequences
+   *
+   * An adapter knows exactly what it asked for and refuses to guess at what breaks. What a caller
+   * does with the answer differs — a settings page lists it, a diagnostic bundle attaches it — and
+   * a sentence written for one of those would be wrong in the other. Names also survive: a new gap
+   * appears here with no change to this contract, which is the whole point of reporting the
+   * question rather than an interpretation of it.
+   *
+   * ## Synchronous, and why
+   *
+   * Every other member here is a round trip; this one is a local reading of what earlier round
+   * trips already discovered. Returning a Promise would say a call goes out, which would be a lie
+   * about both the cost and the meaning — there is nothing to ask, and nothing to fail.
+   *
+   * **An empty list is not a clean bill of health.** Nothing is recorded until something asks for
+   * it, so this says "nothing has been refused yet", never "this backend is current". A caller
+   * rendering it should say as much.
+   */
+  unsupported?(): UnsupportedCapability[];
+  /**
+   * Be told when {@link unsupported} gains an entry. Returns an unsubscribe function.
+   *
+   * Needed because a gap is discovered by whichever call needed it, which is never the surface that
+   * shows them. Without it a settings page renders whatever was known when it mounted, and for the
+   * first gap of a session that is an empty list — the one case somebody is looking for.
+   */
+  onUnsupported?(handler: () => void): () => void;
+}
+
+/**
+ * One capability a backend turned out not to have.
+ *
+ * `name` is the backend's own word for it, unmodified — its RPC method name — so it can be
+ * searched for in that backend's source and matched against its history. Translating it into
+ * something friendlier would take away the only part that is actionable.
+ */
+export interface UnsupportedCapability {
+  name: string;
+  /**
+   * When it was first refused, ISO 8601 — the same shape as every other timestamp in the contract,
+   * so a caller can render it without knowing where it came from. When, not how often: a capability
+   * gap does not heal, so a second refusal says nothing a first did not.
+   */
+  firstSeen: string;
 }

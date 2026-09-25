@@ -1,9 +1,9 @@
 /**
  * Entities over plain rows — the in-memory half of what a declared manifest means.
  *
- * The AD4M adapter compiles a manifest into decorated model classes that write triples against
- * minted predicates. This compiles the *same manifest* into classes that write objects into
- * arrays, and the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
+ * The production adapter compiles a manifest into model classes that write links against minted
+ * predicates. This compiles the *same manifest* into classes that write objects into arrays, and
+ * the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
  * `space.save()`, `settings.addInstalledTemplates(t)` all mean what they always meant.
  *
  * That equivalence is the point. Stores and the boot sequence can then be tested against real
@@ -24,6 +24,7 @@ import {
   type InMemoryRelation,
   type Row,
 } from '@we/backend-shared';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 /** The dataset handle the in-memory lifecycle mints — its `tables` are the store. */
 interface DatasetEntry {
@@ -112,6 +113,15 @@ export interface EntityClassLike {
   update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<InMemoryInstance | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: AnyQuery): Promise<number>;
+  setRelation(
+    dataset: unknown,
+    id: string,
+    relation: string,
+    targetIds: readonly string[],
+    batch?: string,
+  ): Promise<void>;
+  addRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
+  removeRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
   query(
     dataset: unknown,
     q?: Record<string, unknown>,
@@ -121,8 +131,8 @@ export interface EntityClassLike {
 /**
  * The contract, checked: this backend's compiled entities present the same static surface the
  * entity proxies are typed as — which is what makes it a second *conforming* implementation
- * rather than a lookalike. (The AD4M lane cannot make this assertion structurally — its statics
- * are `this`-polymorphic — so this is also the one place the contract is compiler-verified
+ * rather than a lookalike. (The production lane cannot make this assertion structurally — its
+ * statics are `this`-polymorphic — so this is also the one place the contract is compiler-verified
  * end to end.)
  */
 type Satisfies<A extends B, B> = A;
@@ -138,9 +148,13 @@ export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, Enti
 export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime): Record<string, EntityClassLike> {
   const classes: Record<string, EntityClassLike> = {};
 
-  /** Everything an entity declares, including whatever it inherits. */
+  /**
+   * Everything an entity declares, including whatever it inherits — from the core vocabulary when
+   * the parent is not in this manifest, which is the case for every space shape extending `WeNode`.
+   */
   const resolved = (name: string): EntitySchema => {
-    const entity = manifest.entities[name];
+    const entity = manifest.entities[name] ?? CORE_MANIFEST.entities[name];
+    if (!entity) throw new Error(`manifest: "${name}" is not declared here or in the core vocabulary`);
     const parent = entity.extends ? resolved(entity.extends) : undefined;
     if (!parent) return entity;
     return {
@@ -181,6 +195,10 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         target: info.target,
         cardinality,
         foreignKey: info.foreignKey,
+        // The write path already records the ids in the order they were assigned, on the parent row
+        // under the relation's own name; without this the engine re-derived membership from the
+        // foreign key and handed back whichever order the child table happened to be in.
+        ...(spec.ordered ? { ordered: true } : {}),
       } satisfies InMemoryRelation;
     }
     relationsByEntity[name] = infos;
@@ -251,13 +269,22 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (key.startsWith('__')) continue;
           const relation = relations.find((r) => r.name === key);
           const target = relation?.target ? classes[relation.target] : undefined;
-          // A hydrated relation comes back as rows; give the caller instances, so a related
-          // model behaves like one rather than like a plain object that happens to have fields.
+          /*
+            A hydrated relation comes back as rows; give the caller instances, so a related model
+            behaves like one rather than like a plain object that happens to have fields.
+
+            **An id is not a row.** A to-many relation that was not `include`d holds the ids it
+            links, and a string handed to `hydrate` is spread character by character — so reading
+            `column.arranges` without an include answered with a list of objects keyed `'0'`, `'1'`,
+            `'2'`, each carrying one letter of an id. Nothing threw. `idsOf` in `arrangedBoard`
+            tolerates ids or rows and takes `.id` from an object, which those do not have, so a board
+            read this way simply had no cards in any column and no error anywhere.
+          */
           if (relation && target && value && typeof value === 'object') {
             const asEntity = target as unknown as typeof Entity;
-            instance[key] = Array.isArray(value)
-              ? value.map((r) => asEntity.hydrate(dataset, r as AnyRow))
-              : asEntity.hydrate(dataset, value as AnyRow);
+            const hydrateOne = (entry: unknown) =>
+              entry && typeof entry === 'object' ? asEntity.hydrate(dataset, entry as AnyRow) : entry;
+            instance[key] = Array.isArray(value) ? value.map(hydrateOne) : hydrateOne(value);
             continue;
           }
           instance[key] = value;
@@ -331,6 +358,67 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         row.updatedAt = new Date().toISOString();
         notify(dataset);
         return Entity.hydrate(dataset, row);
+      }
+
+      /**
+       * The relation writes, by id — the contract's counterpart to the per-relation accessors the
+       * prototype gets below.
+       *
+       * Dispatched to those rather than reimplemented: `setChildren` and `setRelation(…, 'children',
+       * …)` must not be two pieces of code that can disagree about what writing a relation means, and
+       * on this backend the accessors are where the foreign keys are kept in step.
+       *
+       * A relation this entity does not declare throws rather than writing nothing. The name arrives
+       * as a string, so a typo is otherwise a write that silently does not happen — the failure that
+       * is hardest to see from the call site and easiest to report from here. `batch` is accepted and
+       * ignored: nothing concurrent can happen to an in-memory table, so every write is already
+       * atomic with respect to every reader.
+       */
+      static async setRelation(handle: unknown, id: string, relation: string, targetIds: readonly string[]) {
+        await Entity.viaAccessor(handle, id, relation, 'set', [...targetIds]);
+      }
+
+      static async addRelation(handle: unknown, id: string, relation: string, targetId: string) {
+        await Entity.viaAccessor(handle, id, relation, 'add', targetId);
+      }
+
+      static async removeRelation(handle: unknown, id: string, relation: string, targetId: string) {
+        await Entity.viaAccessor(handle, id, relation, 'remove', targetId);
+      }
+
+      private static async viaAccessor(
+        handle: unknown,
+        id: string,
+        relation: string,
+        verb: 'set' | 'add' | 'remove',
+        argument: unknown,
+      ): Promise<void> {
+        const info = relations.find((r) => r.name === relation);
+        if (!info) {
+          throw new Error(
+            `${name}.${verb}Relation(): "${relation}" is not a relation of ${name}. ` +
+              `It declares: ${[...relationNames].join(', ') || '(none)'}.`,
+          );
+        }
+        const dataset = datasetOf(handle);
+        const row = tableOf(dataset, name).find((r) => r.id === id);
+        // Not an error: a record deleted between reading it and arranging it is the ordinary race,
+        // and the caller's intent — "this record's relation should read like that" — is satisfied by
+        // there being no such record.
+        if (!row) return;
+        // A to-one link is a different write — "point this at that", not "your membership is this
+        // list" — and the contract says an implementation refuses rather than guesses. Refusing here
+        // rather than in the caller is what makes the refusal the same on every backend.
+        if (info.cardinality === 'one') {
+          throw new Error(
+            `${name}.${verb}Relation(): "${relation}" is a to-one relation. The relation writes are ` +
+              'for to-many relations; set a single link through the record itself.',
+          );
+        }
+
+        const instance = Entity.hydrate(dataset, row) as unknown as Record<string, unknown>;
+        const accessor = `${verb}${relation.charAt(0).toUpperCase()}${relation.slice(1)}`;
+        await (instance[accessor] as (a: unknown) => Promise<void>).call(instance, argument);
       }
 
       /**
@@ -443,6 +531,44 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         }
         notify(dataset);
       };
+
+      /*
+        The whole list at once, in this order — the accessor an *ordered* relation is written through.
+        A backend with concurrent writers diffs the list against what it holds and records only what
+        moved; here the list simply becomes the row's, since nothing concurrent can happen to an
+        in-memory table.
+        Without it a consumer that arranges a relation — a board column — had no accessor on this
+        backend at all, and the fixtures could only append.
+      */
+      if (relation.cardinality === 'many') {
+        proto[`set${suffix}`] = async function (this: AnyRow, related: unknown[]): Promise<void> {
+          const dataset = homes.get(this);
+          if (!dataset) throw new Error(`${name}.set${suffix}(): this instance was never loaded from a dataset`);
+          const next = (Array.isArray(related) ? related : [])
+            .map((entry) => (typeof entry === 'string' ? entry : (entry as AnyRow)?.id))
+            .filter((id): id is string => typeof id === 'string' && id.length > 0);
+          const current = Array.isArray(this[relation.name]) ? (this[relation.name] as string[]) : [];
+          const rowsOf = (id: string): AnyRow | undefined =>
+            relation.target
+              ? tableOf(dataset, relation.target).find((r) => r.id === id)
+              : Object.values(dataset.tables)
+                  .flatMap((rows) => rows as AnyRow[])
+                  .find((r) => r.id === id);
+          for (const id of current) {
+            if (next.includes(id)) continue;
+            const targetRow = rowsOf(id);
+            if (targetRow) delete targetRow[relation.foreignKey];
+          }
+          for (const id of next) {
+            const targetRow = rowsOf(id);
+            if (targetRow) targetRow[relation.foreignKey] = this.id;
+          }
+          this[relation.name] = next;
+          const row = tableOf(dataset, name).find((r) => r.id === this.id);
+          if (row) row[relation.name] = next;
+          notify(dataset);
+        };
+      }
     }
 
     classes[name] = Entity as unknown as EntityClassLike;

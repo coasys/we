@@ -7,7 +7,7 @@
  * silently deletes the host's own state, which is how a docked panel's chrome ends up snapped to the
  * window edge until something forces a recompute.
  */
-import { component, ROLE_ALIASES } from '@we/tokens';
+import { component, role, ROLE_ALIASES } from '@we/tokens';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { THEME_PRESETS } from './presets';
@@ -239,9 +239,16 @@ describe('roles resolve against the theme they belong to', () => {
   it('re-declares every role default, so an unpinned role follows this theme', () => {
     const style = themeParametersToStyle({ polarity: 'dark' as const });
     expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-600)');
-    // The elevation stack is a relationship, not a scale position — and it has to be re-declared
-    // for the same reason, or a scoped theme's cards are measured off the ambient theme's page.
-    expect(style['--we-role-surface']).toBe('oklch(from var(--we-role-page) calc(l + 0.045) c h)');
+    /*
+      The elevation stack is a relationship, not a scale position — and it has to be re-declared for
+      the same reason, or a scoped theme's cards are measured off the ambient theme's page.
+
+      Read from the token source rather than restated. The literal was a second copy of a figure
+      that exists to be tuned, so tuning it failed a test about *re-declaration* with a diff about
+      arithmetic — which says nothing about what this is checking. What matters here is that the
+      value is emitted at all, and that it is the one the vocabulary declares.
+    */
+    expect(style['--we-role-surface']).toBe(role.surface);
   });
 
   it('lets a pin win over the default it replaces, rather than sitting beside it', () => {

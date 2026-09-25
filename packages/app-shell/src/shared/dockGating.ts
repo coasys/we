@@ -32,7 +32,7 @@
  *
  * Host chrome always shows: it is not a module, so nothing about the space's module settings has
  * anything to say about it. Module chrome shows when the gate says the module is active here —
- * which includes `holdsWhen`, the escape hatch that keeps a call's bar in a space that never
+ * which includes `holds`, the escape hatch that keeps a call's bar in a space that never
  * enabled calls.
  *
  * Discriminated by *presence in the module registry* rather than by a list of host ids, so a host

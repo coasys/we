@@ -51,7 +51,7 @@ export function fitControl(): GraphControl {
 /**
  * Re-run the layout.
  *
- * Not shown by default: on an explorer it is a rescue for a tangled force graph, and on a board it
+ * Not shown by default: on an explorer it is a rescue for a tangled force graph, and on a canvas it
  * would throw away every position somebody chose. A template asks for it when it makes sense.
  */
 export function relayoutControl(): GraphControl {
@@ -71,7 +71,7 @@ export function relayoutControl(): GraphControl {
  * gesture keeps it discoverable — there is a button, and it says what it will do — and reuses the
  * selection people are already making.
  *
- * Not shown by default. On a board every node is pinned already and the control means nothing; it
+ * Not shown by default. On a canvas every node is pinned already and the control means nothing; it
  * earns its place on a graph whose positions are derived.
  */
 export function pinControl(): GraphControl {

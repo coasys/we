@@ -22,10 +22,13 @@ export {
   datasetAddress,
   entityAddress,
   literalAddress,
+  NODE_TYPE_KEY,
+  nodeTypeOf,
   parseAddress,
   propertyAddress,
   resourceAddress,
 } from './address';
+export { CARD_SILHOUETTES, cardSilhouette } from './style';
 export type { GraphEdge, GraphFragment, GraphNode, GraphValue } from './graph';
 export type {
   EntityShape,
@@ -37,10 +40,14 @@ export type {
   ExpandRequest,
   ExpandResult,
   SeedSource,
+  WatchQuery,
 } from './expander';
 export type {
+  Bounds,
+  EdgeAnchors,
   EdgeCurve,
   EdgeGeometry,
+  EdgeSide,
   Layout,
   LayoutFactory,
   LayoutInput,

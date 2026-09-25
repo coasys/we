@@ -4,44 +4,44 @@ import { expr } from '@we/schema-shared';
 import { swatchRow } from './Palette';
 
 /**
- * The board's key — what kinds of thing are on it, and what colour each one is.
+ * The canvas's key — what kinds of thing are on it, and what colour each one is.
  *
- * A legend that is also a control. Reading a board means knowing what the colours mean, and the
+ * A legend that is also a control. Reading a canvas means knowing what the colours mean, and the
  * moment that is on screen the natural next thought is "make decisions amber" — so the key is where
  * the colour is *set*, not a caption describing a decision made somewhere else. It is also the only
  * surface that can say something about a type at all: the detail panel is about the card you
- * selected, and "every task on this board" has no card to select.
+ * selected, and "every task on this canvas" has no card to select.
  *
  * ## Why it is toggleable rather than always there
  *
- * A board with three kinds of thing on it does not need a key, and a panel explaining what you can
+ * A canvas with three kinds of thing on it does not need a key, and a panel explaining what you can
  * already see is a panel covering the thing you are trying to look at. It opens on request and
  * remembers that per device — a preference rather than view state, since a link's recipient should
- * see the board, not somebody else's chrome.
+ * see the canvas, not somebody else's chrome.
  *
  * ## Where the list of types comes from
  *
  * The placements, ordered by type, with consecutive repeats suppressed — the `$prev` grouping
  * pattern, used for exactly what it is for. The schema layer has no "distinct", and the alternatives
  * were worse in ways that show: listing the space's models would name kinds that are not on this
- * board, and a store accessor would have to be told which board it was being asked about.
+ * canvas, and a store accessor would have to be told which canvas it was being asked about.
  *
- * That means the key lists what has been *placed*. A card sitting in the tray, put on the board but
+ * That means the key lists what has been *placed*. A card sitting in the tray, put on the canvas but
  * never positioned, is not in it yet — which is consistent with the rest of the mode, where being
- * placed is what being on a board means.
+ * placed is what being on a canvas means.
  *
  * ## What this becomes
  *
  * Colour by type is the first rule and not the last: colour by task status, by author, by how
  * recently something changed. Each of those is a rule with a field and a mapping rather than one
  * colour per type, and this is the surface they belong on — which is why the record behind it is
- * called `TypeStyle` and lives on the board rather than being a colour field on the type.
+ * called `TypeStyle` and lives on the canvas rather than being a colour field on the type.
  */
 
-const BOARD = { $: 'local.boardId' };
+const CANVAS = { $: 'local.canvasId' };
 
-/** The colour this type currently carries on this board, or empty. */
-const colorOf = { $: 'find(local.boardTypeStyles, { nodeType: placement.nodeType }).color' };
+/** The colour this type currently carries on this canvas, or empty. */
+const colorOf = { $: 'find(local.canvasTypeStyles, { nodeType: placement.nodeType }).color' };
 
 const typeRow: SchemaNode = {
   type: 'Column',
@@ -73,7 +73,7 @@ const typeRow: SchemaNode = {
                 height: '16px',
                 r: '100',
                 // Falls back to the neutral every unstyled card is drawn in, so the key never shows
-                // a colour the board is not using.
+                // a colour the canvas is not using.
                 bg: expr`${colorOf} ? ${colorOf} : 'accent-muted'`,
                 border: '1px solid border-strong',
               },
@@ -82,7 +82,7 @@ const typeRow: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted', ml: 'auto' },
-              children: [{ $: 'count(filter(local.boardPlacements, { nodeType: placement.nodeType }))' }],
+              children: [{ $: 'count(filter(local.canvasPlacements, { nodeType: placement.nodeType }))' }],
             },
             {
               type: 'we-icon',
@@ -108,7 +108,7 @@ const typeRow: SchemaNode = {
           current: colorOf,
           pick: (token) => ({
             $action: 'recordStore.setTypeColor',
-            args: [BOARD, { $: 'placement.nodeType' }, token],
+            args: [CANVAS, { $: 'placement.nodeType' }, token],
             // The graph re-reads and merges, so every card of that type changes at once — which is
             // the whole point of colouring a type rather than a card.
             onSuccess: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
@@ -136,9 +136,9 @@ const typeRow: SchemaNode = {
  * breaks the panel is merely short, with its border stopping in mid-air.
  *
  * `pointerEvents: 'none'` because a 260px column down the side of the canvas would otherwise eat
- * every click on the board behind it while the key is closed; the panel inside turns them back on.
+ * every click on the canvas behind it while the key is closed; the panel inside turns them back on.
  */
-export const boardLegend: SchemaNode = {
+export const canvasLegend: SchemaNode = {
   type: 'Column',
   props: {
     position: 'absolute',
@@ -152,7 +152,7 @@ export const boardLegend: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: expr`${BOARD} && local.legendOpen`,
+        condition: expr`${CANVAS} && local.legendOpen`,
         enterTransition: [
           { type: 'slide', direction: 'right', distance: '24px', duration: 180 },
           { type: 'fade', duration: 150 },
@@ -162,21 +162,21 @@ export const boardLegend: SchemaNode = {
           /*
         Its own subscriptions, declared here rather than at the route.
 
-        The panel is mounted only while it is open, so a board nobody asked a key about pays for
-        neither query — and both are about the board this key is describing, which is the node they
+        The panel is mounted only while it is open, so a canvas nobody asked a key about pays for
+        neither query — and both are about the canvas this key is describing, which is the node they
         are declared on.
       */
           $queries: {
-            boardPlacements: {
+            canvasPlacements: {
               entity: 'Placement',
-              scope: { anchor: 'CollectionBlock', via: 'children', anchorId: BOARD },
+              scope: { anchor: 'CollectionBlock', via: 'children', anchorId: CANVAS },
               // Ordered by type, which is what makes the `$prev` grouping below yield each type once.
               order: { nodeType: 'asc' },
               limit: 200,
             },
-            boardTypeStyles: {
+            canvasTypeStyles: {
               entity: 'TypeStyle',
-              scope: { anchor: 'CollectionBlock', via: 'children', anchorId: BOARD },
+              scope: { anchor: 'CollectionBlock', via: 'children', anchorId: CANVAS },
               limit: 50,
             },
           },
@@ -228,10 +228,10 @@ export const boardLegend: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'count(local.boardPlacements)' },
+                        condition: { $: 'count(local.canvasPlacements)' },
                         then: {
                           type: '$each',
-                          props: { items: { $: 'local.boardPlacements' }, as: 'placement' },
+                          props: { items: { $: 'local.canvasPlacements' }, as: 'placement' },
                           children: [
                             {
                               /*
@@ -253,7 +253,7 @@ export const boardLegend: SchemaNode = {
                         else: {
                           type: 'we-text',
                           props: { variant: 'footnote', color: 'text-faint' },
-                          children: ['Nothing placed on this board yet.'],
+                          children: ['Nothing placed on this canvas yet.'],
                         },
                       },
                     },

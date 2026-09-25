@@ -108,7 +108,9 @@ const styles = css`
     margin: var(--we-markdown-gap, 0.5em) 0;
     padding-left: 0.75em;
     border-left: 3px solid var(--we-role-border);
-    color: var(--we-color-neutral-600);
+    /* Muted body text, beside a border already written as a role. A scale position is never
+       measured against what is behind it by the contrast corrections at apply time. */
+    color: var(--we-role-text-muted);
   }
 
   /* Links */
@@ -126,24 +128,24 @@ const styles = css`
 
   /* Status markers */
   [part='base'] .success {
-    color: var(--we-color-success-500);
+    color: var(--we-role-success-text);
     font-weight: 600;
   }
   [part='base'] .warning {
-    color: var(--we-color-warning-500);
+    color: var(--we-role-warning-text);
     font-weight: 600;
   }
   [part='base'] .danger {
-    color: var(--we-color-danger-500);
+    color: var(--we-role-danger-text);
     font-weight: 600;
   }
   [part='base'] .shimmer {
-    color: var(--we-color-neutral-600);
+    color: var(--we-role-text-muted);
     background: linear-gradient(
       90deg,
       var(--we-role-border) 40%,
       rgba(255, 255, 255, 0.8) 50%,
-      var(--we-color-neutral-500) 60%
+      var(--we-role-text-faint) 60%
     );
     background-size: 200% 100%;
     -webkit-background-clip: text;

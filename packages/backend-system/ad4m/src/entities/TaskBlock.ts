@@ -87,10 +87,24 @@ export class TaskBlock extends WeNode {
   })
   description: string = '';
 
+  /**
+   * The slug of a {@link TaskState} — the space's own vocabulary if it has one, otherwise
+   * `DEFAULT_TASK_STATES`.
+   *
+   * `options` and the hint name the defaults, which is deliberately *not* the same list a space
+   * may have defined. They steer an LLM, and a model cannot be asked to guess a vocabulary it
+   * has never been shown — so the three default states are the floor, and a space that wants
+   * extraction to know its own states says so through the per-space hint (see
+   * `interpretationHints.ts`, where the executor reads prompts from the stored shape rather than
+   * from this declaration).
+   *
+   * A slug this list does not contain is not an error — a community's own state, or one since
+   * retired, reads exactly the same way. What must never happen is a task being dropped for
+   * holding a state nothing recognises, which would hide work rather than show it oddly.
+   */
   @Property({
     through: 'we://status',
-    interpretationHint:
-      'Exactly one of: "todo", "in-progress", "done". Use "todo" unless the speaker says work has begun.',
+    interpretationHint: 'Exactly one of: "todo", "doing", "done". Use "todo" unless the speaker says work has begun.',
   })
   status: string = 'todo';
 

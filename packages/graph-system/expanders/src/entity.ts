@@ -109,7 +109,18 @@ async function expandForward({
   nodes,
   edges,
 }: Work & { shape: EntityShape }): Promise<void> {
-  const relations = shape.relations.filter((r) => wanted(r.name, request, options));
+  /*
+    Forward, only relations that name their target. An untyped one is followed *backwards* — that is
+    how a reified connection is found, standing on one of its ends — but following it forwards would
+    mean minting an address for every comment, call and child of every node the walk touches, which
+    is a different graph from the one this expander is for. The containment expander opens a
+    container deliberately, and does it with one polymorphic read.
+
+    Kept as an explicit filter rather than left to fall out of the shape, because untyped relations
+    were absent from `shape.relations` entirely until recently and their arrival must not silently
+    widen what a knowledge map draws.
+  */
+  const relations = shape.relations.filter((r) => r.target && wanted(r.name, request, options));
   if (!relations.length) return;
 
   const include: Record<string, unknown> = {};
@@ -148,7 +159,9 @@ async function expandForward({
           context.models(dataset),
           ID,
         );
-        if (resolved) {
+        // No warning on the skip here, unlike the backward pass: this one falls through to drawing
+        // the target as an ordinary node, which is a degradation rather than a failure.
+        if (!('reason' in resolved)) {
           nodes.push(...resolved.nodes);
           edges.push(resolved.edge);
           continue;
@@ -247,8 +260,8 @@ async function expandBackward({
       // endpoint and the relationship points at you. Collapse it rather than adding a dot.
       if (isReified(source.name, options.reified)) {
         const resolved = reifiedEdgeFrom(row, source.name, options.reified![source.name], dataset, shapes, ID);
-        if (!resolved) {
-          context.warn(`${source.name} ${String(row.id)} is missing an endpoint — skipped`);
+        if ('reason' in resolved) {
+          context.warn(`${source.name} ${String(row.id)} not drawn: ${resolved.reason}`);
           continue;
         }
         nodes.push(...resolved.nodes);

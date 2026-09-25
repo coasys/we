@@ -127,7 +127,10 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
   const confirmAction = isAction
     ? {
         ...(opts.confirm as Record<string, unknown>),
-        onSuccess: [opts.close, ...(((opts.confirm as Record<string, unknown>).onSuccess as unknown[]) ?? [])],
+        onSuccess: [
+          ...(Array.isArray(opts.close) ? opts.close : [opts.close]),
+          ...(((opts.confirm as Record<string, unknown>).onSuccess as unknown[]) ?? []),
+        ],
       }
     : opts.confirm;
   const confirmSteps = Array.isArray(confirmAction) ? confirmAction : [confirmAction];
@@ -140,7 +143,8 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
       ]
     : isAction
       ? confirmAction
-      : [...confirmSteps, opts.close];
+      : // Spliced, not nested: the resolver does not flatten a list inside a list.
+        [...confirmSteps, ...(Array.isArray(opts.close) ? opts.close : [opts.close])];
 
   return {
     type: '$if',
@@ -187,7 +191,17 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'ghost', onClick: opts.cancel ?? opts.close },
+                /*
+                  `secondary`, not `ghost`. Ghost has no resting appearance — that is its whole
+                  point, and it is right for an inline affordance or an icon button. In a dialog
+                  footer it makes the dismissing option read as a label sitting beside the real
+                  button rather than as the other choice. Secondary gives it a resting box, so the
+                  pair reads as two options with the primary still carrying the emphasis.
+
+                  Set here rather than at each call site because these fragments ARE the global
+                  control: four of them own nearly every cancel button in the app.
+                */
+                props: { variant: 'secondary', onClick: opts.cancel ?? opts.close },
                 children: [opts.cancelLabel ?? 'Cancel'],
               },
               {

@@ -29,6 +29,35 @@ const KEYFRAMES_CSS = `
 // opaque ancestor background several levels up, making it invisible. isolation:isolate
 // creates a local stacking context with no other visual side effects (unlike z-index,
 // which needs a position value; unlike opacity<1, which visually changes rendering).
+/**
+ * A panel arriving.
+ *
+ * The content region eases aside to make room for a displacing panel, and the panel appeared at its
+ * full width in the first frame of that — the room opening slowly and the thing filling it instantly.
+ * It cannot be fixed with a transition: the element did not exist a moment ago, so there is no
+ * previous value to interpolate from.
+ *
+ * And it cannot be fixed by wrapping the frame, which is what `$if`'s own transitions do — a panel
+ * whose whole job is to be positioned by the host must not sit inside a box that also positions
+ * itself. So the animation is on the frame directly, keyed off the attribute it already carries, and
+ * runs once when the element is created. Timed with the inset it is arriving into.
+ *
+ * `prefers-reduced-motion` turns it off rather than shortening it: this animation exists to soften a
+ * change of layout, and to a reader who has asked for less movement it *is* the movement.
+ */
+const DOCK_CSS = `
+@keyframes we-dock-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+[data-we-dock-frame] {
+  animation: we-dock-in var(--we-transition-300, 300ms) ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-we-dock-frame] { animation: none; }
+}
+`;
+
 const BG_IMAGE_CSS = `
 [data-we-bg-image] {
   position: relative;
@@ -75,6 +104,29 @@ const BG_IMAGE_CSS = `
 // rather than its hover fill while the pointer is over it, because focus stays quiet about the
 // properties hover sets. Where that matters, `focusProps` restates them — see `we-input`, which is
 // where this was found.
+/**
+ * A `--we-ds-*` var is a channel to ONE element's own rule, so it must not inherit.
+ *
+ * Custom properties inherit by default, and the indirection this stylesheet is built on turns that
+ * into a leak: an element with `hoverProps` has its ordinary props moved out of its inline style
+ * into `--we-ds-*`, and every interactive descendant that does not set the same prop then reads its
+ * ancestor's value. `width: var(--we-ds-width)` on a nested row is how a pair of icon buttons
+ * became 100% wide and pushed the byline beside them down to a name broken one word per line.
+ *
+ * Declared non-inheriting rather than reset per element: `@property` fixes it wherever the var is
+ * read, including the state and tier chains, and it cannot be got wrong by a rule added later.
+ * `syntax: "*"` keeps every value these props already carry legal — tokens, `calc()`, `var()` —
+ * and needs no initial value, so an unset var stays the guaranteed-invalid value its declarations
+ * already fall back from.
+ */
+function buildVarScopeCSS(): string {
+  const prefixes = ['', 'hover-', 'focus-', 'active-', 'disabled-', 'sm-', 'md-', 'lg-'];
+  const names = new Set<string>();
+  for (const prefix of prefixes)
+    for (const [, varSuffix] of INTERACTIVE_SPECS) names.add(`--we-ds-${prefix}${varSuffix}`);
+  return [...names].map((name) => `@property ${name} { syntax: "*"; inherits: false; }`).join('\n');
+}
+
 function buildInteractiveStateCSS(): string {
   /*
     Both gates share the base declarations.
@@ -131,7 +183,14 @@ export const buildInteractiveStateCSSForTest = buildInteractiveStateCSS;
  * regardless of which theme is active.
  */
 export function injectDSInteropStyles() {
-  const css = [BG_IMAGE_CSS, buildInteractiveStateCSS(), buildResponsiveCSS(), KEYFRAMES_CSS].join('\n');
+  const css = [
+    buildVarScopeCSS(),
+    BG_IMAGE_CSS,
+    buildInteractiveStateCSS(),
+    buildResponsiveCSS(),
+    KEYFRAMES_CSS,
+    DOCK_CSS,
+  ].join('\n');
   let styleEl = document.getElementById(STYLE_EL_ID) as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = document.createElement('style');

@@ -28,10 +28,101 @@ import { agentByline, collectionFeed, commentThread, emptyState, noReplies, repl
 import { composerModal, KIND, signalRow, signalTypesQuery } from './shared.ts';
 
 const navItems = [
-  { label: 'Home', icon: 'house', path: '/' },
-  { label: 'Photos', icon: 'image', path: '/photos' },
-  { label: 'Profile', icon: 'user', path: '/profile' },
+  /*
+    `segment` beside `path`, because the two answer different questions and only one of them
+    survives a move. The active test was `currentPath == nav.path`, which compares a whole address
+    against a fragment of one — true only while the template owned the root. Membership of a
+    segment is the same question asked where the answer does not depend on the prefix.
+
+    Home is the space itself, so it has no segment of its own: it is active when none of the others
+    is, which is what an empty segment means below.
+  */
+  { label: 'Home', icon: 'house', path: '.', segment: '' },
+  { label: 'Photos', icon: 'image', path: './photos', segment: 'photos' },
+  { label: 'Profile', icon: 'user', path: './profile', segment: 'profile' },
 ];
+
+/**
+ * The two sections beside the feed — the reason the right-hand column stopped being a spacer.
+ *
+ * ## Sections, not a sidebar
+ *
+ * Each is a `meta.panels` entry with `home: 'right'`: it renders inline in the right-hand lane, with
+ * no frame, and the reader can break it out, dock it, fold it, or drag it into the lane under the
+ * nav on the left. Reordering the two is a change of `order` on the reader's own placement; none of
+ * it touches this tree, and "Reset layout" puts them back. This is what a home lane is for, and the
+ * test of whether a region should be one: would somebody want it beside a *different* page? These
+ * two, yes. The nav and the compose button, no — they stay ordinary layout.
+ *
+ * ## Real data, or say why not
+ *
+ * The column used to be a spacer, on the grounds that a "who to follow" rail wired to nothing is a
+ * lie about what the system does. These are wired: the reactions are the space's own `SignalType`s
+ * and the people are its members, and each says so when it has none rather than inventing some.
+ */
+const trendingSection: SchemaNode = {
+  type: 'Column',
+  $queries: signalTypesQuery,
+  props: { gap: '200', p: '400', bg: 'surface', r: 'surface', border: '1px solid border' },
+  children: [
+    { type: 'we-text', props: { variant: 'heading-sm', tag: 'h4' }, children: ['Reactions here'] },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(local.signalTypes)' },
+        then: {
+          type: '$each',
+          props: { items: { $: 'local.signalTypes' }, as: 'sig' },
+          children: [
+            {
+              type: 'Row',
+              props: { ay: 'center', gap: '300', py: '100' },
+              children: [
+                { type: 'we-icon', props: { name: { $: 'sig.icon' }, color: 'accent-text' } },
+                { type: 'we-text', children: [{ $: 'sig.name' }] },
+              ],
+            },
+          ],
+        },
+        else: {
+          type: 'we-text',
+          props: { color: 'text-faint' },
+          children: ['This space has not defined any reactions yet.'],
+        },
+      },
+    },
+  ],
+};
+
+const membersSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface', r: 'surface', border: '1px solid border' },
+  children: [
+    { type: 'we-text', props: { variant: 'heading-sm', tag: 'h4' }, children: ['People here'] },
+    {
+      type: '$each',
+      props: { items: { $: 'filter(spaceStore.members, {}, 6)' }, as: 'member' },
+      children: [
+        {
+          type: 'Row',
+          props: { ay: 'center', gap: '300', py: '100' },
+          children: [
+            {
+              type: 'we-avatar',
+              props: {
+                size: 'sm',
+                image: { $: 'member.avatar' },
+                hash: { $: 'member.did' },
+                initials: { $: 'member.name' },
+              },
+            },
+            { type: 'we-text', props: { truncate: true }, children: [{ $: 'member.name' }] },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 const leftRail: SchemaNode = {
   type: 'Column',
@@ -45,7 +136,9 @@ const leftRail: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: { $: "routeStore.currentPath == nav.path ? 'secondary' : 'ghost'" },
+            variant: {
+              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'secondary' : 'ghost'",
+            },
             width: '100%',
             ax: 'start',
             gap: '300',
@@ -70,6 +163,13 @@ const leftRail: SchemaNode = {
       children: ['Post'],
     },
     composerModal({ openLocal: 'composeOpen', title: 'New post', kind: KIND.post }),
+    /*
+      An empty lane under the nav, so a section from the right can be carried across.
+
+      Holds no width of its own — the rail is already 240px — and renders nothing until something is
+      dropped in it; during a drag it offers its box, which is how a lane gets its first section.
+    */
+    { type: '$panels', props: { lane: 'left', mt: '400' } },
   ],
 };
 
@@ -90,7 +190,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $action: 'routeStore.navigate', args: [{ $: '`/post/${post.id}`' }] },
+          onClick: { $action: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
         },
         children: [
           {
@@ -275,6 +375,16 @@ export const twitterTemplate: TemplateSchema = {
     // Shared with Photos and Videos deliberately: those three exist to show one space rendered three
     // ways, so the theme must not be a second variable moving at the same time.
     themeId: 'timeline',
+    /*
+      The two sections beside the feed start in the right-hand lane. Named `snap`s say where each
+      goes when broken out by a click rather than a drag — the corner every picture-in-picture uses.
+      The feed itself is not a section: it holds the routes, and a section's node has no router to
+      hand `$routes` its pages.
+    */
+    panels: [
+      { id: 'trending', node: trendingSection, title: 'Reactions', home: 'right', order: 0, snap: 'bottom-right' },
+      { id: 'members', node: membersSection, title: 'People', home: 'right', order: 1, snap: 'bottom-right' },
+    ],
   },
   type: 'Row',
   props: { bg: 'page', width: '100%', minHeight: '100%', ax: 'center', ay: 'stretch' },
@@ -293,9 +403,10 @@ export const twitterTemplate: TemplateSchema = {
       },
       children: [{ type: '$routes' }],
     },
-    // A spacer rather than a "who to follow" rail: there is no follow graph, and a column of
-    // suggestions wired to nothing is a lie about what the system does.
-    { type: 'Column', props: { width: '240px', flex: '0 0 auto' } },
+    // The right-hand lane, holding the two sections declared `home: 'right'`. It was a spacer, on
+    // the grounds that a "who to follow" rail wired to nothing is a lie about what the system does;
+    // the sections it holds now are wired — see `trendingSection`.
+    { type: '$panels', props: { lane: 'right', width: '280px', flex: '0 0 auto', py: '400', px: '300' } },
   ],
   routes: [
     { path: '/', ...timeline },

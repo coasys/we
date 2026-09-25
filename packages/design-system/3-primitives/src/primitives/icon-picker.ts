@@ -4,6 +4,7 @@ import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
@@ -126,26 +127,15 @@ const styles = css`
     display: inline-flex;
     align-items: center;
     gap: var(--we-space-200);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
-    transition: border-color var(--we-transition-200, 150ms) ease;
     width: 100%;
     box-sizing: border-box;
   }
 
-  [part='trigger']:focus-visible {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
-
-  [part='trigger']:hover:not([disabled]) {
-    border-color: var(--we-role-border-strong);
-  }
+  /* After the reset above, never before it: all:unset clears border, radius and background. */
+  ${fieldSurface("[part='trigger']")}
 
   [part='preview-icon'] {
     display: flex;
@@ -230,20 +220,17 @@ const styles = css`
     display: block;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
     padding: var(--we-space-200) var(--we-space-300);
     font-size: var(--we-font-size-300);
-    background: var(--we-role-surface);
     color: var(--we-role-text);
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='search']:focus {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
+  /*
+    A well inside the popover's raised panel, which is the same relationship a field has to a card.
+    Focus-within rather than focus-visible, because this is a real text field and the ring has to
+    follow the caret whether it was reached by click or by Tab.
+  */
+  ${fieldSurface("[part='search']", ':focus-within')}
 
   [part='search']::placeholder {
     color: var(--we-role-text-faint);
@@ -354,21 +341,13 @@ const styles = css`
     display: block;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
     padding: var(--we-space-200) var(--we-space-300);
     font-size: var(--we-font-size-500);
     text-align: center;
-    background: var(--we-role-surface);
     color: var(--we-role-text);
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='emoji-input']:focus {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
+  ${fieldSurface("[part='emoji-input']", ':focus-within')}
 
   :host([disabled]) {
     opacity: 0.5;

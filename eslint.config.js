@@ -340,6 +340,8 @@ export default [
       // A component whose entire purpose is to print when it re-renders.
       '**/RerenderLog/**',
       '**/ai-context/src/**',
+      // Same shape as the context generator: it runs as a build step and reports what it emitted.
+      '**/brand/src/**',
       // Its entire purpose is a console line, opt-in and off by default.
       '**/installConsoleTrace.ts',
     ],

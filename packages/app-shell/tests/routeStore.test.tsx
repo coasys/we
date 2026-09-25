@@ -85,6 +85,37 @@ describe('routeStore params', () => {
     expect(nav).toHaveBeenCalledWith('/cards', undefined);
   });
 
+  /*
+    A discarded router's navigation can land in `history` after its replacement has mounted, leaving
+    the address bar on a page the app is not showing. A parameter write must extend what is on
+    screen: reading the bar here turned "clear the selected card" into `/about` with no query, and
+    the call the canvas was about went with it.
+  */
+  it('setParam extends the router’s location, not a stale address bar', () => {
+    window.history.replaceState(null, '', '/space/x/canvas?call=c1&card=k1');
+    const store = mountStore();
+    store.setCurrentPath('/space/x/canvas', '?call=c1&card=k1');
+
+    window.history.replaceState(null, '', '/space/x/about'); // the stray write
+    store.setParam('card', null);
+
+    expect(window.location.pathname).toBe('/space/x/canvas');
+    expect(window.location.search).toBe('?call=c1');
+    expect(store.params()).toEqual({ call: 'c1' });
+  });
+
+  it('navigate is not refused for the page a stale address bar names', () => {
+    window.history.replaceState(null, '', '/space/x/canvas');
+    const store = mountStore();
+    const nav = vi.fn();
+    store.setNavigateFunction(nav as never);
+    store.setCurrentPath('/space/x/canvas', '');
+
+    window.history.replaceState(null, '', '/space/x/about');
+    store.navigate('/space/x/about');
+    expect(nav).toHaveBeenCalledWith('/space/x/about', undefined);
+  });
+
   it('params arriving via a shared link are remembered from arrival', () => {
     window.history.replaceState(null, '', '/cards?type=users');
     const store = mountStore();

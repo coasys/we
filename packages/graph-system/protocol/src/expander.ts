@@ -82,20 +82,40 @@ export interface ExpanderContext {
   /** Entity shapes available in a dataset, for expanders that work off the schema rather than a fixed model. */
   models(dataset?: string): EntityShape[];
   /**
-   * Ask to be told when records of a type change, and get back a function that stops the watch.
+   * Ask to be told when a read's answer changes, and get back a function that stops the watch.
    *
-   * Coarse on purpose — the entity and the dataset, not the query. The signal is "look again", and
-   * the engine's answer is to re-run its seeds and reconcile, which is idempotent; a watch that
-   * mirrored the exact where-clause would cost one subscription per query for no better an answer,
-   * and would go stale the moment a clause referenced something reactive.
+   * **The whole read, not just the type.** This was coarse — entity and dataset only — on the
+   * reasoning that the signal is "look again" and the engine's answer is to re-run its seeds, which
+   * is idempotent. The reasoning was sound and the premise was not: a host implements this over
+   * whatever change notification its backend has, and a backend that reports "this query's answer
+   * changed" cannot report anything about a query nobody asked. WE's does exactly that — its model
+   * subscriptions fire only when the rows of *their own* query change — so a coarse watch was
+   * subscribed to a one-row probe over the whole type, and a record created behind an existing one
+   * left that probe's answer identical. The canvas that read it never heard, and stayed as loaded
+   * while the panel beside it, subscribed to its own narrower query, updated.
+   *
+   * So a watch carries the read it came from, and a host subscribes to *that*. The cost the coarse
+   * form was avoiding — one subscription per distinct read — is what makes the answer trustworthy,
+   * and it is bounded by what the seeds actually asked for: a canvas makes four.
    *
    * Optional because it is a *capability*, not a requirement: a host with no change notification
    * (a fixture, a static export) simply omits it and the graph stays as loaded. Nothing calls this
    * directly — the engine derives what to watch from the reads its seeds performed.
    */
-  watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
+  watch?(request: WatchQuery, onChange: () => void): () => void;
   /** Structured, non-fatal reporting. An expander that cannot answer says so; it does not throw. */
   warn(message: string): void;
+  /**
+   * Say what happened, for somebody watching. Off unless the host has a sink; absent on hosts with
+   * none.
+   *
+   * Distinct from `warn`, which is for a reader: a warning appears in the graph's own status strip
+   * and describes something that went wrong. This is for whoever is debugging *an empty canvas*,
+   * which is the failure a graph is worst at explaining — a seed that read nothing, a seed that read
+   * rows and built no nodes, and a graph whose nodes are all off screen look identical, and the
+   * numbers that tell them apart are known only inside the walk.
+   */
+  trace?(event: string, detail?: Record<string, unknown>): void;
 }
 
 /** A read an expander asks for, in neutral terms. */
@@ -113,6 +133,14 @@ export interface ExpanderQuery {
 }
 
 /**
+ * A read to be watched: the query as it was asked, less the abort signal.
+ *
+ * The signal belongs to the load that made the read and is already spent by the time anything
+ * subscribes; carrying it would tie a standing watch to a cancelled fetch.
+ */
+export type WatchQuery = Omit<ExpanderQuery, 'signal'>;
+
+/**
  * An entity type as the engine sees it — the neutral projection of whatever the backend calls a
  * schema. Enough to build a generic node from an instance nobody wrote code for.
  */
@@ -123,8 +151,19 @@ export interface EntityShape {
   /** Typed relations — the edges of a schema-derived graph. */
   relations: { name: string; target: string; cardinality: 'one' | 'many' }[];
   /**
-   * The property that best names an instance, where the backend declares one.
-   * Used as the default label; falls back to a heuristic when absent.
+   * The property that names an instance — what a node is captioned with.
+   *
+   * The host's answer, resolved once for every surface that needs a record's name rather than
+   * guessed again here (see `nameFromProperties` in `@we/backend-shared`). Absent only when a host
+   * supplies shapes without one, in which case `labelProperty` guesses.
+   */
+  nameProperty?: string;
+  /**
+   * The property a backend dedups instances by, where it declares one.
+   *
+   * **Not the name**, and the distinction is load-bearing: an event's identity is its title and day
+   * glued together, so labelling by it captions a card `Standup|2026-09-14`. Consulted for a label
+   * only after {@link nameProperty} and the conventional names, where it is better than nothing.
    */
   identityProperty?: string;
   /** Human description of the type, where the backend has one. Shown in legends and tooltips. */
@@ -164,5 +203,30 @@ export type ExpanderFactory<TOptions = unknown> = (options?: TOptions) => Expand
 export interface SeedSource {
   id: string;
   description?: string;
+  /**
+   * Options that change how this seed *draws* what it found, never what it fetches.
+   *
+   * A seed's options are one bag holding two kinds of thing. Most of them decide the queries — which
+   * canvas, which types, how many. A few are applied to rows that have already come back: which
+   * cards to mark as suggestions, which to leave off. The host cannot tell them apart, and the
+   * difference decides whether a change to one is worth throwing the graph away for.
+   *
+   * It matters because the naming ones are stable and these are not. The workshop's canvas hands its
+   * suggestion markers straight from the transcriber, so they change every time an extraction pass
+   * stages a record or somebody accepts one — which, with auto-extract on, is every couple of
+   * minutes for the length of a call. Each of those was a full reload: the store cleared, every
+   * query re-run, the old graph left faded on screen under a spinner, for a change that amounted to
+   * fading two cards.
+   *
+   * Naming them here sends those changes down {@link GraphEngine.refresh} instead, which re-reads
+   * and merges without clearing — so nothing on screen goes stale and nothing loses its place. A
+   * seed that names nothing behaves exactly as before.
+   *
+   * Still more work than the change deserves: `refresh` re-runs the queries, where a marker needs no
+   * query at all. The way out of that is for the marker to stop being a seed option and become a
+   * prop of its own, beside `focus` and `folded` — which is a bigger change and is not blocked by
+   * this one.
+   */
+  presentationOptions?: string[];
   seed(options: unknown, context: ExpanderContext, signal?: AbortSignal): Promise<ExpandResult>;
 }

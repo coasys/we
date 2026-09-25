@@ -99,8 +99,8 @@ pnpm dev:tauri     # Tauri development mode
 ```bash
 # Build specific platform
 pnpm build:web
-pnpm build:electron  # Creates AppImage in apps/we-electron/release/
-pnpm build:tauri     # Creates AppImage in apps/we-tauri/src-tauri/target/release/bundle/
+pnpm build:electron  # apps/we-electron/dist-electron/WE-<version>-linux-x86_64.AppImage
+pnpm build:tauri     # apps/we-tauri/src-tauri/target/release/bundle/appimage/WE-<version>-tauri-linux-x86_64.AppImage
 
 # Or build everything
 pnpm build:all

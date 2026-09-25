@@ -8,13 +8,13 @@
  * Key order is the seed's order, and it is load-bearing: it is the default order sections appear in.
  */
 import type { TemplateSchema } from '@we/schema-shared';
-import { aboutView, calendarView, cardsView, globeView, graphView, tasksView } from '@we/template-views';
+import { aboutView, boardsView, calendarView, cardsView, globeView, graphView } from '@we/template-views';
 
 export const bundledViews: Record<string, TemplateSchema> = {
   about: aboutView,
   cards: cardsView,
   graph: graphView,
   globe: globeView,
-  tasks: tasksView,
+  boards: boardsView,
   calendar: calendarView,
 };

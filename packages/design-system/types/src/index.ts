@@ -3,8 +3,10 @@ import type {
   FontFamilyValue,
   FontSizeValue,
   FontWeightToken,
+  GapValue,
   LetterSpacingValue,
   LineHeightValue,
+  PaddingValue,
   RadiusValue,
   ShadowValue,
   SpaceValue,
@@ -142,6 +144,46 @@ export interface DesignSystemProps {
   shadow?: ShadowValue;
   ring?: string;
   transform?: string;
+  /**
+   * Where this sits in the coordinate space it was placed in, and how far it is turned.
+   *
+   * `x` and `y` are offsets from where the element would otherwise be; `rotate` is degrees
+   * clockwise about its own centre. A bare number is px for the offsets and degrees for the
+   * rotation; a string is passed through verbatim and must carry its own unit (`'2rem'`,
+   * `'0.25turn'`).
+   *
+   * ### Why these are props rather than a `transform` string
+   *
+   * The three compose into `transform` and could always have been written as one — `transform:
+   * 'translate(40px, 120px) rotate(-3deg)'` works today. What that spelling costs is everything
+   * downstream of it: a raw transform is opaque to the inspector, which cannot offer a rotation
+   * handle without parsing CSS; opaque to an LLM editing one component of it; and composed by hand
+   * against whatever scale the surface is already applying, which is where the shears come from.
+   * Numbers are the form every one of those consumers wants.
+   *
+   * ### Why translate rather than `top` / `left`
+   *
+   * Four independent reasons, and any one of them decides it. Positioning offsets **do not tier**
+   * (see `mdUpProps`), so translate is the only spelling of "move it" that responds to a
+   * breakpoint at all. It composes with rotation and scale in one property rather than fighting
+   * them. It is compositor-friendly — no layout on a drag frame. And it stays correct inside a
+   * scaled surface, where a pixel offset would be measured in the wrong units.
+   *
+   * ### Two things to know
+   *
+   * A **percentage resolves against the element's own size**, not its parent's — that is what
+   * `translate` does, and it is rarely what somebody writing `x: '50%'` means. Give a coordinate a
+   * length.
+   *
+   * Setting any of them makes the element a **containing block** for absolutely positioned
+   * descendants, as any transform does.
+   *
+   * An explicit `transform` still applies, after these: the element is placed and turned, and then
+   * whatever else it asked for happens in that frame.
+   */
+  x?: number | string;
+  y?: number | string;
+  rotate?: number | string;
   transition?: string;
 
   // Typography
@@ -173,7 +215,7 @@ export interface DesignSystemProps {
   ax?: FlexMainAxis | FlexCrossAxis;
   ay?: FlexMainAxis | FlexCrossAxis;
   wrap?: boolean;
-  gap?: SpaceValue;
+  gap?: GapValue;
   flex?: string;
   /**
    * `flex-shrink`. The shorthand `flex` can express this, but only by also committing to a
@@ -204,13 +246,13 @@ export interface DesignSystemProps {
   my?: SpaceValue;
 
   // Padding
-  p?: SpaceValue;
-  pl?: SpaceValue;
-  pr?: SpaceValue;
-  pt?: SpaceValue;
-  pb?: SpaceValue;
-  px?: SpaceValue;
-  py?: SpaceValue;
+  p?: PaddingValue;
+  pl?: PaddingValue;
+  pr?: PaddingValue;
+  pt?: PaddingValue;
+  pb?: PaddingValue;
+  px?: PaddingValue;
+  py?: PaddingValue;
 
   // Radius
   r?: RadiusValue;
@@ -273,8 +315,38 @@ export interface DesignSystemProps {
    * prefixes of generated CSS on every component, to serve a case that is rare enough that nobody
    * here has wanted it yet. `*UpProps` sets base values at that width; `hoverProps` applies at all
    * widths.
+   *
+   * ### What a tier bag does *not* cover
+   *
+   * **`position`, `top`, `right`, `bottom` and `left` do not tier.** They typecheck here — the bag
+   * is `Partial<DesignSystemProps>`, so it accepts every prop — and they are filtered out before
+   * any variable is written, on both component families. `mdUpProps: { left: '300px' }` therefore
+   * validates, renders, and does nothing at all.
+   *
+   * The exclusion is deliberate and shared with the state bags; see `POSITIONING_VAR_SUFFIXES` in
+   * `@we/design-utils` for why. It is recorded here because that is a fact about the tier axis a
+   * caller has no other way to learn: the type cannot express it, and the failure is silent.
+   *
+   * **Move something at a breakpoint with `x` / `y` / `rotate` instead.** They compose into
+   * `transform`, which does tier — as do `width`, `height` and `zIndex`.
    */
   smUpProps?: Partial<DesignSystemProps>;
   mdUpProps?: Partial<DesignSystemProps>;
   lgUpProps?: Partial<DesignSystemProps>;
 }
+
+/**
+ * What content inside a popover dispatches to close the popover it is in.
+ *
+ * Bubbling and composed, so it crosses the shadow boundaries between a control and the panel it was
+ * slotted into. `we-popover` listens for it; `SignalControl` raises it once a reaction is written,
+ * because a control that has finished what it was opened for should not go on sitting over the row
+ * it belongs to.
+ *
+ * Here rather than in either of them because both ends need the same word, and they are in
+ * different packages: the primitive cannot be imported for its VALUES (its type entry is a global
+ * declaration file, not a module), and a string literal written out twice across a package boundary
+ * is how the next silent mismatch starts. A `toggle` from a tooltip closing a popover that could
+ * not tell it from its own is the version of that mistake this codebase has already paid for.
+ */
+export const POPOVER_DISMISS = 'we-popover-dismiss';

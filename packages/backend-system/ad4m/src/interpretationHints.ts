@@ -18,9 +18,9 @@
  */
 import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type { EntityHintState } from '@we/backend-shared';
-import { getEntitiesForPerspective, getEntityTargetClass } from '@we/entities';
+import { getEntityForDataset, getEntityTargetClass } from '@we/entities';
 
-import { declaredShape } from './sdnaEntities';
+import { declaredShape, forgetStoredShapes } from './sdnaEntities';
 
 /** Marker on the shape node: this shape's hints were tuned by the space and must not be reverted. */
 export const HINTS_CUSTOMIZED_PREDICATE = 'we://interpretation_customized';
@@ -41,7 +41,7 @@ async function locateShape(
   p: PerspectiveProxy,
   entity: string,
 ): Promise<{ shapeUri: string; propNodes: Map<string, string> } | null> {
-  const model = getEntitiesForPerspective(entity, p);
+  const model = getEntityForDataset(entity, p);
   const targetClass = model ? getEntityTargetClass(model) : undefined;
   if (!targetClass) return null;
 
@@ -108,13 +108,18 @@ export async function writeInterpretationHints(
   if (!located) throw new Error(`writeInterpretationHints: no stored shape for "${entity}" in this dataset`);
   const { shapeUri, propNodes } = located;
 
-  if (hints.classHint !== undefined) await replaceLink(p, shapeUri, HINT_PREDICATE, hints.classHint || null);
-  for (const [predicate, hint] of Object.entries(hints.propHints ?? {})) {
-    const node = propNodes.get(predicate);
-    if (!node) throw new Error(`writeInterpretationHints: "${entity}" has no property stored under ${predicate}`);
-    await replaceLink(p, node, HINT_PREDICATE, hint || null);
+  try {
+    if (hints.classHint !== undefined) await replaceLink(p, shapeUri, HINT_PREDICATE, hints.classHint || null);
+    for (const [predicate, hint] of Object.entries(hints.propHints ?? {})) {
+      const node = propNodes.get(predicate);
+      if (!node) throw new Error(`writeInterpretationHints: "${entity}" has no property stored under ${predicate}`);
+      await replaceLink(p, node, HINT_PREDICATE, hint || null);
+    }
+    await replaceLink(p, shapeUri, HINTS_CUSTOMIZED_PREDICATE, 'true');
+  } finally {
+    // The staleness comparison reads these triples; a cached read now predates them.
+    forgetStoredShapes(p);
   }
-  await replaceLink(p, shapeUri, HINTS_CUSTOMIZED_PREDICATE, 'true');
 }
 
 /**
@@ -125,16 +130,20 @@ export async function writeInterpretationHints(
 export async function resetInterpretationHints(p: PerspectiveProxy, entity: string): Promise<void> {
   const located = await locateShape(p, entity);
   if (!located) return;
-  const model = getEntitiesForPerspective(entity, p);
+  const model = getEntityForDataset(entity, p);
   if (!model) return;
   const declared = declaredShape(model);
   const { shapeUri, propNodes } = located;
 
-  await replaceLink(p, shapeUri, HINT_PREDICATE, declared.classHint ?? null);
-  await Promise.all(
-    [...propNodes.entries()].map(([path, node]) =>
-      replaceLink(p, node, HINT_PREDICATE, declared.propHints.get(path) ?? null),
-    ),
-  );
-  await replaceLink(p, shapeUri, HINTS_CUSTOMIZED_PREDICATE, null);
+  try {
+    await replaceLink(p, shapeUri, HINT_PREDICATE, declared.classHint ?? null);
+    await Promise.all(
+      [...propNodes.entries()].map(([path, node]) =>
+        replaceLink(p, node, HINT_PREDICATE, declared.propHints.get(path) ?? null),
+      ),
+    );
+    await replaceLink(p, shapeUri, HINTS_CUSTOMIZED_PREDICATE, null);
+  } finally {
+    forgetStoredShapes(p);
+  }
 }

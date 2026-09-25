@@ -1,6 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
-import { cardList, cardShell, emptyState } from '@we/template-kit';
+import { anchorScope, cardList, cardShell, emptyState } from '@we/template-kit';
 
 interface BlockSectionOptions {
   /** The `contentType` value this section is selected by, from the header's type picker. */
@@ -26,7 +26,9 @@ const blockSection = (opts: BlockSectionOptions): SchemaNode => ({
   props: {
     condition: expr`local.contentType == ${opts.contentType}`,
     then: cardList({
-      query: { entity: opts.entity, order: { createdAt: { $: 'local.sortDirection' } } },
+      // Narrowed to the anchored container's children when the route carries one, and space-wide
+      // when it does not — the renderer drops a scope whose anchor did not resolve.
+      query: { entity: opts.entity, scope: anchorScope(), order: { createdAt: { $: 'local.sortDirection' } } },
       as: 'block',
       // Not search-aware: these sections don't filter on `searchText`, so nothing here can be
       // hidden by the search box.

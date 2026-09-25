@@ -10,7 +10,9 @@
  * it. That is how dragging a node takes precedence over panning the canvas without either behaviour
  * knowing the other exists.
  */
-import type { Behaviour, BehaviourContext, PointerInput } from '@we/graph-protocol';
+import type { Behaviour, BehaviourContext, Point, PointerInput } from '@we/graph-protocol';
+
+import { boundsFromPoints } from './viewport';
 
 /** Pixels of movement before a press becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 3;
@@ -65,13 +67,30 @@ export function panZoomBehaviour(rawOptions?: Record<string, unknown>): Behaviou
 }
 
 /**
- * Drag a node to reposition it. Pins while dragging; releases unless `pin` is set.
+ * Drag a node to reposition it — and every other selected node with it.
  *
  * The grab offset is the whole difference between this feeling like dragging and feeling like
  * teleporting. Setting the node's position *to* the pointer snaps its centre under the cursor the
  * instant you move — so grabbing a node near its edge makes it jump, which reads as a glitch even
  * though the drag then tracks correctly. Recording where inside the node you took hold of it, and
  * preserving that, means the node moves with your hand.
+ *
+ * ## A selection travels together
+ *
+ * Taking hold of a card that is part of a selection drags the whole selection, each member holding
+ * its offset from the one under the pointer. Anything else makes a selection almost useless on a
+ * canvas: the reason to gather six cards is nearly always to put them somewhere, and a drag that
+ * moved one of them and silently dropped the other five from the arrangement would be worse than no
+ * multi-select at all.
+ *
+ * Offsets are captured once, at the press, and never recomputed. Recomputing them mid-drag against
+ * live positions accumulates the floating-point error of every frame, and a group dragged twice
+ * across a canvas visibly spreads apart.
+ *
+ * **A press on a card that is not selected drags only that card**, and leaves the selection alone.
+ * That is `select`'s decision to make, not this one's — it already refuses to treat a drag as a
+ * click — and a gesture that quietly reselected would make the two disagree about what is selected
+ * for the length of the drag.
  */
 export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = { pin: false, ...(rawOptions as { pin?: boolean }) };
@@ -79,10 +98,12 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
   let moved = false;
   /** Node position minus grab position, in world units. Constant for the life of one drag. */
   let grabOffset = { x: 0, y: 0 };
+  /** The rest of the selection, each with its offset from the node under the pointer. */
+  let companions: { id: string; dx: number; dy: number }[] = [];
 
   return {
     id: 'drag-node',
-    description: 'Drag a node to move it, from wherever you took hold of it.',
+    description: 'Drag a node to move it, and the rest of the selection with it.',
     onPointerDown(input, ctx) {
       // Refused at the start of the gesture rather than by discarding its result: a drag that follows
       // the pointer and then snaps back has told you it worked and then taken it away.
@@ -94,6 +115,18 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
       moved = false;
       const at = ctx.positionOf(hit);
       grabOffset = at ? { x: at.x - world.x, y: at.y - world.y } : { x: 0, y: 0 };
+
+      const selection = ctx.selection();
+      companions =
+        at && selection.length > 1 && selection.includes(hit)
+          ? selection.flatMap((id) => {
+              if (id === hit) return [];
+              const other = ctx.positionOf(id);
+              // A selected node with no position is folded away or not laid out yet. It has nowhere
+              // to be moved from, so it is left out rather than dragged to the origin.
+              return other ? [{ id, dx: other.x - at.x, dy: other.y - at.y }] : [];
+            })
+          : [];
       return true;
     },
     onPointerMove(input, ctx) {
@@ -103,29 +136,46 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
       // ordering mistake that swallows the pointer-up again.
       if (input.buttons === 0) {
         dragging = null;
+        companions = [];
         return;
       }
       moved = true;
       const world = ctx.toWorld(input.at);
-      ctx.pin(dragging, { x: world.x + grabOffset.x, y: world.y + grabOffset.y });
+      const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
+      ctx.pin(dragging, at);
+      for (const other of companions) ctx.pin(other.id, { x: at.x + other.dx, y: at.y + other.dy });
       return true;
     },
     onPointerCancel() {
       dragging = null;
+      companions = [];
     },
     onPointerUp(input, ctx) {
       if (!dragging) return;
       const id = dragging;
+      const rest = companions;
       dragging = null;
+      companions = [];
       if (!moved) return;
       const world = ctx.toWorld(input.at);
       const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
       // Released rather than left pinned by default: on an explorer, a dragged node that stays put
-      // fights the layout for every subsequent expansion. A board passes `pin: true`.
-      if (!options.pin) ctx.pin(id, null);
-      // The node's position, not the pointer's — what a board persists has to be where the node
-      // actually ended up.
-      ctx.emit({ type: 'nodeDragEnd', node: { id, kind: 'entity', type: '' }, position: at });
+      // fights the layout for every subsequent expansion. A canvas passes `pin: true`.
+      if (!options.pin) {
+        ctx.pin(id, null);
+        for (const other of rest) ctx.pin(other.id, null);
+      }
+      // The node's position, not the pointer's — what a canvas persists has to be where the node
+      // actually ended up. `moved` carries the same for everything that travelled with it, so one
+      // gesture is reported once and the consumer can write it as one act.
+      ctx.emit({
+        type: 'nodeDragEnd',
+        node: { id, kind: 'entity', type: '' },
+        position: at,
+        ...(rest.length
+          ? { moved: rest.map((other) => ({ id: other.id, position: { x: at.x + other.dx, y: at.y + other.dy } })) }
+          : {}),
+      });
       return true;
     },
   };
@@ -169,6 +219,9 @@ export function selectBehaviour(rawOptions?: Record<string, unknown>): Behaviour
         // win by asking first: an edge passing behind a node is not what you meant to click.
         const edge = ctx.hitTestEdge(ctx.toWorld(input.at));
         if (edge) {
+          // Selected as well as reported. Clicking a line is how its route is opened for editing,
+          // and a click that only emitted would leave the handles unreachable by any gesture.
+          ctx.selectEdge(edge);
           ctx.emit({ type: 'edgeClick', edge: { id: edge, source: '', target: '', type: '' } });
           return true;
         }
@@ -262,6 +315,131 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   };
 }
 
+export interface MarqueeSelectOptions {
+  /**
+   * Whether a *plain* background drag sweeps out a selection instead of panning. Defaults to false.
+   *
+   * Off, the gesture is still reachable by holding the multi-select modifier, which is what makes it
+   * discoverable-by-accident for anyone who has used another canvas. On, it takes the background
+   * outright and panning moves to the modifier — which is the mode a template arms from a visible
+   * toggle, for the reason `connect-nodes` does: a touchscreen has no modifiers, and a gesture with
+   * no control anywhere is a gesture nobody finds.
+   */
+  armed?: boolean;
+}
+
+/**
+ * Sweep a rectangle over the canvas to select what it touches.
+ *
+ * ## Why this claims the background rather than owning a mode
+ *
+ * The obvious alternative was to make a plain left-drag on empty canvas always sweep, the way Figma
+ * and Miro do, and move panning onto space-drag. That is a bigger change than it looks: panning is
+ * this canvas's most-used gesture, it is the only one that works identically under a finger, and a
+ * template cannot opt out of a decision made in the engine. So the sweep is *additive* — it takes
+ * the press only when the modifier is down or a template has armed it, and otherwise the press falls
+ * through to `pan-zoom` exactly as before.
+ *
+ * **List it before `pan-zoom`.** Both want a press on empty canvas and dispatch stops at the first
+ * behaviour that claims, so listed after it this never runs at all — the same trap `select`
+ * documents, and the same silent failure: the canvas pans, no rectangle appears, and nothing
+ * anywhere says why.
+ *
+ * ## It selects while you sweep, not on release
+ *
+ * Every move recomputes the whole selection from the rectangle rather than adding to it, which is
+ * what lets the sweep *shrink*: pull the corner back over a card and its ring goes away again. The
+ * additive spelling — select what is inside, every frame — can only ever grow, so overshooting by a
+ * card would leave it selected with no way back but starting over.
+ *
+ * The set the sweep starts from is captured at the press. With the modifier held that is whatever
+ * was already selected, so a sweep adds to a selection built by clicking; without it, nothing.
+ *
+ * ## A press that never travels is not a sweep, and this has to say so itself
+ *
+ * Below the drag threshold nothing is drawn and no rectangle is ever selected from. But clearing the
+ * selection on such a press is **this behaviour's job**, not `select`'s, and that is the one piece of
+ * plumbing here that is not obvious.
+ *
+ * `onPointerDown` is not a broadcast phase: claiming it stops `select` seeing the press at all, so
+ * `select` has nothing to compare the release against and its background-clear never runs. Armed,
+ * that made the canvas impossible to deselect on — every click on empty space left the previous
+ * selection ringed, with no gesture anywhere that would drop it.
+ *
+ * So a press that went nowhere clears, exactly as `select` would have. With the modifier held it
+ * does not: that press was reaching for "add to what I have", and answering it by throwing the
+ * selection away is the opposite of what was asked.
+ */
+export function marqueeSelectBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
+  const options = { armed: false, ...(rawOptions as MarqueeSelectOptions) };
+  /** Where the sweep began, in world units — see `drawMarquee` for why this is not screen space. */
+  let from: Point | null = null;
+  /** What was selected when it began, which an additive sweep adds to. */
+  let base: string[] = [];
+  /** Screen-space press point, for the threshold — a world-space one would change meaning with zoom. */
+  let pressedAt: Point | null = null;
+  let sweeping = false;
+  /** Whether the press was adding to a selection, remembered so the release can tell. */
+  let extending = false;
+
+  function reset(ctx: BehaviourContext): void {
+    from = null;
+    pressedAt = null;
+    sweeping = false;
+    extending = false;
+    base = [];
+    ctx.drawMarquee(null);
+  }
+
+  return {
+    id: 'marquee-select',
+    description: 'Drag a rectangle over empty canvas to select everything it touches.',
+    onPointerDown(input, ctx) {
+      const adding = input.shiftKey || input.ctrlKey;
+      if (!options.armed && !adding) return;
+      // A press on a card is that card's, whatever mode this is in: sweeping out from under a node
+      // would make it impossible to drag one while the tool is armed.
+      if (ctx.hitTest(ctx.toWorld(input.at)).length) return;
+      pressedAt = input.at;
+      from = ctx.toWorld(input.at);
+      extending = adding;
+      base = adding ? ctx.selection() : [];
+      sweeping = false;
+      return true;
+    },
+    onPointerMove(input, ctx) {
+      if (!from || !pressedAt) return;
+      // The same guard `drag-node` carries: no button held means no gesture, whatever this thinks.
+      if (input.buttons === 0) {
+        reset(ctx);
+        return;
+      }
+      if (!sweeping) {
+        if (Math.hypot(input.at.x - pressedAt.x, input.at.y - pressedAt.y) <= DRAG_THRESHOLD) return true;
+        sweeping = true;
+      }
+      const bounds = boundsFromPoints(from, ctx.toWorld(input.at));
+      ctx.drawMarquee(bounds);
+      // Recomputed from the base every frame rather than accumulated — see the note above.
+      ctx.select([...new Set([...base, ...ctx.within(bounds)])], 'replace');
+      return true;
+    },
+    onPointerCancel(_input, ctx) {
+      reset(ctx);
+    },
+    onPointerUp(_input, ctx) {
+      if (!from) return;
+      const swept = sweeping;
+      const wasExtending = extending;
+      reset(ctx);
+      // A press on empty canvas that went nowhere means "deselect" — and `select` never saw it, so
+      // saying so is this behaviour's job. See the note above.
+      if (!swept && !wasExtending) ctx.select([]);
+      return true;
+    },
+  };
+}
+
 /** Double-click a node to open or close it — the gesture that drives resolution. */
 export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = (rawOptions ?? {}) as { direction?: 'in' | 'out' | 'both' };
@@ -286,7 +464,7 @@ export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown
  * quietest kind of gap — everything typechecks, the wiring reads as complete, and the gesture just
  * does nothing.
  *
- * Emits and does nothing else. What opening a node *means* is the consumer's: a board opens the
+ * Emits and does nothing else. What opening a node *means* is the consumer's: a canvas opens the
  * card, an explorer might do what `expand-on-double-click` does instead. Which is why the two are
  * separate behaviours rather than one with a mode — a template lists whichever it means, and
  * listing both would have the first claim the gesture.
@@ -357,6 +535,7 @@ export function defaultBehaviours() {
     'connect-nodes': connectNodesBehaviour,
     'canvas-double-click': canvasDoubleClickBehaviour,
     'node-double-click': nodeDoubleClickBehaviour,
+    'marquee-select': marqueeSelectBehaviour,
     select: selectBehaviour,
     'expand-on-click': expandOnClickBehaviour,
     'expand-on-double-click': expandOnDoubleClickBehaviour,
@@ -376,7 +555,7 @@ export function defaultBehaviours() {
  * progress. It is the wrong rule for the event that *ends* one: a behaviour holding state across a
  * gesture has to be told the gesture finished, whether or not something ahead of it also cared.
  *
- * Getting this wrong produced a genuinely confusing bug. On a board the order is
+ * Getting this wrong produced a genuinely confusing bug. On a canvas the order is
  * `[pan-zoom, select, drag-node]`; a plain click on a node let `select` claim the pointer-up, so
  * `drag-node` never learned the press had ended, kept its node latched, and the next mouse movement —
  * with no button held — dragged it. From the outside: click a node once and it sticks to the cursor,

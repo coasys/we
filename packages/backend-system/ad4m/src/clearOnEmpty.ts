@@ -28,6 +28,25 @@
  * `setProperty` was ever going to reach by adjusting a literal. So this wraps it: `''` removes the
  * links carrying that property's predicate, and everything else is passed through untouched.
  *
+ * ## Wrapping `setProperty` was not enough, and the tests could not tell
+ *
+ * `innerUpdate` — which is what `save()` and the static `update()` both run — filters the fields it
+ * writes with `value !== undefined && value !== null && value !== ""` **before** calling
+ * `setProperty`. So the patch above was correct, tested, and never once reached on the path every
+ * caller in WE actually uses: the four bugs listed above went on being bugs, and a fifth (a state's
+ * colour reset in the workshop's key) was written against a guarantee that did not hold.
+ *
+ * The tests could not catch it because they call `setProperty` directly on a stand-in — which is
+ * the right way to test the patch and says nothing about whether anything calls it. That is the
+ * general hazard with patching somebody else's prototype: the seam is only where you think it is
+ * until the version underneath moves it, and nothing in this repo compiles against its internals.
+ *
+ * So `innerUpdate` is wrapped too. Before the original runs, every **dirty property** whose value
+ * is now `''` has its links removed; the original then skips those fields exactly as it did, so
+ * nothing is written twice and no behaviour but the clearing changes. Relations are left alone —
+ * an empty string is not a relation value, and `setRelationValues([])` is already how a relation is
+ * emptied — as are flag and read-only properties, which are immutable after creation.
+ *
  * In the AD4M adapter rather than upstream because it is WE's contract being repaired, not AD4M's —
  * and in one prototype patch rather than in a base class because the model classes are generated
  * from the manifest and extend `Ad4mModel` directly. One place, one reason, applied to every model
@@ -57,9 +76,12 @@ interface ModelInternals {
   _baseExpression?: string;
   _snapshot?: unknown;
   getPropertyMetadata?: (key: string) => { through?: string; flag?: unknown; readOnly?: unknown } | undefined;
+  /** The fields that differ from the snapshot taken at the last hydration. Properties and relations. */
+  changedFields?: () => string[];
 }
 
 type SetProperty = (this: unknown, key: string, value: unknown, batchId?: string) => Promise<void>;
+type InnerUpdate = (this: unknown, setProperties?: boolean, batchId?: string) => Promise<void>;
 
 /** Marker so a second call is a no-op — the adapter can be initialised more than once per process. */
 const PATCHED = Symbol.for('we.ad4m.clearOnEmpty');
@@ -91,6 +113,22 @@ async function clearProperty(model: ModelInternals, key: string): Promise<void> 
  * Called once when the adapter builds its ports, so every model class — generated, compiled from a
  * manifest, or built from foreign SHACL — inherits it, including classes that do not exist yet.
  */
+/**
+ * The properties a save is about to skip because they have been emptied.
+ *
+ * Dirty, so an untouched optional field that has always been empty costs nothing; a *property*
+ * rather than a relation, since an empty string is not a relation value; and neither a flag nor a
+ * read-only field, which `innerUpdate` refuses to write for reasons that apply equally to clearing.
+ */
+function emptiedProperties(model: ModelInternals): string[] {
+  const fields = model.changedFields?.() ?? [];
+  return fields.filter((key) => {
+    if ((model as unknown as Record<string, unknown>)[key] !== '') return false;
+    const meta = model.getPropertyMetadata?.(key);
+    return !!meta?.through && !meta.flag && !meta.readOnly;
+  });
+}
+
 export function installClearOnEmpty(model: typeof Ad4mModel): void {
   const prototype = model.prototype as unknown as Record<string | symbol, unknown>;
   if (prototype[PATCHED]) return;
@@ -106,6 +144,27 @@ export function installClearOnEmpty(model: typeof Ad4mModel): void {
     }
     return original.call(this, key, value, batchId);
   } as SetProperty;
+
+  /*
+    And the path that never calls it. See "Wrapping `setProperty` was not enough" above: `save()`
+    filters `''` out before `setProperty` is reached, so the clearing has to happen beside that
+    filter rather than behind it.
+
+    Before the original rather than after: the original writes the fields that *do* have values, and
+    a clear that ran afterwards would be racing a write it cannot see. Nothing is written twice —
+    the original still skips every field cleared here.
+  */
+  const originalInnerUpdate = prototype.innerUpdate as InnerUpdate;
+  if (typeof originalInnerUpdate === 'function') {
+    prototype.innerUpdate = async function patched(this: ModelInternals, setProperties = true, batchId?: string) {
+      // `setProperties: false` is the create path, where `create_subject` writes the values map and
+      // there is nothing stored to remove — the same reason a record with no snapshot skips.
+      if (setProperties && this._snapshot) {
+        for (const key of emptiedProperties(this)) await clearProperty(this, key);
+      }
+      return originalInnerUpdate.call(this, setProperties, batchId);
+    } as InnerUpdate;
+  }
 
   prototype[PATCHED] = true;
 }

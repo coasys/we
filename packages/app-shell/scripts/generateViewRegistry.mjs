@@ -31,7 +31,7 @@ const CATALOGUE = {
   cards: { module: '@we/template-views', export: 'cardsView' },
   graph: { module: '@we/template-views', export: 'graphView' },
   globe: { module: '@we/template-views', export: 'globeView' },
-  tasks: { module: '@we/template-views', export: 'tasksView' },
+  boards: { module: '@we/template-views', export: 'boardsView' },
   calendar: { module: '@we/template-views', export: 'calendarView' },
   flux: { module: '@we/template-views', export: 'fluxView' },
 };

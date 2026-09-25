@@ -39,6 +39,7 @@ const CATALOGUE = {
   youtube: { module: '@we/template-showcase', export: 'youtubeTemplate' },
   kanban: { module: '@we/template-showcase', export: 'kanbanTemplate' },
   events: { module: '@we/template-showcase', export: 'eventsTemplate' },
+  scrapbook: { module: '@we/template-showcase', export: 'scrapbookTemplate' },
   workshop: { module: '@we/template-showcase', export: 'workshopTemplate' },
 };
 

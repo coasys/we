@@ -1,7 +1,7 @@
 # The graph system
 
 A general-purpose graph engine: knowledge maps, schema maps, hierarchies, cluster maps, static
-diagrams — and, later, free-positioned boards. One engine, configured as data.
+diagrams — and, later, free-positioned canvases. One engine, configured as data.
 
 ## The idea in one paragraph
 
@@ -29,13 +29,13 @@ imports a backend.
 
 ## Two layers, deliberately
 
-- **Scene** — `Viewport`, `SpatialIndex`, selection, positions. Everything needed to draw and interact
-  with a set of placed nodes, knowing nothing about where they came from.
+- **Scene** — `Viewport`, `SpatialIndex`, selection, positions, `foldGraph`. Everything needed to draw
+  and interact with a set of placed nodes, knowing nothing about where they came from.
 - **Exploration** — `GraphStore`, `ExpansionState`, `GraphEngine`. Expanders, expansion state,
   reference-counted collapse, bundling, budgets.
 
-A board uses the scene and none of the exploration. A knowledge map uses both. Keeping them apart is
-what stops a board dragging in expansion state it has no use for, and stops undo and marquee selection
+A canvas uses the scene and none of the exploration. A knowledge map uses both. Keeping them apart is
+what stops a canvas dragging in expansion state it has no use for, and stops undo and marquee selection
 leaking into an explorer that will never want them.
 
 **Before extending any of this, read [`CONVENTIONS.md`](./CONVENTIONS.md)** — what belongs in the API
@@ -62,6 +62,16 @@ collapsed node as a weighted bundle, so the view says "twelve things in here rel
 of showing an isolated dot. That mechanism is also all a cluster map needs — a cluster is a collapsed
 synthetic node.
 
+**Folding is not collapsing, and lives on the other side of that line.** Collapsing is about
+resolution — an explorer drops what it fetched, and the nodes leave the store. Folding (`fold.ts`,
+`GraphEngine.setFolded`, the `folded` prop) is about reading: everything stays loaded and a reader
+hides part of it, so nothing is re-queried, nothing is re-laid-out, and unfolding puts every card back
+exactly where it was rather than wherever a layout would now put it. On a canvas, where position _is_
+the work, that is the whole point. It borrows both of collapse's rules — never take a card another
+still points at, and say what went away — and answers them from the edges instead of from provenance,
+since a canvas has none. Hidden is spelled _no position_, which the three things downstream of a
+position already read as absent: no hit area, no routed lines, nothing drawn.
+
 **Expansion is paged and budgeted.** One click on a hub with four thousand neighbours must not be able
 to kill the frame. `ExpandResult.total` is reported so the UI can say what it is not showing, and the
 node ceiling surfaces in the status strip rather than truncating in silence.
@@ -78,7 +88,7 @@ difference between "not here yet" and "nothing there", and without it every expa
 
 ## What is deliberately not here
 
-- **Boards.** The engine supports manual layout and a board is the obvious next mode, but a freeform
+- **Canvases.** The engine supports manual layout and a canvas is the obvious next mode, but a freeform
   canvas is its own project — undo, marquee, snapping, z-order, text editing on a transformed surface
   — and it needs durable entities this module does not yet declare.
 - **A dense canvas renderer.** The node-renderer registry and core-owned hit-testing exist so it can

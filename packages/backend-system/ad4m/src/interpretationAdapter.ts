@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, type LinkExpression, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationActivity,
@@ -28,13 +28,36 @@ import type {
   InterpretationProposal,
   InterpretationRequest,
   InterpretationResult,
+  InterpretationScope,
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
 import { trace } from '@we/backend-shared';
-import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
+import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
+
+import { recordMissingMethod } from './missingMethods';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
+
+/** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
+const OVERLAY_KIND_PREDICATE = 'ad4m://interp/kind';
+
+/**
+ * Answer `false` where the executor refuses because the suggestion is not staged any more.
+ *
+ * The port promises "whether anything changed", and the executor throws instead. In a shared space
+ * that is the ordinary case rather than an error: two members looking at the same card, or one whose
+ * screen had not caught up, press on a suggestion somebody else already settled — and a throw left
+ * that card impossible to clear from the second screen.
+ */
+async function alreadyResolvedIsFalse(decide: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await decide();
+  } catch (error) {
+    if (/no overlay on/.test(error instanceof Error ? error.message : String(error))) return false;
+    throw error;
+  }
+}
 
 /**
  * Fallback URI namespace for instances minted without a `parent` to hang them under.
@@ -128,24 +151,50 @@ function withTime(turns: TranscriptTurn[]): { speaker: string; text: string }[] 
 }
 
 /**
- * Build predicate → property-name over every shape the perspective knows.
+ * Predicate → property-name, per model, with a flat table for a base whose model is unknown.
  *
- * Flat across classes rather than per class, because an overlay names a base and its predicates but
- * not the class it belongs to, so there is nothing to index by. Collisions are benign in the only
- * way they occur in practice: `we://title` is `title` on `TaskBlock` and on `EventBlock` alike. Two
- * schemas that genuinely disagreed about what one predicate is called would resolve to whichever was
- * registered first — worth knowing, not worth a lookup that cannot be made correct without the class.
+ * ## Why per model, when it used to be flat
+ *
+ * Reading a predicate back to a name is one-to-many, and only the class settles which. Predicates
+ * are shared *on purpose* — `entities/CONVENTIONS.md` says to prefer generic reusable ones, because
+ * that is what lets `?node we://title ?t` span every kind of block — so several models legitimately
+ * name one predicate differently: `we://title` is `title` on eight models and `label` on
+ * `EmbedBlock` and `Relationship`.
+ *
+ * A flat table has to pick one, and picked whichever registered first. `Relationship` is third in
+ * `SPACE_MODELS`, so `we://title` resolved to `label` for **every proposal in the app** — a task's
+ * title was printed under a relationship's field name, and the summary that leads with `title` then
+ * matched nothing and fell through to raw map order. Neither symptom pointed at the cause.
+ *
+ * So the tables are built per model and indexed by the class the base actually belongs to.
+ * {@link flat} remains for a base that could not be classified: it is exactly the old behaviour, and
+ * it is correct for every predicate only one model declares — which is 142 of 146 of them.
  */
-async function predicateNames(perspective: PerspectiveProxy): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+interface NameTables {
+  /** Model name → its own predicate → name mapping. */
+  byEntity: Map<string, Map<string, string>>;
+  /** First-registered-wins across every model, for a base whose class is unknown. */
+  flat: Map<string, string>;
+}
+
+async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables> {
+  const tables: NameTables = { byEntity: new Map(), flat: new Map() };
+
+  const absorb = (entity: string, properties: { path?: string; name?: string }[]) => {
+    const own = tables.byEntity.get(entity) ?? new Map<string, string>();
+    tables.byEntity.set(entity, own);
+    for (const p of properties) {
+      if (!p.path || !p.name) continue;
+      own.set(p.path, p.name);
+      if (!tables.flat.has(p.path)) tables.flat.set(p.path, p.name);
+    }
+  };
 
   for (const name of getRegisteredEntityNames()) {
     const shape = (
       getEntity(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
     ).generateSHACL?.().shape;
-    for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
-      if (p.path && p.name && !map.has(p.path)) map.set(p.path, p.name);
-    }
+    absorb(name, (shape?.properties ?? []) as { path?: string; name?: string }[]);
   }
 
   // Shapes only this perspective has — a module's entities, or a foreign app's. Best-effort: a
@@ -156,15 +205,64 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<Map<string
     for (const shapeName of await perspective.getShaclNames()) {
       if (native.has(shapeName)) continue; // already covered above, without the round trip
       const shape = await perspective.getShacl(shapeName);
-      for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
-        if (p.path && p.name && !map.has(p.path)) map.set(p.path, p.name);
-      }
+      absorb(shapeName, (shape?.properties ?? []) as { path?: string; name?: string }[]);
     }
   } catch {
     // Leave what we have.
   }
 
-  return map;
+  return tables;
+}
+
+/**
+ * The two hard-wired classes the interpretation machinery instantiates over a base it is
+ * describing, rather than models anybody proposed.
+ *
+ * The overlay is deliberately written **over the same base URI** as the instance it annotates (see
+ * `overlay/mod.rs`: "one extra subject class instantiated over the same base URI"). So asking what
+ * classes a staged base belongs to answers with the record's model *and* `InterpretationOverlay`,
+ * and the ordering between them is by how many triples each requires — which is not a fact anybody
+ * chose and could put the overlay first. Naming a proposal's model `InterpretationOverlay` would be
+ * absurd on screen and would send an edit to a class with none of the fields being edited.
+ */
+const INTERPRETATION_CLASSES = new Set(['InterpretationOverlay', 'InterpretationRun']);
+
+/**
+ * Which model each of these bases is an instance of.
+ *
+ * Answered by the executor, which decides membership structurally — a base belongs to every class
+ * whose required triples it carries — and returns them most specific first. That is the right
+ * question here: a staged `create` is a fully written record (the engine writes real values when no
+ * human owns them and keeps the overlay as provenance), so it carries its model's flags like any
+ * other instance.
+ *
+ * One RPC for the whole list rather than one per proposal, because the review list is a handful of
+ * rows arriving together and a round trip each would make the panel's open cost scale with how
+ * productive the last pass was.
+ *
+ * Degrades to an empty map on **any** failure, which is the honest answer for the two ways this can
+ * go wrong and cannot be told apart from here: an executor predating `subjectClassesOf` refuses the
+ * method, and a working one can still fail transiently. Neither is worth losing the review list
+ * over — a proposal with no model is still a real decision waiting on somebody, and the caller falls
+ * back to the flat name table. Unlike `runtimeSupportsInterpretation` this cannot be probed by
+ * feature-detecting the client: the method exists on every `PerspectiveProxy` we compile against,
+ * so only the call itself can tell us.
+ */
+async function entitiesOf(perspective: PerspectiveProxy, bases: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!bases.length) return out;
+  let classes: Record<string, string[]>;
+  try {
+    classes = await perspective.subjectClassesOf(bases);
+  } catch (error) {
+    if (!recordMissingMethod(error)) console.warn('interpretation: could not classify staged records —', error);
+    return out;
+  }
+  for (const [base, names] of Object.entries(classes ?? {})) {
+    const model = (names ?? []).find((name) => !INTERPRETATION_CLASSES.has(name));
+    if (model) out.set(base, model);
+  }
+  return out;
 }
 
 /**
@@ -182,6 +280,39 @@ function decode(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+/**
+ * What kind of suggestion an overlay is, as the two words it means.
+ *
+ * ## Why this has to decode at all
+ *
+ * The executor documents `kind` as `"create" | "update"`, and stores it as a link like every other
+ * property — whose target is an encoded literal, and for a subject written through `create_subject`
+ * a signed expression envelope (`{ author, timestamp, data, proof }`) inside it. `list_overlays`
+ * decodes the staged *values* and passes `kind` through as the raw link target, so what arrives here
+ * is a `literal:json:…` string that equals neither word.
+ *
+ * Nothing compared it until suggestions were split into records a pass made and changes to agreed
+ * records. Then every comparison failed: no record counted as a draft, so every suggestion on every
+ * board and canvas looked accepted, and no change was ever recognised as one.
+ *
+ * Decoded here, unwrapping the envelope the way the executor's own `parse_literal_value` does, and a
+ * few levels deep in case the envelope's data is itself a literal. Anything that is not `update` is
+ * `create`: provisional is the safe misreading — a draft drawn as a draft — where the other way
+ * round draws a suggestion as agreed, which is the bug this exists to end. Correct against an
+ * executor that already decodes it, too: a bare word passes through untouched.
+ */
+export function overlayKind(raw: unknown): 'create' | 'update' {
+  let value = raw;
+  for (let depth = 0; depth < 3; depth++) {
+    const decoded = decode(value);
+    const unwrapped =
+      decoded && typeof decoded === 'object' && 'data' in decoded ? (decoded as { data: unknown }).data : decoded;
+    if (unwrapped === value) break;
+    value = unwrapped;
+  }
+  return value === 'update' ? 'update' : 'create';
 }
 
 /**
@@ -242,6 +373,40 @@ async function assertEndpointsAreLocal(perspective: PerspectiveProxy, overlayId:
 }
 
 /**
+ * Which staged bases belong to one node — the test behind `proposals`' `scope`.
+ *
+ * ## Two ways to belong, and both are needed
+ *
+ * **The link**, which is what containment actually is: a pass parents what it minted onto the
+ * collection it read, and that link is what every route in WE reaches the record by.
+ *
+ * **The namespace**, for the window before that link exists. An instance is minted under a prefix
+ * derived from its parent, and the parenting is a separate write afterwards — on the watch path, a
+ * write on whichever peer ran the pass. So there is a real interval, and a real failure mode, where
+ * a record of *this* call is not yet linked to it. `reconcile` repairs exactly that case and keys on
+ * exactly this prefix; a scope that admitted only the link would hide a suggestion the reviewer is
+ * the right person to see, which is the failure this narrowing must not introduce.
+ *
+ * One read, not one per overlay: the parent's children are fetched once and the prefix is a string
+ * test. Falls open — everything passes — if the children cannot be read at all, because a review
+ * list that silently empties on a failed read is worse than one showing too much.
+ */
+async function scopeFilter(
+  perspective: PerspectiveProxy,
+  scope: InterpretationScope,
+): Promise<(base: string) => boolean> {
+  const prefix = `${DEFAULT_BASE_PREFIX}${encodeURIComponent(scope.parent.id)}/`;
+  let contained: Set<string>;
+  try {
+    const links = await perspective.get(new LinkQuery({ source: scope.parent.id, predicate: scope.parent.predicate }));
+    contained = new Set(links.map((link) => link.data.target));
+  } catch {
+    return () => true;
+  }
+  return (base: string) => contained.has(base) || base.startsWith(prefix);
+}
+
+/**
  * Whether the connected runtime actually implements interpretation.
  *
  * The methods are declared as part of `PerspectiveProxy` (see `interpretationOptions.d.ts` in
@@ -261,28 +426,14 @@ const UNSUPPORTED =
   'This runtime does not support interpretation. It needs an AD4M build with the generic ' +
   'extraction stack; everything else in the app works normally without it.';
 
-/**
- * Whether a rejection means "this executor has never heard of that method".
- *
- * The WS dispatcher answers an unregistered method with a 404 whose message is
- * `Unknown type: <method>`, and that is a categorically different failure from the call being
- * attempted and going wrong: it says the node is running a build that predates the feature, and no
- * retry, model configuration or permission grant will change it.
- *
- * Both the status and the message are checked because only one of them is guaranteed to survive.
- * The client raises a typed error carrying `status`, but that type is not exported from the package
- * root, and an error crossing a transport or a rewrapping layer can arrive as a plain `Error` with
- * the text intact and the status gone.
- *
- * Deliberately narrow. Anything broader would let an unrelated outage — a busy node, a dropped
- * socket — be recorded as a permanent capability gap, which is the one mistake here that a user
- * cannot recover from without reloading.
- */
-function isMissingHandler(error: unknown): boolean {
-  const status = (error as { status?: unknown; code?: unknown })?.status ?? (error as { code?: unknown })?.code;
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return status === 404 || /unknown type/i.test(message);
-}
+/*
+  `isMissingHandler` used to live here. It now lives in `missingMethods.ts` as
+  `recordMissingMethod`, which answers the same question and keeps the method name it reads out of
+  the message on the way past, so every guard below feeds one list the settings page can show.
+
+  Renamed at the call sites rather than aliased: the function has a side effect now, and a
+  question-shaped name over a recording call is how the next reader gets surprised.
+*/
 
 /**
  * Whether the runtime can hold a standing watch, probed separately from `interpret`.
@@ -409,7 +560,49 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     this client has never run at all, so *some* path has to repair unparented records after the
     fact, and once that path exists this map is only an optimisation on the common case.
   */
-  const watchParents = new Map<string, { id: string; predicate: string }>();
+  const watchParents = new Map<
+    string,
+    { id: string; predicate: string; provenance?: { id: string; predicate: string } }
+  >();
+
+  /**
+   * The collection a *one-shot* pass is reading, while it reads it.
+   *
+   * `watchParents` answers the same question for a standing watch and cannot answer it here: a
+   * one-shot registers no processor, so its events arrive under an observation id nothing else has
+   * ever seen. Filled when the run starts and dropped when it ends, because unlike a watch there is
+   * no later event to need it — and a map that only grew would hold a row per press for the life of
+   * the session.
+   */
+  const oneShotParents = new Map<string, string>();
+
+  /**
+   * What the model was asked and answered, for a one-shot still running.
+   *
+   * The events carrying it arrive on the observation stream while `runInterpretation` is still
+   * awaiting, so the run itself never sees them — it gets a list of ids and nothing about how they
+   * were arrived at. Held here for the length of the pass and handed back with the result, which is
+   * what lets a caller write the whole pass down in one go rather than finding the row again later.
+   *
+   * Alongside `oneShotParents` rather than folded into it, because they are filled by different
+   * things: one by the caller starting a run, the other by the executor part-way through it.
+   */
+  const oneShotExchange = new Map<string, { prompt?: string; response?: string }>();
+
+  /**
+   * Where a pass came from, for a consumer keeping a history — see `collection` on the activity row.
+   *
+   * Two lookups because there are two ways a pass starts, and the id it reports itself under differs
+   * accordingly: a watched call's processor id, or the observation id minted for a single press.
+   * Neither map knows about a pass on somebody else's node, which is right — a client with nothing
+   * to write the row against should say nothing rather than guess a collection.
+   */
+  const passOrigin = (processorId: string): { collection?: string; trigger?: 'manual' | 'auto' } => {
+    const oneShot = oneShotParents.get(processorId);
+    if (oneShot) return { collection: oneShot, trigger: 'manual' };
+    const watched = watchParents.get(processorId);
+    return watched ? { collection: watched.id, trigger: 'auto' } : {};
+  };
 
   /*
     What the executor turned out to support, once anything has actually asked it.
@@ -535,6 +728,22 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         detail: event.detail,
       });
 
+      /*
+        Keep a one-shot's exchange where the run that started it can reach it.
+
+        Outside the `phase` gate below, because the two steps carrying the exchange have no phase of
+        their own — they are progress within a running pass rather than a change of state — so the
+        gate would drop exactly the events this needs. Keyed on the observation id, which is the
+        pass id the run minted, so nothing here touches a watch's passes.
+      */
+      const exchangeId = passIdOf(event);
+      if (oneShotParents.has(exchangeId) && (event.llmInput || event.llmOutput)) {
+        const held = oneShotExchange.get(exchangeId) ?? {};
+        if (event.llmInput) held.prompt = event.llmInput;
+        if (event.llmOutput) held.response = event.llmOutput;
+        oneShotExchange.set(exchangeId, held);
+      }
+
       const phase = phaseOf(event.step);
       if (phase) {
         const passId = passIdOf(event);
@@ -552,6 +761,16 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           at: Date.now(),
           ids: event.step === 'processed' ? (event.bases ?? []) : undefined,
           detail: event.detail,
+          /*
+            What this pass read, and what started it — the two facts a durable history needs and the
+            only two only this side can supply.
+
+            `watchParents` is the map the parenting below already relies on, so a watched call has
+            its collection here; a one-shot registers no watch and is answered by `oneShotParents`,
+            which the run itself fills in. Absent for a pass this client did not start and is not
+            watching, which is the honest answer — there is nothing to write it against.
+          */
+          ...passOrigin(event.processorId),
           /*
             Only the field this event actually carries.
 
@@ -577,6 +796,19 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       for (const base of event.bases ?? []) {
         try {
           await perspective.add(new Link({ source: parent.id, predicate: parent.predicate, target: base }));
+          /*
+            And the second link, saying this record was *produced* here rather than merely put here.
+
+            Written in the same try as the containment one and after it, because containment is the
+            load-bearing half: a record that is parented but unmarked is listed everywhere and merely
+            loses its provenance, where one marked but unparented would be invisible to every surface
+            that reaches content by traversal.
+          */
+          if (parent.provenance) {
+            await perspective.add(
+              new Link({ source: parent.provenance.id, predicate: parent.provenance.predicate, target: base }),
+            );
+          }
         } catch (error) {
           // One failed link should not cost the rest of the batch its parent.
           console.warn('[interpretation] could not parent an auto-extracted record', base, error);
@@ -627,7 +859,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         await proxy(dataset).interpretationOverlays();
         executorSupports = true;
       } catch (error) {
-        if (!isMissingHandler(error)) {
+        if (!recordMissingMethod(error)) {
           // Inconclusive. Left unset so the next dataset change asks again.
           trace('interpretation', 'probe:inconclusive', { error: String(error) });
           return true;
@@ -674,47 +906,78 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       const observed = runtimeSupportsObservation(dataset);
       if (observed) await attachListener(perspective);
       const passId = `one-shot/${crypto.randomUUID()}`;
+      // What this pass is reading, for as long as it reads it — see `oneShotParents`. A press with
+      // no parent has no call to be about, which is a caller doing something other than reading a
+      // conversation, and it writes no history.
+      if (request.parent) oneShotParents.set(passId, request.parent.id);
 
       /*
-        The backstop for a node the probe never got to ask.
+        Forget this pass however it ends.
 
-        `checkAvailability` runs when the dataset changes, but a session can reach here first — the
-        probe is one round trip and somebody can press Extract during it — and a node can in
-        principle be swapped underneath a live connection. Catching it here means the answer is
-        learned from whichever call gets there first, and the message a person sees is the one
-        written for it rather than `Unknown type: perspective.runInterpretation`.
+        `try/finally` rather than a delete beside the return, because a press has four other exits —
+        a runtime that turns out not to interpret, an abort, a failed parenting write, and whatever
+        `interpretationOverlays` may throw — and every one of them used to leave the pass's parent
+        and its whole prompt in a map for the life of the session. The exchange is read inside the
+        block, so the return value is assembled before this runs.
       */
-      let ids: string[];
       try {
-        ids = await runObserved(
-          perspective,
-          withTime(turns),
-          basePrefix,
-          request.classes,
-          observed ? passId : undefined,
-        );
-      } catch (error) {
-        if (!isMissingHandler(error)) throw error;
-        executorSupports = false;
-        throw new Error(UNSUPPORTED);
-      }
-      if (ctl?.signal?.aborted) return { turns: turns.length, ids: [], proposed: [] };
+        /*
+          The backstop for a node the probe never got to ask.
 
-      // Parent *after* the pass, because the engine has no notion of one. Sequential rather than
-      // Promise.all: these are writes to one perspective, and a burst of concurrent link adds buys
-      // nothing over a handful of items.
-      if (request.parent && ids.length) {
-        for (const id of ids) {
-          await perspective.add(
-            new Link({ source: request.parent.id, predicate: request.parent.predicate, target: id }),
+          `checkAvailability` runs when the dataset changes, but a session can reach here first — the
+          probe is one round trip and somebody can press Extract during it — and a node can in
+          principle be swapped underneath a live connection. Catching it here means the answer is
+          learned from whichever call gets there first, and the message a person sees is the one
+          written for it rather than `Unknown type: perspective.runInterpretation`.
+        */
+        let ids: string[];
+        try {
+          ids = await runObserved(
+            perspective,
+            withTime(turns),
+            basePrefix,
+            request.classes,
+            observed ? passId : undefined,
           );
+        } catch (error) {
+          if (!recordMissingMethod(error)) throw error;
+          executorSupports = false;
+          throw new Error(UNSUPPORTED);
         }
-      }
+        if (ctl?.signal?.aborted) return { turns: turns.length, ids: [], proposed: [] };
 
-      // Which of these are staged rather than committed. Read back rather than inferred: the
-      // divergence gate decides per property, and only the executor knows what it did.
-      const staged = new Set((await perspective.interpretationOverlays()).map((o) => o.base));
-      return { turns: turns.length, ids, proposed: ids.filter((id) => staged.has(id)) };
+        // Parent *after* the pass, because the engine has no notion of one. Sequential rather than
+        // Promise.all: these are writes to one perspective, and a burst of concurrent link adds buys
+        // nothing over a handful of items.
+        if (request.parent && ids.length) {
+          for (const id of ids) {
+            await perspective.add(
+              new Link({ source: request.parent.id, predicate: request.parent.predicate, target: id }),
+            );
+            // The provenance link, for the reason the watch path writes one — see there.
+            if (request.provenance) {
+              await perspective.add(
+                new Link({ source: request.provenance.id, predicate: request.provenance.predicate, target: id }),
+              );
+            }
+          }
+        }
+
+        // Which of these are staged rather than committed. Read back rather than inferred: the
+        // divergence gate decides per property, and only the executor knows what it did.
+        const staged = new Set((await perspective.interpretationOverlays()).map((o) => o.base));
+        // Read before the `finally` below drops it — see `oneShotExchange`.
+        const exchange = oneShotExchange.get(passId) ?? {};
+        return {
+          turns: turns.length,
+          ids,
+          proposed: ids.filter((id) => staged.has(id)),
+          ...exchange,
+        };
+      } finally {
+        oneShotParents.delete(passId);
+        oneShotExchange.delete(passId);
+      }
     },
 
     async observe(
@@ -732,7 +995,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       return () => stream.observers.delete(entry);
     },
 
-    async proposals(dataset: DatasetHandle): Promise<InterpretationProposal[]> {
+    async proposals(dataset: DatasetHandle, scope?: InterpretationScope): Promise<InterpretationProposal[]> {
       // Empty rather than thrown: a review surface asking "anything pending?" on a runtime that
       // cannot propose anything has its answer, and it is "no" — not an error worth a toast on
       // every render.
@@ -741,14 +1004,26 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       const overlays = await perspective.interpretationOverlays();
       if (!overlays.length) return [];
 
-      const names = await predicateNames(perspective);
-      return overlays.map((o) => {
+      const wanted = scope ? await scopeFilter(perspective, scope) : () => true;
+      const staged = overlays.filter((o) => wanted(o.base));
+      const [names, entities] = await Promise.all([
+        predicateNames(perspective),
+        entitiesOf(
+          perspective,
+          staged.map((o) => o.base),
+        ),
+      ]);
+      return staged.map((o) => {
+        const entity = entities.get(o.base);
+        // The model's own names where the model is known, the dataset-wide table where it is not.
+        // See `NameTables` for why the difference matters more than it looks.
+        const table = (entity && names.byEntity.get(entity)) || names.flat;
         const values: Record<string, unknown> = {};
         for (const [predicate, value] of o.inferred ?? []) {
-          const name = names.get(predicate);
+          const name = table.get(predicate) ?? names.flat.get(predicate);
           if (name) values[name] = decode(value);
         }
-        return { id: o.base, kind: o.kind, values };
+        return { id: o.base, kind: overlayKind(o.kind), ...(entity ? { entity } : {}), values };
       });
     },
 
@@ -756,13 +1031,39 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
       await assertEndpointsAreLocal(perspective, id);
-      return perspective.acceptInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
+      const predicate = property ? await toPredicate(perspective, property) : undefined;
+      return alreadyResolvedIsFalse(() => perspective.acceptInterpretation(id, predicate));
     },
 
     async reject(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {
       if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
-      return perspective.rejectInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
+      const predicate = property ? await toPredicate(perspective, property) : undefined;
+      return alreadyResolvedIsFalse(() => perspective.rejectInterpretation(id, predicate));
+    },
+
+    async onProposalsChanged(dataset: DatasetHandle, cb: () => void): Promise<() => void> {
+      if (!runtimeSupportsInterpretation(dataset)) return () => {};
+      const perspective = proxy(dataset);
+      /*
+        The overlay's `kind` link, and nothing else, is what "staged" means here.
+
+        The engine writes it when it stages a suggestion and removes it once nothing on that record
+        is left to decide — whoever decided, on whichever node. A link removal synced in from a peer
+        publishes on the same subscription as a local one, which is the whole reason this watches
+        links rather than asking the relay: a decision is a fact in the graph, and a peer who was
+        offline when it was made still has to hear about it when the diff arrives.
+      */
+      const onLink = (link: LinkExpression) => {
+        if (link?.data?.predicate === OVERLAY_KIND_PREDICATE) cb();
+        return null;
+      };
+      await perspective.addListener('link-added', onLink);
+      await perspective.addListener('link-removed', onLink);
+      return () => {
+        void perspective.removeListener('link-added', onLink);
+        void perspective.removeListener('link-removed', onLink);
+      };
     },
 
     async watch(dataset: DatasetHandle, request: WatchRequest): Promise<void> {
@@ -776,7 +1077,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // finds nothing.
       await assertShapesInstalled(perspective, request.classes);
 
-      watchParents.set(request.watchId, request.parent);
+      watchParents.set(request.watchId, { ...request.parent, provenance: request.provenance });
       await attachListener(perspective);
 
       const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
@@ -864,7 +1165,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         // by the caller and, before this, disappeared into a console line — which is why a node
         // that could not auto-extract looked for three days like one that simply had nothing to
         // extract.
-        if (!isMissingHandler(error)) throw error;
+        if (!recordMissingMethod(error)) throw error;
         executorSupports = false;
         throw new Error(UNSUPPORTED_WATCH);
       }
@@ -893,7 +1194,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           path: this attaches what a pass already minted, so a name it cannot resolve has nothing to
           find and nothing to lose.
         */
-        const model = getEntitiesForPerspective(name, perspective) as unknown as
+        const model = getEntityForDataset(name, perspective) as unknown as
           { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
         if (!model) continue;
         for (const instance of await model.findAll(perspective)) {
@@ -1045,7 +1346,7 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
  */
 function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): string[] {
   return names.map((name) => {
-    const model = getEntitiesForPerspective(name, perspective);
+    const model = getEntityForDataset(name, perspective);
     const targetClass = model ? getEntityTargetClass(model as never) : undefined;
     if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
     return targetClass;

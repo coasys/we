@@ -42,6 +42,16 @@ it gives consistently styled scrollbars across themes.
 **Token values:** Use \`tokenVar\` from \`@we/design-utils\` when you need a token value
 inside a \`style={{}}\` object. Prefer DS props directly where possible.
 
+**Name a colour ROLE, in code as well as in a schema.** \`tokenVar('color', 'text-muted')\`, not
+\`tokenVar('color', 'neutral-600')\` — a step is invisible to the contrast corrections at apply time
+wherever it is written, and \`tokenVar\` accepts a role name directly. \`pnpm audit:roles\` covers the
+TypeScript and SCSS as well as the schemas, and gates CI.
+
+Note what \`tokenVar\` does with a name it does not know: it warns in development and returns
+\`var(--we-color-<name>)\` anyway, so a typo or an invented family compiles to a variable nothing
+declares and the declaration is dropped. The element paints nothing, which reads as a design
+decision rather than a bug.
+
 Raw inline styles and hardcoded CSS variable strings (\`var(--we-color-neutral-400)\`)
 are a signal that a DS prop or primitive is being missed — check before reaching for
 \`style={{}}\`.
@@ -213,18 +223,51 @@ This validates every \`.schema.ts\` under \`packages/app-shell/src/shared/schema
 section files that are not named \`.schema.ts\` are still covered, because the template that composes
 them is — the walk descends into whatever a validated schema imports.
 
-Two further audits run over the same trees and are easy to miss. Both **import and walk the composed
+Further audits run over the same trees and are easy to miss. They all **import and walk the composed
 tree** rather than grepping source, which is the only way to attribute a node that a fragment from
 another package contributed:
 
 \`\`\`sh
-pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
-pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+pnpm audit:roles                               # a scale position where a role belongs
+pnpm audit:surfaces                            # a surface-sunken invisible against its ground
+pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via \`title\`
+pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
 \`\`\`
 
 Run them after any template, view or fragment change. A \`neutral-600\` label is invisible to the
 whole contrast layer — never measured against what is behind it — so \`role-audit\` is the only thing
 that will report it.
+
+**The first two gate CI**, so a scale position or an invisible well fails the build rather than
+waiting to be noticed. Both are at zero; keep them there.
+
+\`role-audit\` has a **code half** as well, which the root script runs by default: paths after
+\`--code\` are scanned textually rather than imported, because a colour in a \`style={{}}\`, an
+\`.scss\` rule or a CodeMirror theme is a string in a file and there is no tree to walk. It reads
+four spellings — \`var(--we-color-<hue>-<step>)\`, \`tokenVar('color', '<hue>-<step>')\`, a DS prop in
+TSX (\`color="neutral-800"\`), and a raw hex or \`rgb()\` next to a property that paints — plus a name
+handed to \`tokenVar\` that is **no colour at all**, which compiles to a variable nothing declares and
+paints nothing. Four of the editor's dividers were \`ui-200\`, a ramp that has never existed.
+
+A genuine palette is exempt, with its reason, in one of two places: \`CODE_PALETTES\` for a whole file
+(syntax highlighting, a WebGL scene, a theme's own definitions) or a \`role-audit: palette\` marker in
+the comment above the line, for a file that is mostly chrome and has one swatch. The reasons print on
+every run. \`EditorOverlay\` is the case worth reading: its annotation colours are fixed on purpose,
+because they are drawn over the template being edited in whatever theme its author is choosing.
+
+\`surface-audit\` judges a well by what is behind it rather than by the roles table's wording, which
+is looser than the ramp. \`surface-sunken\` is derived from \`page\`, so a trough on the page is right;
+on \`chrome\` it is half a lightness point away and **inverts** between light and dark, and on another
+\`surface-sunken\` there is no difference at all. Those two fail.
+
+\`query-audit\` is the one whose findings are invisible in development and expensive in a real space.
+A \`$query\` with no \`limit\` re-reads, re-hydrates and re-fingerprints every row of its entity on
+every change to that entity, so a list that grows costs O(n²) over a session — fine at twenty rows
+and unusable at two thousand, which is a transcript after forty minutes. It reports only what
+nothing else bounds: \`where.id\`, a \`scope\` with \`levels\` or \`limitPerAnchor\`, and a curated
+vocabulary all count as bounded. A list that really is read whole on purpose is declared in
+\`DELIBERATE\` in the script, **with the reason**, and the reasons are printed on every run so they
+get reviewed rather than accumulated.
 
 Two things it now catches that it used to miss, both worth knowing when adding a schema:
 

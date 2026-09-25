@@ -24,6 +24,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@we/schema-kit": "workspace:*"
+  },
   "peerDependencies": {
     "@we/schema-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
@@ -35,7 +38,7 @@
     "@we/schema-shared": "workspace:*",
     "@we/backend-shared": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   }
 }

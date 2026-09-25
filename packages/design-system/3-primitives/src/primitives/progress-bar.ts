@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -14,12 +14,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'control-surface',
 };
 
+/*
+  The bar itself. Roles rather than scale positions, because these are meanings a theme pins — a
+  theme setting `accent` expects its primary progress bar to follow — and because the corrections
+  at apply time measure a role against what is behind it and skip a scale position entirely.
+
+  `neutral` takes `border-strong`: the trough is already `control-surface`, so the fill has to be a
+  neutral distinguishable from it, and that is the role for an emphasised neutral.
+*/
 const VARIANT_COLORS: Record<ComponentVariant, string> = {
-  neutral: 'var(--we-color-neutral-500)',
-  primary: 'var(--we-color-primary-500)',
-  success: 'var(--we-color-success-500)',
-  warning: 'var(--we-color-warning-500)',
-  danger: 'var(--we-color-danger-500)',
+  neutral: 'var(--we-role-border-strong)',
+  primary: 'var(--we-role-accent)',
+  success: 'var(--we-role-success)',
+  warning: 'var(--we-role-warning)',
+  danger: 'var(--we-role-danger)',
 };
 
 const SIZE_HEIGHTS: Record<ComponentSize, string> = {
@@ -50,6 +58,16 @@ export default class ProgressBar extends DesignSystemElement {
   @property({ type: Number }) max = 100;
   @property({ type: String, reflect: true }) variant: ComponentVariant = 'primary';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
+  /**
+   * What is progressing. Announced with the percentage, and without it a screen reader says only
+   * "40%" of nothing at all — `role="progressbar"` carries a value and no subject.
+   *
+   * Left empty the element drops the role rather than exposing a nameless one, which is the honest
+   * degradation: a bar with no name is decorative as far as the accessibility tree is concerned, and
+   * announcing an anonymous number is worse than announcing nothing. Set it wherever the bar means
+   * something — an upload, an import, a model download.
+   */
+  @property({ type: String }) label = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -71,10 +89,11 @@ export default class ProgressBar extends DesignSystemElement {
     return html`
       <div
         part="base"
-        role="progressbar"
-        aria-valuenow=${this.value}
-        aria-valuemin="0"
-        aria-valuemax=${this.max}
+        role=${this.label ? 'progressbar' : nothing}
+        aria-label=${this.label || nothing}
+        aria-valuenow=${this.label ? this.value : nothing}
+        aria-valuemin=${this.label ? '0' : nothing}
+        aria-valuemax=${this.label ? this.max : nothing}
         style=${styleMap({ height, ...this.styles })}
       >
         <div part="fill" style=${styleMap({ width: `${pct}%`, background: fillColor })}></div>

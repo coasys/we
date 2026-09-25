@@ -201,66 +201,62 @@ export const kanbanFixture: Fixture = {
   agents: CAST,
   signalTypes: [LIKE],
   presence: [{ did: DEE, path: '/board/kanban-exhibition' }],
+  /*
+    The cards are loose in the space and the columns *arrange* them, which is the shape the Boards
+    template renders: a column positions a card, it does not own it, so deleting a column cannot
+    delete a card. The columns here are all lanes — nothing binds them to a task state, since a
+    composed post has none — which is what makes this the containment kanban.
+  */
   content: [
     {
       kind: 'board',
       id: 'kanban-exhibition',
       title: 'Exhibition',
       children: [
-        {
-          kind: 'column',
-          title: 'To do',
-          children: [
-            {
-              kind: 'post',
-              author: DEE,
-              createdAt: '2026-08-11T09:00:00.000Z',
-              body: ['Condition-check the 1897 sheets before anything goes in a frame'],
-            },
-            {
-              kind: 'post',
-              author: ADA,
-              createdAt: '2026-08-11T09:05:00.000Z',
-              body: ['Write the wall text for the hachuring panel'],
-              signals: [{ slug: 'like', by: [BO] }],
-            },
-            {
-              kind: 'post',
-              author: CY,
-              createdAt: '2026-08-10T15:00:00.000Z',
-              body: ['Borrow the flat files'],
-            },
-          ],
-        },
-        {
-          kind: 'column',
-          title: 'In progress',
-          children: [
-            {
-              kind: 'post',
-              author: BO,
-              createdAt: '2026-08-09T11:00:00.000Z',
-              body: ['Scanning -- about a third done, the folded ones are slow'],
-              signals: [{ slug: 'like', by: [ADA, DEE] }],
-            },
-          ],
-        },
+        { kind: 'column', title: 'To do', arranges: ['card-condition', 'card-wall-text', 'card-flat-files'] },
+        { kind: 'column', title: 'In progress', arranges: ['card-scanning'] },
         // Deliberately empty: a board where every column has cards never shows what an empty one
         // does to the layout, and that is the case boards most often get wrong.
         { kind: 'column', title: 'Blocked' },
-        {
-          kind: 'column',
-          title: 'Done',
-          children: [
-            {
-              kind: 'post',
-              author: ADA,
-              createdAt: '2026-08-02T10:00:00.000Z',
-              body: ['Book the room'],
-            },
-          ],
-        },
+        { kind: 'column', title: 'Done', arranges: ['card-room'] },
       ],
+    },
+    {
+      kind: 'post',
+      id: 'card-condition',
+      author: DEE,
+      createdAt: '2026-08-11T09:00:00.000Z',
+      body: ['Condition-check the 1897 sheets before anything goes in a frame'],
+    },
+    {
+      kind: 'post',
+      id: 'card-wall-text',
+      author: ADA,
+      createdAt: '2026-08-11T09:05:00.000Z',
+      body: ['Write the wall text for the hachuring panel'],
+      signals: [{ slug: 'like', by: [BO] }],
+    },
+    {
+      kind: 'post',
+      id: 'card-flat-files',
+      author: CY,
+      createdAt: '2026-08-10T15:00:00.000Z',
+      body: ['Borrow the flat files'],
+    },
+    {
+      kind: 'post',
+      id: 'card-scanning',
+      author: BO,
+      createdAt: '2026-08-09T11:00:00.000Z',
+      body: ['Scanning -- about a third done, the folded ones are slow'],
+      signals: [{ slug: 'like', by: [ADA, DEE] }],
+    },
+    {
+      kind: 'post',
+      id: 'card-room',
+      author: ADA,
+      createdAt: '2026-08-02T10:00:00.000Z',
+      body: ['Book the room'],
     },
   ],
   route: '/board/kanban-exhibition',

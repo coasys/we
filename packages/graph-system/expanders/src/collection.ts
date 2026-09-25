@@ -1,19 +1,24 @@
 /**
  * The containment expander — a parent's children, through an *untyped* relation.
  *
- * The entity expander cannot do this one, and the reason is worth stating because it will come up
- * again for every relation WE declares this way. `CollectionBlock.children` carries no target class,
- * so the neutral manifest has nothing to point `include` at — the relation is real, traversable, and
- * invisible to a schema-driven walk. The drill-down (`scope`) path exists precisely for that case: it
- * names the parent, the relation, and the type of child being asked for.
+ * `CollectionBlock.children` carries no target class, so for a long time `include` had nothing to
+ * point at and the relation was real, traversable and invisible to a schema-driven walk. This
+ * expander existed to work around that: one `scope` drill-down per child type, with the types
+ * supplied as configuration because nothing in the schema said what may sit inside a collection.
  *
- * Which is why the child types are configuration rather than discovery. Nothing in the schema says
- * what may sit inside a collection, so the template says instead — and because nesting is expressed
- * as "a collection may contain a collection", drilling into a call transcript, a note, a board and
- * then further into a nested board is the same rule applied repeatedly.
+ * The relation is now declared polymorphic, so a single read returns every member already
+ * classified. That removes the workaround and, with it, the defect at its centre — a configured
+ * list is a list somebody has to keep current, and a collection holding a type nobody thought to
+ * name simply did not appear. Interpretation writing a `TaskBlock` into a call was exactly that:
+ * the records existed, the view that shows a collection's contents did not draw them, and adding
+ * the type to a constant was the fix. There is no constant to add to now.
+ *
+ * `children` survives as a *restriction* for a template that wants a narrower view, and costs
+ * nothing when absent. Nesting still falls out on its own, since a collection containing a
+ * collection is one more member with a type.
  */
 import type { Expander, GraphEdge, GraphNode } from '@we/graph-protocol';
-import { parseAddress } from '@we/graph-protocol';
+import { nodeTypeOf, parseAddress } from '@we/graph-protocol';
 
 import { edgeId, rowToNode } from './nodes';
 
@@ -22,20 +27,26 @@ export interface CollectionExpanderOptions {
   parents?: string[];
   /** The untyped to-many relation holding the children. */
   via?: string;
-  /** Child entity types to look for, in order. Each is one drill-down query. */
+  /**
+   * Restrict the drawing to these child types. Absent draws whatever the collection holds.
+   *
+   * It used to be a work list — each entry one drill-down query — which made omitting a type the
+   * same as the type not being there. Now the members arrive classified, so this narrows a view
+   * rather than deciding what is read, and leaving it out is the right default.
+   */
   children?: string[];
   /**
    * Child types to skip, whatever else says to look for them.
    *
-   * For containment that is bookkeeping rather than content. A board keeps its coordinates as
+   * For containment that is bookkeeping rather than content. A canvas keeps its coordinates as
    * `Placement` records parented alongside its cards — the cheapest place to put them, since a
-   * board's children are already a mixed bag — and a containment walk that drew them would put a
+   * canvas's children are already a mixed bag — and a containment walk that drew them would put a
    * dot on the canvas for every card, saying nothing and doubling the node count.
    *
    * A denylist rather than leaving them out of `children`, because the two lists answer different
    * questions: `children` is what a template *wants*, and this is what is never worth drawing
-   * whatever anybody wants. It applies to the default list too, which is the case that matters —
-   * a template that names no children at all still should not see them.
+   * whatever anybody wants. The distinction matters more now that `children` is usually absent —
+   * "draw everything in here" must still not mean the bookkeeping.
    */
   exclude?: string[];
   /** Edge type drawn from parent to child. */
@@ -45,26 +56,9 @@ export interface CollectionExpanderOptions {
 const ID = 'collection';
 
 /**
- * Child types looked for when a template does not say.
- *
- * Each entry is one drill-down query per expansion, so this is a real cost and not a free "list
- * everything" — which is why it is the block types a collection actually tends to hold rather than
- * every entity WE declares.
- *
- * `TaskBlock` and `EventBlock` are here because a collection can now acquire them without anyone
- * composing them: interpretation writes what it finds in a call transcript straight onto the call's
- * collection. Leaving them out made a successful extraction look like nothing had happened — the
- * records existed and the one view built to show a collection's contents did not draw them.
- *
- * A type absent from the dataset's schema is skipped rather than queried, so listing one a given
- * space has never installed costs nothing.
- */
-const DEFAULT_CHILDREN = ['CollectionBlock', 'TextBlock', 'ImageBlock', 'TaskBlock', 'EventBlock'];
-
-/**
  * Never drawn as containment, whatever a template asks for.
  *
- * `Placement` is a coordinate parented next to the thing it positions — see the board seed — so it
+ * `Placement` is a coordinate parented next to the thing it positions — see the canvas seed — so it
  * is a child in the storage sense and never in the sense anybody means by "what is in here".
  */
 const NEVER_CHILDREN = ['Placement'];
@@ -72,7 +66,9 @@ const NEVER_CHILDREN = ['Placement'];
 export function collectionExpander(options: CollectionExpanderOptions = {}): Expander {
   const via = options.via ?? 'children';
   const skip = new Set([...NEVER_CHILDREN, ...(options.exclude ?? [])]);
-  const childEntities = (options.children ?? DEFAULT_CHILDREN).filter((name) => !skip.has(name));
+  // Absent means "draw whatever is in there", which is the point: the members arrive already
+  // classified, so there is no list to guess and nothing to leave out by forgetting to name it.
+  const allowed = options.children ? new Set(options.children.filter((name) => !skip.has(name))) : undefined;
   const edgeType = options.edgeType ?? 'contains';
 
   return {
@@ -97,37 +93,63 @@ export function collectionExpander(options: CollectionExpanderOptions = {}): Exp
       const nodes: GraphNode[] = [];
       const edges: GraphEdge[] = [];
 
-      for (const child of childEntities) {
-        if (!shapes.some((s) => s.name === child)) continue;
-        const rows = await context
-          .query({
-            entity: child,
-            dataset,
-            scope: { anchor: address.type, via, anchorId: address.id },
-            limit: request.limit ?? 50,
-            signal: request.signal,
-          })
-          .catch((error: unknown) => {
-            context.warn(
-              `cannot read ${child} children of ${address.type}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-            return [] as Record<string, unknown>[];
-          });
+      const [parent] = await context
+        .query({
+          entity: address.type,
+          dataset,
+          where: { id: address.id },
+          include: { [via]: true },
+          limit: 1,
+          signal: request.signal,
+        })
+        .catch((error: unknown) => {
+          context.warn(
+            `cannot read the ${via} of ${address.type}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return [] as Record<string, unknown>[];
+        });
 
-        const shape = shapes.find((s) => s.name === child);
-        for (const row of rows) {
-          const node = rowToNode(row, child, dataset, shape, ID);
-          if (!node) continue;
-          nodes.push(node);
-          edges.push({
-            id: edgeId(request.id, edgeType, node.id),
-            source: request.id,
-            target: node.id,
-            type: edgeType,
-          });
+      const members = Array.isArray(parent?.[via]) ? (parent[via] as Record<string, unknown>[]) : [];
+      let untyped = 0;
+
+      for (const row of members.slice(0, request.limit ?? 50)) {
+        // Each member says what it is, because the relation is read polymorphically. A row without
+        // it is counted and reported rather than skipped in silence: it means the read did not
+        // classify — a relation not declared polymorphic, or an executor that cannot — and the
+        // symptom is a container that opens onto nothing, which is indistinguishable from an empty
+        // one at a glance.
+        const child = nodeTypeOf(row);
+        if (!child) {
+          untyped += 1;
+          continue;
         }
+        if (skip.has(child)) continue;
+        // `children` is now a restriction rather than a work list: naming types no longer decides
+        // which queries run, only which of the members already in hand are drawn.
+        if (allowed && !allowed.has(child)) continue;
+
+        const node = rowToNode(
+          row,
+          child,
+          dataset,
+          shapes.find((s) => s.name === child),
+          ID,
+        );
+        if (!node) continue;
+        nodes.push(node);
+        edges.push({
+          id: edgeId(request.id, edgeType, node.id),
+          source: request.id,
+          target: node.id,
+          type: edgeType,
+        });
+      }
+
+      if (untyped) {
+        context.warn(
+          `${untyped} of ${members.length} members of this ${address.type} came back without a type and were not drawn — ` +
+            `is "${via}" declared polymorphic?`,
+        );
       }
 
       return { nodes, edges, total: nodes.length };

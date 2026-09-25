@@ -110,14 +110,21 @@ provenance; it does not cost a rewrite of anything that draws.
 
 ## Worked examples
 
-| Connection                          | Tier                              | Why                                                                                 |
-| ----------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------- |
-| `CollectionBlock.children`          | declared (untyped)                | Structural, written by the composer per block, queried constantly.                  |
-| `Space.location`                    | declared                          | A fact about the class, one per space, nothing to dispute.                          |
-| `WeNode.comments`                   | declared (untyped)                | Written by code on every reply; the _comment_ carries the provenance, not the link. |
-| "This contradicts that"             | reified + kind                    | A claim, arguable, authored, and the vocabulary is the community's.                 |
-| "This card sits here on this board" | reified (`Placement`)             | A fact about the pair — the same note sits elsewhere on another board.              |
-| A reaction                          | reified (`Signal` + `SignalType`) | Per agent, per node, with a vocabulary the community names. Already this shape.     |
+| Connection                           | Tier                              | Why                                                                                       |
+| ------------------------------------ | --------------------------------- | ----------------------------------------------------------------------------------------- |
+| `CollectionBlock.children`           | declared (untyped)                | Structural, written by the composer per block, queried constantly.                        |
+| `Space.location`                     | declared                          | A fact about the class, one per space, nothing to dispute.                                |
+| `WeNode.comments`                    | declared (untyped)                | Written by code on every reply; the _comment_ carries the provenance, not the link.       |
+| "This contradicts that"              | reified + kind                    | A claim, arguable, authored, and the vocabulary is the community's.                       |
+| "This card sits here on this canvas" | reified (`Placement`)             | A fact about the pair — the same note sits elsewhere on another canvas.                   |
+| A reaction                           | reified (`Signal` + `SignalType`) | Per agent, per node, with a vocabulary the community names. Already this shape.           |
+| "Sarah is reviewing this"            | reified (`Involvement` + kind)    | A claim about a person and a record, attributed and dated; the kinds are the community's. |
+| Who was in a call                    | declared (`WeNode.participants`)  | Written by code per record at transcriber volume; nobody claims it, a machine saw it.     |
 
-The last row is worth noticing: signals arrived at the same three-tier answer independently, before
-any of this was written down. That is the strongest evidence the shape is right.
+The reaction row is worth noticing: signals arrived at the same three-tier answer independently,
+before any of this was written down. That is the strongest evidence the shape is right.
+
+The last two rows are the same people and the same record in two tiers, and that is deliberate
+rather than duplication. "Was in the room" and "said they would come" are different facts, one
+observed and one stated, and rule 4 puts them in different places. A surface that read one as the
+other would tell somebody a meeting they skipped was one they attended.

@@ -4,16 +4,20 @@
  * what the query IR is validated and compiled against (`include` needs to know a relation's target
  * and cardinality; filter/sort need to know a property's type).
  *
- * It is a *separate* artifact from any query and from any backend. A third-party host authors a
- * manifest for its own entities; the AD4M adapter produces one from its own models.
+ * It is a *separate* artifact from any query and from any backend: the source of truth an adapter
+ * compiles from, and what a module or a community's shape wizard authors.
  *
- * Relationship to the AD4M-specific manifest (`EntityManifestEntry` in `@we/app-shell`): that one
- * is the AD4M adapter's richer, flatter form — properties and relations in one list, plus RDF
- * binding (`predicate`, `resolveLanguage`, `targetClass`). This neutral form is the semantic
- * projection it maps onto: scalars vs relations separated, keyed by name, no backend binding. The
- * adapter keeps its RDF binding on its side; only this shape crosses into the schema engine.
+ * Relationship to the flat form (`EntityManifestEntry` in `manifestEntry.ts`): that one is the
+ * richer, flatter projection — properties and relations in one list, plus the storage binding
+ * (`predicate`, `resolveLanguage`, `targetClass`) an adapter minted. This is the declaration:
+ * scalars vs relations separated, keyed by name, bound to nothing but what the declaration itself
+ * states. Only this shape crosses into the schema engine.
  */
 import { z } from 'zod';
+
+// Zod's JIT probe trips Electron's production CSP — see the note in queryIR.ts. Repeated per
+// module because the probe fires on the first `z.object()`, and nothing orders these two.
+z.config({ jitless: true });
 
 export type ScalarType = 'string' | 'number' | 'boolean' | 'datetime' | 'json';
 export type Cardinality = 'one' | 'many';
@@ -24,9 +28,8 @@ export interface PropertySchema {
   /**
    * How the value is *stored*, when that differs from an inline scalar. `'file'` means the
    * property holds binary content written through the host's file storage. Every backend has this
-   * problem and solves it differently — AD4M stores an expression through its file-storage
-   * language, a SQL host would keep a URL beside a blob store — so the manifest names the intent
-   * and each adapter supplies the mechanism.
+   * problem and solves it differently — a content-addressed store, a URL beside a blob store — so
+   * the manifest names the intent and each adapter supplies the mechanism.
    */
   format?: 'file';
 
@@ -85,6 +88,21 @@ export interface PropertySchema {
   options?: (string | number)[];
 
   /**
+   * Names a vocabulary the **community** owns, for which {@link options} is only the floor.
+   *
+   * A task's status is the case this exists for. `options` there is `todo`/`doing`/`done`, and that
+   * list is deliberately not what a space may have defined: it steers an extraction model, which
+   * cannot be asked to guess words it has never been shown. But a space that has named "Blocked" can
+   * hold a task in it — nothing enforces `options`, and the declaration says so — and a picker built
+   * from `options` alone then cannot offer the state the record is already in.
+   *
+   * So the two facts are separated. `options` stays the model's floor, and this says whose list the
+   * *real* one is, for a host that can resolve it. A host that cannot falls back to `options`, which
+   * is what every consumer did before this existed.
+   */
+  vocabulary?: string;
+
+  /**
    * Which control a derived form should offer, where the scalar type does not say.
    *
    * The sibling of `options`, and here for the same reason: a form generated from a manifest can
@@ -97,9 +115,32 @@ export interface PropertySchema {
    * Presentation, not storage — `format` is the storage counterpart and stays about where bytes
    * live. Absent means "whatever the type implies", which is right for most properties.
    */
-  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url';
+  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url' | 'icon';
 }
 
+/**
+ * A typed edge between two entities.
+ *
+ * **What belongs here, and what does not.** `PropertySchema` documents each of its fields at length
+ * and this one has historically not, which leaves no stated test for a new field — so here it is,
+ * written before the next one is added rather than argued about afterwards.
+ *
+ * A field belongs on the manifest when it describes **what the relation is**: its target, whether it
+ * holds one thing or many, whether the sequence its members are in was chosen by somebody. Every
+ * consumer of the manifest can act on a fact of that kind, and there are more of them than the query
+ * layer — `include` resolution and validation, derived record forms, interpretation hints, the graph
+ * engine's schema walk, and the generated context an LLM authors templates against. A fact stated
+ * here reaches all of them at once.
+ *
+ * A field does **not** belong here when it describes *how* some engine delivers that fact — a CRDT
+ * strategy name, an index hint, a predicate layout. Those are meaningful only to the component that
+ * implements them, are unreadable noise to every other consumer, and have a natural home in the
+ * adapter that owns the mechanism. The two are easy to tell apart by asking whether a reader who
+ * knows nothing about storage could still say what the field means for the data.
+ *
+ * So: "this collection has an order somebody chose" is a fact and belongs here; "that order is
+ * maintained as a linked list" is a mechanism and does not.
+ */
 export interface RelationSchema {
   /**
    * Target entity name — must be a key in `EntityManifest.entities`, or empty for an untyped
@@ -111,6 +152,56 @@ export interface RelationSchema {
   reverseOf?: string;
   /** Bind to an existing predicate instead of minting one — see `PropertySchema.predicate`. */
   predicate?: string;
+
+  /**
+   * The members of this collection are in an order somebody chose, and that order is part of the
+   * data rather than an artefact of when each member was written.
+   *
+   * The blocks of a post are the case to hold in mind: somebody dragged the image above the
+   * paragraph, and that is a decision, not a timestamp. Most to-many relations are the opposite —
+   * a node's comments and signals are sets, and asking for "the order of a set" is a category
+   * error — so this is opt-in and rare.
+   *
+   * A fact rather than a mechanism, per the note on this interface: *how* an order survives two
+   * people editing at once is the storing component's business and is not spelled here.
+   *
+   * Only meaningful with `cardinality: 'many'`.
+   */
+  ordered?: boolean;
+
+  /**
+   * The targets of this relation are not all of one class, and each should be read as whatever it
+   * actually is.
+   *
+   * Two shapes need it, and only the second needs to say so. An **untyped** relation (`target: ''`)
+   * is heterogeneous by definition — a collection's children are text, images, tasks and further
+   * collections — so it is treated as polymorphic without being declared; see
+   * {@link resolvesPolymorphically}. A **typed** relation naming a base class is the case that must
+   * declare it, because nothing about `target: 'WeNode'` says whether the members are plain nodes
+   * or a mix of its subclasses.
+   *
+   * What it buys is the difference between a reference and a record. Read non-polymorphically
+   * against a base class, a member arrives with only the base's fields — a `TextBlock` hydrated as
+   * a `WeNode` has no `text` at all, not a mislabelled one. Read against no class, there is no
+   * shape to resolve and the read fails outright, which is why an untyped relation has never been
+   * eagerly loadable and every caller drilled down one type at a time instead.
+   *
+   * Set it to `false` to opt an untyped relation out, which is worth doing only where the members'
+   * own fields are genuinely never read.
+   */
+  polymorphic?: boolean;
+}
+
+/**
+ * Whether this relation's targets are read as the classes they actually are.
+ *
+ * Exported, and used by every consumer that needs the answer, so the default cannot be implemented
+ * twice and drift — the same reason `whereUsesCombinator` sits beside the lowering it performs.
+ * An untyped relation defaults to polymorphic because the alternative is not a cheaper read but a
+ * failed one: with no target there is no shape to hydrate against.
+ */
+export function resolvesPolymorphically(rel: RelationSchema): boolean {
+  return rel.polymorphic ?? rel.target === '';
 }
 
 export interface EntitySchema {
@@ -118,6 +209,16 @@ export interface EntitySchema {
   properties: Record<string, PropertySchema>;
   /** Typed edges, keyed by relation name. */
   relations: Record<string, RelationSchema>;
+
+  /**
+   * What this kind of thing is, in one line a person reads — "A picture, uploaded".
+   *
+   * Shown wherever a type is chosen or explained: the chooser's card, the key, an inspector's
+   * heading. On the declaration rather than in a table beside the icons, because it is part of what
+   * the type *is*, and a community's own types already carry one from the wizard — one field serves
+   * both. Absent reads as nothing to say, not as an error.
+   */
+  description?: string;
 
   /**
    * How instances of this entity are told apart from everything else in the same dataset.
@@ -241,8 +342,28 @@ export interface EntitySchema {
    * someone deciding it should have one. Entities a *community* defines are the other way round —
    * every property of a shape somebody wrote is theirs by construction, so those need no
    * declaration and never carry one.
+   *
+   * ## A form is not a place in "create something"
+   *
+   * What a person can create as content is every **block** there is a way to make (see `blockable`
+   * and `composed`), and a community's own shapes. `Relationship` and `RelationshipType` have forms
+   * and are not blocks: one is drawn between two records, the other named in space settings, and a
+   * generic picker would make either wrong. Being content is what puts an entity in a picker, not
+   * having a form — so no flag is needed to keep those two out.
+   *
+   * There was one, `offered`, and it had been asked to carry a second judgement as well: that a
+   * picture or a file with nothing to belong to is not a thing anybody sets out to make. That did not
+   * hold — a picture is as much a thing as a link — and it is gone with the flag.
    */
   authoring?: { fields: string[] };
+
+  /**
+   * Made by composing a document rather than by filling in fields — a post, a note, a board's card.
+   * The composer is its authoring surface, so a surface offering "create something" opens that for
+   * it instead of a form. Separate from `authoring`, which is a field list and would give a
+   * container's display a list of fields it has nothing to say in.
+   */
+  composed?: boolean;
 
   /**
    * How an instance of this entity is shown when nothing was written to show it — the read-side
@@ -290,13 +411,15 @@ const propertySchema = z.object({
   interpretationHint: z.string().optional(),
   identity: z.boolean().optional(),
   options: z.array(z.union([z.string(), z.number()])).optional(),
-  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url']).optional(),
+  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url', 'icon']).optional(),
 });
 const relationSchema = z.object({
   target: z.string(),
   cardinality,
   reverseOf: z.string().optional(),
   predicate: z.string().optional(),
+  ordered: z.boolean().optional(),
+  polymorphic: z.boolean().optional(),
 });
 const entitySchema = z.object({
   properties: z.record(z.string(), propertySchema),
@@ -305,9 +428,11 @@ const entitySchema = z.object({
   extends: z.string().optional(),
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
+  description: z.string().optional(),
   extractable: z.boolean().optional(),
   blockable: z.boolean().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),
+  composed: z.boolean().optional(),
   display: z
     .object({
       title: z.string().optional(),
@@ -412,6 +537,14 @@ export function validateManifest(
     }
     for (const [relName, rel] of Object.entries(entity.relations)) {
       const base = `entities.${entityName}.relations.${relName}`;
+      // Checked before the untyped early-out below, because the relation this exists for is both:
+      // a collection's children name no target class and are still in a chosen order.
+      if (rel.ordered && rel.cardinality !== 'many') {
+        errors.push({
+          path: `${base}.ordered`,
+          message: `"${relName}" holds one ${rel.target || 'record'}, so it has no order to declare`,
+        });
+      }
       // An empty target is an untyped reference, not a broken one.
       if (rel.target === '') continue;
       if (!known(rel.target)) {

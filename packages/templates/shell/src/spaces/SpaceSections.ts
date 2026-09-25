@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { sectionLabel } from '@we/template-kit';
 
 /**
  * Which sections a space has, and which of them this agent bothers to see.
@@ -75,11 +76,15 @@ const sectionRow: SchemaNode = {
               props: { 'data-we-handle': '', style: { display: 'flex', cursor: 'grab' } },
               children: [
                 {
-                  type: 'we-button',
-                  props: {
-                    variant: 'bare',
-                    title: 'Reorder',
-                    /*
+                  type: 'we-tooltip',
+                  props: { content: 'Reorder' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        label: 'Reorder',
+                        variant: 'bare',
+                        /*
                       Stated on the button, not only on the carrier around it.
 
                       `we-button` carries `cursor: 'pointer'` in its default props, and the pointer
@@ -92,10 +97,12 @@ const sectionRow: SchemaNode = {
                       reports pointer movement of its own, which is a second claim on a press that
                       `we-sortable` is already handling.
                     */
-                    cursor: 'grab',
-                    activeProps: { cursor: 'grabbing' },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'text-faint' } }],
+                        cursor: 'grab',
+                        activeProps: { cursor: 'grabbing' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'text-faint' } }],
+                    },
+                  ],
                 },
               ],
             },
@@ -192,7 +199,7 @@ const draggableRow: SchemaNode = {
  */
 const noSectionsNotice: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['Sections'] },
     {
@@ -207,7 +214,7 @@ const noSectionsNotice: SchemaNode = {
 
 const sectionsCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -259,11 +266,7 @@ const sectionsCard: SchemaNode = {
           type: 'Column',
           props: { gap: '200', pt: '300', mt: '200', borderTop: '1px solid border' },
           children: [
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', fontWeight: 'semibold', textTransform: 'uppercase', color: 'text-faint' },
-              children: ['Not in this space'],
-            },
+            sectionLabel({ label: 'Not in this space' }),
             {
               type: '$each',
               props: { items: { $: 'filter(space.views, { enabled: false })' }, as: 'view' },

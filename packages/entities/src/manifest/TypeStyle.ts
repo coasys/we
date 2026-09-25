@@ -16,6 +16,12 @@ import type { CoreEntityDef } from './defs';
  * different questions with the same records. A colour stored on the type would make the last board
  * somebody styled win everywhere, silently, which is the class of change nobody can attribute.
  *
+ * That argument decides where a board's *override* lives, and it left the ordinary case homeless:
+ * most of the time "tasks are blue" is a fact about the community, and a canvas made tomorrow should
+ * start out coloured like every other one. So the same record is also parented to the `Space`,
+ * through `Space.typeStyles`, as the key every canvas falls back to. A canvas's own children still
+ * win where it has any.
+ *
  * ## Why one record per type rather than a map on the board
  *
  * The same reason `Placement` is one record per card: a map in a field is a read-modify-write, and

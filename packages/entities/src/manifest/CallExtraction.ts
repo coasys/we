@@ -36,6 +36,13 @@ import type { CoreEntityDef } from './defs';
  * two peers would each re-register over the other's list in a loop. It is a group decision about a
  * shared conversation, so it is shared state.
  *
+ * ### Two settings, one record
+ *
+ * `entities` and `auto` are both per-call answers about the same conversation, written by the same
+ * participants at the same moment, and read together by the same watch. A second record keyed the
+ * same way would be two queries, two write paths and one more chance for a call to hold a target
+ * list and an auto flag that disagree about whether it has been customised at all.
+ *
  * ### Changing it mid-call
  *
  * Supported, and the reason the standing watch re-registers rather than being written once. Adding a
@@ -69,6 +76,26 @@ export const CallExtraction: CoreEntityDef = {
        * are entity *names*, not entities in the perspective — there is nothing to point at.
        */
       entities: { type: 'string', predicate: 'we://extraction_targets', default: '' },
+      /**
+       * Whether this call is extracted *as it happens*, when its participants want something other
+       * than the space's standing answer.
+       *
+       * The same three layers `entities` has, and the same absent-means-undecided rule — but it
+       * needs a third state to say so, because a boolean has only two. `''` is "this call has not
+       * decided", `'on'` and `'off'` are decisions. A plain boolean would make "we turned it off"
+       * and "nobody has touched it" the same value, which is the trap the record's own docblock
+       * exists to avoid: a record can be created for the targets alone, and its untouched auto flag
+       * must not then read as a refusal of the space's default.
+       *
+       * A participant's decision rather than an administrator's, unlike `Space.autoInterpret`.
+       * Stopping a standing pass mid-meeting is about this conversation — a design review that has
+       * wandered on to something nobody wants records of — and needing whoever owns the space to be
+       * present for that makes the honest response "leave the call".
+       *
+       * Turning it off does not stop a pass already in flight: those tokens are spent, and killing
+       * the run loses what it found for no saving. It stops the next one.
+       */
+      auto: { type: 'string', predicate: 'we://auto_interpret', default: '' },
     },
     relations: {},
   },

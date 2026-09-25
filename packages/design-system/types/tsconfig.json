@@ -1,11 +1,15 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
+    // The one package that EMITS with `tsc` rather than tsup, so it is the one place `rootDir` is
+    // load-bearing: TypeScript 6 requires it explicitly (TS5011) rather than inferring the common source
+    // directory, because the inference decides the output layout. Everywhere else the option was left
+    // over from a build that no longer runs and only served to reject files outside `src`.
+    "rootDir": "src",
     "declarationMap": true,
     "emitDeclarationOnly": false,
-    "composite": false,
-    "rootDir": "src"
+    "composite": false
   },
   "include": ["src"]
 }

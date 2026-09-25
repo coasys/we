@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { pruneUnresolvedWhere, resolveQueryProp } from './query';
+import { pruneUnresolvedWhere, resolveQueryProp, scopeIsAnchored } from './query';
 
 describe('resolveQueryProp', () => {
   it('passes a plain entity name through', () => {
@@ -69,5 +69,29 @@ describe('pruneUnresolvedWhere', () => {
       OR: [{ name: { contains: '' } }, { description: { contains: '' } }],
     };
     expect(pruneUnresolvedWhere(where)).toEqual(where);
+  });
+});
+
+describe('scopeIsAnchored', () => {
+  it('accepts a scope naming a record', () => {
+    expect(scopeIsAnchored({ anchor: 'CollectionBlock', via: 'children', anchorId: 'abc' })).toBe(true);
+    expect(scopeIsAnchored({ via: 'children', anchorId: 7 })).toBe(true);
+  });
+
+  /*
+    The case the helper exists for. An anchor read from an absent URL parameter resolves to
+    `undefined`, and an empty string is what a "nothing chosen yet" local resolves to — neither is a
+    request for the children of no record, which is what sending the scope anyway would ask for.
+  */
+  it('rejects a scope whose anchor did not resolve', () => {
+    expect(scopeIsAnchored({ anchor: 'CollectionBlock', via: 'children', anchorId: undefined })).toBe(false);
+    expect(scopeIsAnchored({ via: 'children', anchorId: '' })).toBe(false);
+    expect(scopeIsAnchored({ via: 'children', anchorId: null })).toBe(false);
+    expect(scopeIsAnchored({ via: 'children' })).toBe(false);
+  });
+
+  it('rejects anything that is not a scope object', () => {
+    expect(scopeIsAnchored(undefined)).toBe(false);
+    expect(scopeIsAnchored('children')).toBe(false);
   });
 });

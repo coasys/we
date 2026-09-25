@@ -12,7 +12,7 @@
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type DatasetIdentity, sameDataset } from '../src/shared/datasetIdentity';
+import { datasetAddressedBy, type DatasetIdentity, sameDataset } from '../src/shared/datasetIdentity';
 
 /** Stands in for the backend adapter's `toRef`, which builds a fresh object per `lifecycle.get`. */
 const ref = (id: string, handle: object, sharedUri?: string): DatasetIdentity => ({
@@ -84,5 +84,47 @@ describe('the currentDataset signal', () => {
     expect(rebuilds).toBe(afterFirst + 1);
 
     dispose();
+  });
+});
+
+/**
+ * Whether a `/space/<segment>` URL is about a given dataset.
+ *
+ * The question looks trivial and is the one that broke: an effect reading one space's sections and
+ * writing another space's URL does not fail, it navigates — and the navigation then drags the
+ * dataset after it. See the section guard in `TemplateProvider`.
+ */
+describe('datasetAddressedBy', () => {
+  const personal = { id: 'local-uuid' };
+  const shared = { id: 'local-uuid', sharedId: 'QmDesign' };
+
+  it('matches the shared id, which is the one a link carries', () => {
+    expect(datasetAddressedBy(shared, 'QmDesign')).toBe(true);
+  });
+
+  it('still matches the local id, because a URL somebody already holds must keep resolving', () => {
+    expect(datasetAddressedBy(shared, 'local-uuid')).toBe(true);
+  });
+
+  it('matches a personal space, which has only its own id', () => {
+    expect(datasetAddressedBy(personal, 'local-uuid')).toBe(true);
+  });
+
+  it('says no for another space — the case the guard exists for', () => {
+    expect(datasetAddressedBy(shared, 'QmOther')).toBe(false);
+    expect(datasetAddressedBy(personal, 'QmDesign')).toBe(false);
+  });
+
+  it('says no rather than throwing when there is nothing to compare', () => {
+    // Both reachable on a boot frame: no dataset yet, or a route that is not a space route.
+    expect(datasetAddressedBy(null, 'QmDesign')).toBe(false);
+    expect(datasetAddressedBy(undefined, 'QmDesign')).toBe(false);
+    expect(datasetAddressedBy(shared, undefined)).toBe(false);
+    expect(datasetAddressedBy(shared, '')).toBe(false);
+  });
+
+  it('does not let an absent shared id match an absent segment', () => {
+    // `undefined === undefined` is the shape that would quietly make every space match every gap.
+    expect(datasetAddressedBy(personal, undefined)).toBe(false);
   });
 });

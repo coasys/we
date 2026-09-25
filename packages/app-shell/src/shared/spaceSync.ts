@@ -7,7 +7,7 @@
  * doesn't. The target dataset is passed explicitly so the same helper works for any level of the
  * holarchy (global, community, sub-space, …).
  */
-import type { SchemaPort } from '@we/backend-shared';
+import type { NewRecord, SchemaPort } from '@we/backend-shared';
 import { type DatasetProxy, type FileData, LocationBlock, Space } from '@we/entities';
 
 export interface LocationData {
@@ -69,7 +69,9 @@ export async function syncSpaceToParent(
   const avatarField = options?.avatarData !== undefined ? options.avatarData : space.avatar;
   const coverImageField = options?.coverImageData !== undefined ? options.coverImageData : space.coverImage;
 
-  let target: Space;
+  // `NewRecord`, because one of the two branches below is a create and nothing here reads a relation
+  // off `target` — it is addressed by id and given a location. A found `Space` is assignable to it.
+  let target: NewRecord<Space>;
   if (existing) {
     existing.url = space.url;
     existing.name = space.name;

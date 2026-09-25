@@ -89,3 +89,61 @@ describe('pathFrom', () => {
     expect(pathFrom(route, 10)).toBe('M 0 0 L 4 0');
   });
 });
+
+/**
+ * A route somebody shaped by hand — several segments rather than one span.
+ *
+ * `segments` replaces `control`/`control2`/`elbows` rather than joining them, so this is the case
+ * that has to be checked first. Written second, it would be unreachable for every bent route: a
+ * cubic route carries a `control`, and the old branch would draw one span and drop everything after
+ * the first waypoint — a line that ends in mid-air, drawn by code that ran without complaint.
+ */
+describe('pathFrom over a shaped route', () => {
+  const bent: EdgeGeometry = {
+    id: 'e',
+    from: { x: 0, y: 0 },
+    to: { x: 200, y: 0 },
+    segments: [
+      { control: { x: 30, y: -40 }, control2: { x: 70, y: -40 }, to: { x: 100, y: -40 } },
+      { control: { x: 130, y: -40 }, control2: { x: 190, y: -30 }, to: { x: 200, y: 0 } },
+    ],
+    curve: 'smooth',
+    mid: { x: 100, y: -40 },
+  };
+
+  it('draws one command per segment, from the start', () => {
+    const path = pathFrom(bent);
+
+    expect(path.startsWith('M 0 0 ')).toBe(true);
+    expect(path.match(/C /g)).toHaveLength(2);
+  });
+
+  it('draws a straight leg as a line rather than inventing controls for it', () => {
+    const polyline: EdgeGeometry = {
+      ...bent,
+      segments: [{ to: { x: 100, y: -40 } }, { to: { x: 200, y: 0 } }],
+    };
+
+    expect(pathFrom(polyline)).toBe('M 0 0 L 100 -40 L 200 0');
+  });
+
+  it('shortens only the last segment, so the arrowhead sits at the end of the whole route', () => {
+    const gapped = pathFrom(bent, 20);
+
+    // The first segment is untouched — it does not end at the target.
+    expect(gapped).toContain('100 -40');
+    // And the route no longer reaches the target's centre.
+    expect(gapped.endsWith('200 0')).toBe(false);
+  });
+
+  it('backs off along the closing tangent of the last segment, not of the whole span', () => {
+    // The last leg arrives steeply from above, so the gap is taken along *that* direction. Measured
+    // from the chord — which runs flat from the source — it would come off horizontally and leave the
+    // arrowhead beside the line rather than on the end of it.
+    const shortened = pathFrom(bent, 20);
+    const [x, y] = shortened.split(' ').slice(-2).map(Number);
+
+    expect(Math.hypot(200 - x, 0 - y)).toBeCloseTo(20, 5);
+    expect(y).toBeLessThan(0);
+  });
+});

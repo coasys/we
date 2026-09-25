@@ -158,6 +158,51 @@ describe('buildValidationContext', () => {
   });
 });
 
+describe('foreign elements a seed allows', () => {
+  const withRating = () =>
+    buildValidationContext(
+      makeContext({
+        foreignElements: [
+          {
+            tagName: 'sl-rating',
+            package: '@shoelace-style/shoelace',
+            props: [
+              { name: 'value', type: 'number', optional: true },
+              { name: 'max', type: 'number', optional: true },
+            ],
+            events: ['sl-change'],
+          },
+        ],
+      }),
+    );
+
+  it('accepts the tag, its documented props and an exact-name event handler', () => {
+    const result = validateSemantic(
+      {
+        type: 'sl-rating',
+        props: {
+          value: 3,
+          max: 5,
+          'on:sl-change': { $action: 'routeStore.navigate', args: [{ $: 'event.target.value' }] },
+        },
+      },
+      withRating(),
+    );
+    expect(result.errors.filter((e) => e.severity === 'error')).toEqual([]);
+    expect(result.errors.filter((e) => e.message.includes('Unknown prop'))).toEqual([]);
+  });
+
+  it('warns on a prop the element does not document — a design-system prop included', () => {
+    const result = validateSemantic({ type: 'sl-rating', props: { vlaue: 3 } }, withRating());
+    expect(result.errors.map((e) => e.message).join('\n')).toContain('Unknown prop "vlaue"');
+  });
+
+  it('still refuses a hyphenated tag nobody allowed', () => {
+    const result = validateSemantic({ type: 'sl-button' }, withRating());
+    expect(result.errors[0]?.message).toContain('Unknown component "sl-button"');
+  });
+});
+
 describe('unknown component', () => {
   it('errors for unknown component type', () => {
     const result = validateSemantic({ type: 'we-buttn' }, ctx());
@@ -954,5 +999,34 @@ describe('a role named in its TypeScript spelling', () => {
     for (const bg of ['surface-sunken', 'text-muted', 'page', 'surface', 'accent', 'neutral-100', '#ff0000']) {
       expect(errorsFor({ bg })).toEqual([]);
     }
+  });
+});
+
+/**
+ * `$if` in a value position is refused; `$if` in a handler position is the statement layer's one
+ * conditional and must be let through.
+ *
+ * Which of the two a prop is, is a question with two spellings. `onClick` is the delegated DOM
+ * event and was always exempt. `on:submit` is Solid's direct-listener syntax — how a schema reaches
+ * a custom event a Lit primitive declares, and what the design system's guidance tells authors to
+ * prefer there, since delegation is unreliable across a shadow boundary. That one was not exempt,
+ * so guarding a custom-event handler was refused with advice to use a ternary, which cannot hold a
+ * handler. `$action` in the same position was always accepted, so the rule contradicted itself.
+ */
+describe('$if in a handler position', () => {
+  const errorsFor = (props: Record<string, unknown>) => validateSemantic({ type: 'we-button', props }, ctx()).errors;
+  const guard = { $if: { condition: { $: 'local.ready' }, then: { $action: 'routeStore.navigate', args: ['/'] } } };
+
+  it('is allowed on a delegated DOM event', () => {
+    expect(errorsFor({ onClick: guard })).toEqual([]);
+  });
+
+  it('is allowed on a custom event reached with the on: spelling', () => {
+    expect(errorsFor({ 'on:submit': guard })).toEqual([]);
+  });
+
+  it('is still refused in a value position, which is what the rule is for', () => {
+    const errors = errorsFor({ loading: guard });
+    expect(errors.some((e) => e.message.includes('Use a ternary instead'))).toBe(true);
   });
 });

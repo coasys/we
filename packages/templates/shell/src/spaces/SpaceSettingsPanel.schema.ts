@@ -53,7 +53,7 @@ import { spaceIdentity, spaceSettingsBody } from './SpaceSettings.ts';
  */
 const noSpaceOpen: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['No space open'] },
     {
@@ -71,11 +71,16 @@ export const spaceSettingsPanel: SchemaNode = {
       Fills the box the host gave it, and clips rather than growing — the same root every docked
       panel uses. What scrolls is one tab's contents, so the tab strip and the space's name stay put
       however long the tab is; see `spaceSettingsBody`'s `fill`.
+
+      The one panel that opens with an identity rather than a `panelHeader`, and the exception is
+      deliberate: this panel is *about* a space, so its avatar and name say what it is showing far
+      better than the word "Settings" would, and a caps label above them would be a second header
+      naming the surface twice.
     */
     width: '100%',
     height: '100%',
-    p: '400',
-    gap: '400',
+    p: '300',
+    gap: '300',
     overflow: 'hidden',
   },
   children: [

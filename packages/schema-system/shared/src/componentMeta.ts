@@ -191,6 +191,16 @@ const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
   bottom: 'position',
   left: 'position',
   zIndex: 'position',
+  /*
+    Grouped with positioning rather than with `transform`, which lives under visual.
+
+    The runtime layer and the editor layer are allowed to disagree, and this is what that is for:
+    these compose into `transform` because that is the property that can carry them, and somebody
+    looking for "where is this card" will look under position.
+  */
+  x: 'position',
+  y: 'position',
+  rotate: 'position',
   // Spacing — padding + margin (box model)
   p: 'spacing',
   px: 'spacing',

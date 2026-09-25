@@ -15,8 +15,10 @@ export type StoreDeclaration = Record<string, true | { actions?: string[]; state
  * - **`node`** supplies the content itself. The shell owns the frame and the open flag, because
  *   there is no module to own them.
  *
- * Named positions only, never pixels — the same reason `DockSize` is a name. A template cannot see
- * the viewport, and a pixel it guessed would be wrong on a display it never ran on.
+ * Positions are named, never pixels — the same reason `DockSize` is a name. A template cannot see
+ * the viewport, and a coordinate it guessed would be wrong on a display it never ran on. A *size*
+ * may be pixels, through `box`, because the host clamps it to the room there is: a box too big for
+ * the window is capped rather than hung off its edge.
  */
 export type TemplatePanel = {
   /**
@@ -29,16 +31,84 @@ export type TemplatePanel = {
   id: string;
   /** The module whose panel this places. Mutually exclusive with `node`. */
   module?: string;
+  /**
+   * Which of that module's panels, where it contributes more than one — its declared `name`.
+   *
+   * Unnecessary for a module with a single panel, which is most of them: the host resolves the name
+   * to that one dock. A module with several has no default worth guessing — supplying a transcript
+   * body into a settings panel is a silent wrong answer — so the host refuses and says so until an
+   * entry names one.
+   */
+  dock?: string;
   /** The panel's content, for a panel the template supplies. Mutually exclusive with `module`. */
   node?: SchemaNode;
   /** Shown in the titlebar. Only meaningful with `node`; a module's panel names itself. */
   title?: string;
   /** Which of the eight positions it opens at. */
   snap?: 'top-left' | 'top' | 'top-right' | 'right' | 'bottom-right' | 'bottom' | 'bottom-left' | 'left';
-  /** Where it sits among the panels sharing its edge — lower is nearer the edge. */
+  /** Where it sits *along* the edge among the panels sharing its lane — lower is nearer the start. */
   order?: number;
+  /**
+   * Which lane it is in, counting inward from the edge — 0 is against the edge.
+   *
+   * The second of an edge's two coordinates: `band` is how far in, `order` is where along. Two panels
+   * that name the same band share one lane and divide the edge between them; a panel that names none
+   * gets a lane of its own.
+   *
+   * Only meaningful with `displace`. A floating panel takes no room, so there is nothing for it to be
+   * inboard of — every float on an edge already shares one lane, which is the column `order` divides.
+   *
+   * "Two sidebars down the left, one above the other, both pushing the content aside" is what this
+   * makes sayable, and it was unreachable before: whether panels stacked inward or divided the edge
+   * was decided by `displace`, which is a question about taking room and not about position.
+   */
+  band?: number;
+  /**
+   * Position within a seat shared with other panels — a tab.
+   *
+   * Two entries with the same lane and the same explicit `order` share a seat: one shows, the rest
+   * stack behind it, and the one showing carries a strip naming them all. `tab` orders the strip.
+   * Absent `order` is a seat of its own, so nothing that never said `order` starts sharing.
+   */
+  tab?: number;
+  /**
+   * Start **in the template**, at the `$panels` outlet of this name, rather than on an edge.
+   *
+   * A section: it renders inline, in the template's flow, with no frame — and the reader can break
+   * it out into a panel, drag it to an edge, fold it, stack it, and put it back. Picture-in-picture
+   * for any region of a page. `order` is its position among the sections in that lane; `snap` is
+   * where it goes when broken out, if the reader does not drag it somewhere.
+   *
+   * `home` is a lane like the edges are, so nothing here touches the tree: the outlet stays where
+   * the author put it, and which sections start in it is data.
+   */
+  home?: string;
+  /**
+   * Not promotable: renders in its lane with no break-out grip, and no drop can move it.
+   *
+   * For a section with no standalone value — the compose box, a page's own header. The test is
+   * whether somebody would want it beside a *different* page; if not, it is arrangement, not a
+   * panel, and a corner button on it is noise.
+   */
+  fixed?: boolean;
   /** How much room it asks for. Resolved against the viewport by the host. */
   size?: 'sm' | 'md' | 'lg' | 'full';
+  /**
+   * The box it opens at, in pixels, where a named size is the wrong shape. Either side may be omitted.
+   *
+   * `size` gives a card whose width comes from a table and whose height is 16:9 of that, which is
+   * right for "a panel" and wrong for anything with a shape of its own: a key is tall and narrow, a
+   * strip of faces is wide and low, and neither is a `sm` of anything. This says the shape.
+   *
+   * The whole panel, titlebar and frame included — the same box `min` is measured against, so the
+   * two can be compared. Content that wants a given area adds the host's chrome to it.
+   *
+   * An opening bid, exactly as `size` is: clamped to the room there is, beaten by a drag, never
+   * written. A width alone keeps the 16:9 height derived from it; a height alone keeps the width
+   * `size` names. On a displacing edge the side across the edge is the thickness, and the side along
+   * it is the base a lane divides by `grow`.
+   */
+  box?: { width?: number; height?: number };
   /**
    * Its share of the spare room in a floating column, relative to its neighbours. Absent means 1.
    *
@@ -49,14 +119,34 @@ export type TemplatePanel = {
   /** Push the content aside rather than covering it. Honoured on an edge snap only. */
   displace?: boolean;
   /**
-   * Only while this segment is in the path. Absent means every route.
+   * The smallest box the panel's content is usable in, in pixels. Either side may be omitted.
+   *
+   * The one place a declaration writes pixels, and deliberately: a floor is a fact about the
+   * *content* — below this many pixels the thing inside stops working — not a guess about the
+   * viewport. The host has a default for panels that say nothing, and it is wrong in both directions
+   * often enough that a panel sharing a lane with two others should say where usable stops.
+   */
+  min?: { width?: number; height?: number };
+  /**
+   * Only while one of these segments is in the path. Absent means every route.
    *
    * What makes a layout change as somebody moves between sections — a graph wants a transcript
    * beside it and a task list does not. A section that declares its own `meta.panels` needs none of
    * this; `route` is for a shell that routes itself, which is how every showcase template works and
    * which has no sections to hang a declaration on.
+   *
+   * A list because "these two pages, not the third" is an ordinary thing to want and a single
+   * segment could not say it. The alternative people reached for — the same `id` declared twice with
+   * different routes — happens to work, since exactly one survives the filter and the dock id is
+   * stable, but it is one panel written down twice for the two to disagree about later.
+   *
+   * It says *whether*, never *where*. A panel that moved from one route to the next would work
+   * until the reader dragged it once: a stored placement is keyed by template and panel, not by
+   * route, and it outranks every declaration — so per-route positions would silently stop applying
+   * the first time somebody used the panel. Where a page genuinely needs its own arrangement, it
+   * wants to be a **view** with its own `meta.panels`.
    */
-  route?: string;
+  route?: string | string[];
   /**
    * Whether to open the panel as well as place it. Absent means yes.
    *
@@ -153,6 +243,18 @@ export type TemplateMeta = {
    * stray drag somebody made once.
    */
   panels?: TemplatePanel[];
+  /**
+   * What this interface depends on that a deployment might not have.
+   *
+   * `modules` names the feature modules whose stores or parts this template reaches —
+   * `modules.call.*` in an expression, a `$part` of theirs, a `meta.panels` entry placing one. The
+   * host cannot derive that: it can walk the component types a schema mounts, and it does, but an
+   * expression naming a module store and a part naming a module are invisible to that walk. So a
+   * template that leans on one says so, and a deployment omitting the module sees the reason instead
+   * of a blank panel. Reported through `spaceStore.missingModules`, and checked by the validator
+   * against the deployment's module list.
+   */
+  requires?: { modules?: string[] };
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };
@@ -293,8 +395,14 @@ export type QueryToken = {
      *
      * Prefer a literal wherever the type IS known: the validator can say nothing about a name it
      * only sees at runtime, and a typo in an expression fails as a silently empty list.
+     *
+     * A **list** — literal, or an expression answering with one — asks the same question of every
+     * entity in it and answers with one list: each row tagged with the entity it came from under
+     * `__subjectClass`, a record two entities share listed once, and `order` and `limit` applied to
+     * the whole. An empty list is an answer (loaded, no rows), not a wait. `offset` is refused.
+     * See `combineEntityRows` in `@we/backend-shared`.
      */
-    entity: string | Record<string, unknown>;
+    entity: string | string[] | Record<string, unknown>;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
     /**
@@ -309,10 +417,61 @@ export type QueryToken = {
      * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
      * `via` relation. The adapter resolves `via` to a backend handle (AD4M: → the relation's predicate).
      */
-    scope?: { via: string; anchorId: string | number | Record<string, unknown>; anchor?: string };
-    subscribe?: boolean;
+    scope?: {
+      via: string;
+      /**
+       * The anchor, or several of them. A list asks the same question of every anchor in one query,
+       * which is how a level of a tree stays one round trip and one subscription rather than one of
+       * each per parent. An expression answering with a list works — `local.replies.map(r, r.id)`.
+       */
+      anchorId: string | number | Array<string | number> | Record<string, unknown>;
+      anchor?: string;
+      /**
+       * Follow `via` all the way down rather than one step. The result is flat: it says which rows
+       * are under the anchor, never where, so include the inverse relation to rebuild a tree.
+       */
+      transitive?: boolean;
+      /** `'in'` searches among what points *at* the anchor, rather than what it points at. */
+      direction?: 'out' | 'in';
+      /** At most this many per anchor — "the top five replies under each of these". Pair with `order`. */
+      limitPerAnchor?: number;
+      /**
+       * Walk `via` depth by depth, keeping this many per anchor at each — `[10, 5, 3]`.
+       *
+       * One question for a whole tree: the backend walks it and answers once, so the rows arrive
+       * together rather than a level at a time. Flat and breadth-first, so include the inverse
+       * relation to rebuild the shape.
+       */
+      levels?: Array<number | Record<string, unknown>>;
+    };
+    /**
+     * Follow the answer as it changes. Defaults to true; `false` fetches once.
+     *
+     * An **expression** is allowed here, and it is what lets a surface be live only while its
+     * subject is. A call's transcript is the case: while somebody is in the call it has to follow
+     * every utterance, and once the call is over the record is settled — so
+     * `{ $: 'modules.transcribe.callOnScreenLive' }` reads a past transcript with no subscription
+     * registered at all, where before it held one open over the whole thing for as long as it was
+     * on screen. Reading is the commonest thing anybody does to a long transcript, so this is
+     * where most of the cost of one was.
+     *
+     * Changing it re-asks the query, which is what tears the subscription down when a call ends.
+     */
+    subscribe?: boolean | SchemaProp;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
     dataset?: string;
+    /**
+     * Run only while this expression is truthy. Until then the result is empty and `<name>Loaded`
+     * stays false — the query has not been asked, rather than asked and answered with nothing.
+     *
+     * For a query whose shape depends on another's answer. A board's pool narrows to whatever the
+     * board record says it gathers; without this the pool ran once unanchored, drew the whole space,
+     * and re-ran narrowed a frame later — a flash of everybody's work on the way to one call's. An
+     * unresolved operand in `where` or `scope` is pruned, and pruning means "do not narrow", which
+     * is the right reading for an optional filter and the wrong one for a scope that is *about to*
+     * exist. `when: { $: 'local.board' }` says wait instead.
+     */
+    when?: Record<string, unknown>;
   };
 };
 
@@ -388,7 +547,8 @@ export type CallLocalToken = { $callLocal: string };
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
   /**
-   * The entity to query, as authored: a name, or an expression that answers with one.
+   * The entity to query, as authored: a name, a list of names, or an expression that answers with
+   * either.
    *
    * `unknown` rather than `string` because this resolver is pure and an expression can only be
    * evaluated against stores and a row's bindings, which the framework layer holds. Every other
@@ -401,9 +561,16 @@ export type QueryDescriptor = {
    */
   entity: unknown;
   params: Record<string, unknown>;
-  subscribe: boolean;
+  /**
+   * As authored: `true`/`false`, or an expression the framework layer resolves — see
+   * `QueryToken.subscribe`. `unknown` for the same reason `entity` is: this resolver is pure, and
+   * only the framework layer holds the stores an expression is evaluated against.
+   */
+  subscribe: unknown;
   dataset?: string;
   include?: Record<string, boolean | Record<string, unknown>>;
+  /** The query runs only while this resolves truthy — see `QueryToken.when`. Kept out of `params`. */
+  when?: unknown;
 };
 
 /** Union of every token a schema writes in a value or handler position. */

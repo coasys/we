@@ -15,6 +15,7 @@ import { languagesLocalState, languagesSection } from './LanguageSettings.schema
 import {
   backup,
   connectedApps,
+  executorSupport,
   logging,
   loggingLocalState,
   mcpServer,
@@ -88,18 +89,17 @@ const templatesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "template.isDefault ? 'surface-sunken' : 'transparent'" },
+                bg: { $: "template.isDefault ? 'accent-muted' : 'transparent'" },
               },
               children: [
                 // Template icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'template.icon' }, size: '20px' } },
                     {
                       type: 'Column',
-                      props: { gap: '50' },
                       children: [
                         {
                           type: 'we-text',
@@ -252,7 +252,7 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -298,7 +298,7 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -349,13 +349,13 @@ const themesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "theme.isDefault ? 'surface-sunken' : 'transparent'" },
+                bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" },
               },
               children: [
                 // Theme icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'theme.icon' }, size: '20px' } },
                     {
@@ -482,7 +482,7 @@ function moduleRow(control: SchemaNode): SchemaNode {
       ax: 'between',
       gap: '300',
       p: '300',
-      bg: 'surface-sunken',
+      bg: 'surface',
       r: '300',
       border: '1px solid border',
     },
@@ -502,6 +502,22 @@ function moduleRow(control: SchemaNode): SchemaNode {
                 props: { variant: 'footnote', color: 'text-faint' },
                 children: [{ $: 'mod.description' }],
               },
+              /*
+                What the module can reach — derived by the host from its manifest and what it
+                contributes, so it cannot go stale. The contract used to carry a list every module
+                wrote and nothing read; this is the row that reads it.
+              */
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'count(mod.capabilities)' },
+                  then: {
+                    type: 'we-text',
+                    props: { variant: 'footnote', color: 'text-faint' },
+                    children: [{ $: "`Can: ${join(mod.capabilities, ', ')}`" }],
+                  },
+                },
+              },
             ],
           },
         ],
@@ -510,6 +526,163 @@ function moduleRow(control: SchemaNode): SchemaNode {
     ],
   };
 }
+
+/**
+ * What each capability lets *you* decide, everywhere.
+ *
+ * The personal half of the settings a module declares — the community's half is the same rows in
+ * space settings, and this one is written to the root dataset so no other member sees it. Rendered
+ * from the declarations rather than written out, so a module that adds a setting appears here with
+ * nothing to register; a deployment whose modules declare none renders no section at all.
+ *
+ * One control per row rather than the pair space settings shows, because there is no second audience
+ * here: this is what you want everywhere, and a community's answer about its own space does not
+ * overrule it — see `BINDING` in `moduleSettings.ts`. The only thing that can take the decision away
+ * is the deployment, which is what the disabled control says. Explaining that is the whole job of the
+ * sentence under the label: a switch that takes a press and springs back reads as broken.
+ */
+const agentModuleSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(spaceStore.agentModuleSettings)' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['What these modules do'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                'Your own answers, in every space. A community can decide differently for its own space, and where the two disagree the more cautious one stands.',
+              ],
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'spaceStore.agentModuleSettings' }, as: 'setting' },
+          children: [
+            {
+              type: 'Row',
+              props: {
+                width: '100%',
+                gap: '400',
+                ay: 'center',
+                p: '400',
+                bg: 'surface',
+                r: '300',
+                border: '1px solid border',
+              },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100', flex: '1', minWidth: '0' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', wrap: true },
+                      children: [
+                        { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'setting.label' }] },
+                        { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'setting.groupLabel' }] },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: [
+                        {
+                          $: "setting.locked ? 'Set by this deployment, so it cannot be changed here.' : (setting.description ?? '')",
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'setting.set' },
+                    then: {
+                      type: 'we-tooltip',
+                      props: { content: 'Stop deciding this' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'xs',
+                            onClick: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }],
+                            },
+                          },
+                          children: ['Use default'],
+                        },
+                      ],
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: "setting.type == 'boolean'" },
+                    then: {
+                      type: 'we-switch',
+                      props: {
+                        size: 'sm',
+                        checked: { $: 'setting.value' },
+                        disabled: { $: 'setting.locked' },
+                        onChange: {
+                          $action: 'spaceStore.setAgentModuleSetting',
+                          args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: { $: "setting.type == 'enum'" },
+                        then: {
+                          type: 'we-select',
+                          props: {
+                            size: 'sm',
+                            options: { $: 'setting.options' },
+                            value: { $: 'setting.value' },
+                            disabled: { $: 'setting.locked' },
+                            onChange: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                        else: {
+                          type: 'we-input',
+                          props: {
+                            size: 'sm',
+                            value: { $: 'setting.value' },
+                            disabled: { $: 'setting.locked' },
+                            onInput: {
+                              $action: 'spaceStore.setAgentModuleSetting',
+                              args: [{ $: 'setting.group' }, { $: 'setting.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
 
 /**
  * The modules of one surface, under their own heading.
@@ -578,14 +751,12 @@ const modulesSection: SchemaNode = {
         },
       ],
     },
-
     moduleGroup(
       'Embedded apps',
       'Whole applications, running alongside your spaces rather than inside one. Turning one off takes it out of the app switcher.',
       'app',
       moduleSwitch,
     ),
-
     moduleGroup(
       'Space modules',
       'Panels and buttons that appear inside a space. A community still decides which of these it runs in theirs, in that space\u2019s settings.',
@@ -605,68 +776,72 @@ const modulesSection: SchemaNode = {
       'capability',
       { type: 'we-tag', props: { variant: 'neutral' }, children: ['Always on'] },
     ),
+    agentModuleSettingsSection,
   ],
 };
 
-const createSpaceButton: SchemaNode = {
-  type: 'we-button',
-  props: {
-    text: 'Create New Space',
-    variant: 'primary',
-    height: '40px',
-    onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
-  },
+/**
+ * The two ways a space gets into the list above, as a pair.
+ *
+ * They were a primary button and, under it, a labelled input with a Join beside it — two different
+ * shapes for two halves of one question, and the second of them a second copy of a form the sidebar
+ * now also needs. Both are dialogs held by the shell, so both are buttons here and there is one
+ * join form in the app rather than two that can drift.
+ *
+ * Joining is `secondary`: creating is the thing somebody arrives at this page to do, and an address
+ * you were sent is more often pasted from the sidebar, which is where it is now offered.
+ */
+const spaceActions: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', ay: 'center', wrap: true },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        text: 'Create New Space',
+        variant: 'primary',
+        height: '40px',
+        onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+      },
+    },
+    {
+      type: 'we-button',
+      props: {
+        text: 'Join a Space',
+        variant: 'secondary',
+        height: '40px',
+        onClick: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+      },
+    },
+  ],
 };
 
 /**
- * Join a space someone sent you.
+ * Which microphone and camera calls use, out of a call.
  *
- * On the web a share link is a URL the browser can open, and the space gate takes it from there.
- * Nothing else has an address bar, so a desktop build needs somewhere to put the thing you were
- * sent — this is that place. `joinSpace` accepts a full URL, a `neighbourhood://` URI or a bare
- * id, so whichever form the link arrived in is the form that works.
+ * The same chooser the call bar's More menu opens, placed inline — one `$part`, so there is one
+ * device picker in the app rather than two that can drift. The call module owns it because the call
+ * module owns the devices; this screen is a second door onto it.
+ *
+ * Out of a call is the harder half and the reason this exists rather than only the in-call sheet:
+ * nothing is captured here, so the machine will not say what its hardware is called until it has
+ * been asked for a device once. The part handles that itself — it offers to ask — which is why this
+ * section is three lines and not thirty.
  */
-const joinSpaceByLink: SchemaNode = {
+const deviceSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200' },
-  $localState: { joinLink: { type: 'string', initial: '' }, joining: { type: 'boolean', initial: false } },
+  props: { gap: '300' },
   children: [
-    { type: 'we-text', props: { variant: 'label' }, children: ['Join with a link'] },
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Camera & microphone'] },
     {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', wrap: true },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            flex: '1',
-            value: { $: 'local.joinLink' },
-            placeholder: 'Paste a space link or neighbourhood:// address',
-            disabled: { $: 'local.joining' },
-            onInput: { $setLocal: 'joinLink', value: { $: 'event.detail' } },
-          },
-        },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'secondary',
-            // Gated on having typed something rather than on validation: whether an address
-            // resolves is only knowable by trying it, so the button asks rather than predicts.
-            disabled: { $: '!local.joinLink || local.joining' },
-            loading: { $: 'local.joining' },
-            onClick: [
-              { $setLocal: 'joining', value: true },
-              {
-                $action: 'spaceStore.joinSpace',
-                args: [{ $: 'local.joinLink' }],
-                onSuccess: [{ $setLocal: 'joinLink', value: '' }],
-                onFinally: [{ $setLocal: 'joining', value: false }],
-              },
-            ],
-          },
-          children: ['Join'],
-        },
-      ],
+      type: 'we-text',
+      props: { variant: 'body', color: 'text-muted' },
+      children: ['What calls capture with on this computer. Remembered here, and not carried to your other devices.'],
+    },
+    {
+      type: 'Card',
+      props: { bg: 'surface' },
+      children: [{ type: '$part', props: { id: 'call.deviceSettings' } }],
     },
   ],
 };
@@ -725,7 +900,7 @@ const developerSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -781,7 +956,7 @@ function page(children: SchemaNode[]): SchemaNode {
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
+  props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
   // Every route below declares whatever local state it needs. A route is rendered by `buildRoutes`
   // as its own `RenderSchema` call with a fresh context — so it is not a descendant of this node at
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
@@ -792,8 +967,7 @@ export const settingsTemplate: TemplateSchema = {
       path: '/spaces',
       ...page([
         spacesListSection,
-        createSpaceButton,
-        joinSpaceByLink,
+        spaceActions,
         // Below the spaces themselves: it is about all of this data at once, and it is the one
         // control here that writes a file rather than changing what is on screen.
         backup,
@@ -804,6 +978,7 @@ export const settingsTemplate: TemplateSchema = {
     // standing — see `spaceSettingsPage`.
     { path: '/spaces/:uuid', ...page([spaceSettingsPage]) },
     { path: '/modules', ...page([modulesSection]) },
+    { path: '/devices', ...page([deviceSection]) },
     { path: '/ai', ...page([runtimeError, aiSection]) },
     {
       path: '/languages',
@@ -815,7 +990,7 @@ export const settingsTemplate: TemplateSchema = {
       // Logging sits here rather than on a page of its own: this is where someone goes when the
       // data layer is misbehaving, which is the same moment they want more of it in the log.
       $localState: { ...networkLocalState, ...loggingLocalState },
-      ...page([runtimeError, trustedAgents, peerNetwork, logging]),
+      ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging]),
     },
     { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
     // No `$if` on the route itself: its nav entry is already gated, and a production build resolves
@@ -843,6 +1018,19 @@ export const settingsTemplate: TemplateSchema = {
                 navItem('Appearance', 'palette', '/appearance'),
                 navItem('Spaces & data', 'stack', '/spaces'),
                 navItem('Modules', 'squares-four', '/modules'),
+                /*
+                  Only where calls are installed, which is what makes a top-level entry honest:
+                  microphones and cameras are for calling with, and a deployment without the module
+                  would be offering a screen about hardware it never touches. `modules.call`
+                  resolves to nothing where it is absent, so the entry simply is not there.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'modules.call' },
+                    then: navItem('Camera & microphone', 'video-camera', '/devices'),
+                  },
+                },
                 // The rest are feature-detected: a backend that administers nothing has nothing to
                 // show, so the entry goes rather than leading to an empty page.
                 {

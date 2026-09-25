@@ -48,6 +48,14 @@ export interface MediaControllerOptions {
   onTrackChanged?: (kind: 'audio' | 'video', track: MediaStreamTrack | null) => void;
   /** Called when enabled-flags change, so presence can republish `MediaSettings`. */
   onStateChanged?: (state: MediaState) => void;
+  /**
+   * A device this agent was using has gone — unplugged, or taken by something else.
+   *
+   * Its own callback rather than an `onError`, because nothing failed and there is nothing to retry:
+   * the hardware left. The state is already corrected by the time this fires; what the host does
+   * with it is say so, since the alternative is a person who looks unmuted and is sending silence.
+   */
+  onDeviceLost?: (kind: 'audio' | 'video') => void;
   onError?: (context: string, error: unknown) => void;
 }
 
@@ -59,6 +67,17 @@ export interface MediaController {
   state(): MediaState;
   /** Acquire mic and camera. Safe to call repeatedly; only the first acquires. */
   start(constraints?: MediaStreamConstraints): Promise<void>;
+  /**
+   * Send a different microphone or camera, without leaving the call.
+   *
+   * An empty id means "whatever the system offers", which is the state a chooser returns to rather
+   * than a fourth kind of nothing.
+   *
+   * Answers whether the switch happened. `false` is a device that could not be opened — unplugged
+   * between listing and choosing, or held exclusively by something else — and the previous one is
+   * still running, because the new track is acquired before the old one is let go.
+   */
+  setDevice(kind: 'audio' | 'video', deviceId: string): Promise<boolean>;
   setAudioEnabled(enabled: boolean): void;
   setVideoEnabled(enabled: boolean): Promise<void>;
   /**
@@ -109,11 +128,105 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   const emitState = () => options.onStateChanged?.({ ...state });
 
   const cameraTrack = () => stream?.getVideoTracks()[0] ?? null;
+  const micTrack = () => stream?.getAudioTracks()[0] ?? null;
   const screenTrack = () => screenStream?.getVideoTracks()[0] ?? null;
 
   /** The video track the mesh should be sending right now: the screen while sharing, else the camera. */
   const publishVideo = () =>
     options.onTrackChanged?.('video', state.screenShareEnabled ? screenTrack() : cameraTrack());
+
+  /**
+   * The counterpart nobody needed until a microphone could change.
+   *
+   * The audio track used to be published exactly once, at `start`, and never again — which was
+   * correct while the only thing that could happen to it was being muted, since muting keeps the
+   * sender and flips `enabled`. A device switch replaces the track, so there has to be a way to say
+   * so, and it has to exist beside `publishVideo` rather than as a line inside the switch: the two
+   * kinds are otherwise asymmetric for no reason a reader could work out.
+   */
+  const publishAudio = () => options.onTrackChanged?.('audio', micTrack());
+
+  /**
+   * What was asked for last, so a later acquisition asks for the same thing.
+   *
+   * The camera re-acquire in `setVideoEnabled` used to rebuild its constraints from
+   * `DEFAULT_CONSTRAINTS`, discarding whatever `start` had been given. Harmless while nothing ever
+   * passed anything — and silently wrong the moment a chosen camera exists, because toggling video
+   * off and on would quietly revert to the system default and the picker would go on claiming the
+   * choice it no longer had.
+   */
+  let asked: MediaStreamConstraints = DEFAULT_CONSTRAINTS;
+  /** The device each kind has been pinned to, or empty for whatever the system offers. */
+  const chosen: { audio: string; video: string } = { audio: '', video: '' };
+
+  /**
+   * One kind's constraints, with the chosen device pinned into them.
+   *
+   * `exact`, not `ideal`. A soft hint is advisory and browsers are free to ignore it, which would
+   * make a picker that appears to work and does not; `exact` either opens the device the person
+   * chose or fails, and failing is recoverable — the caller falls back and says so. A picker that
+   * silently selects something else is the one outcome with no way back.
+   */
+  function constraintsFor(kind: 'audio' | 'video'): MediaTrackConstraints | boolean {
+    const base = (kind === 'audio' ? asked.audio : asked.video) ?? true;
+    const id = chosen[kind];
+    if (!id) return base;
+    return { ...(typeof base === 'object' ? base : {}), deviceId: { exact: id } };
+  }
+
+  /**
+   * A local track that stops existing, rather than one this agent turned off.
+   *
+   * ## What went wrong without it
+   *
+   * Nothing watched the camera or microphone this agent was *sending*. Only remote tracks were
+   * watched (for the frozen-tile case) and the screen track (for the browser's own "Stop sharing"
+   * bar). So unplugging a USB headset mid-call ended the track and nothing else changed at all:
+   * `audioEnabled` stayed true, presence went on publishing `audioEnabled: true`, and every peer's
+   * roster showed this agent unmuted while they sent silence. No error, nothing on screen, and no
+   * way for the person to discover it except by being told.
+   *
+   * It is the same shape as the bug `setVideoEnabled` describes — "the flag was the only thing that
+   * changed … nothing could ever resolve it" — for a cause that code never anticipated.
+   *
+   * ## Why `ended` and not `mute`
+   *
+   * `ended` is the source going away for good, which is the case worth acting on. `mute` on a local
+   * track is the source temporarily unable to produce — another application taking exclusive access,
+   * an OS-level mute — and it comes back, so treating it as loss would turn a hiccup into a state
+   * the person has to undo by hand. Worth revisiting if a browser turns out to report a real unplug
+   * that way.
+   *
+   * Calling `track.stop()` does **not** fire this: the spec fires `ended` for the source ending, not
+   * for the consumer letting go. So `stop()`, `stopScreenShare` and a deliberate device switch are
+   * all silent here, which is what makes one listener safe to attach for the life of the track.
+   */
+  function watchForLoss(track: MediaStreamTrack, kind: 'audio' | 'video') {
+    track.addEventListener('ended', () => {
+      // Only if it is still the track being sent. A device switched away from is stopped rather than
+      // ended, but a track that lost a race to a switch must not correct state about its successor.
+      if (!stream?.getTracks().includes(track)) return;
+      stream.removeTrack(track);
+
+      /*
+        The state is corrected to what is true, which is what this file does everywhere else: nothing
+        is being sent, so the flag says so and presence republishes it. A person reading their own
+        bar sees themselves muted, which is the honest reading — and the host says why.
+      */
+      if (kind === 'audio') {
+        state.audioEnabled = false;
+        options.onTrackChanged?.('audio', null);
+      } else {
+        state.videoEnabled = false;
+        // Not while sharing: the screen is what is being sent, and the camera going is not visible
+        // to anyone. `publishVideo` already picks the right one.
+        publishVideo();
+      }
+
+      options.onDeviceLost?.(kind);
+      emitState();
+    });
+  }
 
   function stopScreenShare() {
     if (!screenStream) return;
@@ -138,6 +251,8 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
 
     async start(constraints = DEFAULT_CONSTRAINTS) {
       if (stream) return;
+      // Remembered, so every later acquisition asks for the same thing — see `asked`.
+      asked = constraints;
       const mine = ++generation;
       /** Close a stream that arrived after this attempt was cancelled, rather than storing it. */
       const claim = (acquired: MediaStream): boolean => {
@@ -148,14 +263,17 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
 
       let acquired: MediaStream;
       try {
-        acquired = await devices.getUserMedia(constraints);
+        // Through `constraintsFor`, not the argument as given, so a device chosen *before* joining
+        // is asked for on the first acquisition rather than only on a later switch. That is the
+        // ordinary path: the choice is made once in settings and every call after it uses it.
+        acquired = await devices.getUserMedia({ audio: constraintsFor('audio'), video: constraintsFor('video') });
       } catch (error) {
         // A refused or missing camera must not stop the call — audio-only is a valid way to be in
         // one. Retry audio alone before giving up entirely.
         options.onError?.('acquiring camera and microphone', error);
         if (mine !== generation) return;
         try {
-          acquired = await devices.getUserMedia({ audio: constraints.audio ?? true });
+          acquired = await devices.getUserMedia({ audio: constraintsFor('audio') });
           if (!claim(acquired)) return;
           state.videoEnabled = false;
         } catch (audioError) {
@@ -183,12 +301,83 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       if (!claim(acquired)) return;
       stream = acquired;
 
-      for (const track of stream.getAudioTracks()) track.enabled = state.audioEnabled;
-      for (const track of stream.getVideoTracks()) track.enabled = state.videoEnabled;
+      for (const track of stream.getAudioTracks()) {
+        track.enabled = state.audioEnabled;
+        watchForLoss(track, 'audio');
+      }
+      for (const track of stream.getVideoTracks()) {
+        track.enabled = state.videoEnabled;
+        watchForLoss(track, 'video');
+      }
 
       options.onTrackChanged?.('audio', stream.getAudioTracks()[0] ?? null);
       publishVideo();
       emitState();
+    },
+
+    /**
+     * Send a different microphone or camera, mid-call, without renegotiating.
+     *
+     * ## The swap itself is free; the identity is the part that matters
+     *
+     * `replaceTrack` does not renegotiate, so the far end sees the new device with no protocol
+     * round trip — the same path screen share has always used. What is *not* free is telling
+     * everything downstream, and the trap is on the audio side.
+     *
+     * The stream this controller holds is shared: the store publishes it through `media.publish`, and
+     * the transcriber reads it with `media.input()` and builds an audio graph from it. That store's
+     * setter dedupes on the stream's identity — deliberately, so a mute does not re-announce the same
+     * capture. Mutating the tracks of the existing stream would therefore change what is being sent
+     * and tell nobody: the transcriber would go on listening to the microphone that had just been
+     * unplugged from the graph, transcribing silence, with nothing anywhere saying why.
+     *
+     * So a switch builds a **new** `MediaStream`. Identity changing is the message.
+     *
+     * ## Acquire, then let go
+     *
+     * The new device is opened before the old one is stopped, so a device that cannot be opened —
+     * unplugged between listing and choosing, or held exclusively by another application — leaves
+     * the call exactly as it was rather than silent. The cost is that a machine which only permits
+     * one consumer of a device refuses the second open; that is the rarer failure and the recoverable
+     * one, where stopping first and failing to reacquire is neither.
+     */
+    async setDevice(kind, deviceId) {
+      chosen[kind] = deviceId;
+      // Nothing is open yet — the choice is remembered and `start` will ask for it. This is the
+      // ordinary path when somebody picks a device before joining.
+      if (!stream) return true;
+
+      const mine = generation;
+      let acquired: MediaStream;
+      try {
+        acquired = await devices.getUserMedia(
+          kind === 'audio' ? { audio: constraintsFor('audio') } : { video: constraintsFor('video') },
+        );
+      } catch (error) {
+        options.onError?.(`switching ${kind === 'audio' ? 'microphone' : 'camera'}`, error);
+        return false;
+      }
+
+      const next = (kind === 'audio' ? acquired.getAudioTracks() : acquired.getVideoTracks())[0] ?? null;
+      // Cancelled while the prompt was open, or a device that opened with nothing in it. Either way
+      // what was acquired belongs to nobody — the generation check is `start`'s, for its reason.
+      if (mine !== generation || !next) {
+        for (const orphan of acquired.getTracks()) orphan.stop();
+        return false;
+      }
+
+      const replaced = kind === 'audio' ? stream.getAudioTracks() : stream.getVideoTracks();
+      const kept = stream.getTracks().filter((track) => !replaced.includes(track));
+      for (const old of replaced) old.stop();
+
+      next.enabled = kind === 'audio' ? state.audioEnabled : state.videoEnabled;
+      watchForLoss(next, kind);
+      stream = new MediaStream([...kept, next]);
+
+      if (kind === 'audio') publishAudio();
+      else publishVideo();
+      emitState();
+      return true;
     },
 
     setAudioEnabled(enabled) {
@@ -219,7 +408,10 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         const mine = generation;
         let acquired: MediaStream;
         try {
-          acquired = await devices.getUserMedia({ video: DEFAULT_CONSTRAINTS.video ?? true });
+          // What was asked for at `start`, with whatever camera has been chosen since — not
+          // `DEFAULT_CONSTRAINTS`, which is what this used to rebuild from and is how a chosen
+          // camera quietly reverted to the system default on the first toggle off and on.
+          acquired = await devices.getUserMedia({ video: constraintsFor('video') });
         } catch (error) {
           // Still refused. The flag goes back off rather than staying true with nothing behind it,
           // which is the state that could not be recovered from.
@@ -245,6 +437,8 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         if (stream) stream.addTrack(track);
         else stream = acquired;
         track.enabled = true;
+        // The camera acquired here is as losable as the one acquired at `start` — see `watchForLoss`.
+        watchForLoss(track, 'video');
         state.videoEnabled = true;
         publishVideo();
         emitState();

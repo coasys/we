@@ -284,7 +284,10 @@ function accountSwitcher(): SchemaNode {
           // corner.
           then: tile(
             'New account',
-            { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'surface-sunken' } },
+            // `surface` rather than the `accent-muted` its siblings wear: this is the secondary
+            // action and should be quieter. Not `surface-sunken`, which is what the boot screen's
+            // own ground is painted — the disc was the same colour as the thing behind it.
+            { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'surface' } },
             { $action: 'accountStore.createAccount' },
           ),
         },
@@ -453,7 +456,7 @@ const unlockForm: SchemaNode = {
     {
       type: 'we-form-field',
       props: {
-        error: { $: "sessionStore.passwordError ? 'Incorrect password' : ''" },
+        error: { $: "sessionStore.passwordError ? 'Incorrect password' : sessionStore.loginError" },
       },
       children: [
         // Field and submit on one row — the shape an OS sign-in uses when there is exactly one

@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import type { EntityManifestEntry } from '@we/backend-ad4m';
-import { createAd4mQueryAdapter, VERIFIED_AGAINST_AD4M } from '@we/backend-ad4m';
+import { ad4mCapabilities, createAd4mQueryAdapter, VERIFIED_AGAINST_AD4M } from '@we/backend-ad4m';
 import type { QueryIR } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -42,6 +42,20 @@ describe('adapter.plan — native cases (no gaps)', () => {
     expect(adapter.plan(ir).gaps).toEqual([]);
   });
 
+  it('a numeric range bound is native, and a string one is refused rather than matching nothing', () => {
+    expect(adapter.plan(base({ filter: { field: 'price', op: 'gte', value: 10 } })).gaps).toEqual([]);
+    const plan = adapter.plan(base({ filter: { field: 'dueDate', op: 'lt', value: '2026-10-01' } }));
+    expect(plan.gaps).toContainEqual(expect.objectContaining({ feature: 'operator:lt:string' }));
+  });
+
+  it('a relation quantifier is native — it compiles to a SPARQL EXISTS group', () => {
+    expect(adapter.plan(base({ filter: { rel: 'comments', op: 'none' } })).gaps).toEqual([]);
+    expect(
+      adapter.plan(base({ filter: { rel: 'comments', op: 'some', where: { field: 'body', op: 'eq', value: 'x' } } }))
+        .gaps,
+    ).toEqual([]);
+  });
+
   it('a projection-count sort WITH a limit is native (AD4M pushes it down)', () => {
     const ir = base({
       sort: [{ by: '$likeCount', dir: 'desc' }],
@@ -53,7 +67,11 @@ describe('adapter.plan — native cases (no gaps)', () => {
 });
 
 describe('adapter.plan — AD4M conditional degradations', () => {
-  it('OR in where + a sort → sort:under-boolean (AD4M drops the sort pushdown)', () => {
+  it('OR in where + a sort is native now — the pushdown survives a combinator', () => {
+    // This asserted `sort:under-boolean` until the executor's where clause got a single compiler:
+    // `all_where_pushable` is now that compiler's own completeness flag, and OR and NOT compile, so
+    // there is no longer a pushdown to lose. Kept rather than deleted because the shape is worth
+    // holding — a feed filtering on either of two fields and sorting by date is ordinary.
     const ir = base({
       filter: {
         or: [
@@ -64,8 +82,7 @@ describe('adapter.plan — AD4M conditional degradations', () => {
       sort: [{ by: 'createdAt', dir: 'desc' }],
       page: { limit: 20 },
     });
-    const features = adapter.plan(ir).gaps.map((g) => g.feature);
-    expect(features).toContain('sort:under-boolean');
+    expect(adapter.plan(ir).gaps).toEqual([]);
   });
 
   it('a projection sort WITHOUT a limit → sort:needs-limit', () => {
@@ -95,27 +112,13 @@ describe('adapter.plan — AD4M conditional degradations', () => {
     expect(adapter.plan(ir).gaps).toEqual([]);
   });
 
-  it('classifies both quirks as `degraded`, not `compute-up`, and stays runnable', () => {
-    // These are AD4M *bugs*: it returns the correct rows and silently ignores the ordering. Marking
-    // them `compute-up` promised a JS fallback that nothing provides, so the renderer failed loud and
+  it('classifies the remaining quirk as `degraded`, not `compute-up`, and stays runnable', () => {
+    // This is an AD4M *bug*: it returns the correct rows and silently ignores the ordering. Marking
+    // it `compute-up` promised a JS fallback that nothing provides, so the renderer failed loud and
     // blocked working screens. `degraded` = run it, warn once.
-    const underBoolean = base({
-      filter: {
-        or: [
-          { field: 'a', op: 'eq', value: 1 },
-          { field: 'b', op: 'eq', value: 2 },
-        ],
-      },
-      sort: [{ by: 'createdAt', dir: 'desc' }],
-      page: { limit: 20 },
-    });
-    const needsLimit = base({ sort: [{ by: 'location.country', dir: 'asc' }] });
-
-    for (const ir of [underBoolean, needsLimit]) {
-      const plan = adapter.plan(ir);
-      expect(plan.runnable).toBe(true);
-      expect(plan.gaps.every((g) => g.disposition === 'degraded')).toBe(true);
-    }
+    const plan = adapter.plan(base({ sort: [{ by: 'location.country', dir: 'asc' }] }));
+    expect(plan.runnable).toBe(true);
+    expect(plan.gaps.every((g) => g.disposition === 'degraded')).toBe(true);
   });
 
   it('an implicit conjunction (sibling where keys) + sort is native — NOT a degradation', () => {
@@ -192,6 +195,22 @@ describe('the capability profile and the executor it describes', () => {
 
     const pinned = root.pnpm?.overrides?.['@coasys/ad4m'];
     expect(pinned, 'no @coasys/ad4m override in the root package.json').toBeTruthy();
-    expect(pinned).toBe(VERIFIED_AGAINST_AD4M);
+    expect(
+      pinned,
+      'a `file:` link names no build, so the profile is unverifiable — the pin must name a published version before merge',
+    ).toBe(VERIFIED_AGAINST_AD4M);
+  });
+
+  it('does not claim `exists`, which the executor has no operator for', () => {
+    // Not a preference. `WhereOps` declares no `exists` and uses `deny_unknown_fields`, so
+    // `{ field: { exists: true } }` is re-read as a nested where clause, compiles incomplete, and
+    // reaches the post-hydration filter — where a `SubClause` at a value comparison returns false.
+    // Every row is rejected and the query answers nothing, always, with no error.
+    //
+    // Claiming it here made that outcome silent. Refusing the query is worse than working and better
+    // than lying, and it is what makes the gap findable when somebody reaches for the operator.
+    expect(ad4mCapabilities.operators).not.toContain('exists');
+    const plan = adapter.plan(base({ filter: { field: 'retired', op: 'exists', value: false } }));
+    expect(plan.gaps.map((g) => g.feature)).toContain('operator:exists');
   });
 });

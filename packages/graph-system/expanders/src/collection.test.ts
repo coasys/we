@@ -65,44 +65,56 @@ function contextWith(rows: (query: ExpanderQuery) => Record<string, unknown>[]) 
 const COLLECTION = entityAddress('ds', 'CollectionBlock', 'c1');
 
 describe('collectionExpander', () => {
-  it('drills down through the untyped relation, one scoped query per child type', async () => {
-    const { context, query } = contextWith((request) =>
-      request.entity === 'TextBlock' ? [{ id: 't1', text: 'hello' }] : [],
-    );
+  const withMembers = (members: Record<string, unknown>[]) => contextWith(() => [{ id: 'c1', children: members }]);
+  const typed = (type: string, row: Record<string, unknown>) => ({ ...row, __subjectClass: type });
 
-    const result = await collectionExpander({ children: ['TextBlock'] }).expand(
-      { id: COLLECTION, direction: 'out' },
-      context,
-    );
+  it('reads the whole collection once and draws each member as the class it came back as', async () => {
+    const { context, query } = withMembers([
+      typed('TextBlock', { id: 't1', text: 'hello' }),
+      typed('ImageBlock', { id: 'i1' }),
+    ]);
 
+    const result = await collectionExpander().expand({ id: COLLECTION, direction: 'out' }, context);
+
+    // One read of the parent, not one per candidate type — and no list of types in it.
+    expect(query).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledWith(
-      expect.objectContaining({
-        entity: 'TextBlock',
-        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: 'c1' },
-      }),
+      expect.objectContaining({ entity: 'CollectionBlock', where: { id: 'c1' }, include: { children: true } }),
     );
-    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes.map((n) => n.type)).toEqual(['TextBlock', 'ImageBlock']);
     expect(result.edges[0]).toMatchObject({ source: COLLECTION, type: 'contains' });
   });
 
-  it('containment runs one way — an inward request returns nothing', async () => {
-    const { context, query } = contextWith(() => [{ id: 't1', text: 'x' }]);
-    const result = await collectionExpander().expand({ id: COLLECTION, direction: 'in' }, context);
-    expect(result.nodes).toEqual([]);
-    expect(query).not.toHaveBeenCalled();
+  it('draws a member of a type nobody configured — the defect the old work list had', async () => {
+    // A configured list is a list somebody has to keep current, and a type missing from it was
+    // indistinguishable from a record that did not exist. `Sighting` is a model a community defined
+    // this morning; no constant in this repo mentions it.
+    const { context } = withMembers([typed('Sighting', { id: 's1', name: 'heron' })]);
+    const result = await collectionExpander().expand({ id: COLLECTION, direction: 'out' }, context);
+    expect(result.nodes.map((n) => n.type)).toEqual(['Sighting']);
   });
 
-  it('skips child types the dataset does not declare', async () => {
-    const { context, query } = contextWith(() => []);
-    await collectionExpander({ children: ['NotARecord', 'TextBlock'] }).expand(
+  it('narrows to the named types when a template asks for a partial view', async () => {
+    const { context } = withMembers([typed('TextBlock', { id: 't1' }), typed('ImageBlock', { id: 'i1' })]);
+    const result = await collectionExpander({ children: ['ImageBlock'] }).expand(
       { id: COLLECTION, direction: 'out' },
       context,
     );
-    expect(query).toHaveBeenCalledTimes(1);
-    expect(query).toHaveBeenCalledWith(expect.objectContaining({ entity: 'TextBlock' }));
+    expect(result.nodes.map((n) => n.type)).toEqual(['ImageBlock']);
   });
 
-  it('a failing child query warns and contributes nothing instead of throwing', async () => {
+  it('counts and reports members that came back without a type instead of dropping them quietly', async () => {
+    // An unclassified member means the read did not do what it was asked — a relation not declared
+    // polymorphic, or an executor that cannot. The symptom is a container that opens onto nothing,
+    // which looks exactly like an empty one.
+    const { context, warnings } = withMembers([{ id: 'x1' }, typed('TextBlock', { id: 't1' })]);
+    const result = await collectionExpander().expand({ id: COLLECTION, direction: 'out' }, context);
+    expect(result.nodes).toHaveLength(1);
+    expect(warnings[0]).toContain('1 of 2');
+    expect(warnings[0]).toContain('polymorphic');
+  });
+
+  it('a failing read warns and contributes nothing instead of throwing', async () => {
     const query = vi.fn(async () => {
       throw new Error('offline');
     });
@@ -114,12 +126,16 @@ describe('collectionExpander', () => {
       warn: (message: string) => warnings.push(message),
     } as unknown as ExpanderContext;
 
-    const result = await collectionExpander({ children: ['TextBlock'] }).expand(
-      { id: COLLECTION, direction: 'out' },
-      context,
-    );
+    const result = await collectionExpander().expand({ id: COLLECTION, direction: 'out' }, context);
     expect(result.nodes).toEqual([]);
-    expect(warnings[0]).toContain('TextBlock');
+    expect(warnings[0]).toContain('offline');
+  });
+
+  it('containment runs one way — an inward request returns nothing', async () => {
+    const { context, query } = contextWith(() => [{ id: 't1', text: 'x' }]);
+    const result = await collectionExpander().expand({ id: COLLECTION, direction: 'in' }, context);
+    expect(result.nodes).toEqual([]);
+    expect(query).not.toHaveBeenCalled();
   });
 });
 
@@ -174,38 +190,28 @@ describe('propertyExpander', () => {
 });
 
 describe('what a collection is opened into by default', () => {
-  it('looks for the block types interpretation writes, not only composed ones', async () => {
+  it('draws the block types interpretation writes, without being told they exist', async () => {
     // A call's collection acquires tasks and events without anyone composing them — the extraction
-    // pass parents them straight onto it. Before these were in the default list the records existed
-    // and the one view built to show a collection's contents did not draw them, so a successful
-    // extraction was indistinguishable from one that found nothing.
-    const { context, query } = contextWith(() => []);
+    // pass parents them straight onto it. They used to have to be named in a default list, and
+    // before they were, a successful extraction was indistinguishable from one that found nothing.
+    const { context } = contextWith(() => [
+      {
+        id: 'c1',
+        children: [
+          { id: 'k1', __subjectClass: 'TaskBlock' },
+          { id: 'e1', __subjectClass: 'EventBlock' },
+        ],
+      },
+    ]);
 
-    await collectionExpander().expand({ id: COLLECTION, direction: 'out' }, context);
+    const result = await collectionExpander().expand({ id: COLLECTION, direction: 'out' }, context);
 
-    const asked = query.mock.calls.map(([request]) => (request as ExpanderQuery).entity);
-    expect(asked).toContain('TaskBlock');
-    expect(asked).toContain('EventBlock');
-  });
-
-  it('skips a type this dataset has never installed rather than querying it', async () => {
-    // The default list is shared across every space, so it names types a given space may not have.
-    // Each entry costs a drill-down query, and asking for a shape that is not there would spend one
-    // to get an error back.
-    const { context, query } = contextWith(() => []);
-
-    await collectionExpander({ children: ['TaskBlock', 'NotInstalledBlock'] }).expand(
-      { id: COLLECTION, direction: 'out' },
-      context,
-    );
-
-    const asked = query.mock.calls.map(([request]) => (request as ExpanderQuery).entity);
-    expect(asked).toEqual(['TaskBlock']);
+    expect(result.nodes.map((n) => n.type)).toEqual(['TaskBlock', 'EventBlock']);
   });
 
   it('never opens a collection into its placements, even when told to', async () => {
-    // A board keeps its coordinates as `Placement` records parented alongside its cards — the
-    // cheapest place for them, since a board's children are a mixed bag anyway. Drawn as
+    // A canvas keeps its coordinates as `Placement` records parented alongside its cards — the
+    // cheapest place for them, since a canvas's children are a mixed bag anyway. Drawn as
     // containment they would put a dot on the canvas for every card, saying nothing and doubling
     // the node count. The refusal is unconditional because it is not a preference: a placement is
     // never what anybody means by "what is in here".

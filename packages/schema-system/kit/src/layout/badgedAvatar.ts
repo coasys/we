@@ -1,5 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { avatarSize, type AvatarTone, avatarToneColor, avatarToneRing } from '@we/tokens';
+import { avatarSize, type AvatarTone, avatarToneColor, avatarToneLabel } from '@we/tokens';
 
 /**
  * A face, optionally ringed, optionally marked in the corner — "something is true of this person
@@ -86,13 +86,20 @@ export function badgedAvatar(opts: BadgedAvatarOptions): SchemaNode {
       ...(opts.avatar.hash !== undefined && { hash: opts.avatar.hash }),
       ...(opts.avatar.icon !== undefined && { icon: opts.avatar.icon }),
       size,
-      ...(opts.ring && { ring: avatarToneRing(opts.ring) }),
+      // Inside the face, so a live face is the size of an idle one — see `ringColor` on `we-avatar`.
+      // A step wider than the size's default: this ring is a presence mark read at a glance across
+      // the rail, and it used to be a halo outside the face, where it looked bigger than it now can.
+      ...(opts.ring && { ringColor: opts.ring, ringWidth: '2.5px' }),
     },
   };
 
   // No badge, no box: a ring needs nothing around it, so the fragment costs a wrapper only when
   // there is something to position inside one.
   if (!opts.badge) return face;
+
+  // Resolved once: the disc's fill and its glyph's label are two halves of one decision, and reading
+  // the tone twice is how they came to be painted from different ones.
+  const badgeTone = opts.badge.tone ?? 'success';
 
   return {
     type: 'Column',
@@ -116,7 +123,7 @@ export function badgedAvatar(opts: BadgedAvatarOptions): SchemaNode {
           position: 'absolute',
           bottom: `calc(${dim} * ${EDGE})`,
           right: `calc(${dim} * ${EDGE})`,
-          bg: avatarToneColor(opts.badge.tone ?? 'success'),
+          bg: avatarToneColor(badgeTone),
           r: 'full',
           p: `calc(${dim} * ${DISC_PAD})`,
           ax: 'center',
@@ -125,7 +132,13 @@ export function badgedAvatar(opts: BadgedAvatarOptions): SchemaNode {
         children: [
           {
             type: 'we-icon',
-            props: { name: opts.badge.icon, size: `calc(${dim} * ${DISC_GLYPH})`, color: 'on-accent' },
+            /*
+              The label for the disc's OWN fill. This said `on-accent` while the disc was painted
+              from the tone — the corrected label for a different fill entirely, right in `dark`
+              only because that theme pins `onAccent` to a near-black lavender that happens to work
+              on light green. A `danger` disc would have put a near-black glyph on dark red.
+            */
+            props: { name: opts.badge.icon, size: `calc(${dim} * ${DISC_GLYPH})`, color: avatarToneLabel(badgeTone) },
           },
         ],
       },

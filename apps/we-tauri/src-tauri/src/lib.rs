@@ -2,6 +2,7 @@ mod accounts;
 mod app_server;
 mod app_state;
 mod commands;
+mod executor_log;
 mod generated;
 
 // Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
@@ -11,6 +12,7 @@ mod seed_runtime;
 
 use accounts::{expand_home, AccountRegistry};
 use app_state::AppState;
+use executor_log::ExecutorLog;
 use rust_executor::utils::find_port;
 use rust_executor::Ad4mConfig;
 use std::path::PathBuf;
@@ -136,9 +138,22 @@ pub fn run() {
             rust_executor::logging::build_rust_log_from_config(&executor_settings.log_levels);
         std::env::set_var("RUST_LOG", rust_log);
     }
-    println!("AD4M data path: {}", app_data_path.display());
 
     std::fs::create_dir_all(&app_data_path).expect("Failed to create app data directory");
+
+    // This run's log, in the account's data directory — see `executor_log.rs`. Installed as the
+    // executor's logger here, before anything logs: the executor sets up its own stdout logger when
+    // `run` starts, and skips that when one is already in place. Before `init` too, because a first
+    // run is the one most worth having a record of. After `RUST_LOG`, which the logger reads once.
+    // Every start of the executor is a start of this process — a restart relaunches the app — so
+    // rotating here rotates once per run, as the Electron host does.
+    let log = ExecutorLog::open(&app_data_path);
+    if let Err(error) = rust_executor::logging::init_launcher_logging(Box::new(log.clone()), None) {
+        eprintln!("[main] Could not install the executor log as its logger: {error}");
+    }
+    log.install_panic_hook();
+    log.host(&format!("AD4M data path: {}", app_data_path.display()));
+    log.host(&format!("Executor log: {}", log.path().display()));
 
     // Scaffold the directory only when the executor has never run against it, matching the
     // electron host's `ensureDataPathInitialised`. `init` is idempotent apart from one branch: an
@@ -146,10 +161,10 @@ pub fn run() {
     // cleaned. Calling it unconditionally meant an old enough account was silently wiped on the
     // boot that opened it — where electron would not have made the call at all.
     if !app_data_path.join("mainnet_seed.seed").exists() {
-        println!(
+        log.host(&format!(
             "Data path not initialised, scaffolding: {}",
             app_data_path.display()
-        );
+        ));
         rust_executor::init::init(
             Some(app_data_path.to_str().unwrap().to_string()),
             None, // No bootstrap seed override — the account uses mainnet.

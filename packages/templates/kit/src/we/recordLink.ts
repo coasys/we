@@ -61,15 +61,15 @@ export function recordLink(entity: unknown, id: unknown): SchemaNode {
     props: {
       condition: { $: 'spaceStore.spacePath' },
       then: {
-        type: 'we-button',
-        props: {
-          variant: 'ghost',
-          size: 'sm',
-          square: true,
-          href: { $: target },
-          title: 'Open',
-        },
-        children: [{ type: 'we-icon', props: { name: 'arrows-out-simple' } }],
+        type: 'we-tooltip',
+        props: { content: 'Open' },
+        children: [
+          {
+            type: 'we-button',
+            props: { label: 'Open', variant: 'ghost', size: 'sm', square: true, href: { $: target } },
+            children: [{ type: 'we-icon', props: { name: 'arrows-out-simple' } }],
+          },
+        ],
       },
     },
   };

@@ -170,3 +170,26 @@ describe('scope drill-down', () => {
     expect(scoped.map((r) => r.id)).toEqual(['a1']);
   });
 });
+
+describe('an ordered collection, through the harness', () => {
+  it('hands its children back in the order they were put in, not the order they were created', async () => {
+    const ports = makePorts();
+    const handle = (await ports.lifecycle.get('ds-main'))!.handle;
+
+    const CollectionBlock = getEntity('CollectionBlock') as unknown as {
+      create(h: unknown, d: Record<string, unknown>): Promise<{ id: string; addChildren(x: unknown): Promise<void> }>;
+      findAll(h: unknown, q?: Record<string, unknown>): Promise<Array<{ id: string; children: unknown }>>;
+    };
+
+    const post = await CollectionBlock.create(handle, { id: 'post', kind: 'post' });
+    // Created in one order and composed in another, which is the whole point: creation order is an
+    // accident of typing, and the sequence somebody arranged is the data.
+    const first = await CollectionBlock.create(handle, { id: 'para', kind: 'text' });
+    const second = await CollectionBlock.create(handle, { id: 'image', kind: 'image' });
+    await post.addChildren(second);
+    await post.addChildren(first);
+
+    const [row] = await CollectionBlock.findAll(handle, { where: { id: 'post' }, include: { children: true } });
+    expect((row.children as { id: string }[]).map((c) => c.id)).toEqual(['image', 'para']);
+  });
+});

@@ -6,6 +6,7 @@ import {
   BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
   BASE_VISUAL_SPECS as BASE_VISUAL,
   bgImageLayer,
+  composeTransform,
   computeBgImageComposite,
   focusSelector,
   getMarginValues,
@@ -14,7 +15,6 @@ import {
   HOST_LAYOUT_SPECS as HOST_LAYOUT,
   isBgImageFaded,
   joinDeclsCSS as joinDecls,
-  joinStateDeclsCSS as joinStateDecls,
   mapFlexAxes,
   marginKeys,
   paddingKeys,
@@ -25,12 +25,12 @@ import {
   resolveFontWeight,
   resolveLineHeight,
   TIER_PROP_KEYS,
-  tierRulesCSS,
+  tierQuery,
   tokenVar,
   warnIfUnsurfaced,
   zIndexVar,
 } from '@we/design-utils';
-import type { Tier } from '@we/tokens';
+import { type Tier, TIERS } from '@we/tokens';
 
 /**
  * Design System CSS Helpers
@@ -41,6 +41,75 @@ import type { Tier } from '@we/tokens';
  */
 
 const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
+
+// ────────────────────────────────────────────
+// Cascade layers
+// ────────────────────────────────────────────
+
+/*
+  How a primitive's shadow root decides between its own CSS, its props, a breakpoint and a state.
+
+  ## What went wrong without layers
+
+  Every generated declaration is `prop: var(--we-x-<prop>)`, and a variable nobody set makes that
+  declaration invalid at computed-value time, which drops the property to its initial value. So the
+  stylesheet could not say "no opinion here". Every rule asserted a value for every property, and
+  whichever rule won specificity decided all of them, including ones it had nothing to say about.
+  A hover rule reset a truncated label's `white-space`. The same rule, outranking a breakpoint, hid
+  a header label under the pointer, which ended the hover and showed it again: flashing. Focus
+  outranking hover put a field's fill back to rest while the ring arrived, and pressing a textarea
+  took its focus ring away. Each was patched where it was found (`!important`, a `:where()`
+  specificity anchor, a copy of every state rule inside every breakpoint query, props restated in
+  `focusProps`) and the class of bug stayed.
+
+  ## The arrangement
+
+      we-base              the component's own CSS, and the base DS rules, exactly as they always
+                           resolved: by specificity and order
+      we-tier-sm/md/lg     one layer per breakpoint, widest last
+      we-state-hover/focus/active/disabled
+                           one layer per state, in that order
+      we-overlay           OverlayElement's surface rules
+
+  Every declaration in a tier or state layer is `prop: var(--we-x-<variant>-<prop>, revert-layer)`.
+  Unset means "roll back to the layer below", so a variant only ever changes what it names. A hover
+  that sets a background leaves `white-space` to whatever the component and the breakpoints said. A
+  focus that sets a ring leaves the hover's background in place when both are true, because they are
+  separate layers and each reverts past only itself.
+
+  States sit above breakpoints, so `hoverProps` beats `mdUpProps` on a property both set, which is
+  what the specificity arrangement used to give.
+
+  ## Why the base layer still uses specificity
+
+  `revert-layer` has a real cost, and it scales with how many declarations actually revert on an
+  element. Measured on real primitives, a base layer written the same way (every one of ~60
+  properties reverting on every element) made mount noticeably slower, while layers on their own cost
+  nothing. So only the variant layers revert, and they only match elements that carry variant props
+  at all (`data-we-states` / `data-we-tiers`, written by `updateAllCustomVars`). An ordinary element
+  pays nothing, and resizing a surface no longer restyles every primitive on it.
+
+  The price is one thing the base layer does not fix: an explicit prop still loses to an
+  attribute-gated rule in a component's own CSS on the same property, as it always has.
+
+  ## The one rule for component authors
+
+  Nothing may be adopted into a primitive's shadow root outside these layers. A rule outside every
+  layer beats every layer, so a component sheet adopted as-is would override every breakpoint and
+  state. `applyDSBehavior` moves a component's `static styles` into `we-base` as they are finalized,
+  which covers the ordinary case with no work. Anything adopted some other way must name a layer.
+*/
+const TIER_LAYERS = TIERS.slice(1).map((tier) => `we-tier-${tier}`);
+const STATE_LAYERS = ELEMENT_STATES.map((state) => `we-state-${state}`);
+
+/** Every cascade layer a primitive's shadow root is arranged in, lowest first. */
+export const DS_LAYERS = ['we-base', ...TIER_LAYERS, ...STATE_LAYERS, 'we-overlay'] as const;
+
+/**
+ * The layer order statement. Placed at the top of every sheet a primitive adopts: order is fixed by
+ * first mention, and a sheet that named `we-overlay` before the others would put it at the bottom.
+ */
+export const DS_LAYER_ORDER = `@layer ${DS_LAYERS.join(', ')};`;
 
 // ────────────────────────────────────────────
 // Component cascade configuration
@@ -124,12 +193,17 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     // Explicit: size-aware CSS var chain — not derivable from DEFAULT_PROPS alone.
     radiusDefault: 'var(--we-button-size-radius, var(--we-radius-400))',
     // Padding is owned by CSS_STYLES (x-only, 0 y) — nativePadding suppresses the generic declaration.
+    // The group is still declared: `nativePadding` says who writes the rule, not which family the
+    // component belongs to, and CSS_STYLES reads this variable directly. Unused for emission,
+    // load-bearing as the statement that reading it is membership rather than a copied chain.
+    paddingGroup: '--we-theme-control-padding-x',
     nativePadding: true,
     gapGroup: '--we-theme-control-gap',
     gapDefault: 'var(--we-button-size-gap, var(--we-space-300))',
   },
   badge: {
     radiusGroup: '--we-theme-control-radius',
+    paddingGroup: '--we-theme-control-padding-x', // As button — see the note there.
     nativePadding: true,
     gapGroup: '--we-theme-control-gap',
     gapDefault: 'var(--we-badge-size-gap, 0)',
@@ -145,11 +219,19 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     gapDefault: 'var(--we-space-300)',
   },
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
+  // A strip of page controls: the space between them is the control group's, like a button's.
+  pagination: { gapGroup: '--we-theme-control-gap' },
   // Inputs
   input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding' },
   textarea: {
     radiusGroup: '--we-theme-input-radius',
     radiusCapGroup: '--we-theme-surface-radius',
+    // As button and badge — `nativePadding` says who writes the rule, not which family this belongs
+    // to, and CSS_STYLES reads this variable directly. `inputPadding`'s own docblock names textarea
+    // as a member of the group; the table simply never said so, so the guard read the CSS as a
+    // copied chain rather than as membership. It is unused for emission and load-bearing as the
+    // statement of belonging.
+    paddingGroup: '--we-theme-input-padding',
     nativePadding: true,
   },
   select: {
@@ -186,6 +268,13 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     radiusCapGroup: '--we-theme-surface-radius',
     paddingGroup: '--we-theme-surface-padding',
   },
+  /*
+    A skeleton stands in for content, so it has to be shaped like the content. It was pinned at
+    `r: '400'` with no group at all, which meant a sharp theme squared off every real box on the
+    page and left every placeholder rounded — the one component whose entire job is to resemble
+    something else was the one that did not follow the theme.
+  */
+  skeleton: { radiusGroup: '--we-theme-surface-radius' },
   'form-field': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
@@ -199,6 +288,9 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   modal: {
     radiusGroup: '--we-theme-surface-radius',
     paddingGroup: '--we-theme-surface-padding',
+    // Explicit: size-aware CSS var chain, declared per `size` in modal.ts — not derivable from
+    // DEFAULT_PROPS, which can only hold the one figure that applies when no size is set.
+    paddingDefault: 'var(--we-modal-size-padding, var(--we-space-700))',
     gapGroup: '--we-theme-surface-gap',
   },
   drawer: {
@@ -520,10 +612,27 @@ function updateCustomVars(
   setProperty(el, `${prefix}max-width`, props.maxWidth);
   setProperty(el, `${prefix}max-height`, props.maxHeight);
   setProperty(el, `${prefix}position`, props.position);
-  setProperty(el, `${prefix}top`, props.top);
-  setProperty(el, `${prefix}right`, props.right);
-  setProperty(el, `${prefix}bottom`, props.bottom);
-  setProperty(el, `${prefix}left`, props.left);
+  /*
+    Offsets resolve space tokens, exactly as margin, padding and gap do.
+
+    They were raw passthrough, so `top: '200'` emitted an unitless `top: 200` — invalid, silently
+    dropped by the browser, and indistinguishable from a working offset at author time since the
+    prop is typed `string`. The failure is worse than a no-op: `position: absolute` still applies,
+    and an absolutely positioned box with no valid offsets renders at its *static* position — so
+    inside a centring parent the element lands dead centre and reads as a deliberate choice. That
+    is what put the call tile's reconnect button in the middle of everybody's face.
+
+    `buildLayoutStyles` in @we/design-utils fixed this for the Solid components and this parallel
+    path was missed, which is the hazard of two implementations of one job: the comment there says
+    offsets "were raw passthrough" in the past tense, and for every Lit primitive they still were.
+
+    No `axis` argument, deliberately — margin and the offsets share the `space` prefix and read no
+    theme family, so this stays a plain scale lookup. See tokenVar.
+  */
+  setProperty(el, `${prefix}top`, props.top ? tokenVar('space', props.top) : undefined);
+  setProperty(el, `${prefix}right`, props.right ? tokenVar('space', props.right) : undefined);
+  setProperty(el, `${prefix}bottom`, props.bottom ? tokenVar('space', props.bottom) : undefined);
+  setProperty(el, `${prefix}left`, props.left ? tokenVar('space', props.left) : undefined);
   setProperty(el, `${prefix}z-index`, zIndexVar(props.zIndex));
   setProperty(el, `${prefix}margin`, hasMargin ? getMarginValues(props) : undefined);
   setProperty(el, `${prefix}flex`, props.flex);
@@ -567,7 +676,10 @@ function updateCustomVars(
   } else {
     setProperty(el, `${prefix}box-shadow`, undefined);
   }
-  setProperty(el, `${prefix}transform`, props.transform);
+  // `x`/`y`/`rotate` are emitted as part of this one variable rather than three of their own, which
+  // is what gets them the state and tier axes for free: `transform` is already in
+  // `BASE_VISUAL_SPECS`, so every prefix this function writes under already declares it.
+  setProperty(el, `${prefix}transform`, composeTransform(props));
   setProperty(el, `${prefix}transition`, parseTransition(props.transition));
   setProperty(el, `${prefix}cursor`, props.cursor);
   setProperty(el, `${prefix}pointer-events`, props.pointerEvents);
@@ -576,7 +688,13 @@ function updateCustomVars(
   // Only set the instance radius var when the prop was explicitly passed (not from DEFAULT_PROPS).
   // If not explicitly set, the static CSS fallback chain handles it via --we-theme-*-radius.
   const radiusExplicit = !rawExplicitProps || radiusKeys.some((k) => rawExplicitProps[k] !== undefined);
-  setProperty(el, `${prefix}radius`, hasRadius && radiusExplicit ? getRadiusValues(props) : undefined);
+  // The rest of the cascade for whichever corners the props did not name — see `cascadeRestFor`.
+  // Without it a single named corner sent the other three to `0` and discarded the theme.
+  setProperty(
+    el,
+    `${prefix}radius`,
+    hasRadius && radiusExplicit ? getRadiusValues(props, cascadeRestFor(componentName, 'radius')) : undefined,
+  );
 
   // Layout on base
   setProperty(el, `${prefix}display`, props.display);
@@ -599,7 +717,11 @@ function updateCustomVars(
   const hasPadding = paddingKeys.some((k) => props[k] !== undefined && props[k] !== null);
   // Same guard as radius — only set the instance padding var when explicitly passed.
   const paddingExplicit = !rawExplicitProps || paddingKeys.some((k) => rawExplicitProps[k] !== undefined);
-  setProperty(el, `${prefix}padding`, hasPadding && paddingExplicit ? getPaddingValues(props) : undefined);
+  setProperty(
+    el,
+    `${prefix}padding`,
+    hasPadding && paddingExplicit ? getPaddingValues(props, cascadeRestFor(componentName, 'padding')) : undefined,
+  );
 
   // Typography
   setProperty(el, `${prefix}text-align`, props.textAlign);
@@ -614,6 +736,12 @@ function updateCustomVars(
   );
   setProperty(el, `${prefix}text-decoration`, props.textDecoration);
   setProperty(el, `${prefix}text-transform`, props.textTransform);
+  // Declared by the static sheet from the same spec table and, until these two lines, never written:
+  // `whiteSpace` and `overflowWrap` typechecked, validated and did nothing on every primitive, while
+  // the same props worked on a Column. (`font-style` is in the table too, and is not a prop — a
+  // component writes `--we-<name>-font-style` from its own CSS, as `we-text`'s `italic` does.)
+  setProperty(el, `${prefix}white-space`, props.whiteSpace);
+  setProperty(el, `${prefix}overflow-wrap`, props.overflowWrap);
 }
 
 export function updateAllCustomVars(
@@ -624,10 +752,14 @@ export function updateAllCustomVars(
 ) {
   updateCustomVars(el, componentName, props, rawExplicitProps);
   applyInlineStyles(el, props.styles);
+  let hasState = false;
   ELEMENT_STATES.forEach((state) => {
     const stateProps = props[`${state}Props`];
     // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.
-    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, undefined, state);
+    if (stateProps && typeof stateProps === 'object') {
+      hasState = true;
+      updateCustomVars(el, componentName, stateProps, undefined, state);
+    }
   });
   /*
     Breakpoint tiers, by the same route as the states.
@@ -647,8 +779,22 @@ export function updateAllCustomVars(
   // The one failure this design cannot make unreachable: a query with no container is silently
   // false, so a breakpoint prop outside every surface renders its base value and looks correct.
   if (hasTier) warnIfUnsurfaced(el, `<${el.tagName.toLowerCase()}>`);
+
+  /*
+    What the state and tier layers match on. An element with no state bag carries no state rule at
+    all, so it has nothing to revert and costs what it did before layers; the same for tiers. Written
+    from the merged props, so a state a component's own defaults declare (every button's focus ring)
+    counts. `toggleAttribute` with the value already in place is not a mutation, so this is free on
+    the common update.
+  */
+  el.toggleAttribute(STATES_ATTR, hasState);
+  el.toggleAttribute(TIERS_ATTR, hasTier);
 }
 
+/** Present on a primitive whose props include any state bag (`hoverProps`, `focusProps`, …). */
+export const STATES_ATTR = 'data-we-states';
+/** Present on a primitive whose props include any breakpoint bag (`smUpProps`, …). */
+export const TIERS_ATTR = 'data-we-tiers';
 // ────────────────────────────────────────────
 // Static CSS generation (once per component class)
 // ────────────────────────────────────────────
@@ -684,12 +830,52 @@ function cascadeSpec(
     }
     return [cssProp, varSuffix];
   }
+  return [cssProp, varSuffix, cascadeRest(componentName, varSuffix, groupVar, tokenDefault, capGroupVar)];
+}
+
+/**
+ * The cascade below the instance variable: per-component theme override, then group, then token.
+ *
+ * Split out of `cascadeSpec` because it is needed in two places that must not disagree. The static
+ * sheet uses it as the fallback of `--we-{component}-{axis}`; `updateCustomVars` uses it as the
+ * fallback for a side or corner the props did not name, so a partially-specified radius keeps
+ * reading the theme for the rest instead of collapsing to `0`. Deliberately excludes the instance
+ * variable itself, which would be circular in the second use.
+ */
+function cascadeRest(
+  componentName: string,
+  varSuffix: string,
+  groupVar: string,
+  tokenDefault: string,
+  capGroupVar?: string,
+): string {
   const compThemeVar = `--we-theme-${componentName}-${varSuffix}`;
   // Capped inside the group arm only, so the per-component variable stays the last word.
   const group = capGroupVar
     ? `min(var(${groupVar}, ${tokenDefault}), var(${capGroupVar}, ${tokenDefault}))`
     : `var(${groupVar}, ${tokenDefault})`;
-  return [cssProp, varSuffix, `var(${compThemeVar}, ${group})`];
+  return `var(${compThemeVar}, ${group})`;
+}
+
+/**
+ * What an unnamed side or corner of this component should fall back to.
+ *
+ * Answers `undefined` where there is genuinely nothing behind the props — an unregistered component,
+ * or one whose group has no default — and the builders then use `0`, which is the old behaviour and
+ * correct in that case.
+ */
+export function cascadeRestFor(componentName: string, axis: 'radius' | 'padding'): string | undefined {
+  const cascade = COMPONENT_CASCADE[componentName];
+  const groupVar = axis === 'radius' ? cascade?.radiusGroup : cascade?.paddingGroup;
+  const tokenDefault = axis === 'radius' ? cascade?.radiusDefault : cascade?.paddingDefault;
+  if (!groupVar || !tokenDefault) return undefined;
+  return cascadeRest(
+    componentName,
+    axis,
+    groupVar,
+    tokenDefault,
+    axis === 'radius' ? cascade?.radiusCapGroup : undefined,
+  );
 }
 
 /**
@@ -711,11 +897,34 @@ export function getStaticDSStyles(
   // Auto-derive cascade fallback defaults from DEFAULT_PROPS when not explicitly set.
   // Explicit values in COMPONENT_CASCADE always take precedence.
   const dp = defaultProps as Record<string, unknown> | undefined;
-  const radiusDefault =
-    cascade?.radiusDefault ??
-    (dp && radiusKeys.some((k) => dp[k] !== undefined)
-      ? getRadiusValues(defaultProps as DesignSystemProps)
-      : undefined);
+  /*
+    A capped radius has to be ONE value, not the four-value shorthand.
+
+    `radiusCapGroup` wraps the default in `min(group, cap)`, and `min()` takes single values — so a
+    derived `var(--we-radius-300) var(--we-radius-300) var(--we-radius-300) var(--we-radius-300)`
+    inside it is not merely wrong, it is invalid, which drops the whole `border-radius` declaration
+    and leaves the element at its initial `0`. `we-textarea` and `we-file-upload` are the two
+    components with a cap, and both had square corners for exactly this reason: sharp against every
+    rounded field beside them, from a rule that was being discarded rather than applied.
+
+    Nothing said so, because an invalid declaration is silent by design and the corners it produces
+    look like a decision somebody made.
+  */
+  const capped = cascade?.radiusCapGroup !== undefined;
+  const derivedRadius = () => {
+    if (!dp || !radiusKeys.some((k) => dp[k] !== undefined)) return undefined;
+    if (!capped) return getRadiusValues(defaultProps as DesignSystemProps);
+    if (dp['r'] !== undefined) return tokenVar('radius', dp['r'] as string);
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[DS] ${componentName}: radiusCapGroup needs a single radius, and DEFAULT_PROPS sets only ` +
+          `per-corner values. min() cannot take a shorthand, so the declaration would be invalid. ` +
+          `Set \`r\` in DEFAULT_PROPS, or radiusDefault in COMPONENT_CASCADE.`,
+      );
+    }
+    return undefined;
+  };
+  const radiusDefault = cascade?.radiusDefault ?? derivedRadius();
   const paddingDefault =
     cascade?.paddingDefault ??
     (dp && paddingKeys.some((k) => dp[k] !== undefined)
@@ -748,7 +957,10 @@ export function getStaticDSStyles(
     return [spec];
   });
 
-  const styles: string[] = [];
+  // The order statement first, so this sheet agrees with the component's own on what sits where.
+  const styles: string[] = [DS_LAYER_ORDER];
+  /** Everything that resolves the way it always did — by specificity, below every variant. */
+  const base: string[] = [];
 
   // ── Host (:host) ──
   // Transition lives on [part='base'], not :host. The host is the outer positioning shell
@@ -756,7 +968,7 @@ export function getStaticDSStyles(
   // here would add a redundant animation layer for every nested content primitive.
   const hostLines: string[] = [`display: var(${p}host-display, flex);`];
   if (l.has('layout')) hostLines.push(joinDecls(p, HOST_LAYOUT));
-  styles.push(`:host { ${hostLines.join('\n    ')} }`);
+  base.push(`:host { ${hostLines.join('\n    ')} }`);
 
   // ── Base ([part="base"]) ──
   const baseLines: string[] = ['width: 100%;', 'height: 100%;'];
@@ -770,7 +982,7 @@ export function getStaticDSStyles(
 
   const hasBase = l.has('visual') || l.has('layout') || l.has('flex') || l.has('typography');
   if (hasBase) {
-    styles.push(`[part='base'] { ${baseLines.join('\n    ')} }`);
+    base.push(`[part='base'] { ${baseLines.join('\n    ')} }`);
   }
 
   // ── bg-image ──
@@ -790,7 +1002,7 @@ export function getStaticDSStyles(
   // staying scoped to "behind this element's own content" — isolation:isolate fixes
   // that with no other visual side effects.
   if (l.has('visual')) {
-    styles.push(
+    base.push(
       `[part='base'] { background-image: var(${p}bg-image, none); background-size: var(${p}bg-image-fit, cover); ` +
         `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }\n` +
         `:host([bgimage]) [part='base'] { position: relative; isolation: isolate; }\n` +
@@ -802,8 +1014,8 @@ export function getStaticDSStyles(
   }
 
   // The two element layers a variant can address, in the layers this component actually has. Shared
-  // by the state selectors and the tier queries below, so a `we-icon` gets layout props at a
-  // breakpoint and nothing it never accepted in the first place.
+  // by the state layers and the tier layers below, so a `we-icon` gets layout props at a breakpoint
+  // and nothing it never accepted in the first place.
   const hostSpecs: PropSpec[] = [];
   if (l.has('layout')) hostSpecs.push(...HOST_LAYOUT);
 
@@ -813,10 +1025,42 @@ export function getStaticDSStyles(
   if (l.has('flex')) baseSpecs.push(...baseFlex);
   if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
 
-  // ── State selectors ──
+  /*
+    A variant's declarations: what it names, and for everything else, the layer below.
+
+    No fallback chain and no component default here — those live in the base rule, which is exactly
+    where an unset variant rolls back to. `revert-layer` inside a `var()` fallback was checked in
+    Chromium, Firefox, WebKit and Electron's Chromium, shorthands and inherited properties included.
+  */
+  const variantDecls = (prefix: string, specs: PropSpec[]) =>
+    specs.map(([cssProp, varSuffix]) => `${cssProp}: var(${prefix}${varSuffix}, revert-layer);`).join(' ');
+
+  // ── Breakpoint tiers ──
+  //
+  // Not gated on the `state` layer: a `we-icon` accepts layout props and nothing else, and there is
+  // no reason it should not accept them at a breakpoint too.
+  //
+  // The query resolves against the nearest `$surface` — a light-DOM ancestor, several shadow
+  // boundaries up. That works: container selection walks the flat tree, so a rule authored inside
+  // this shadow root matches a container declared outside it. Verified in Chrome and Firefox.
+  //
+  // A tier that sets nothing for a property rolls back to the tier beneath it, which is what makes
+  // something set only in `smUpProps` still apply at `lg`.
+  const tiers: string[] = [];
+  for (const tier of TIERS.slice(1) as Exclude<Tier, 'base'>[]) {
+    const tp = `${p}${tier}-`;
+    const rules: string[] = [];
+    if (hostSpecs.length > 0) rules.push(`:host([${TIERS_ATTR}]) { ${variantDecls(tp, hostSpecs)} }`);
+    if (baseSpecs.length > 0) rules.push(`:host([${TIERS_ATTR}]) [part='base'] { ${variantDecls(tp, baseSpecs)} }`);
+    tiers.push(`@layer we-tier-${tier} { ${tierQuery(tier)} { ${rules.join(' ')} } }`);
+  }
+
+  // ── States ──
+  const states: string[] = [];
   if (l.has('state')) {
     for (const state of ELEMENT_STATES) {
       const sp = `${p}${state}-`;
+      const rules: string[] = [];
 
       // Host state — layout props only, no transition (see :host comment above)
       //
@@ -829,46 +1073,38 @@ export function getStaticDSStyles(
       // position, margin) — focus-driven layout changes are vanishingly rare, and every visual
       // state prop lands on [part='base'], which is corrected below.
       if (hostSpecs.length > 0) {
-        const lines: string[] = [];
-        lines.push(joinStateDecls(sp, p, hostSpecs));
         const sel =
-          state === 'disabled' ? ':host([disabled])' : `:host(:${state === 'focus' ? 'focus-within' : state})`;
-        styles.push(`${sel} { ${lines.join('\n    ')} }`);
+          state === 'disabled'
+            ? `:host([${STATES_ATTR}][disabled])`
+            : `:host([${STATES_ATTR}]:${state === 'focus' ? 'focus-within' : state})`;
+        rules.push(`${sel} { ${variantDecls(sp, hostSpecs)} }`);
       }
 
-      // Base state
       if (baseSpecs.length > 0) {
-        const lines: string[] = [];
-        if (l.has('visual')) lines.push(`transition: var(${sp}transition, var(${p}transition, ${STATE_TRANSITION}));`);
-        lines.push(joinStateDecls(sp, p, baseSpecs));
-        const sel =
+        const state_ =
           state === 'disabled'
             ? `[part='base']:disabled, [part='base'][aria-disabled='true']`
             : state === 'focus'
               ? focusSelector(`[part='base']`, `:not(:disabled):not([aria-disabled='true'])`)
               : `[part='base']:${state}:not(:disabled):not([aria-disabled='true'])`;
-        styles.push(`${sel} { ${lines.join('\n    ')} }`);
+        /*
+          How a state arrives stays in the base layer, ungated. The transition into a state is part of
+          every element that has one — the resting rule's is `0s` so departures snap, and this is the
+          one that gives arrivals their 50ms — so it cannot wait for the element to carry state props.
+          Anchored at 0,2,0 as the state rules were, so it still outranks the resting transition.
+        */
+        if (l.has('visual')) {
+          base.push(
+            `:host [part='base']:where(${state_}) { transition: var(${sp}transition, var(${p}transition, ${STATE_TRANSITION})); }`,
+          );
+        }
+        rules.push(`:host([${STATES_ATTR}]) [part='base']:where(${state_}) { ${variantDecls(sp, baseSpecs)} }`);
       }
+
+      if (rules.length > 0) states.push(`@layer we-state-${state} { ${rules.join(' ')} }`);
     }
   }
 
-  /*
-    ── Breakpoint tiers ──
-
-    Not gated on the `state` layer: a `we-icon` accepts layout props and nothing else, and there is
-    no reason it should not accept them at a breakpoint too. What a tier may *contain* is already
-    bounded by the spec lists above.
-
-    The query resolves against the nearest `$surface` — a light-DOM ancestor, several shadow
-    boundaries up. That works: container selection walks the flat tree, so a rule authored inside
-    this shadow root matches a container declared outside it. Verified in Chrome and Firefox.
-
-    Emitted after the state selectors, so a tier value wins over a state value on the same property
-    at equal specificity — the same ordering the Solid interop stylesheet uses, and for the same
-    reason.
-  */
-  if (hostSpecs.length > 0) styles.push(tierRulesCSS(':host', p, hostSpecs));
-  if (baseSpecs.length > 0) styles.push(tierRulesCSS(`[part='base']`, p, baseSpecs));
-
+  styles.push(`@layer we-base { ${base.join('\n')} }`, ...tiers, ...states);
   return styles.join('\n');
 }

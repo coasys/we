@@ -50,9 +50,9 @@ const defineEntityTool = {
             name: { type: 'string' as const, description: 'camelCase identifier, e.g. "dueDate".' },
             type: {
               type: 'string' as const,
-              enum: ['text', 'number', 'boolean', 'date', 'select'],
+              enum: ['text', 'paragraph', 'link', 'number', 'boolean', 'date', 'select'],
               description:
-                '"select" is a text field with a fixed set of allowed values — declare them in options. To point at another model, use a relationship instead of a property.',
+                '"paragraph" is text long enough to need several lines (a description, notes); "link" is a web address. "select" is a text field with a fixed set of allowed values — declare them in options. A picture, a file or a place is not a property: point at ImageBlock, FileBlock or LocationBlock with a relationship.',
             },
             required: { type: 'boolean' as const },
             hint: {
@@ -147,6 +147,16 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
     icon: input.icon ?? '',
     classHint: input.classHint ?? '',
     identityMember: identity?.rowId ?? '',
+    /*
+      Left to be worked out rather than asked of the model.
+
+      `namePropertyOf` reads a property called `name` or `title` first and falls back to the
+      model's shape, which is right for very nearly everything a generation produces — and a field
+      the author can see and change in the wizard beats one more thing for the model to get wrong
+      in a schema it has never seen. A generated model whose subject is called something unusual is
+      exactly the case the picker exists for.
+    */
+    nameMember: '',
     // Off, even though the generation writes interpretation hints. Whether an interpreter may mint
     // rows into a model is the author's decision and not a property of the description they typed —
     // the wizard offers the switch beside the hint the generation just wrote, which is where the
@@ -160,7 +170,8 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
 function draftProblems(draft: ShapeDraft, existingEntities: string[], referenceTargets: string[]): string[] {
   const lowered = draftToManifest(draft, 'preview');
   if (!lowered.ok) return lowered.errors;
-  const gate = validateManifest(lowered.manifest, { externalEntities: referenceTargets });
+  // `WeNode` is what every lowered draft extends, and is never a reference target the model is offered.
+  const gate = validateManifest(lowered.manifest, { externalEntities: [...referenceTargets, 'WeNode'] });
   const problems = gate.valid ? [] : gate.errors.map((e) => `${e.path}: ${e.message}`);
   const entityName = Object.keys(lowered.manifest.entities)[0];
   if (existingEntities.includes(entityName)) {

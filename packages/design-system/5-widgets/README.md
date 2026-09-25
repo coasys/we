@@ -1,7 +1,7 @@
 # @we/widgets
 
 Generic composite widgets — the design system's highest layer. Composition
-above widgets is the schema system's job, and *feature* widgets live with
+above widgets is the schema system's job, and _feature_ widgets live with
 their module family (the globe widget in `module-system/globe/widget`, the
 graph view in `graph-system/`), so this package stays small on purpose.
 

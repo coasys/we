@@ -112,7 +112,7 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 
 `color.ts` holds the **scale** — `neutral-0` … `neutral-1000`, one ramp per hue. `role.ts` holds the
 **vocabulary**: `surface`, `text-muted`, `border`, `accent-text`, `danger-text`. A scale position says
-which grey; a role says what the colour is *for*.
+which grey; a role says what the colour is _for_.
 
 **Anything with a meaning takes a role.** Every `bg`, `color` and border colour in a template, in the
 app chrome and in a feature module names a role, and `tokenVar('color', …)` resolves role names to
@@ -124,7 +124,7 @@ Two reasons it matters, and only the second is obvious:
 1. A role is what a theme can redefine. `ThemeOverrides.roles` pins any of them; the theme editor
    exposes all of them.
 2. Some relationships **invert** between light and dark and a scale position cannot express that,
-   because the whole ramp flips together. A raised surface gets *lighter* in dark rather than
+   because the whole ramp flips together. A raised surface gets _lighter_ in dark rather than
    casting a shadow; a rail that must stay darker than its page in both modes cannot be written as
    `neutral-100` over `neutral-50`. This is the reason roles exist, not a nicety.
 
@@ -134,7 +134,7 @@ nothing about a theme should recolour it as one. Those are the only scale positi
 templates, deliberately.
 
 Colours may be written in `oklch()` anywhere a colour is accepted; it is parsed and converted to
-sRGB like any other notation. The *ramps* are still HSL — moving those is a separate decision that
+sRGB like any other notation. The _ramps_ are still HSL — moving those is a separate decision that
 changes how every theme looks — but an author pasting a value from a modern palette tool should not
 be told it is unparseable, and OKLCH is the space in which a contrast check would like to reason.
 
@@ -144,35 +144,35 @@ is only "a slightly different grey", it is a scale position and does not belong 
 
 ### Four ways to pin one, and what each survives
 
-A theme overrides a role by giving it a value, and *which kind* of value decides how much of the
+A theme overrides a role by giving it a value, and _which kind_ of value decides how much of the
 theme still reaches it afterwards. In descending order of how much survives:
 
-| Written as | Survives | Use for |
-| --- | --- | --- |
-| unset | everything | the default; the role follows the scale |
-| `var(--we-color-neutral-200)` | hue, saturation, light/dark polarity | "surfaces sit two steps down" — most theme edits mean this |
-| `oklch(22.7% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.454) var(--we-color-neutral-hue))` | hue and saturation; holds its lightness against a polarity flip | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
-| `color-mix(in srgb, var(--we-role-surface) 88%, var(--we-role-text))` | everything, *including a later change to the role it references* | "a step darker than the surface" — a relationship rather than a value |
-| `oklch(from var(--we-role-page) calc(l + 0.045) c h)` | the same, and stays an even step at any lightness or hue | "one step above the page" — how the elevation stack is written |
-| `#1a1a1e` | nothing | a brand colour that must not move |
+| Written as                                                                                                      | Survives                                                         | Use for                                                                |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| unset                                                                                                           | everything                                                       | the default; the role follows the scale                                |
+| `var(--we-color-neutral-200)`                                                                                   | hue, saturation, light/dark polarity                             | "surfaces sit two steps down" — most theme edits mean this             |
+| `oklch(22.7% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.454) var(--we-color-neutral-hue))` | hue and saturation; holds its lightness against a polarity flip  | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
+| `color-mix(in srgb, var(--we-role-surface) 88%, var(--we-role-text))`                                           | everything, _including a later change to the role it references_ | "a step darker than the surface" — a relationship rather than a value  |
+| `oklch(from var(--we-role-page) calc(l + 0.045) c h)`                                                           | the same, and stays an even step at any lightness or hue         | "one step above the page" — how the elevation stack is written         |
+| `#1a1a1e`                                                                                                       | nothing                                                          | a brand colour that must not move                                      |
 
-The two relative rows are worth reading twice: they are the only forms that express a *relationship*
+The two relative rows are worth reading twice: they are the only forms that express a _relationship_
 rather than a value, so it survives a change to the role it names — and because it mixes toward a
 role that inverts with the theme, "a step darker" in a light theme becomes "a step lighter" in a
 dark one without being told. The secondary button's hover and pressed states are written this way,
 which is why they need no roles of their own.
 
 The `oklch(from …)` row is the stronger of the two and is why the elevation stack is written that
-way. `color-mix` interpolates *between two colours*, so a fixed percentage moves by a share of the
+way. `color-mix` interpolates _between two colours_, so a fixed percentage moves by a share of the
 distance remaining — 8% toward white is 0.4 lightness points from a near-white page and 7 from a
-dark one. `calc(l + n)` in OKLCH moves by a fixed *perceptual* amount instead, which is the only
+dark one. `calc(l + n)` in OKLCH moves by a fixed _perceptual_ amount instead, which is the only
 thing that means the same in a light theme and a dark one. It also carries `c` and `h` through, so
 a theme that tints its neutrals gets a tinted stack without saying so.
 
 The ramp itself is OKLCH too, for the same reason at a different scale. Under HSL a step was a
-*coordinate*, so the same "500" landed at L* 46 for blue and L* 69 for green — a 39-point swing
+_coordinate_, so the same "500" landed at L* 46 for blue and L* 69 for green — a 39-point swing
 across the hue slider at one nominal step, which meant changing a hue silently changed how heavy the
-accent read, and the three status *text* roles had to sit at three different steps to compensate.
+accent read, and the three status _text_ roles had to sit at three different steps to compensate.
 They share one step now.
 
 > Authoring a theme? See `packages/design-system/2-themes/THEME_AUTHORING.md`, which is the
@@ -226,7 +226,7 @@ hue fixes that for a palette built on red and green. The standard (WCAG 1.4.1) a
 rather than separability, and that is what the system provides: every status variant carries its own
 icon, asserted in `@we/primitives` beside the component that provides it.
 
-The theme editor *reports* when a theme's `danger` and `success` converge under deuteranopia, as
+The theme editor _reports_ when a theme's `danger` and `success` converge under deuteranopia, as
 advice rather than a failure — an author dragging `successHue` toward `dangerHue` is making it worse
 with no other feedback.
 
@@ -261,7 +261,7 @@ set, and why the theme editor names the rung each role is on rather than showing
 leaving you to guess.
 
 Two roles are deliberately written the third way in `role.ts` itself: `surfaceInverse` and
-`onInverse`. A tooltip has to stay opposite to the page in *both* polarities, and no expression
+`onInverse`. A tooltip has to stay opposite to the page in _both_ polarities, and no expression
 over the scale can do that, because the whole ramp inverts together.
 
 ## Runtime Consumption

@@ -1,3 +1,5 @@
+import type { SemanticGap, SemanticPadding } from './themeFamily.js';
+
 /**
  * SPACE TOKEN DEFINITIONS
  * This file defines spacing tokens that serve as the source of truth for the design system.
@@ -8,6 +10,20 @@ export type SpaceToken = '0' | '100' | '200' | '300' | '400' | '500' | '600' | '
 
 // Branded type to allow both tokens and raw spacing values (px, rem, %, etc.) while preserving autocomplete
 export type SpaceValue = SpaceToken | (string & {});
+
+/**
+ * Padding and gap take a theme family name as well as a length — `p: 'surface'`, `gap: 'control'`.
+ *
+ * Separate types rather than widening `SpaceValue`, because these are valid on padding and gap and
+ * meaningless on a margin or an offset: a family says how much room a *card* puts inside itself,
+ * which answers nothing about the space between it and its neighbour. Offering `m: 'surface'` in
+ * autocomplete would be offering a value that resolves to nothing.
+ *
+ * Which families carry which axis is declared once in `themeFamily.ts`, and the reason each gap in
+ * that matrix is a gap is documented there.
+ */
+export type PaddingValue = SpaceValue | SemanticPadding;
+export type GapValue = SpaceValue | SemanticGap;
 
 /**
  * Spacing scale from 100-1000.

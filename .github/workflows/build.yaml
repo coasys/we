@@ -38,13 +38,41 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
+      # The heap the whole-monorepo walk needs lives in the `lint` script itself, so CI and a developer's
+      # own `pnpm lint` cannot disagree about it. It used to be set here only, which meant the command
+      # passed in CI and died locally — a gate nobody could reproduce a failure of.
       - name: Lint
-        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
+        run: pnpm lint
 
       # Stylelint was configured (config, deps, editor integration) but never ran anywhere
       # but editors — now it gates the authored CSS.
       - name: Lint CSS
         run: pnpm lint:css
+
+      # The gap this closes: `pnpm lint` enforces formatting through eslint-plugin-prettier, but
+      # ESLint only reads the files it lints, so markdown, JSON, YAML, HTML and any stylesheet
+      # outside a `src/` directory had a fixer on commit (lint-staged) and no check anywhere.
+      # lint-staged only touches *staged* files, so anything committed before a prettier bump, or
+      # through `--no-verify`, drifted and stayed drifted — 20 files had, by September 2026.
+      #
+      # Same scope as `pnpm format`, so the command that fixes and the gate that checks cannot
+      # disagree about what is in scope. Seconds to run, and in the Lint job rather than Build
+      # because it needs nothing built.
+      - name: Check formatting
+        run: pnpm format:check
+
+      # Here rather than in Typecheck, which is where the failure it prevents would surface: this
+      # reads package.json and tsconfig.json only, so it needs no build and can answer in seconds
+      # while the Build job is still running. Its whole value is naming the package to fix, which
+      # `tsc` cannot — the 29 errors it reports land in the package that is correct.
+      - name: Check source-shipping consumers
+        run: pnpm check:source-consumers
+
+      # Beside the one above because it is the same kind of gate: a rule nothing else can state.
+      # `tsc` is green either way, the markup shows no trace, and the symptom is a size or a weight
+      # that is quietly wrong — so without this it is found by a person noticing, months later.
+      - name: Check we-* props
+        run: pnpm check:we-props
 
   build:
     name: Build
@@ -141,6 +169,13 @@ jobs:
       # failing package does not hide the state of the rest. It still exits non-zero.
       - name: Test
         run: pnpm test
+
+      # The primitives' cascade, in a real browser. Which rule wins under a pointer at a container
+      # width is the one thing jsdom cannot answer, and every bug in that area passed the unit tests:
+      # a truncated label that unwrapped on hover, a header label that flashed, a focus ring lost
+      # while pressing. Drives the Chrome the runner image already has, so it downloads nothing.
+      - name: Browser tests
+        run: pnpm --filter @we/primitives test:browser
 
       # Coverage has been configured for as long as the tests have and has never run anywhere,
       # which is the same shape as the stylelint gap above it: a number nobody produces is a number
@@ -270,3 +305,21 @@ jobs:
       # it on the way in.
       - name: Validate schemas
         run: pnpm validate:schemas
+
+      # The same shape of gap one layer along: a colour that typechecks, validates and renders,
+      # and is wrong in a way only a walk of the composed tree can see.
+      #
+      # `audit:roles` reports a scale position where a role belongs — in a template, and since
+      # September 2026 in the TypeScript and SCSS every template is rendered *through*. A step is
+      # invisible to the contrast corrections at apply time, so nothing else measures it, ever.
+      #
+      # `audit:surfaces` reports a `surface-sunken` that is invisible against its ground. Both were
+      # on-demand reports that nobody ran; both are at zero, which is the moment to gate them.
+      #
+      # Here rather than in Lint because they import and walk the real composed schema trees, which
+      # needs the build — the same reason schema validation is in this job.
+      - name: Audit roles
+        run: pnpm audit:roles
+
+      - name: Audit surfaces
+        run: pnpm audit:surfaces

@@ -31,10 +31,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "text-faint" } },
         {
           "type": "we-text",
-          "props": { "color": "textFaint", "textAlign": "center" },
+          "props": { "color": "text-faint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -265,7 +265,6 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$": "datasetStore.currentDataset.handle" },
         "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
@@ -428,6 +427,35 @@ The \`$localState\` holding the display is a convenience: \`recordStore.displays
 read in place each time. For a feed of *mixed* types, index by the row instead —
 \`recordStore.displays[row.type]\` — and the same card draws every kind of record the space holds.
 
+**A picture held by relation.** A community model carries its photo as a relation to an
+\`ImageBlock\` rather than as a string, so \`display.media\` is empty and \`display.mediaRelation\`
+names the relation. The row holds ids, not a URL — look the image up, and gate the query so an
+unresolved id does not widen it to every image in the space:
+
+\`\`\`json
+{
+  "type": "$if",
+  "props": {
+    "condition": { "$": "local.display.mediaRelation && row[local.display.mediaRelation]" },
+    "then": {
+      "type": "Column",
+      "$queries": {
+        "pictures": {
+          "entity": "ImageBlock",
+          "where": { "id": { "$": "row[local.display.mediaRelation]" } },
+          "when": { "$": "row[local.display.mediaRelation]" },
+          "limit": 1
+        }
+      },
+      "children": [
+        { "type": "$if", "props": { "condition": { "$": "count(local.pictures)" },
+          "then": { "type": "we-image", "props": { "src": { "$": "first(local.pictures).src" }, "fit": "cover", "r": "media" } } } }
+      ]
+    }
+  }
+}
+\`\`\`
+
 ### A group of faces with a count
 
 \`\`\`json
@@ -484,12 +512,57 @@ everything below it down a second time.
 Two Columns, because centring and constraining are different jobs: the outer spans the viewport so
 the route's background reaches the edges, the inner holds the measure.
 
+### A composition placed by hand — Canvas and an artboard
+
+For anything where the author means a specific geometry: a scrapbook, a poster, a diagram, a title
+card. \`Canvas\` declares the coordinate space its children's \`x\` / \`y\` are in, and scales that
+space to whatever box it lands in — so one authored layout is never *broken*, only smaller.
+
+\`\`\`json
+{
+  "type": "Canvas",
+  "props": { "artboard": { "width": 1200, "height": 1600 } },
+  "children": [
+    {
+      "type": "we-image",
+      "props": { "src": "…", "x": 90, "y": 120, "rotate": -4, "width": "420px", "shadow": "lg", "r": "200" }
+    },
+    {
+      "type": "we-text",
+      "props": { "x": 560, "y": 320, "rotate": 2, "variant": "heading-lg", "maxWidth": "380px" },
+      "children": ["The summer we moved"]
+    }
+  ]
+}
+\`\`\`
+
+- **\`artboard\` is the point.** Without it a pixel resolves against whatever positioned ancestor
+  happens to be there — a docked panel, an editor preview pane, a phone — and nothing downstream can
+  scale it. \`{ "width": 1200, "height": 1600 }\` says what those numbers *mean*.
+- **Children are placed, not flowed.** Every direct child starts at the artboard's origin, so
+  \`x\`/\`y\` are coordinates and not offsets from whatever precedes them. Content that should flow
+  goes inside a placed \`Column\`, not loose on the canvas.
+- **Place with \`x\` / \`y\` / \`rotate\`, never \`top\` / \`left\`.** Offsets do not respond to a
+  breakpoint (see the Layout props) and do not compose with rotation; these do both.
+- **Stack with \`zIndex\`.** A raw number is legal there, not only the named layers — overlap is the
+  entire point of a scrapbook, and on a canvas it should be chosen rather than inherited from
+  document order.
+- **A tall artboard scrolls like a page.** At the default \`fit: "scale"\` the canvas takes the
+  height the scaled artboard needs, so a composition several screens long behaves like ordinary
+  content. Pair sections of it with \`$animate\` and \`scrollReveal\` to bring them in as they arrive.
+- **Reach for \`fit: "contain"\` only where the canvas has a height of its own** — a fixed panel, a
+  slide. In document flow there is no second axis to fit against and it scales by width anyway.
+
+**Do not use a Canvas for a layout that is merely arranged.** A dashboard of cards is a \`Grid\`, and
+a page is a \`Column\`. The test is whether the coordinates carry meaning the author chose: two
+photos overlapping at an angle, yes; three cards in a row, no.
+
 ### Titled section on a card
 
 \`\`\`json
 {
   "type": "Card",
-  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
+  "props": { "bg": "surface", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -515,7 +588,7 @@ the route's background reaches the edges, the inner holds the measure.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accent-text" } },
         {
           "type": "Column",
           "props": { "gap": "100" },

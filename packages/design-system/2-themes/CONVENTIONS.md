@@ -172,7 +172,7 @@ Exception: theme-specific accent colors that intentionally don't follow the toke
 ## Roles — where a theme stops being parametric
 
 The hue/saturation/multiplier/subtractor parameters generate the whole scale from four numbers,
-which is what makes a theme shareable data. What they cannot do is change a *relationship*: the
+which is what makes a theme shareable data. What they cannot do is change a _relationship_: the
 lightness ramp steps evenly, so the gap from page to rail always equals the gap from page to raised
 surface, and the whole ramp inverts together in dark mode. A theme wanting raised surfaces to get
 lighter in dark rather than cast a shadow, or a rail that stays darker than its page in both modes,
@@ -186,7 +186,7 @@ not in the theme's CSS file. Two reasons:
   where that attribute is set.
 - **A CSS-only pin now loses.** `themeToStyle` re-declares every role's parametric default as an
   inline style so unpinned roles resolve against the theme they belong to rather than `:root`, and
-  an inline style outranks an attribute selector. A role declared *only* in a theme's CSS file would
+  an inline style outranks an attribute selector. A role declared _only_ in a theme's CSS file would
   be overwritten by its own default. `dark` declares `--we-role-surface-raised` in both places and
   `builtInThemes.sanitise.test.ts` enforces that they agree; if you add a role to a CSS file, add it
   to the preset too or that test will tell you.
@@ -194,7 +194,7 @@ not in the theme's CSS file. Two reasons:
 `roles` is the one override that **merges** with a preset's rather than replacing it, so a theme may
 pin one role on top of `channels` without discarding the twelve that make it `channels`.
 
-Pin the *lightness* and leave hue and saturation variable — the `neutral()` helper in `presets.ts`
+Pin the _lightness_ and leave hue and saturation variable — the `neutral()` helper in `presets.ts`
 exists for this, so changing `neutralHue` still moves the whole theme together. A role pinned to a
 literal hex freezes one colour out of the parametric system and the theme comes apart around it.
 

@@ -2,27 +2,27 @@
  * Boards, columns and cards — coordination software from the same substrate as the social ones.
  *
  * The template that stops the showcase arguing the narrow thesis. Five of the six render
- * conversation; this one renders work, from the same `CollectionBlock`, with the same containment,
- * the same signals and the same per-agent state. If the engine were a social-media engine, this
- * template would need something the others do not have. It needs nothing.
+ * conversation; this one renders work, from the same `CollectionBlock`, with the same signals and
+ * the same per-agent state. If the engine were a social-media engine, this template would need
+ * something the others do not have. It needs nothing.
  *
- * ## Containment expresses status
+ * ## A card's column is where it sits
  *
- * A card's column *is* its status. `TaskBlock.status` exists and this template ignores it — two
- * ways to say one thing eventually disagree, and containment is the more general of the two: a
- * board can have whatever columns a community invents, where `status` is a fixed vocabulary
- * somebody else chose. Moving a card is a relink of two `we://children` edges, which is why it is
- * cheap and why nothing about the card changes.
+ * Every column here is a **lane**: it arranges the cards somebody put in it and claims nothing about
+ * them. That is the containment kanban, and it turns out to be a special case of WE's own board —
+ * the one whose columns can also bind to a task state — with nothing bound. So this is the same
+ * `taskBoard` fragment the Boards view renders, over composed posts, with `lanesOnly` set. One
+ * board, two uses, and the showcase keeps its claim: nothing here mints a content model.
  *
- * ## Ordering
+ * ## Arrangement is a relation, not containment
  *
- * Cards sort by creation, and there is no drag-to-reorder. Ordering *within* a column needs a
- * conflict-free position — the AD4M CRDT ordering work — and a `position` scalar written now would
- * be a shape that design supersedes. Moving *between* columns works today, via a menu, because that
- * is containment rather than order.
+ * A column *arranges* its cards through `we://arranges` rather than owning them through
+ * `we://children`. The cards are loose in the space; a column positions them. Deleting a column
+ * therefore cannot delete a card, and two people dragging in the same column at once converge,
+ * because an ordered relation is a conflict-free sequence in the backend.
  */
-import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
-import { agentByline, collectionFeed, emptyState, kanbanBoard, moveCardMenu } from '@we/template-kit';
+import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { agentByline, collectionFeed, emptyState, moveTaskMenu, taskBoard } from '@we/template-kit';
 
 import { composerModal, KIND, newContainerModal, signalRow, signalTypesQuery } from './shared.ts';
 
@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $action: 'routeStore.navigate', args: [{ $: '`/board/${board.id}`' }] },
+                onClick: { $action: 'routeStore.navigate', args: [{ $: '`./board/${board.id}`' }] },
               },
               children: [
                 {
@@ -111,24 +111,50 @@ const boardsRoute: RouteSchema = {
           title: 'New board',
           kind: KIND.board,
           placeholder: 'Roadmap',
-          navigateTo: '/board/',
+          navigateTo: './board/',
         }),
       ],
     },
   ],
 };
 
+/**
+ * One card: the composed post, who wrote it, where else it could go, and what people made of it.
+ *
+ * The board fragment draws `TaskBlock`s by default and this board holds posts, so the card is the
+ * template's — which is the point of `card` being an option: the arrangement is the kit's and what
+ * a card *is* stays the community's.
+ */
+function postCard(as: string): SchemaNode {
+  return {
+    type: 'Column',
+    props: { width: '100%', gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border' },
+    children: [
+      { type: 'BlockRenderer', props: { editorState: { $: `${as}.editorState` } } },
+      {
+        type: 'Row',
+        props: { ax: 'between', ay: 'center', width: '100%' },
+        children: [
+          agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` }, avatarSize: 'xs' }),
+          // The keyboard path beside dragging; every column here is a lane, so a move writes one link.
+          moveTaskMenu('col.id', as),
+        ],
+      },
+      signalRow(as),
+    ],
+  };
+}
+
 const boardRoute: RouteSchema = {
   path: '/board/:boardId',
   type: 'Column',
   props: { width: '100%', height: '100%' },
-  $localState: { newColumnOpen: { type: 'boolean', initial: false } },
   $queries: signalTypesQuery,
   children: [
     {
       type: 'Row',
       props: {
-        ax: 'between',
+        gap: '300',
         ay: 'center',
         width: '100%',
         px: '500',
@@ -138,122 +164,64 @@ const boardRoute: RouteSchema = {
       },
       children: [
         {
-          type: 'Row',
-          props: { gap: '300', ay: 'center' },
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['/'] } },
-              children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
-            },
-            {
-              type: '$single',
-              props: {
-                item: {
-                  $query: {
-                    entity: 'CollectionBlock',
-                    where: { id: { $: 'routeStore.segments[1]' } },
-                    limit: 1,
-                  },
-                },
-                as: 'board',
-              },
-              children: [{ type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'board.title' }] }],
-            },
-          ],
+          type: 'we-button',
+          props: { variant: 'ghost', size: 'sm', onClick: { $action: 'routeStore.navigate', args: ['.'] } },
+          children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
         },
         {
-          type: 'we-button',
-          props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'newColumnOpen', value: true } },
-          children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Column'],
+          type: '$single',
+          props: {
+            item: {
+              $query: {
+                entity: 'CollectionBlock',
+                where: { id: { $: 'routeStore.templateSegments[1]' } },
+                limit: 1,
+              },
+            },
+            as: 'board',
+          },
+          children: [{ type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $: 'board.title' }] }],
         },
       ],
     },
-
-    kanbanBoard({
-      boardId: { $: 'routeStore.segments[1]' },
-      /*
-        What a move means here — supplied by the template, not by the kit.
-
-        `@we/schema-kit` is the portable tier: it names no store, so the WE-specific half of a
-        kanban (relinking two `children` edges through `spaceStore.moveChild`) is the caller's to
-        provide. This is the same shape `confirmModal` uses for its `confirm`.
-      */
-      onMove: ({ card, from, to }) => ({ $action: 'spaceStore.moveChild', args: [{ $: card }, { $: from }, to] }),
-      empty: emptyState({
-        icon: 'columns',
-        label: 'columns',
-        message: 'No columns yet. Add one — a card’s column is its status.',
-        delay: 0,
-      }),
-      card: (as) => [
-        {
-          type: 'Column',
-          props: {
-            width: '100%',
-            gap: '200',
-            p: '300',
-            bg: 'surface-sunken',
-            r: '300',
-            border: '1px solid border',
-          },
-          children: [
-            {
-              type: 'BlockRenderer',
-              props: {
-                editorState: { $: `${as}.editorState` },
-              },
-            },
-            {
-              type: 'Row',
-              props: { ax: 'between', ay: 'center', width: '100%' },
-              children: [
-                agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` }, avatarSize: 'xs' }),
-                moveCardMenu(as, 'column', ({ card, from, to }) => ({
-                  $action: 'spaceStore.moveChild',
-                  args: [{ $: card }, { $: from }, to],
-                })),
-              ],
-            },
-            signalRow(as),
-          ],
-        },
-      ],
-      columnFooter: (as) => ({
-        type: 'Column',
-        props: { width: '100%' },
-        $localState: { addCardOpen: { type: 'boolean', initial: false } },
-        children: [
-          {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              size: 'sm',
-              width: '100%',
-              onClick: { $setLocal: 'addCardOpen', value: true },
-            },
-            children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add card'],
-          },
-          composerModal({
-            openLocal: 'addCardOpen',
+    {
+      type: 'Column',
+      props: { width: '100%', p: '400' },
+      children: [
+        /*
+          The same board WE's own Boards view renders, over posts instead of tasks and with every
+          column a lane. That is what "containment expresses status" turns out to be: the special
+          case of the state board where nothing binds. Dragging reorders within a column and moves
+          between them, and both converge when two people do it at once, because a column's
+          arrangement is an ordered relation.
+        */
+        taskBoard({
+          boardId: { $: 'routeStore.templateSegments[1]' },
+          entity: 'CollectionBlock',
+          where: { kind: KIND.post },
+          lanesOnly: true,
+          card: postCard,
+          /*
+            A card is a composed document like a post — same composer, same blocks. It is only a
+            card because of where it is arranged: the composer writes the post loose in the space,
+            and the close handler puts it in the column that was pressed. `result` is the new id.
+          */
+          addCardModal: composerModal({
+            openLocal: 'addOpen',
             title: 'New card',
-            // A card is a composed document like a post — same composer, same blocks. It is only a
-            // card because of where it lives.
             kind: KIND.post,
-            parentId: { $: `${as}.id` },
             saveLabel: 'Add',
+            onClose: [{ $action: 'spaceStore.moveCardToColumn', args: ['', { $: 'col.id' }, { $: 'result' }] }],
           }),
-        ],
-      }),
-    }),
-
-    newContainerModal({
-      openLocal: 'newColumnOpen',
-      title: 'New column',
-      kind: KIND.column,
-      placeholder: 'In progress',
-      parentId: { $: 'routeStore.segments[1]' },
-    }),
+          empty: emptyState({
+            icon: 'columns',
+            label: 'columns',
+            message: 'No columns yet. Add one — a card’s column is where it sits.',
+            delay: 0,
+          }),
+        }),
+      ],
+    },
   ],
 };
 
@@ -262,6 +230,9 @@ export const kanbanTemplate: TemplateSchema = {
     name: 'Boards',
     description: 'Kanban boards where a card’s column is its status — coordination on the same substrate.',
     icon: 'kanban',
+    // The board's suggestion controls name `modules.transcribe.*` — see `taskBoard`. Declared so a
+    // deployment without extraction sees the dependency in `missingModules` rather than dead buttons.
+    requires: { modules: ['transcribe'] },
     // Light: a board is read at a glance, and it sets coordination apart from the social three.
     themeId: 'light',
   },

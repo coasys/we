@@ -1,11 +1,34 @@
-import { Ad4mModel, HasMany, HasManyMethods, Model } from '@coasys/ad4m';
+import { Ad4mModel, BelongsToOne, HasMany, HasManyMethods, Model } from '@coasys/ad4m';
 
 import { Signal } from './Signal';
 
 @Model({ name: 'WeNode' })
 export class WeNode extends Ad4mModel {
-  @HasMany({ through: 'we://comment' })
+  /*
+    `polymorphic` on the relations that hold records, and deliberately absent from the two that hold
+    DIDs — see WE_NODE_RELATIONS in @we/entities for why the split is not arbitrary. This class is
+    hand-written rather than generated, so it is the one place the manifest's answer is repeated by
+    hand; `coreManifest.test.ts` holds the two in step, since SHACL does not carry the answer.
+  */
+  @HasMany({ through: 'we://comment', polymorphic: true })
   comments: string[] = [];
+
+  /**
+   * What this node is a comment on — `comments` read from the other end.
+   *
+   * There is one link; this side does not add a second. `@BelongsToOne` binds the same predicate
+   * and matches `?source we://comment ?target` with the targets constrained to the rows in hand,
+   * so a page of replies learns all its parents in one batched query rather than one each.
+   *
+   * It exists because a thread cannot be drawn without it. A transitive read answers with every
+   * descendant of a post as a flat set — SPARQL property paths bind no intermediate variables, so
+   * the traversal reports its endpoints and nothing about the route — and the tree has to be
+   * rebuilt from each reply naming its own parent.
+   *
+   * Read-only, and generated that way: writing here would write a link `comments` owns.
+   */
+  @BelongsToOne({ through: 'we://comment', polymorphic: true })
+  inReplyTo?: string;
 
   @HasMany(() => Signal, { through: 'we://signal' })
   signals: string[] = [];
@@ -30,6 +53,12 @@ export class WeNode extends Ad4mModel {
    * for as long as each agent writes its own entry and nobody else's. A writer that appends every
    * member it can see turns it into a multiset that grows with every session — which is what the
    * transcribe module used to do, and why an avatar row drew the same two faces over and over.
+   *
+   * **Membership a machine observed, not intent a person stated.** Who was in a call belongs here.
+   * Who is assigned to a task, or said they are coming to an event, is an `Involvement` — a claim
+   * with an author, a date and a community-named kind, which a DID in a bag cannot carry. The two
+   * are different facts about the same people: reading this roster as "said they would come" would
+   * tell somebody a meeting they skipped was one they attended.
    */
   @HasMany({ through: 'we://participants' })
   participants: string[] = [];
@@ -37,18 +66,24 @@ export class WeNode extends Ad4mModel {
   /**
    * Calls that happened on this node, as `CollectionBlock`s with `kind: 'call'`.
    *
-   * The edge lives here rather than on the call because traversal is forward-only — the IR's `scope`
-   * drills down *from* an anchor through a relation the anchor owns, and `reverseOf` is deliberately
-   * not emitted (see `neutralManifest.ts`). Put it on the call and "what calls happened on this post"
-   * becomes a full scan.
+   * The edge lives here rather than on the call because a forward drill-down is the cheap read: the
+   * IR's `scope` walks *from* an anchor through a relation the anchor owns. Put it on the call and
+   * "what calls happened on this post" becomes a full scan.
+   *
+   * Reading an edge backwards is possible — see `inReplyTo`, which does exactly that — but it is a
+   * different tool and not a cheaper one: it answers "who points at these rows I already have",
+   * which is the question a tree needs and a listing does not.
    *
    * Untyped, mirroring `comments` rather than `signals`: core mints the predicate and stays agnostic
-   * about the other end. The cost is that `include: { calls: true }` will not work (include needs a
-   * known target class) — a drill-down via `scope` does, which is what listing a node's calls needs.
-   * Typing it would mean importing `CollectionBlock` here, and since `CollectionBlock extends WeNode`
-   * that is an evaluation-order cycle waiting to happen.
+   * about the other end. Typing it would mean importing `CollectionBlock` here, and since
+   * `CollectionBlock extends WeNode` that is an evaluation-order cycle waiting to happen.
+   *
+   * `include: { calls: true }` used to be unavailable for exactly that reason — include had no
+   * target class to hydrate into, so listing a node's calls meant a `scope` drill-down. Reading each
+   * member as the class it actually is removes the requirement, so both routes now work and the
+   * drill-down is a choice rather than the only option.
    */
-  @HasMany({ through: 'we://call' })
+  @HasMany({ through: 'we://call', polymorphic: true })
   calls: string[] = [];
 
   /**

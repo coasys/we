@@ -14,8 +14,8 @@ import {
 // The in-memory backend consumes the flat `$query` dialect (run() re-compiles it via executeQueryIR),
 // so its adapter lowers with the neutral `irToFlatQuery`. Capabilities mirror what that flat lowering
 // expresses — relation filters and non-count aggregates stay gaps (irToFlatQuery throws on them),
-// which the renderer then falls back on. This is a real, AD4M-free QueryAdapter — it exercises the
-// same renderer path the AD4M adapter does.
+// which the renderer then falls back on. This is a real QueryAdapter — it exercises the same
+// renderer path the production adapter does.
 //
 // `scope` is the exception, and is handled rather than declined: the shared engine has always been
 // able to execute a drill-down (`scopeRows`), and only the *lowering* could not express one, because
@@ -30,8 +30,16 @@ export const inMemoryCapabilities: AdapterCapabilities = {
   // until the compiler learned to translate them.
   operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'startsWith', 'endsWith', 'exists'],
   booleanCombinators: true,
-  relationFilters: false,
+  // Declared for the same reason `startsWith`/`endsWith` are: `matchesFilter` in the shared engine
+  // has always evaluated `{ rel, some/none }`, and this adapter *is* that engine. It read `false`
+  // only because nothing could reach the operator from a flat where clause until the compiler
+  // learned to translate it — so the profile was describing the dialect's gap, not this backend's.
+  relationFilters: true,
   scope: true,
+  // All four, because in memory they are a filter and a loop — and the reference implementation
+  // earns its keep precisely by answering what the real backend answers, so a store's tests are
+  // about the store rather than about which backend is underneath.
+  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true, levelWalk: true },
   include: { supported: true },
   aggregate: ['count'],
   sort: { multiKey: true, byRelationPath: true, byAggregate: true },

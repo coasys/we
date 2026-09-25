@@ -69,7 +69,7 @@ describe('addresses', () => {
   });
 
   it('returns null for malformed addresses rather than throwing', () => {
-    // Addresses arrive from persisted board data and from third-party expanders; a bad one should
+    // Addresses arrive from persisted canvas data and from third-party expanders; a bad one should
     // drop a node, not take down a render.
     expect(parseAddress('we-graph://entity/only-two/parts')).toBeNull();
     expect(parseAddress('we-graph://unknown/thing')).toBeNull();

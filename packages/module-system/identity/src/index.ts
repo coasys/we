@@ -22,23 +22,24 @@
  * transforms the responses, and pushes them into the setters. Action stubs (`revokeKey`,
  * `exportKel`, etc.) get replaced with real RPC-backed implementations by the same wiring.
  */
-import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+import { defineModule, type ModuleDefinition, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
 // ─── Module definition ───────────────────────────────────────────────────────
 
-export const identityModule = defineModule({
-  id: 'identity',
-  name: 'Identity',
-  description: 'Your DID, enrolled devices, guardians, recovery, and event log.',
-  icon: 'fingerprint',
-
-  /**
-   * Agent-scoped — identity data belongs to the person, not a community.
-   *
-   * The store provides identity data to the Settings account page. No launcher, no dock —
-   * the UI lives in the shell's Settings template, referencing `modules.identity.*` signals.
-   */
-  scope: 'agent',
+export const identityModule: ModuleDefinition = defineModule({
+  manifest: {
+    id: 'identity',
+    name: 'Identity',
+    description: 'Your DID, enrolled devices, guardians, recovery, and event log.',
+    icon: 'fingerprint',
+    /**
+     * Agent-scoped — identity data belongs to the person, not a community.
+     *
+     * The store provides identity data to the Settings account page. No launcher, no dock —
+     * the UI lives in the shell's Settings template, referencing `modules.identity.*` signals.
+     */
+    scope: 'agent',
+  },
 
   createStore: ({ signal }: ModuleStoreDeps) => {
     type R = Record<string, unknown>;
@@ -181,3 +182,6 @@ export const identityModule = defineModule({
     };
   },
 });
+
+/** The one factory shape every module package exports — the generated registry imports it. */
+export const createModule = (_host: ModuleHost): ModuleDefinition => identityModule;

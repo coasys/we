@@ -1,4 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { AVATAR_TONES, type AvatarTone, avatarToneColor } from '@we/tokens';
 import { toSvg } from 'jdenticon';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -6,6 +7,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 
 import { LayoutVisualElement } from '../shared/design-system-element';
+import { seededFill } from '../shared/seededColor';
 import sharedStyles from '../shared/styles';
 import type { SizeValue } from '../types';
 
@@ -13,67 +15,27 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   flex: '0 0 auto',
 };
 
-/**
- * How many hues a generated avatar may take, evenly spaced around the wheel.
- *
- * A *palette* rather than the whole circle, and that is the load-bearing decision. Hashing straight
- * to 0–359 reads as more choice and gives less: twelve random uuids put their closest pair **three
- * degrees** apart — measured — which at avatar chroma is one colour, and two spaces looking almost
- * the same reads as a rendering fault rather than as a coincidence. Quantising trades uniqueness for
- * separation. Two spaces can now share a colour outright, which is honest and legible, and no two
- * can be nearly the same.
- *
- * Twelve because 30° is comfortably apart at the low chroma these fills carry, and because the
- * letters are the identifier anyway — the colour is a second cue, not the first.
- */
-const HUE_STEPS = 12;
+/** A tone name reads as that tone's colour; anything else is taken as a CSS colour. */
+const ringColorOf = (value: string): string =>
+  (AVATAR_TONES as readonly string[]).includes(value) ? avatarToneColor(value as AvatarTone) : value;
 
 /**
- * A hue, from whatever identifies this thing.
+ * The rings an avatar paints inside its own edge, as one `box-shadow` list — or nothing.
  *
- * FNV-1a, because the requirements are "same input, same colour, everywhere, for ever" and "spread
- * evenly across the buckets" — not cryptographic strength. Eight lines, no dependency, and the same
- * answer in every browser and in a test.
- *
- * The point of a *hue* rather than a colour is that everything else stays the theme's. See
- * {@link seededFill}.
+ * The edge is outermost and listed first, since the first shadow in a list paints on top: it is a
+ * thin band in the colour behind the avatar, which is how overlapping faces in a stack stay apart.
+ * The ring sits inside it. Both are inset, and both are drawn on a layer *above* the picture — see
+ * the `::after` rule — because an inset shadow on the box itself paints beneath its content, and
+ * the `<img>` would cover it.
  */
-function seededHue(seed: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (Math.abs(h) % HUE_STEPS) * (360 / HUE_STEPS);
+export function avatarInnerRings(opts: { ringColor?: string; ringWidth?: string; edgeColor?: string }): string {
+  const edge = opts.edgeColor ? `inset 0 0 0 var(--we-avatar-edge-width) ${ringColorOf(opts.edgeColor)}` : '';
+  const width = opts.ringWidth || 'var(--we-avatar-ring-width)';
+  const ring = opts.ringColor
+    ? `inset 0 0 0 ${opts.edgeColor ? `calc(var(--we-avatar-edge-width) + ${width})` : width} ${ringColorOf(opts.ringColor)}`
+    : '';
+  return [edge, ring].filter(Boolean).join(', ');
 }
-
-/**
- * The generated fill and its foreground, built the way the theme builds its own colours.
- *
- * This is the `--we-color-*-100` / `-700` pair with the hue swapped out, character for character —
- * same lightness step, same saturation, same chroma taper, same `chroma-max` ceiling. So a
- * generated avatar follows a theme's polarity, its saturation and its ramp exactly as `accent-muted`
- * and `accent-text` do, and the only thing that varies per space is the angle.
- *
- * Reusing that *pair* is what makes the contrast safe without measuring anything: 100 as a fill with
- * 700 as its text is the combination the roles already ship, and it stays legible when a dark theme
- * flips the ramp, because both steps flip together.
- */
-function seededFill(seed: string): { bg: string; fg: string } {
-  const hue = seededHue(seed);
-  const step = (l: '100' | '700') =>
-    `oklch(var(--we-color-lightness-${l}) calc(var(--we-color-saturation) / 100 * 0.18 * 2 * ` +
-    `max(0, min(var(--we-color-lightness-${l}), 1 - var(--we-color-lightness-${l})))) ${hue})`;
-  return { bg: step('100'), fg: step('700') };
-}
-
-/*
-  Exported for the test, which pins the *order* of what gets drawn and the shape of the generated
-  colour. Both failed silently before — a dead prop and a name-seeded hue — so the assertions are
-  worth more than the two lines of surface they cost.
-*/
-export const avatarSeededHueForTest = seededHue;
-export const avatarSeededFillForTest = seededFill;
 
 const styles = css`
   :host {
@@ -86,6 +48,15 @@ const styles = css`
     /* The disc behind an identicon or initials — a sunken surface, whose default is the
        neutral-100 that was here, so nothing moves. */
     --we-avatar-bg: var(--we-role-surface-sunken);
+    /* How thick a ring and an edge are, by size — see ringColor. Thinner small, since 2px is a fifth
+       of the radius of a 20px face. Overridable per avatar with ringWidth, or by a theme. */
+    --we-avatar-ring-width: 2px;
+    --we-avatar-edge-width: 2px;
+  }
+  :host([size='xxs']),
+  :host([size='xs']) {
+    --we-avatar-ring-width: 1.5px;
+    --we-avatar-edge-width: 1.5px;
   }
   /* The disc exists for the identicon/initials/icon fallbacks; a picture covers it
      entirely, so it is dropped when there is one. Keyed off the marker attribute rather
@@ -103,7 +74,7 @@ const styles = css`
     the rail's live-call mark had to be built as a wrapper around the avatar to avoid reading as
     "online". A baked-in decoration nobody used was shaping the design of the one people did.
 
-    What replaces them is not on this element: a tone through the ring prop (see avatarToneRing),
+    What replaces them: a tone through ringColor, drawn inside the face (see the ::after rule),
     and badgedAvatar in the schema kit for a corner mark. Both are open vocabularies, so the next
     kind of badge needs no change here.
   */
@@ -133,6 +104,24 @@ const styles = css`
     align-items: center;
     justify-content: center;
     padding: 0;
+  }
+
+  /*
+    The ring, inside the avatar's own box and above its picture.
+
+    Inside, so an avatar is the size it says whether or not it is ringed: a ring drawn outside made a
+    24px face look 28px beside a 24px button, made ringed and unringed faces in one row look like two
+    sizes, and reached into whatever sat next to it. Above the picture, because an inset shadow on
+    [part=base] itself paints beneath its content and the image would cover it. radius: inherit, so
+    it follows the theme's avatar shape — a circle, a rounded square, a square.
+  */
+  [part='base']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: var(--we-avatar-inner-rings, none);
   }
 
   svg {
@@ -213,6 +202,22 @@ export default class Avatar extends LayoutVisualElement {
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: SizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
+  /**
+   * A ring inside the avatar's edge — a tone (`primary`, `success`, `warning`, `danger`, `neutral`)
+   * or any CSS colour. Empty for none.
+   *
+   * Not the generic `ring` design-system prop, which buttons and fields use for focus and which
+   * paints *outside* the box. An avatar's ring is a mark on the face, so it is drawn inside it, and
+   * the face stays the size it says.
+   */
+  @property({ type: String }) ringColor = '';
+  /** How thick that ring is — any CSS length. Empty for the size's own default. */
+  @property({ type: String }) ringWidth = '';
+  /**
+   * A thin band just inside the edge, in the colour behind the avatar — how faces that overlap stay
+   * apart. `AvatarStack` sets it; a face on its own has no use for one.
+   */
+  @property({ type: String }) edgeColor = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   // Before render rather than after, so the disc is already gone on the frame the picture first
@@ -281,7 +286,12 @@ export default class Avatar extends LayoutVisualElement {
   render() {
     // The caller's own `styles` last, so a call site that names a background still wins over the
     // generated one.
-    const inline = { ...this.initialsFill(), ...(this.styles || {}) };
+    const rings = avatarInnerRings({ ringColor: this.ringColor, ringWidth: this.ringWidth, edgeColor: this.edgeColor });
+    const inline = {
+      ...this.initialsFill(),
+      ...(rings ? { '--we-avatar-inner-rings': rings } : {}),
+      ...(this.styles || {}),
+    };
     return this.clickable
       ? html` <button part="base" style=${styleMap(inline)}>${this.renderContent()}</button> `
       : html` <div part="base" style=${styleMap(inline)}>${this.renderContent()}</div> `;

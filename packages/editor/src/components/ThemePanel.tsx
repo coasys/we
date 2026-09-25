@@ -11,6 +11,7 @@ import {
   simulateVision,
   tokenVar,
 } from '@we/design-utils';
+import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
 import { applyThemeVars, roleVar, surfacesForPolarity, themeParametersToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
@@ -170,7 +171,18 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
     label: 'Elevation',
     hint: 'How far a thing sits from the page. Ordered here the way they stack.',
     roles: [
-      { role: 'page', label: 'Page', hint: 'The background behind everything, including the window itself.' },
+      // First because it is the bottom of the stack and the one the rest is measured from — the
+      // group is ordered the way things sit, and everything here sits on the app's own ground.
+      {
+        role: 'chrome',
+        label: 'Chrome',
+        hint: "The app's own furniture — the sidebar, the module rail, a docked panel's frame, and the app's own screens. How dark the app is; everything else is measured from it.",
+      },
+      {
+        role: 'page',
+        label: 'Page',
+        hint: "The plane a space's content sits on, a step above the chrome framing it. Set it to the chrome to have them match.",
+      },
       {
         role: 'surfaceSunken',
         label: 'Sunken',
@@ -266,12 +278,12 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
   },
   {
     label: 'Depth & inversion',
-    hint: 'The things that are deliberately not on the light/dark ramp.',
+    hint: 'The things that do not simply follow the light/dark ramp.',
     roles: [
       {
         role: 'surfaceInverse',
         label: 'Inverse surface',
-        hint: 'A surface deliberately opposite to the page — a tooltip. Stays dark in a dark theme too.',
+        hint: 'A surface deliberately opposite to the page — a tooltip. Measured from the page, so it stays clear of it in a dark theme too.',
       },
       { role: 'overlay', label: 'Scrim', hint: 'The dimming behind a modal or drawer. Carries its own transparency.' },
       {
@@ -401,20 +413,25 @@ function HueSwatch(props: { hue: number }) {
         width: '20px',
         height: '20px',
         'border-radius': '50%',
+        // role-audit: palette — a preview of the hue being chosen, so it IS the raw value. The rest
+        // of this panel is ordinary chrome and stays on roles.
         background: `hsl(${props.hue} 60% 50%)`,
         'flex-shrink': '0',
-        border: `1px solid ${tokenVar('color', 'neutral-200')}`,
+        border: `1px solid ${tokenVar('color', 'border')}`,
       }}
     />
   );
 }
 
+/**
+ * A named region inside the panel — `sectionLabel`'s treatment, in the language this panel is in.
+ *
+ * It was a hand-spelled copy a size up and a shade stronger, with a fifth value for the tracking
+ * (`0.05em`, against the inspector's `0.06em`, a `widest` twenty lines from that, and the kit's
+ * `wide`). None of those was a decision anybody made twice.
+ */
 function SectionLabel(props: { children: string }) {
-  return (
-    <we-text fontSize="200" fontWeight="600" color="text-muted" textTransform="uppercase" letterSpacing="0.05em">
-      {props.children}
-    </we-text>
-  );
+  return <we-text {...SECTION_LABEL_PROPS}>{props.children}</we-text>;
 }
 
 /**
@@ -465,11 +482,19 @@ function CollapsibleSection(props: {
     if (props.openOn?.()) setOpen(true);
   });
   return (
-    <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
-      <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} cursor="pointer">
-        <SectionLabel>{props.title}</SectionLabel>
-        <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="text-faint" />
-      </Row>
+    <Column borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="0">
+      {/*
+        A real `<button>`, not a `Row` carrying an `onClick`: the row silently loses the keyboard
+        activation and the role, and there is nowhere to put `aria-expanded`. The caret is `xs`,
+        which is the size every other caret in the app is — punctuation, a size below the glyphs it
+        sits beside.
+      */}
+      <we-button variant="bare" width="100%" r="200" expanded={open()} onClick={() => setOpen(!open())}>
+        <Row ay="center" ax="between" py="300" width="100%">
+          <SectionLabel>{props.title}</SectionLabel>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
+        </Row>
+      </we-button>
       <Show when={open()}>
         <Column gap="300" pb="400">
           {props.children}
@@ -650,7 +675,7 @@ export function ThemePanel() {
     };
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth={labelWidth} fontSize="300" color="text-muted">
+        <we-text prop:minWidth={labelWidth} fontSize="300" color="text-muted">
           {label}
         </we-text>
         <we-select
@@ -1019,10 +1044,27 @@ export function ThemePanel() {
   });
 
   function previewStrip() {
-    const chip = (bg: string, fg: string, text: string) => (
-      <Column bg={bg} color={fg} px="200" py="100" r="200" fontSize="100">
-        {text}
-      </Column>
+    /*
+      Real badges, in both appearances — not hand-drawn chips.
+
+      These were five `Column`s painting `danger-surface` on `danger-text` and so on, which is a
+      copy of `we-badge`'s own soft table in another package. Two things were wrong with that. It
+      could drift from the component it was standing in for, which is the failure this repo keeps
+      finding; and because every chip was a *tint*, the preview showed no fill anywhere — so the
+      "Status fills" sliders below had nothing on screen to move, and reasonably read as broken.
+
+      Both rows, because the two appearances are the two halves of the status palette and a theme
+      author is choosing for both at once: `soft` shows what `*-surface` and `*-text` do, `solid`
+      shows the fills and their corrected labels — the ones the sliders drive.
+    */
+    const badgeRow = (appearance: 'soft' | 'solid') => (
+      <Row gap="100" wrap ay="center">
+        {(['neutral', 'primary', 'success', 'warning', 'danger'] as const).map((variant) => (
+          <we-badge variant={variant} appearance={appearance} size="xs">
+            {variant}
+          </we-badge>
+        ))}
+      </Row>
     );
     return (
       <div ref={setPreviewEl} style={{ 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}>
@@ -1049,12 +1091,16 @@ export function ThemePanel() {
               </we-button>
             </Row>
             <we-input size="sm" placeholder="An input…" />
-            <Row gap="100" wrap>
-              {chip('danger-surface', 'danger-text', 'Danger')}
-              {chip('success-surface', 'success-text', 'Success')}
-              {chip('warning-surface', 'warning-text', 'Warning')}
-              {chip('accent-muted', 'accent-text', 'Accent')}
-            </Row>
+            <Column gap="100">
+              <we-text fontSize="100" color="text-faint">
+                Soft
+              </we-text>
+              {badgeRow('soft')}
+              <we-text fontSize="100" color="text-faint">
+                Solid
+              </we-text>
+              {badgeRow('solid')}
+            </Column>
           </Column>
           <Row gap="200" ay="center">
             <Column bg="surface-raised" px="300" py="200" r="300" shadow="md" fontSize="100" color="text">
@@ -1162,6 +1208,11 @@ export function ThemePanel() {
             alpha
             styles={{ ...editedPalette(), '--we-color-picker-swatch': '28px' }}
             value={shown()}
+            // Both, so the theme follows the thumb as it moves and the draft is written when it
+            // settles — the picker separated the two once a drag's worth of writes turned out to be
+            // a real cost elsewhere. A role pin is a signal rather than a record, so previewing it
+            // is free; keeping the pair here is what stops this panel losing its live feel.
+            on:preview={(e: CustomEvent) => setRole(role, e.detail as string)}
             on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
           />
           <Column flex="1" gap="0">
@@ -1170,7 +1221,7 @@ export function ThemePanel() {
             need one, and a column of forty ⓘ glyphs is noise standing in for an explanation. The
             label is already the thing you point at when you are wondering what it means.
           */}
-            <we-tooltip title={hint} placement="left">
+            <we-tooltip content={hint} placement="left">
               <we-text fontSize="300" color={pinned() ? 'text' : 'text-muted'} cursor="help">
                 {label}
               </we-text>
@@ -1180,7 +1231,7 @@ export function ThemePanel() {
             </we-text>
           </Column>
           <Show when={pinned()}>
-            <we-tooltip title="Back to the parametric default">
+            <we-tooltip content="Back to the parametric default">
               <we-button variant="ghost" size="xs" onClick={() => setRole(role, undefined)}>
                 <we-icon name="arrow-counter-clockwise" />
               </we-button>
@@ -1217,7 +1268,7 @@ export function ThemePanel() {
       /*
         No background of its own: the dock frame paints the panel's surface.
 
-        Every dock is wrapped in a frame that sets `surface-sunken`, precisely so a docked panel does
+        Every dock is wrapped in a frame that sets `page`, precisely so a docked panel does
         not have to decide what it is made of — see the note in dockRegistry.ts. The editor's panels
         painted `surface-raised` over the top of it, ten lightness points above the page, so they read
         as a different material from every module panel docked at the same edge.
@@ -1234,17 +1285,8 @@ export function ThemePanel() {
       onPointerDown={() => setDragging(true)}
     >
       {/* Header */}
-      <Row
-        ax="between"
-        ay="center"
-        px="400"
-        py="300"
-        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-        flexShrink="0"
-      >
-        <we-text fontSize="500" fontWeight="600">
-          Theme Editor
-        </we-text>
+      <Row ax="between" ay="center" px="300" py="300" flexShrink="0">
+        <we-text {...PANEL_TITLE_PROPS}>Theme Editor</we-text>
       </Row>
 
       <Show
@@ -1272,7 +1314,7 @@ export function ThemePanel() {
         <we-scroll-area flex="1">
           <Column gap="0" p="400">
             {/* ── Name + icon ── */}
-            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="400" mb="0">
+            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'border')}`} pb="400" mb="0">
               <SectionLabel>Theme name</SectionLabel>
               <Row gap="200" ay="center">
                 <we-icon-picker
@@ -1324,15 +1366,25 @@ export function ThemePanel() {
 
                 It cannot simply go transparent — being sticky, the sections scroll *under* it, and
                 anything see-through would show them sliding past behind the preview. So it has to
-                paint something, and the something has to be whatever the panel body is: it was
-                `surface`, which sat a step above the body and made the preview read as a card
-                floating in a panel rather than as part of it.
+                paint something, and the something has to be whatever the panel body is.
 
-                Tied to the frame's choice by hand, which is the weak part. If the dock frame ever
-                paints something else this has to follow, and nothing enforces that.
+                **`page`, because that is what the dock frame paints** — see the note on `bg` in
+                `dockRegistry.ts`. This said `surface-sunken`, which was right when it was written
+                and stopped being right when the frame moved off that role; `surface-sunken` is
+                `page` minus lightness, so the preview came out darker than every section under it
+                and read as a well cut into the panel.
+
+                That is the second time this drifted, and the last note here predicted it: the tie to
+                the frame's choice is by hand and nothing enforces it. It still is — the frame is in
+                `@we/app-shell`, which depends on this package, so the constant cannot be shared
+                without inverting the dependency. Worth doing if it moves a third time.
+
+                One case this does not follow: a *floating* panel's frame is translucent glass, and
+                this band stays opaque over it. Matching that would mean reading the dock's floating
+                state, which is the same import that is not available.
               */
-              bg="surface-sunken"
-              borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
+              bg="page"
+              borderBottom={`1px solid ${tokenVar('color', 'border')}`}
               pb="300"
               pt="300"
             >

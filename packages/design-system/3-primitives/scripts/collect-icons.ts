@@ -33,11 +33,16 @@ const OUT_FILE = resolve(OUT_DIR, 'icon-bundle.ts');
 // that ships with a deployment has to render without a network. They were missing, so every icon a
 // built-in template asked for fell through to the CDN fallback — which looks fine in development
 // and leaves blank squares on a desktop build with no connection.
+//
+// The graph is here on the same argument, and was the next one to be caught by it: the connect
+// handles on a board name their four arrows in the renderer itself, and `arrow-up` was in no other
+// package, so it was the one of the four that did not exist offline.
 const SCAN_GLOBS = [
   'packages/app-framework/src/**/*.{ts,tsx}',
   'packages/app-shell/src/**/*.{ts,tsx}',
   'packages/design-system/**/src/**/*.{ts,tsx}',
   'packages/block-system/**/src/**/*.{ts,tsx}',
+  'packages/graph-system/**/src/**/*.{ts,tsx}',
   'packages/schema-system/**/src/**/*.{ts,tsx}',
   'packages/module-system/**/src/**/*.{ts,tsx}',
   'packages/templates/**/src/**/*.{ts,tsx}',

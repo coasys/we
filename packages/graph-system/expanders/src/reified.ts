@@ -18,7 +18,7 @@
  * person modelling the space knows which is which, so the template says.
  */
 import type { EntityShape, GraphEdge, GraphNode } from '@we/graph-protocol';
-import { entityAddress } from '@we/graph-protocol';
+import { entityAddress, nodeTypeOf } from '@we/graph-protocol';
 
 import { labelProperty, placeholder, rowToNode } from './nodes';
 
@@ -110,11 +110,21 @@ function endpoint(
 }
 
 /**
+ * Why an instance of a reified class could not be drawn as an edge.
+ *
+ * A reason rather than `null`, because "missing an endpoint" covered four unrelated failures and a
+ * reader looking at a repeating warning could not tell which they had — a record with no link, a
+ * record whose endpoint type nothing recorded, a spec naming a relation the class does not have, and
+ * a row with no id are four different problems with four different fixes.
+ */
+export type ReifiedSkip = { reason: string };
+
+/**
  * Turn one instance of a reified class into the edge it represents, plus whichever endpoints came
  * back with it.
  *
- * Returns `null` when either endpoint is missing — a relationship with one end is not an edge, and
- * drawing half of it would be worse than dropping it. The caller warns.
+ * Answers a {@link ReifiedSkip} when either endpoint is missing — a relationship with one end is not
+ * an edge, and drawing half of it would be worse than dropping it. The caller warns with the reason.
  */
 export function reifiedEdgeFrom(
   row: Record<string, unknown>,
@@ -123,31 +133,66 @@ export function reifiedEdgeFrom(
   dataset: string,
   shapes: EntityShape[],
   sourceId: string,
-): { edge: GraphEdge; nodes: GraphNode[] } | null {
+): { edge: GraphEdge; nodes: GraphNode[] } | ReifiedSkip {
   const id = typeof row.id === 'string' ? row.id : undefined;
-  if (!id) return null;
+  if (!id) return { reason: 'the row carries no id' };
 
   const shape = shapes.find((s) => s.name === entity);
   const sourceRelation = shape?.relations.find((r) => r.name === spec.source);
   const targetRelation = shape?.relations.find((r) => r.name === spec.target);
-  if (!sourceRelation || !targetRelation) return null;
+  if (!sourceRelation || !targetRelation) {
+    const missing = [!sourceRelation && spec.source, !targetRelation && spec.target].filter(Boolean).join(' and ');
+    return { reason: `${entity} declares no relation named ${missing}` };
+  }
 
   /*
     An endpoint's type comes from the relation's declared target, or — where the relation is
-    untyped — from a property on the row.
+    untyped — from a property on the row, or from what the endpoint itself says it is.
 
-    Both are needed and neither is a fallback for the other. A schema-declared relationship
+    The first two are not fallbacks for each other. A schema-declared relationship
     (`SemanticRelationship.tag` → `Topic`) knows its target class and stores no copy of it, which is
     right: the schema is the authority and a stored duplicate could drift from it. A drawn one has
-    no declared target at all, so the row is the only place the type can live.
+    no declared target at all, so the row is the only place the type could live.
+
+    The third rescues a case neither of the others can. `sourceType`/`targetType` are written by
+    whoever creates the relationship, and not every writer does — an extraction pass can produce a
+    `Relationship` without them, and every such edge was skipped as "missing an endpoint" though both
+    ends existed and were perfectly readable. Now that these relations are read polymorphically the
+    endpoint arrives already classified, so the type is in hand without the round trip the stored
+    copy exists to avoid. Last rather than first: a writer that recorded the type meant it.
   */
-  const sourceEntity = sourceRelation.target || readType(row, spec.sourceType);
-  const targetEntity = targetRelation.target || readType(row, spec.targetType);
-  if (!sourceEntity || !targetEntity) return null;
+  const sourceEntity = sourceRelation.target || readType(row, spec.sourceType) || nodeTypeOf(row[spec.source]);
+  const targetEntity = targetRelation.target || readType(row, spec.targetType) || nodeTypeOf(row[spec.target]);
+  if (!sourceEntity || !targetEntity) {
+    // Distinguish "there is no link" from "there is a link and nothing says what it points at" —
+    // the first is a record that was written wrong, the second is one this can now often recover.
+    const unknown = [!sourceEntity && spec.source, !targetEntity && spec.target].filter(Boolean) as string[];
+    const empty = unknown.filter((name) => row[name] == null);
+    return {
+      reason: empty.length
+        ? `${empty.join(' and ')} ${empty.length > 1 ? 'are' : 'is'} empty — the record was written without ${
+            empty.length > 1 ? 'them' : 'it'
+          }`
+        : `nothing says what ${unknown.join(' and ')} points at: no declared target, no type property, ` +
+          `and the endpoint came back unclassified (is the relation read polymorphically?)`,
+    };
+  }
 
   const from = endpoint(row[spec.source], sourceEntity, dataset, shapes, sourceId);
   const to = endpoint(row[spec.target], targetEntity, dataset, shapes, sourceId);
-  if (!from || !to) return null;
+  if (!from || !to) {
+    // Split for the same reason as above: a relation with no link is a record written without an
+    // end, and one holding something unreadable is a record whose end did not come back.
+    const bad = [!from && spec.source, !to && spec.target].filter(Boolean) as string[];
+    const empty = bad.filter((name) => row[name] == null);
+    return {
+      reason: empty.length
+        ? `${empty.join(' and ')} ${empty.length > 1 ? 'are' : 'is'} empty — the record was written without ${
+            empty.length > 1 ? 'them' : 'it'
+          }`
+        : `${bad.join(' and ')} came back as something with no id`,
+    };
+  }
 
   // Scalars only — the edge's own data, which is the entire reason the relationship was reified.
   const data: Record<string, string | number | boolean | null> = {};

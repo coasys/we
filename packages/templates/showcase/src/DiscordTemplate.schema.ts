@@ -55,7 +55,7 @@ const rail: SchemaNode = {
     },
 
     channelRail({
-      hrefPrefix: '/channel/',
+      hrefPrefix: './channel/',
       categories: true,
       empty: emptyState({ icon: 'hash', label: 'channels', delay: 0 }),
       footer: {
@@ -81,7 +81,7 @@ const rail: SchemaNode = {
       title: 'New channel',
       kind: KIND.channel,
       placeholder: 'general',
-      navigateTo: '/channel/',
+      navigateTo: './channel/',
     }),
     newContainerModal({
       openLocal: 'newCategoryOpen',
@@ -126,7 +126,7 @@ const messageRow: SchemaNode = {
     condition: { $: 'message.author == prev.author' },
     then: {
       type: 'Row',
-      props: { width: '100%', gap: '300', py: '25', ay: 'start' },
+      props: { width: '100%', gap: '300', ay: 'start' },
       children: [
         { type: 'Column', props: { width: '32px', flex: '0 0 auto' } },
         { type: 'Column', props: { flex: '1', minWidth: '0', gap: '100' }, children: messageBody },
@@ -134,7 +134,7 @@ const messageRow: SchemaNode = {
     },
     else: {
       type: 'Column',
-      props: { width: '100%', gap: '100', pt: '300', pb: '25' },
+      props: { width: '100%', gap: '100', pt: '300' },
       children: [
         agentByline({
           did: { $: 'message.author' },
@@ -162,7 +162,7 @@ const channelRoute: RouteSchema = {
         item: {
           $query: {
             entity: 'CollectionBlock',
-            where: { id: { $: 'routeStore.segments[1]' } },
+            where: { id: { $: 'routeStore.templateSegments[1]' } },
             limit: 1,
           },
         },
@@ -202,7 +202,7 @@ const channelRoute: RouteSchema = {
       children: [
         collectionFeed({
           kind: KIND.message,
-          anchorId: { $: 'routeStore.segments[1]' },
+          anchorId: { $: 'routeStore.templateSegments[1]' },
           as: 'message',
           // Oldest first: a channel reads as a transcript, where a timeline reads newest-first.
           order: 'asc',
@@ -236,7 +236,7 @@ const channelRoute: RouteSchema = {
       openLocal: 'composeOpen',
       title: 'New message',
       kind: KIND.message,
-      parentId: { $: 'routeStore.segments[1]' },
+      parentId: { $: 'routeStore.templateSegments[1]' },
       saveLabel: 'Send',
     }),
   ],

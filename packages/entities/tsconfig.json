@@ -1,14 +1,16 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": false,
     "composite": false,
-    "rootDir": "src",
     // Experimental decorators needed for models
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    // The tests build a base64 data URI with `Buffer`, and TypeScript 6 defaults `types` to [] rather
+    // than auto-loading every @types package it can find. `src` itself uses no node builtin.
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "tests", "scripts", "*.config.ts"]
 }

@@ -18,7 +18,7 @@ import type {
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import {
   type EntityClass,
-  getEntitiesForPerspective,
+  getEntityForDataset,
   mergeDynamicEntities,
   registerDynamicEntities,
   registerEntity,
@@ -33,10 +33,11 @@ import { installClearOnEmpty } from './clearOnEmpty';
 import { Space } from './entities';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
-import { createAd4mLanguageModelPort } from './languageModelPort';
-import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
+import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
+import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
   deduplicateSpaceSdna,
@@ -59,7 +60,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
   void client; // schema install operates on dataset handles; the client stays for future needs
 
   return {
-    installRoot: (dataset, moduleSchemas) => installRootSdna(proxy(dataset), moduleSchemas),
+    installRoot: (dataset) => installRootSdna(proxy(dataset)),
     installSpace: (dataset, moduleSchemas) => installSpaceSdna(proxy(dataset), moduleSchemas),
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
     refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
@@ -74,7 +75,18 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     },
 
     declare(manifest: EntityManifest, opts) {
-      const classes = compileManifest(manifest, opts as Parameters<typeof compileManifest>[1]);
+      const classes = compileManifest(manifest, {
+        ...(opts as Parameters<typeof compileManifest>[1]),
+        // A module manifest holds only its own entities, so a relation it INHERITS — `signals`,
+        // the one typed edge on WeNode — names a class the manifest cannot see. Without a
+        // resolver the target thunk answers undefined, the shape loses `sh:class` and
+        // `ad4m:targetClassName`, and `include: { signals: true }` on that entity then fails the
+        // whole query at read time ("the relation declares no target class"). No dataset here, so
+        // this reads the global registry, where the native classes are registered before any
+        // module compiles — and the thunk is lazy, so the order does not matter either way.
+        resolveExternal: (name) =>
+          (opts.resolveExternal?.(name) ?? getEntityForDataset(name)) as typeof Ad4mModel | undefined,
+      });
       for (const [name, cls] of Object.entries(classes)) registerEntity(name, cls as EntityClass);
       return classes;
     },
@@ -87,11 +99,11 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
       const classes = compileManifest(manifest, {
         ...opts,
         // Core vocabulary and the dataset's other dynamic entities are legitimate relation
-        // targets; getEntitiesForPerspective already prefers native classes, so a shape cannot
+        // targets; getEntityForDataset already prefers native classes, so a shape cannot
         // resolve a target to a shadowed core name.
         // The registry hands back the neutral class handle; this compiler is AD4M's own, so the
         // narrowing is definitionally sound here — everything registered on this backend IS one.
-        resolveExternal: (name) => getEntitiesForPerspective(name, dataset) as typeof Ad4mModel | undefined,
+        resolveExternal: (name) => getEntityForDataset(name, dataset) as typeof Ad4mModel | undefined,
       });
       mergeDynamicEntities(proxy(dataset).uuid, classes as Record<string, EntityClass>);
       return classes;
@@ -113,17 +125,32 @@ export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirec
   };
 }
 
+/**
+ * How to reach the executor over plain HTTP, for the surfaces its RPC client does not cover.
+ *
+ * `Ad4mClient` keeps its base URL and token private, and a tool-calling conversation goes through
+ * `/v1/chat/completions` rather than an RPC. So the connector — which chose both — hands them over.
+ */
+export interface Ad4mConnectionOptions {
+  connection?: () => Ad4mHttpConnection | null;
+}
+
 export function createAd4mBackendPorts(
   backendClient: unknown,
   ctx: BackendPortsContext,
-  // Everything a host knows about the connection that the ports cannot see for themselves. Only
-  // runtime administration cares so far — see `Ad4mRuntimeOptions.administersNode`.
-  options: Ad4mRuntimeOptions = {},
+  // Everything a host knows about the connection that the ports cannot see for themselves: whether
+  // the node is ours to administer (`Ad4mRuntimeOptions`), and the deployment's sharing
+  // infrastructure (`Ad4mLifecycleOptions`).
+  options: Ad4mRuntimeOptions & Ad4mLifecycleOptions & Ad4mConnectionOptions = {},
 ): BackendPorts {
   // `''` clears a property, which is what four separate call sites in WE already assumed and none
   // of them got. Installed before any model is registered so every class inherits it — generated,
   // manifest-compiled or built from foreign SHACL. See `clearOnEmpty.ts` for what it repairs.
   installClearOnEmpty(Ad4mModel);
+  // And the relation writes, for the same reason and in the same place: the contract can say
+  // "this relation's membership is now that list", and every model class — generated, compiled
+  // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
+  installRelationWrites(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.
@@ -151,12 +178,12 @@ export function createAd4mBackendPorts(
 
   return {
     agentSession: createAd4mAgentSession(backendClient),
-    lifecycle: createAd4mDatasetLifecycle(backendClient),
+    lifecycle: createAd4mDatasetLifecycle(backendClient, options),
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
-    transcription: createAd4mTranscriptionPort(backendClient),
-    languageModel: createAd4mLanguageModelPort(backendClient),
+    transcription: createAd4mTranscriptionPort(backendClient, options),
+    languageModel: createAd4mLanguageModelPort(backendClient, options.connection),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),
@@ -166,6 +193,7 @@ export function createAd4mBackendPorts(
         currentPerspective: () => (deps.currentDataset() as PerspectiveProxy | null) ?? null,
         currentPerspectiveEntities: deps.currentDatasetEntities,
         agents: deps.profiles,
+        ...(deps.profileFor ? { agentFor: deps.profileFor } : {}),
         fetchAgent: deps.fetchProfile,
         ephemeralPort: deps.ephemeral,
       }),

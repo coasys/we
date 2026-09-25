@@ -128,7 +128,12 @@ export async function gatherTranscriptTurns(
       const speaker = typeof row.author === 'string' ? row.author : '';
       const timestamp = isoTimestamp(row.createdAt);
       if (!text || !speaker || !timestamp) continue;
-      turns.push({ speaker, text, timestamp });
+      // Carried where the block says so, absent where it does not — which is every block written
+      // before `TextBlock.source` existed, and every one a turn entity other than TextBlock
+      // contributes. A consumer that renders these is asserting somebody's words; this is what lets
+      // it say which of them were spoken aloud.
+      const source = typeof row.source === 'string' ? row.source : '';
+      turns.push({ speaker, text, timestamp, ...(source ? { source } : {}) });
     }
   }
 

@@ -5,10 +5,54 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { formatDate, formatRelativeTime } from '../utils';
 
+/*
+  A time is one atomic phrase, so it never gives up room and never breaks.
+
+  A flex item's automatic minimum size is its content, which makes a run of text the sibling that
+  yields when a row runs short — and "4 minutes ago" has no useful narrower form. Shrinking it does
+  not reflow anything; it folds the phrase onto two lines mid-sentence, which is what every consumer
+  then patched by hand. `recordCard` and the editor's inspector both carried `flexShrink: '0'`, one
+  of them with `whiteSpace: 'nowrap'` beside it, which is this rule written out twice.
+
+  The trade is deliberate: in a genuinely too-narrow box it overflows rather than wrapping. That is
+  the better failure — legible and visibly wrong, rather than quietly mangled. (This paragraph used
+  to offer `truncate` for the case that wants clipping. There is no such property here; it is
+  `we-text`'s, and the way to clip a time is to put it in one.)
+
+  ## Inline on BOTH halves, which is the half that was missing
+
+  The host said `inline` and `[part='base']` kept the generated default — a `flex` box with
+  `width: 100%`. A block-level box inside an inline one breaks the line around itself and takes the
+  full width of its container, so a time written INTO a sentence could never be in it: "Added by you
+  · " came out on one row and the time on the next, at any width, with the panel half empty. It read
+  as a row running out of room, which is why it was looked for in the wrong place for a while.
+
+  `we-text` sets the pair together under `:host([inline])`; this is the same pairing, and it is the
+  default here because a time is almost always part of a line rather than a box of its own. Inside a
+  flex row the host is blockified as any inline item is, so nothing about a byline changes.
+*/
 const styles = css`
   :host {
     --we-timestamp-host-display: inline;
+    --we-timestamp-display: inline;
     display: var(--we-timestamp-host-display);
+    /*
+      The host takes the same size as its text, and that is an alignment fix rather than a cosmetic
+      one.
+
+      A design-system fontSize lands on [part='base'], inside the shadow root — the host keeps
+      whatever it inherited. For a BLOCK host that costs nothing, but this one is inline, so its
+      line box was struck for a 16px font while the text inside it was 12px: an 18px box holding
+      14px of text, which sat low in it. In a byline centred by box that put the time a pixel under
+      the name and made the row look as though it had been assembled by hand.
+
+      Falls back to inherit, so a timestamp that sets no size is exactly as it was.
+
+      (No backticks in here: this is a tagged template literal, and one ends the string.)
+    */
+    font-size: var(--we-timestamp-font-size, inherit);
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 `;
 
@@ -20,6 +64,8 @@ const styles = css`
  *
  * @attr {string}  value      - ISO 8601 date string or any value accepted by `new Date()`
  * @attr {boolean} relative   - Show relative time ("3 minutes ago") instead of absolute
+ * @attr {string}  relativeStyle - How wordy a relative time is: 'long' (default, "4 minutes ago"),
+ *                                 'short' ("4 min. ago") or 'narrow' ("4m ago")
  * @attr {string}  locale     - BCP 47 locale (default: 'en')
  * @attr {string}  dateStyle  - Intl.DateTimeFormat dateStyle: 'full'|'long'|'medium'|'short'
  * @attr {string}  timeStyle  - Intl.DateTimeFormat timeStyle: 'full'|'long'|'medium'|'short'
@@ -39,6 +85,15 @@ export default class WeTimestamp extends DesignSystemElement {
 
   @property({ type: String, reflect: true }) value = '';
   @property({ type: Boolean, reflect: true }) relative = false;
+  /**
+   * How wordy a relative time is — `Intl.RelativeTimeFormat`'s own `style`, and localised by it.
+   *
+   * `long` stays the default because it is what every byline in the app already reads as. A dense
+   * row — a transcript line, a card footer — asks for `short` or `narrow` and gets a properly
+   * translated abbreviation rather than a sliced string, which is the only reason this is a prop
+   * and not something a consumer could do for itself.
+   */
+  @property({ type: String, reflect: true }) relativeStyle: Intl.RelativeTimeFormatStyle = 'long';
   @property({ type: String, reflect: true }) locale = 'en';
 
   // Intl.DateTimeFormat options (mirrored as attributes)
@@ -91,7 +146,7 @@ export default class WeTimestamp extends DesignSystemElement {
     if (isNaN(date.getTime())) return this.value;
 
     if (this.relative) {
-      return formatRelativeTime(date, new Date(), this.locale);
+      return formatRelativeTime(date, new Date(), this.locale, this.relativeStyle);
     }
 
     const options: Intl.DateTimeFormatOptions = {};

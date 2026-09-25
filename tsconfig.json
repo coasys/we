@@ -1,23 +1,19 @@
+// Not a project. The shared settings live in `tsconfig.base.json`, which every package extends; this file
+// exists so that the directory has a `tsconfig.json` and so that it can never be used to typecheck
+// anything.
+//
+// ## Why `files: []` matters
+//
+// With no `include`, a tsconfig claims every TypeScript file beneath it — here, the whole repository, a
+// program of some 3,700 files. Nothing asked for that program deliberately, but typescript-eslint's
+// project service opens the nearest config that *covers* a linted file, so any file a package's own
+// `include` missed (a test, a `*.config.ts`) was linted against the entire monorepo. One such file took
+// a package's lint from 416MB to 1.6GB, and the whole-repo run needed more heap than Node's default.
+//
+// Worse, it was silent. Every package's `include` now covers its tests and config files, and this empty
+// `files` is what keeps it that way: a file left uncovered matches no project at all and fails loudly,
+// rather than quietly pulling in the repository.
 {
-  "compilerOptions": {
-    // Language & module targeting
-    "target": "ES2020",
-    "module": "ESNext",
-
-    // Module resolution
-    "moduleResolution": "bundler",
-
-    // Type checking & strictness
-    "strict": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-
-    // Interop & compatibility
-    "esModuleInterop": true,
-
-    // Output options
-    "declaration": true,
-    "sourceMap": true
-  },
-  "exclude": ["node_modules", "dist", "old"]
+  "extends": "./tsconfig.base.json",
+  "files": []
 }

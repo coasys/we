@@ -14,10 +14,11 @@
  * Asserted against the tokens and the schema rather than a render, because both halves are static
  * decisions: a dock is placed on `sticky` by `dockFrame`, and chrome asks for the layer above it.
  */
-import { sidebar } from '@we/template-shell';
+import { chromeRail, sidebar } from '@we/template-shell';
 import { zIndex } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
+import { PANEL_LAYER_BASE } from '../src/shared/dockGeometry';
 import { dockFrame } from '../src/shared/registries/dockRegistry';
 
 /** The `props` of the first node in a tree carrying every named prop. */
@@ -57,7 +58,33 @@ describe('the shell sidebar and a docked panel', () => {
 
     // The panel's own box — identified by its shadow, which nothing else in the frame has. The drag
     // guides also carry a `zIndex` and a `bg`, and they sit a layer higher on purpose (see below).
-    expect(propsWithAll(dock, 'zIndex', 'shadow')?.zIndex).toBe('sticky');
+    // Its z-index is a step on the sticky band the geometry hands it, not the band's name: see the
+    // next test for the band, and `layerOrder` for the step.
+    expect(propsWithAll(dock, 'zIndex', 'shadow')?.zIndex).toEqual({ $: "shellStore.dockGeometry['call:0'].layer" });
     expect(propsWithAll(sidebar, 'zIndex')?.zIndex).toBe('chrome');
+  });
+
+  it('puts the module rail on that layer too, rather than trusting document order', () => {
+    /*
+      The regression this file exists for, arriving from the other side.
+
+      The rail said `sticky` and stayed above the panels because it registers after them at the same
+      anchor and they all shared one layer — so the last one painted won. The moment panels could be
+      *raised* they stopped sharing a layer, and a raised one covered the rail and the pickers that
+      open out of it over the content: the chrome you get out of a panel with, underneath the panel.
+      Document order is not a layering rule; the ladder has a rung for this.
+    */
+    expect(propsWithAll(chromeRail, 'zIndex')?.zIndex).toBe('chrome');
+  });
+
+  it('counts panels up from sticky and never reaches chrome', () => {
+    /*
+      A panel paints at `PANEL_LAYER_BASE + n`, n being how many panels were touched before it. The
+      base is a copy of the token, for arithmetic, and this is what keeps the copy honest. The
+      headroom is what keeps a raised panel from climbing over the sidebar: fifty steps is more
+      panels than a screen can hold.
+    */
+    expect(PANEL_LAYER_BASE).toBe(Number(zIndex.sticky));
+    expect(PANEL_LAYER_BASE + 32).toBeLessThan(Number(zIndex.chrome));
   });
 });

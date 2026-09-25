@@ -10,11 +10,15 @@ import { EmbedBlock } from './EmbedBlock';
 import { EventBlock } from './EventBlock';
 import { FileBlock } from './FileBlock';
 import { ImageBlock } from './ImageBlock';
+import { Involvement } from './Involvement';
+import { InvolvementType } from './InvolvementType';
 import { LinkBlock } from './LinkBlock';
 import { LocationBlock } from './LocationBlock';
 import { TagBlock } from './TagBlock';
 import { TaskBlock } from './TaskBlock';
+import { TaskState } from './TaskState';
 import { TextBlock } from './TextBlock';
+import { Topic } from './Topic';
 import { VideoBlock } from './VideoBlock';
 
 // The neutral contract, on the package's public surface. The conformance assertions that hold the
@@ -24,6 +28,9 @@ import { AgentSettings } from './AgentSettings';
 import { CallExtraction } from './CallExtraction';
 import { ChatMessage } from './ChatMessage';
 import { ChatSession } from './ChatSession';
+import { EdgeRoute } from './EdgeRoute';
+import { ExtractionAmendment } from './ExtractionAmendment';
+import { ExtractionPass } from './ExtractionPass';
 import { MutedAgent } from './MutedAgent';
 import { Placement } from './Placement';
 import { ReadMarker } from './ReadMarker';
@@ -58,10 +65,13 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   CodeBlock,
   CollectionBlock,
   DividerBlock,
+  EdgeRoute,
   EmbedBlock,
   EventBlock,
   FileBlock,
   ImageBlock,
+  Involvement,
+  InvolvementType,
   LinkBlock,
   LocationBlock,
   MutedAgent,
@@ -77,9 +87,13 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,
+  TaskState,
   Template,
   TextBlock,
+  Topic,
   Theme,
+  ExtractionAmendment,
+  ExtractionPass,
   TypeStyle,
   VideoBlock,
 };

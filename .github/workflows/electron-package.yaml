@@ -1,0 +1,218 @@
+# Packages the Electron desktop app for Linux and macOS.
+#
+# Separate from the CI workflow (build.yaml) because packaging needs the AD4M executor
+# binary, which means checking out a second repository and compiling ~2000 Rust crates.
+# CI should stay fast and focused on the code under test; packaging is a release concern.
+#
+# The executor is cached by AD4M commit, so that compile only happens when AD4M has moved.
+# A run that compiles it takes about 45 minutes on Linux and two and a half hours on macOS;
+# one that restores it skips straight to building and packaging WE.
+#
+# Produces unsigned artifacts. Code signing (Apple Developer ID, notarisation) is a
+# follow-up — the certificates are not yet configured as repository secrets.
+name: Electron Package
+
+# Runs on merge to dev, never on pull requests: a run that has to compile the executor takes
+# hours on macOS, and a pull request would pay that again on every commit pushed to it. To
+# package a branch before merging, run the workflow manually from the Actions tab and pick it.
+on:
+  push:
+    branches: [dev]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      ad4m_ref:
+        description: AD4M branch, tag or commit to build the executor from
+        default: dev
+
+# A newer run on the same branch waits rather than cancelling the one in flight. Cancelling a
+# macOS run that is compiling the executor on every merge would mean it never finishes — and so
+# never fills the cache that makes later runs fast.
+concurrency:
+  group: electron-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: mac
+
+    runs-on: ${{ matrix.os }}
+    # Room for a cold macOS run, while stopping a hung one well short of GitHub's six hours.
+    timeout-minutes: 240
+
+    steps:
+      # ── Source ──────────────────────────────────────────────────────────
+
+      - name: Check out WE
+        uses: actions/checkout@v7
+
+      # AD4M checked out as a sibling so `we-seed.json`'s relative
+      # `"executorPath": "../ad4m/target/release/ad4m-executor"` resolves
+      # without any path rewriting.
+      #
+      # A manual fetch rather than `actions/checkout` with `path: ../ad4m`:
+      # the checkout action documents `path` as "under $GITHUB_WORKSPACE".
+      # Fetching a single ref also lets `ad4m_ref` name a commit, which
+      # `git clone --branch` cannot take.
+      - name: Check out AD4M
+        id: ad4m
+        env:
+          AD4M_REF: ${{ inputs.ad4m_ref || 'dev' }}
+        run: |
+          AD4M_DIR="$(dirname "$GITHUB_WORKSPACE")/ad4m"
+          git init -q "$AD4M_DIR"
+          git -C "$AD4M_DIR" fetch -q --depth 1 https://github.com/coasys/ad4m.git "$AD4M_REF"
+          git -C "$AD4M_DIR" checkout -q FETCH_HEAD
+          echo "AD4M_DIR=$AD4M_DIR" >> "$GITHUB_ENV"
+          echo "sha=$(git -C "$AD4M_DIR" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "AD4M $AD4M_REF is at $(git -C "$AD4M_DIR" rev-parse --short HEAD)"
+
+      # ── WE toolchain (Node + pnpm) ────────────────────────────────────
+
+      - uses: ./.github/actions/setup
+
+      # ── AD4M executor ──────────────────────────────────────────────────
+      #
+      # Keyed by AD4M commit and runner platform. On a hit, every step down
+      # to "Save AD4M executor" is skipped. Only the binary is cached: all of
+      # `target/` is several GB per platform, against a 10 GB limit shared
+      # with every other cache in the repository.
+
+      - name: Restore AD4M executor
+        id: executor
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.AD4M_DIR }}/target/release/ad4m-executor
+          key: ad4m-executor-${{ runner.os }}-${{ runner.arch }}-${{ steps.ad4m.outputs.sha }}
+
+      # Linux: libfuse2 for the AppImage, always. The rest only when the
+      # executor is being built — alsa-sys needs the ALSA headers.
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'linux'
+        env:
+          BUILD_DEPS: ${{ steps.executor.outputs.cache-hit != 'true' && 'cmake protobuf-compiler libasound2-dev' || '' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 $BUILD_DEPS
+
+      # macOS: ninja and Python are for the V8 source build below.
+      - name: Install build dependencies (macOS)
+        if: matrix.platform == 'mac' && steps.executor.outputs.cache-hit != 'true'
+        run: brew install cmake protobuf ninja
+
+      - name: Install Python (macOS)
+        if: matrix.platform == 'mac' && steps.executor.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The version comes from AD4M's own `rust-toolchain.toml`, which rustup
+      # would honour over anything pinned here anyway — so it follows AD4M
+      # instead of going stale. rustup is preinstalled on both runner images.
+      - name: Install Rust toolchain
+        if: steps.executor.outputs.cache-hit != 'true'
+        working-directory: ${{ env.AD4M_DIR }}
+        run: rustup toolchain install
+
+      # AD4M's build.rs downloads alliance.dna with a bare `curl` (no --retry),
+      # and a transient GitHub 504 used to kill a 40-minute build. curl reads
+      # ~/.curlrc, so that one download retries without the whole cargo build
+      # being retried — which, on a genuine compile error, only fails the same
+      # way again. Cargo's own fetches retry through CARGO_NET_RETRY.
+      - name: Retry transient downloads
+        if: steps.executor.outputs.cache-hit != 'true'
+        run: |
+          printf 'retry = 5\nretry-connrefused\nretry-delay = 10\n' >> ~/.curlrc
+          echo "CARGO_NET_RETRY=10" >> "$GITHUB_ENV"
+
+      # The executor embeds `rust-executor/dapp/dist/` via `include_dir!`
+      # at compile time — a React app that serves as the AD4M launcher UI.
+      # That directory is gitignored and normally built by `pnpm build-libs`
+      # (turbo), which needs the full AD4M JS workspace installed.
+      #
+      # WE does not use this UI — it starts the executor with
+      # `--run-dapp-server false` — so the binary just needs the directory to
+      # exist for `include_dir!` to succeed. A placeholder satisfies the macro.
+      - name: Create dapp/dist placeholder
+        if: steps.executor.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$AD4M_DIR/rust-executor/dapp/dist"
+          echo '<html><body>AD4M</body></html>' > "$AD4M_DIR/rust-executor/dapp/dist/index.html"
+
+      # Two stages: snapshot, then the executor binary.
+      #
+      # 1. The Deno V8 snapshot (`CUSTOM_DENO_SNAPSHOT.bin` +
+      #    `CUSTOM_DENO_SNAPSHOT.residual_esm.rs`) is gitignored and must
+      #    be generated before the executor compiles — the lib crate
+      #    `include_bytes!` them. The generator is a separate binary in the
+      #    `rust-executor` package, gated behind the `generate_snapshot`
+      #    feature.
+      #
+      # 2. The executor itself. `-p ad4m --bin ad4m-executor` builds only
+      #    the cli crate and its transitive deps — not the Tauri launcher,
+      #    not the language modules, not the full SDK.
+      #
+      # V8_FROM_SOURCE on macOS: the coasys/rusty_v8 fork's v150.4.0
+      # release only has simdutf prebuilt binaries for x86_64-linux.
+      # macOS aarch64 gets a 404, so V8 must build from source there.
+      # This adds significant time but is the only path that works
+      # until the fork publishes aarch64-apple-darwin simdutf artifacts.
+
+      - name: Generate Deno snapshot
+        if: steps.executor.outputs.cache-hit != 'true'
+        working-directory: ${{ env.AD4M_DIR }}/rust-executor
+        env:
+          V8_FROM_SOURCE: ${{ matrix.platform == 'mac' && '1' || '' }}
+        run: cargo run --release --features generate_snapshot --bin generate_snapshot
+
+      - name: Build AD4M executor
+        if: steps.executor.outputs.cache-hit != 'true'
+        working-directory: ${{ env.AD4M_DIR }}
+        env:
+          V8_FROM_SOURCE: ${{ matrix.platform == 'mac' && '1' || '' }}
+        run: cargo build --release -p ad4m --bin ad4m-executor
+
+      # Saved as soon as it exists rather than when the job ends, so a failure
+      # while packaging does not throw away the Rust build.
+      - name: Save AD4M executor
+        if: steps.executor.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.AD4M_DIR }}/target/release/ad4m-executor
+          key: ${{ steps.executor.outputs.cache-primary-key }}
+
+      # ── Build WE ──────────────────────────────────────────────────────
+
+      - name: Build WE packages
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      # ── Package ────────────────────────────────────────────────────────
+      #
+      # `electron:build` runs vite build + electron-builder.
+      # `generate-seed-config.cjs` runs as a `preelectron:build` script
+      # and resolves the executor path into `seed-extra-resources.json`,
+      # which electron-builder reads to copy the binary into the package.
+
+      - name: Package Electron app
+        run: pnpm electron:build
+        working-directory: apps/we-electron
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: WE-electron-${{ matrix.platform }}
+          path: |
+            apps/we-electron/dist-electron/*.AppImage
+            apps/we-electron/dist-electron/*.dmg
+            apps/we-electron/dist-electron/*.zip
+          if-no-files-found: error
+          retention-days: 14

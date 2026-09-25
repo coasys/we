@@ -1,9 +1,21 @@
-import { queryIRFlag } from '@shared/queryIRFlag';
+import { boardOptimism } from '@shared/boardOptimism';
+import { datasetAddressedBy } from '@shared/datasetIdentity';
+import { involvementOptimism } from '@shared/involvementOptimism';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
+import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+
+import { signalOptimism } from '../../../shared/signalOptimism';
+import { signalOrder } from '../../../shared/signalOrder';
+
+/** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
+const idOf = (entry: unknown): string =>
+  typeof entry === 'string' ? entry : String((entry as { id?: unknown } | null)?.id ?? '');
+
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
@@ -25,21 +37,24 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
-import { manifestEntries } from '@we/backend-shared';
-import { BlockHostProvider, colorFor } from '@we/block-solid';
+import { datasetKey, formatRef, manifestEntries } from '@we/backend-shared';
+import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { getEntity } from '@we/entities';
+import { CollectionBlock, getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { DocumentAccess } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
-import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
+import { expandViewRoutes, hasViewsMarker, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import { createCollabSession } from '../collab/collabSession';
+import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
@@ -94,23 +109,26 @@ export default function TemplateProvider() {
    *
    * A literal in three call sites would be three chances to write a space's path by mistake, and the
    * consequence of getting it wrong is one person's private collection synced to a community.
+   *
+   * The personal space rather than the root: what a module keeps for somebody is theirs, and the
+   * root is the app's configuration. See `systemDatasets.ts`.
    */
-  const ROOT_PERSPECTIVE = 'datasetStore.rootDataset';
+  const PERSONAL_DATASET = 'datasetStore.personalDataset';
 
   // Record mutations — one instance of an entity, written through the entity's registered class
-  // with the perspective injected. Pass `{ perspective: 'store.path' }` in options to target a
+  // with the dataset injected. Pass `{ dataset: 'store.path' }` in options to target a
   // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
   const recordActions = {
     create: (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
-      const [Entity, p] = resolve(entity, options as { perspective?: string });
-      const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'perspective'));
+      const [Entity, p] = resolve(entity, options as { dataset?: string });
+      const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
       return Entity.create(p, data, Object.keys(rest).length ? rest : undefined);
     },
-    update: (entity: string, id: string, data: Record<string, unknown>, options?: { perspective?: string }) => {
+    update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
       return Entity.update(p, id, data);
     },
-    delete: (entity: string, id: string, options?: { perspective?: string }) => {
+    delete: (entity: string, id: string, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
       return Entity.delete(p, id);
     },
@@ -147,6 +165,52 @@ export default function TemplateProvider() {
     return getEntity(entity).create(perspective, fields, Object.keys(rest).length ? rest : undefined);
   }
 
+  /**
+   * Composed documents in one dataset — what the records kernel and the agent-data kernel lend as
+   * `documents`, each pinned to its own dataset.
+   *
+   * The same writes the composer's own save makes (`SpaceStore.createPost` / `updatePost`), against
+   * whichever dataset the accessor names, which is the one thing those two cannot do: they are
+   * pinned to the space on screen, and a note lives in the personal space.
+   */
+  function documentAccess(
+    target: () => { id: string; sharedUri?: string | null; handle: DatasetProxy } | null,
+  ): DocumentAccess {
+    const collection = async (handle: DatasetProxy, id: string) => CollectionBlock.findOne(handle, { where: { id } });
+    return {
+      create: async (document, options) => {
+        const ds = target();
+        if (!ds) return null;
+        const root = await createBlocks(ds.handle, document as ContentInput, { kind: options?.kind ?? 'post' });
+        if (!root?.id) return null;
+        const key = datasetKey({ cid: ds.sharedUri, uuid: ds.id });
+        return { id: root.id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id: root.id }) };
+      },
+      update: async (id, document) => {
+        const ds = target();
+        const existing = ds && (await collection(ds.handle, id));
+        if (!ds || !existing) return;
+        await reconcileBlocks(ds.handle, existing, document as ContentInput);
+      },
+      remove: async (id) => {
+        const ds = target();
+        if (ds) await deleteBlocks(ds.handle, id);
+      },
+      read: async (id) => {
+        const ds = target();
+        const existing = ds && (await collection(ds.handle, id));
+        // Payloads rather than addresses, and no keys: a fresh composition, ready to be written into a
+        // dataset whose file storage and records have never seen it. See `copyableContent`.
+        return ds && existing ? copyableContent(ds.handle, existing.editorState) : null;
+      },
+    };
+  }
+
+  /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
+  function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, perspective: DatasetProxy) {
+    return getEntity(entity).update(perspective, id, fields);
+  }
+
   // The same capability schemas get as `record.create`, lent to module stores that must write
   // without a click to hang a schema action on — a transcript appears because somebody spoke.
   onCleanup(
@@ -160,7 +224,7 @@ export default function TemplateProvider() {
       /*
         `options.dataset` names where, and an unresolvable name refuses.
 
-        Passing no perspective used to mean `resolve()` fell through to `datasetStore.currentDataset()`
+        Passing no dataset used to mean `resolve()` fell through to `datasetStore.currentDataset()`
         — the space *on screen* — which is right for a write caused by the person looking at it and
         wrong for every module whose work outlives the view. #161 made a call survive navigation, and
         transcribe kept writing utterances into whichever space had been opened since. See
@@ -174,37 +238,46 @@ export default function TemplateProvider() {
         return created?.id ?? null;
       },
 
-      /*
-        This agent's own records, in the root dataset — the write half of `entities: { scope: 'agent' }`.
+      // A post, from a module: always the space on screen. See `RecordsKernel.documents`.
+      documents: documentAccess(() => datasetStore.currentDataset()),
 
-        Everything goes through `recordActions` with the root perspective named, so there is one place
-        that knows how a perspective path is resolved and an agent-scoped module cannot reach a space
-        by accident: the path is fixed here rather than passed in.
+      /*
+        This agent's own records, in their personal space — the write half of
+        `entities: { scope: 'agent' }`.
+
+        Everything goes through `recordActions` with the personal dataset named, so there is one
+        place that knows how a dataset path is resolved and an agent-scoped module cannot reach a
+        space by accident: the path is fixed here rather than passed in.
       */
       agentData: {
-        ready: () => !!datasetStore.rootDataset(),
+        ready: () => !!datasetStore.personalDataset(),
+        refKey: () => {
+          const personal = datasetStore.personalDataset();
+          return personal ? datasetKey({ uuid: personal.id }) : '';
+        },
         create: async (entity, fields, options) => {
-          if (!datasetStore.rootDataset()) return null;
+          if (!datasetStore.personalDataset()) return null;
           const created = (await recordActions.create(entity, fields, {
             ...options,
-            perspective: ROOT_PERSPECTIVE,
+            dataset: PERSONAL_DATASET,
           })) as { id?: string } | undefined;
           return created?.id ?? null;
         },
         find: async (entity, query) => {
-          if (!datasetStore.rootDataset()) return [];
-          const [Model, p] = resolve(entity, { perspective: ROOT_PERSPECTIVE });
+          if (!datasetStore.personalDataset()) return [];
+          const [Model, p] = resolve(entity, { dataset: PERSONAL_DATASET });
           const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
           return rows ?? [];
         },
         update: async (entity, id, fields) => {
-          if (!datasetStore.rootDataset()) return;
-          await recordActions.update(entity, id, fields, { perspective: ROOT_PERSPECTIVE });
+          if (!datasetStore.personalDataset()) return;
+          await recordActions.update(entity, id, fields, { dataset: PERSONAL_DATASET });
         },
         remove: async (entity, id) => {
-          if (!datasetStore.rootDataset()) return;
-          await recordActions.delete(entity, id, { perspective: ROOT_PERSPECTIVE });
+          if (!datasetStore.personalDataset()) return;
+          await recordActions.delete(entity, id, { dataset: PERSONAL_DATASET });
         },
+        documents: documentAccess(() => datasetStore.personalDataset()),
       },
 
       // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
@@ -224,6 +297,58 @@ export default function TemplateProvider() {
           return;
         }
         await (add as (v: string) => Promise<void>).call(instance, value);
+      },
+
+      // The scalar counterpart of `linkEntity`, resolved the same way `createEntity` is: a module
+      // names a dataset by URI, and an unresolvable name refuses rather than writing to whatever is
+      // on screen. See `ModuleStoreDeps.updateEntity` for why a module needs this when a schema's
+      // `record.update` already exists.
+      updateEntity: async (entity, id, fields, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        await updateInDataset(entity, id, fields, p);
+      },
+
+      removeEntity: async (entity, id, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        await getEntity(entity).delete(p, id);
+      },
+
+      /*
+        The read half of the records kernel — what a module that observes records had no way to do.
+
+        Bounded by the same query a `$query` takes, and resolved against the same entity class the
+        renderer uses, so a module can read nothing a template rendering the same space could not.
+        `subscribe` is the one trigger a module has: the entity's live query, whose subscription
+        resolves with the first page and fires again on change. The dispose is handed back so a store
+        can register it through `deps.onDispose`.
+      */
+      findEntities: async (entity, query, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return [];
+        const Model = getEntity(entity) as unknown as {
+          findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
+        };
+        return (await Model.findAll(p, query ?? {})) ?? [];
+      },
+      subscribeEntities: (entity, query, cb, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return () => {};
+        const Model = getEntity(entity) as unknown as {
+          query: (
+            perspective: unknown,
+            opts: unknown,
+          ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
+        };
+        const subscription = Model.query(p, query ?? {});
+        void subscription.subscribe(cb).then(
+          (rows) => cb(rows as Record<string, unknown>[]),
+          (error: unknown) => {
+            console.warn(`module host: subscription to ${entity} failed`, error);
+          },
+        );
+        return () => subscription.dispose();
       },
     }),
   );
@@ -261,7 +386,6 @@ export default function TemplateProvider() {
       set: (name: string, value: string | null, options?: { push?: boolean }) =>
         routeStore.setParam(name, value, options),
     },
-    $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
     // Template-facing vocabulary (templates read `$me.did`), as opposed to the renderer-facing
     // bindings below: the renderer never reads `$me` itself, it resolves like any `$store` path.
     $me: sessionStore.me,
@@ -316,6 +440,8 @@ export default function TemplateProvider() {
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetEntities: modelsForBindings,
       profiles: profileStore.profiles,
+      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+      profileFor: profileStore.profileFor,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
     }),
@@ -327,11 +453,183 @@ export default function TemplateProvider() {
     decides what its templates can reach, and a module could contribute its own. Plain data rather
     than a memo, because a source is a pure function and there is nothing here to react to.
   */
-  stores.$sources = hostSourceBag();
+  /*
+    The sources, with the board's own wrapped so it draws what has been dragged but not yet stored.
+
+    The wrap is here and not in `arrangedBoard` because that function is pure and tested as such —
+    it takes the overlay as an argument and knows nothing about where one comes from. This is the
+    only place that has both the registry and the app's state, which is the same reason the bag is
+    assembled here at all.
+
+    Two things happen per call. The overlay goes in, which is what makes a dropped card appear in its
+    new column on the tick of the drop; and the columns just drawn are reported back, which is what
+    lets the store stop standing in for an arrangement the data has caught up with. Reporting from
+    *here* rather than where the rows arrive is the rule `pendingWrites` records for the canvas: a
+    read landing is not the same moment as the thing being drawn from it, and clearing on the read
+    put the old value back for the whole window in between.
+
+    Deferred to a microtask because this runs inside a memo, and writing a signal during a render is
+    how a re-entrancy bug starts.
+  */
+  /*
+    The host's own functions, then the ones registered modules lend — `contributes.functions`. A
+    module may not shadow a host function: the host's vocabulary is what every template was written
+    against, and a module redefining `calendarMonth` would change every calendar at once. Reported,
+    since a silently ignored contribution is the failure this codebase most often meets.
+  */
+  const hostSources = hostSourceBag();
+  const moduleSources: Record<string, (options: unknown) => unknown> = {};
+  for (const fn of moduleRegistry.functions()) {
+    if (fn.name in hostSources) {
+      console.warn(`module "${fn.moduleId}" function "${fn.name}" would shadow a host function and was not registered`);
+      continue;
+    }
+    moduleSources[fn.name] = fn.fn as (options: unknown) => unknown;
+  }
+  const sources = { ...hostSources, ...moduleSources };
+  const arrangedBoardSource = sources.arrangedBoard;
+  stores.$sources = {
+    ...sources,
+    arrangedBoard: (options: unknown) => {
+      const given = (options ?? {}) as { columns?: unknown; board?: unknown };
+      const view = arrangedBoardSource({
+        ...given,
+        pending: boardOptimism.overlay(),
+        // Who is on each card, including a tick nobody's subscription has carried back yet — a
+        // filter that ignored it would dim the card somebody was just assigned to.
+        pendingInvolvements: involvementOptimism.overlay(),
+      });
+
+      const rows = new Map<string, readonly string[]>();
+      const note = (record: unknown, relation: 'arranges' | 'children') => {
+        const row = record as { id?: string; arranges?: unknown; children?: unknown } | null;
+        if (!row?.id) return;
+        const value = relation === 'arranges' ? row.arranges : row.children;
+        if (Array.isArray(value)) rows.set(`${row.id}.${relation}`, value.map(idOf));
+      };
+      for (const column of (Array.isArray(given.columns) ? given.columns : []) as unknown[]) note(column, 'arranges');
+      note(given.board, 'children');
+      note(given.board, 'arranges');
+
+      // A card's state is held as an arrangement of one, so it settles through the same lookup —
+      // `<cardId>.status` against what the pool actually says the record's state is.
+      for (const record of (Array.isArray((given as { records?: unknown }).records)
+        ? (given as { records: unknown[] }).records
+        : []) as unknown[]) {
+        const row = record as { id?: string; status?: unknown } | null;
+        if (row?.id) rows.set(`${row.id}.status`, [String(row.status ?? '')]);
+      }
+
+      queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
+      const involvementRows = (given as { involvements?: unknown }).involvements;
+      if (Array.isArray(involvementRows)) {
+        queueMicrotask(() => involvementOptimism.settleFromRows(involvementRows));
+      }
+      return view;
+    },
+    /*
+      Who is on what, with the answers somebody gave and the data has not carried back yet — the
+      same two halves as the board above, for the same reason. The rows the view was drawn from are
+      reported, so a hold is released the moment they have overtaken it rather than when the write's
+      promise settles.
+    */
+    // The picker's ticks, from the same held answers — a member ticked in the menu stays ticked
+    // through the round trip rather than unticking for a second and ticking again.
+    involvementMenu: (options: unknown) => {
+      const given = (options ?? {}) as { rows?: unknown };
+      const entries = sources.involvementMenu({ ...given, pending: involvementOptimism.overlay() });
+      queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
+      return entries;
+    },
+    involvement: (options: unknown) => {
+      const given = (options ?? {}) as { rows?: unknown };
+      const view = sources.involvement({ ...given, pending: involvementOptimism.overlay() });
+      queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
+      return view;
+    },
+    /*
+      A record's reactions, with this agent's own newest answer in it — the same two halves again.
+
+      The rows reported are the ones the overlay was applied OVER, which is what the record's
+      subscription actually says, so a hold is released the moment the data has overtaken it rather
+      than when the write's promise settles.
+    */
+    /*
+      The order a record's reactions are drawn in, settled once and then held.
+
+      Here rather than in the fragment, because the fragment cannot hold anything: a reaction
+      surface sits inside an `$each` over a query, a subscription answers with fresh objects, and
+      Solid's keyed `<For>` therefore remounts the row — taking any `$localState` initial with it.
+      Writing a reaction re-runs the query that feeds the row you wrote it on, so a snapshot taken
+      at mount was re-taken on exactly the events it was meant to be stable across.
+
+      `of` is the record. Without one there is nothing to key on and the live order is the answer,
+      which is right for a caller that is not drawing a particular record's reactions.
+    */
+    signalTypesByUse: (options: unknown) => {
+      const given = (options ?? {}) as { of?: unknown; limit?: unknown };
+      if (typeof given.of !== 'string') return sources.signalTypesByUse(given);
+
+      /*
+        The WHOLE order is settled, and the limit applied after.
+
+        A compact row asks for four; storing those four as the order would throw away where
+        everything else stood, so opening the sheet — which asks for all of them — would settle a
+        fresh order for the tail every time it opened.
+      */
+      const all = sources.signalTypesByUse({
+        ...given,
+        limit: undefined,
+        order: signalOrder.held(given.of),
+      }) as unknown[];
+      const record = given.of;
+      signalOrder.settle(
+        record,
+        all.map((type) => (type as { id?: unknown }).id).filter((id): id is string => typeof id === 'string'),
+      );
+      /*
+        The order lives exactly as long as this drawing does.
+
+        Held for the session instead, selecting another card and coming back showed the first card's
+        order from minutes ago, with a reaction since given sitting halfway down a list that claims
+        to be sorted by use. Released when the owner goes away, it still survives the remount a
+        subscription causes — that disposes and rebuilds inside one batch, so the order is asked for
+        again before the deferred release fires — and is forgotten once the reader has moved on.
+
+        Only where there is an owner to hang it on: a source called outside a reactive computation
+        has nothing to be cleaned up with, and `onCleanup` there warns and does nothing.
+      */
+      if (getOwner()) onCleanup(() => signalOrder.release(record));
+      return typeof given.limit === 'number' && given.limit >= 0 ? all.slice(0, given.limit) : all;
+    },
+    reactions: (options: unknown) => {
+      const given = (options ?? {}) as { signals?: unknown; record?: unknown; type?: unknown; me?: unknown };
+      const list = sources.reactions({ ...given, pending: signalOptimism.overlay() });
+      /*
+        Reported for the PAIR this call was about, never for the record.
+
+        The list handed in is one type's — every surface asks per type — so it is evidence about that
+        type and nothing else. Read as evidence about the record it said "no reaction of any kind",
+        which dropped a withdrawal hold the instant any other type on the same record drew: the heart
+        came back on until the real data caught up. See `settleFromSignals`.
+      */
+      if (typeof given.record === 'string' && typeof given.type === 'string' && typeof given.me === 'string') {
+        queueMicrotask(() =>
+          signalOptimism.settleFromSignals(
+            given.record as string,
+            given.type as string,
+            given.me as string,
+            given.signals,
+          ),
+        );
+      }
+      return list;
+    },
+  };
 
   const BINDING_KEYS = [
     '$getEntity',
-    '$getEntitiesForPerspective',
+    '$getEntityForDataset',
     '$currentDataset',
     '$identities',
     '$queryAdapter',
@@ -345,7 +643,7 @@ export default function TemplateProvider() {
   }
 
   /**
-   * The dataset accessors a `perspective` option may name.
+   * The dataset accessors a `dataset` option may name.
    *
    * ## Why this is a list and not a walk
    *
@@ -354,7 +652,7 @@ export default function TemplateProvider() {
    * straight here from a template, so
    *
    * ```json
-   * { "$action": "record.create", "args": ["TextBlock", {}, { "perspective": "sessionStore.logout" }] }
+   * { "$action": "record.create", "args": ["TextBlock", {}, { "dataset": "sessionStore.logout" }] }
    * ```
    *
    * logged the user out from a synced space template, and `runtimeStore.restartExecutor`,
@@ -363,7 +661,7 @@ export default function TemplateProvider() {
    * closure's own lookup — a filtered bag around an unfiltered walk.
    *
    * The fix is not a better walk. The option means *which dataset*, and the datasets are a closed
-   * set of four accessors the host itself names; there is no template for which the answer is "some
+   * set of five accessors the host itself names; there is no template for which the answer is "some
    * arbitrary path". So this is the whole vocabulary, and anything else resolves to null — which
    * falls through to the current dataset, exactly as an omitted option does.
    *
@@ -371,18 +669,19 @@ export default function TemplateProvider() {
    * is a deliberate widening of what a template may write into, not something that arrives by
    * being reachable.
    */
-  const PERSPECTIVE_PATHS = new Set([
+  const DATASET_PATHS = new Set([
     'datasetStore.currentDataset',
     'datasetStore.rootDataset',
+    'datasetStore.personalDataset',
     'datasetStore.globalDataset',
     'datasetStore.marketplaceDataset',
   ]);
 
   // Resolves one of the named dataset accessors above. Only called at action-dispatch time, so
   // `stores` is always fully initialized.
-  function resolvePerspective(path?: string): DatasetProxy | null {
-    if (!path || !PERSPECTIVE_PATHS.has(path)) {
-      if (path) console.warn(`perspective: "${path}" is not a dataset; using the current one`);
+  function resolveDataset(path?: string): DatasetProxy | null {
+    if (!path || !DATASET_PATHS.has(path)) {
+      if (path) console.warn(`dataset: "${path}" is not a dataset accessor; using the current one`);
       return null;
     }
     const [storeName, member] = path.split('.');
@@ -398,11 +697,8 @@ export default function TemplateProvider() {
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
-  function resolve(entityName: string, opts?: { perspective?: string }) {
-    return [
-      getEntity(entityName),
-      resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!.handle,
-    ] as const;
+  function resolve(entityName: string, opts?: { dataset?: string }) {
+    return [getEntity(entityName), resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle] as const;
   }
 
   /*
@@ -427,13 +723,18 @@ export default function TemplateProvider() {
     invented for: it arrives from a stranger, so whether it asks before deleting is the stranger's
     decision, and this takes that decision away from them.
   */
+  /*
+    Lent to `TemplatePanelBody`, which renders a template's panel contents inside a chrome-authored
+    frame. Grants follow authorship, not render site — see `shared/registries/templateBag.ts`.
+  */
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
     onDestructive: (path, args) => shellStore.requestDestructive(path, args),
-    // What each module keeps for chrome. Declared by the module, since only it knows which of its
-    // members reach past the space on screen — see `ModuleStoreSurface`.
-    moduleChromeOnly: moduleRegistry.chromeOnlyStoreMembers(),
   });
+
+  onCleanup(provideTemplateBag(templateBag));
+  // And the chrome bag, for a module's declared card drawn inside a template's post. See `templateBag.ts`.
+  onCleanup(provideChromeBag(chromeBag));
 
   /*
     What a drag looks like. Registered from here because it is the same kind of knowledge as
@@ -487,7 +788,24 @@ export default function TemplateProvider() {
     props: { styles: { display: 'contents' } },
     get children() {
       slotVersion();
-      return slotRegistry.nodes();
+      /*
+        `$part` expanded here as well as `$slot`, which the registry does on its way out.
+
+        A module composing its own chrome out of its own published parts is an ordinary thing to
+        write — the transcript panel builds its feed from `transcriptLines`, and the extraction panel
+        its chips from `extractionTargets` — and until now the only thing that expanded a part was a
+        *template* placing one. So the workshop, which supplies both panel bodies and renders them
+        through `TemplatePanelBody`, worked; the default template rendered the module's own panels
+        through this path and drew "Unknown component $part" in a red box where each fragment should
+        have been.
+
+        Not in the slot registry itself, which `moduleParts` already imports for the parts map —
+        putting it there makes a cycle out of two modules that currently only point one way.
+      */
+      return slotRegistry.nodes().flatMap((node) => {
+        const expanded = resolveParts(node);
+        return Array.isArray(expanded) ? expanded : [expanded];
+      });
     },
   };
 
@@ -585,14 +903,60 @@ export default function TemplateProvider() {
   /** Their first path segment — what the redirect compares a URL against. */
   const HOST_ROUTE_SEGMENTS = new Set(HOST_ROUTES.map((route) => route.path.split('/')[1]));
 
+  /*
+    Every space template lives under `/space/:spaceId`, and the host is what puts it there.
+
+    A template that marks where the space's sections go declares this prefix itself, because its
+    route table is *about* that shape. A template that routes itself declared nothing, and so
+    mounted its own paths at the top level — `/board`, `/channel/:id` — which took it out of the one
+    mechanism that answers "which space am I in": the URL. The dataset effect in SpaceStore reads
+    `segments[0] === 'space'` and returns otherwise, so under a self-routing template the open space
+    was whatever happened to be in the store. Reload lost it, sidebar switching landed on the
+    template's catch-all, share links matched nothing, and the record page — injected at the views
+    marker — was never mounted at all.
+
+    None of that is a property of routing your own screens. It is a property of not being under the
+    space prefix, so the host supplies the prefix rather than each template remembering it. What a
+    template still owns is everything below: its own children here, the space's sections there.
+
+    A transparent layout route — `$routes` and nothing else — because the template's own chrome is
+    in its root node, which `TemplateLayout` renders outside the router. This adds an address, not a
+    wrapper anybody can see.
+  */
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
-    if (!hasViewsMarker(routes)) return routes;
-    return expandViewRoutes(routes, spaceStore.routableViews(), {
-      activeIds: 'spaceStore.enabledViewIds',
-      notInSpace: noSectionsNode,
-      extraRoutes: HOST_ROUTES as unknown as (typeof routes)[number][],
-    });
+    const extras = HOST_ROUTES as unknown as (typeof routes)[number][];
+    /*
+      `$part` expanded over the whole route table, before the router sees it.
+
+      Parts used to be a panel-only mechanism — `TemplatePanelBody` was the single call site — so an
+      interface could compose a module's fragments in a panel and nowhere else. That was never a
+      decision, only where the need first appeared: a template wanting a transcript on one of its
+      own pages, or a *view* built out of a module's pieces, wrote a `$part` that survived the walk
+      and reached the renderer, which mounts nothing for a type it does not know.
+
+      Here, for the same reason `$views` is expanded here: it is a property of the schema rather
+      than of the walk, so everything downstream — the router, the keep-alive stubs, the `$nav`
+      depths — goes on seeing an ordinary route tree. Views come through this memo too, so a section
+      gets parts for nothing.
+    */
+    if (hasViewsMarker(routes)) {
+      return resolvePartsInRoutes(
+        expandViewRoutes(routes, spaceStore.routableViews(), {
+          activeIds: 'spaceStore.enabledViewIds',
+          notInSpace: noSectionsNode,
+          extraRoutes: extras,
+        }),
+      );
+    }
+    if (!routes.length) return routes;
+    return resolvePartsInRoutes([
+      {
+        path: SPACE_ROUTE_PATH,
+        children: [{ type: '$routes' }],
+        routes: [...routes, ...extras],
+      } as unknown as (typeof routes)[number],
+    ]);
   });
 
   /**
@@ -658,6 +1022,58 @@ export default function TemplateProvider() {
     const segments = routeStore.segments();
     if (segments[0] !== 'space' || !segments[1]) return;
 
+    /*
+      Only while the address on screen is about the space these sections belong to.
+
+      Everything below reads the *store's* space — its nav, its enabled sections — and writes the
+      *URL's* space. Those are the same space almost always, and the window where they are not is
+      the one that mattered: `navigateToSpace` switches the dataset first and navigates second, so
+      between the two the stores describe B while the URL still says A. This effect woke in that
+      window, because the template had just been replaced with B's default and the previous one was
+      self-routing — so `hasViewsMarker` went from false to true, on a URL holding a self-routing
+      template's own path, which is a section no space has.
+
+      It then did exactly what it is written to do, to the wrong space: rewrote the URL to
+      `/space/A/<B's first section>`. That is a route change naming A, so the route effect that
+      keeps the dataset in step with the address dutifully switched *back* to A — landing after the
+      switch to B had finished, since it starts later. The reader ended up in space B by every sign
+      the URL and the sidebar could give, reading space A's records.
+
+      The guard is the invariant stated plainly: correct an address only when it is an address about
+      the space you are reading from.
+    */
+    if (!datasetAddressedBy(datasetStore.currentDataset(), segments[1])) return;
+
+    /*
+      Only once the space has settled which template it renders with.
+
+      On a deep link or a reload the space's own template is fetched, and until it arrives the agent's
+      default stands in for it. Reading the stand-in's sections, this took a Workshop address —
+      `/space/<id>/canvas?call=…` — for a section the space did not have and rewrote it to the
+      default's first, `/about`. Nothing on screen showed it: the space's template arrived, remounted
+      the router against the address as it still stood, and the discarded router's navigation landed
+      in `history` afterwards. The page drew the canvas under an address saying `/about`, until the
+      next parameter write rebuilt the query from that address and dropped the call.
+
+      The template's routes are read below as well, so waiting here also means they are the right
+      ones. Re-runs when it settles, since reading the accessor tracks it.
+    */
+    if (templateStore.spaceTemplatePending()) return;
+
+    /*
+      Only for a template whose sections these are.
+
+      Now that the host mounts every template under the space prefix, a self-routing template's own
+      screens sit at exactly the depth this reads — `/space/<id>/board` — and `board` is not a view,
+      so this bounced straight off it to the first section in the nav. The guard's job is "keep the
+      URL on a section this space actually has", which is a question only about a template that has
+      sections; one that routes itself answers for its own paths.
+
+      The same marker as the wrap above, and it means the same thing in both places: this template
+      hosts the space's sections.
+    */
+    if (!hasViewsMarker(templateSchema.routes ?? [])) return;
+
     const nav = spaceStore.viewNav();
     if (!nav.length) return;
 
@@ -665,6 +1081,24 @@ export default function TemplateProvider() {
     if (current && HOST_ROUTE_SEGMENTS.has(current)) return;
     if (current && spaceStore.enabledViewIds().some((id) => id === viewIdForSegment(current))) return;
     routeStore.navigate(`/space/${segments[1]}/${nav[0].segment}`, { replace: true });
+  });
+
+  /*
+    A self-routing template has no home screen, so `/` is not a place it can be.
+
+    The marker kind owns `/` deliberately — the default template's `homeRoute` is the spaces
+    overview — but a template that only describes screens *inside* a space has nothing to render
+    there, and after the wrap above it has no route matching it either. Send it to the space it is
+    already holding rather than to the host's not-found.
+
+    `replace`, because `/` was never somewhere anybody chose to be.
+  */
+  createEffect(() => {
+    if (routeStore.currentPath() !== '/') return;
+    if (hasViewsMarker(templateSchema.routes ?? [])) return;
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    routeStore.navigate(`/space/${dataset.sharedId ?? dataset.id}`, { replace: true });
   });
 
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the
@@ -793,36 +1227,47 @@ export default function TemplateProvider() {
       }}
       // Where a reference inside a composition goes when somebody follows it. The host's knowledge
       // for the same reason the dataset is: a block cannot know where a record's page lives, and
-      // threading a handler from every call site is the `perspective` string all over again.
+      // threading a handler from every call site is the `dataset` string all over again.
       openRef={(ref) => void spaceStore.openRecordRef(ref)}
+      // A quote names whose words it holds. A person not yet cached is fetched, and the name arrives
+      // through the same reactive cache a byline reads.
+      personName={(did) => {
+        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        if (!profile) void profileStore.fetchProfile(did);
+        return profile?.name || undefined;
+      }}
     >
-      <VisualEditorProvider value={visualEditorCtx}>
-        {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
-        <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+      <BlockDisplayOverrides overrides={moduleBlockDisplays()}>
+        <VisualEditorProvider value={visualEditorCtx}>
+          {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
+          <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
-        {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
+          {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
            `buildRoutes` produces. Adding, removing or reordering a section remounts the space's
            content, which is the same trade template switching already makes: both are rare,
            deliberate acts, and a router whose route table changed underneath it is worse. */}
-        <Show when={routeKey()} keyed>
-          {(_key) => (
-            <Router root={Layout}>
-              {buildRoutes(templateBag, routesWithViews())}
-              <Route
-                path="*"
-                component={() =>
-                  routesWithViews().length ? RenderSchema({ node: notFoundNode, stores: templateBag, registry }) : null
-                }
-              />
-            </Router>
-          )}
-        </Show>
+          <Show when={routeKey()} keyed>
+            {(_key) => (
+              <Router root={Layout}>
+                {buildRoutes(templateBag, routesWithViews())}
+                <Route
+                  path="*"
+                  component={() =>
+                    routesWithViews().length
+                      ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
+                      : null
+                  }
+                />
+              </Router>
+            )}
+          </Show>
 
-        {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
+          {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
            keyed Router (both are DOM order stacking, so this preserves the original
            on-top-of-template paint order) so switching templates doesn't reload embedded apps. */}
-        <PersistentAppFrames stores={stores} />
-      </VisualEditorProvider>
+          <PersistentAppFrames stores={stores} />
+        </VisualEditorProvider>
+      </BlockDisplayOverrides>
     </BlockHostProvider>
   );
 }

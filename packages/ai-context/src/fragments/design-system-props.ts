@@ -15,13 +15,45 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
 | ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an \`EditableImage\` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an \`EditableImage\`, a \`Card\`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Theme families — for \`r\`, \`p\` and \`gap\`, the counterpart of a colour role
+
+A colour role says what a colour is *for*. A **family** says what kind of thing a box *is*, so the
+theme can decide its shape and density: buttons are rounded like this, sheets like that. Naming one
+is how a box follows a theme's \`surfaceRadius\` or \`surfacePadding\` instead of pinning a number.
+
+| Name | \`r\` | \`p\` | \`gap\` | For |
+|---|---|---|---|---|
+| \`control\` | ✓ | | ✓ | Buttons, badges, tags — anything pressed. |
+| \`surface\` | ✓ | ✓ | ✓ | Cards, modals, sheets — **and anything inset inside one**. |
+| \`input\` | ✓ | | | Fields, selects, pickers. |
+| \`avatar\` | ✓ | | | Anything square that reads as a profile picture. |
+| \`media\` | ✓ | | | A **full-bleed** banner, video or embed spanning an edge. |
+
+\`surface\` and \`media\` read the same theme variable and differ only in what they fall back to when a
+theme sets nothing: \`surface\` is rounded like a card, \`media\` is **square**. Pick by whether the box
+is inset in something rounded or spans the edge — a cover image inside a modal is \`surface\`, the
+same image as a page-width header is \`media\`.
+
+\`\`\`json
+{ "type": "Column", "props": { "bg": "surface", "r": "surface", "p": "surface", "gap": "surface" } }
+\`\`\`
+
+**The blanks are constraints, not gaps.** A family only takes \`p\` when its theme value is a single
+length: \`control\`'s padding is horizontal-only (the vertical comes from the control's height, per
+size) and \`input\`'s is a full shorthand, and padding is assembled as four values in one declaration,
+so either would produce an invalid rule.
+
+**Only these props.** A family is meaningless on a margin or an offset — it says how much room a box
+puts *inside* itself, which answers nothing about the space between it and its neighbour. \`m:
+"surface"\` resolves to nothing and warns.
 
 ### Semantic Colour Roles — reach for these before a scale position
 
@@ -43,11 +75,13 @@ a user-chosen swatch.
 
 | Role | Use for |
 |---|---|
-| \`page\` | The app/route background behind everything. Set it on a template's root node. |
+| \`chrome\` | The app's ground, and the bottom of the stack: the sidebar, the module rail, a docked panel's frame, and the app's own screens (profile, settings, about, the marketplace). Reach for it when what you are painting belongs to the app rather than to a community — and for a space template meant to blend into the app instead of sitting above it. |
+| \`page\` | The plane a **space's own content** sits on, a step above the chrome framing it, and what the surfaces below are measured from. Set it on a space template's root node. |
 | \`surface\` | A card, panel or sheet sitting on the page. |
 | \`surface-raised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | \`surface-sunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
-| \`surface-hover\` / \`surface-active\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`surface-hover\` / \`surface-active\` | Row and item feedback — something sitting **on** a surface. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`surface-sunken-hover\` | A **well** lifted — an input, a textarea, a picker trigger. Hovering one with \`surface-hover\` lands it at about surface level and it stops looking recessed, so use this wherever the resting fill is \`surface-sunken\`. One state, not a hover/pressed pair: a field is clicked *into* rather than pushed, so hover, press and focus all resolve here and the ring is what says "focused". |
 | \`control-surface\` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | \`text\` | Primary body and heading text. |
 | \`text-muted\` | Secondary text — captions, labels, metadata. |
@@ -55,7 +89,8 @@ a user-chosen swatch.
 | \`surface-inverse\` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
 | \`on-inverse\` | Text or an icon **on top of** \`surface-inverse\` — a tooltip's own text. **Not** for text on the accent, which is \`on-accent\`. |
 | \`border\` | Default borders and dividers. |
-| \`border-strong\` | Emphasised separation. |
+| \`border-strong\` | Emphasised separation — two regions that are genuinely apart. Not a hover state. |
+| \`border-hover\` | The edge of an interactive box under the pointer. Sits between \`border\` and \`border-strong\`, which are three ramp steps apart; borrowing the latter for hover makes an outline jump rather than acknowledge. |
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
 | \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
 | \`on-accent\` | Text or an icon **on top of** an accent fill. |
@@ -115,7 +150,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | overflow | "hidden" \\| "auto" \\| "overlay" | Overflow behavior, both axes |
 | overflowX | "hidden" \\| "auto" \\| "overlay" | Horizontal overflow alone — a nav strip or tab bar that scrolls sideways instead of pushing the page wide |
 | overflowY | "hidden" \\| "auto" \\| "overlay" | Vertical overflow alone |
-| scrollbarWidth | "auto" \\| "thin" \\| "none" | How much room the scrollbar takes. \`none\` for a strip in fixed-height chrome, where a gutter would not fit |
+| scrollbarWidth | "auto" \\| "thin" \\| "none" | How much room the scrollbar takes. \`none\` for a strip in fixed-height chrome, where a gutter would not fit. **Use \`none\` or leave it unset — never \`thin\` or \`auto\`:** Chromium reads this property as "use the platform scrollbar" and drops the app's own styling for that element, so it becomes the one scroll region that does not match the rest (a different colour, square corners, and stepper arrows on Linux). \`none\` is safe because a hidden bar has nothing to style. |
 | scrollbarGutter | "auto" \\| "stable" \\| "stable both-edges" | Reserve the gutter whether or not it scrolls, so content does not shift when a scrollbar appears |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |
@@ -124,6 +159,11 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mr | SpaceValue | Margin right |
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
+
+**\`position\`, \`top\`, \`right\`, \`bottom\` and \`left\` do not respond to a breakpoint.** They are
+excluded from the tier and state pipelines, so \`mdUpProps: { left: '300px' }\` validates and does
+nothing at all. To move something at a breakpoint, use \`x\` / \`y\` / \`rotate\` (see Visual), which
+compose into \`transform\` and do tier — as do \`width\`, \`height\` and \`zIndex\`.
 
 **A row that overflows is a row where nobody said who gives up space.** Inside a \`Row\`, a child's
 \`maxWidth\` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
@@ -158,8 +198,8 @@ the item is never asked to be narrower than its content in the first place.
 | bgImageTint | ColorValue | Color bgImage fades toward as bgImageOpacity decreases (default: the element's own \`bg\`, or neutral-0) — only meaningful with bgImageOpacity |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
-| border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
-| borderColor | ColorValue | Border color (token, e.g. "neutral-200", "primary-500") |
+| border | string | Border shorthand (e.g. "1px solid border" — color tokens are resolved) |
+| borderColor | ColorValue | Border color (token, e.g. "border", "border-strong") |
 | borderTop | string | Top border shorthand (color tokens resolved) |
 | borderRight | string | Right border shorthand (color tokens resolved) |
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
@@ -169,6 +209,9 @@ the item is never asked to be narrower than its content in the first place.
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
 | transform | string | CSS transform |
+| x | number \\| string | Horizontal offset from where the element would otherwise sit. A bare number is px; a string carries its own unit. Composes into \`transform\` |
+| y | number \\| string | Vertical offset, same rules |
+| rotate | number \\| string | Degrees clockwise about the element's own centre. A bare number is degrees |
 | transition | string | CSS transition. Durations may be animation tokens (\`'0'\`–\`'500'\`): \`'width 300 ease-in-out'\`. Prefer the token — a theme's animationSpeed preset overrides those, so \`300\` respects a reduced-motion setting where \`300ms\` overrides it. Use for a property whose *value* changes in place (a width bound to a local); for something appearing and disappearing use \`$if\`/\`$animate\` transitions instead |
 | r | RadiusValue | Border radius (all corners) |
 | rt | RadiusValue | Border radius top |
@@ -179,6 +222,27 @@ the item is never asked to be narrower than its content in the first place.
 | rtr | RadiusValue | Border radius top-right |
 | rbr | RadiusValue | Border radius bottom-right |
 | rbl | RadiusValue | Border radius bottom-left |
+
+**Placing something: \`x\` / \`y\` / \`rotate\`, never \`top\` / \`left\`.** All three compose into one
+\`transform\`, in front of any \`transform\` you also write — so the element is put where it goes and
+turned, and anything else happens in that frame.
+
+\`\`\`json
+{ "type": "Column", "props": { "x": 40, "y": 120, "rotate": -3, "mdUpProps": { "x": 300, "y": 80 } } }
+\`\`\`
+
+They are the placement spelling for four reasons, any one of which decides it: the offsets are the
+only ones that respond to a breakpoint at all; they compose with rotation and scale in one property
+instead of fighting them; they move on the compositor, so a drag costs no layout; and they stay
+correct inside a scaled surface, where a pixel offset would be measured in the wrong units.
+
+Two things to know. A **percentage resolves against the element's own size**, not its parent's —
+that is what \`translate\` does, and rarely what \`x: '50%'\` means, so give a coordinate a length.
+And setting any of them makes the element a **containing block** for absolutely positioned
+descendants, as any transform does.
+
+They are meaningful anywhere, and they are *coordinates* inside a \`Canvas\`, whose \`artboard\`
+declares what space those numbers are in.
 
 ### Flex (Container)
 
@@ -226,7 +290,7 @@ min-content — so under it the long string still pushes its container wider tha
 
 \`we-text\` variants (set via the \`variant\` prop) bundle typography presets. Always pair with a semantic \`tag\` prop for correct HTML structure:
 body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
-Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add \`color="neutral-400"\` explicitly.
+Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add \`color="text-muted"\` explicitly.
 
 ### State
 
@@ -268,13 +332,14 @@ States and tiers do not cross — there is no \`mdUpHoverProps\`. A tier sets ba
 
 ### Which mechanism to reach for
 
-Three ways to respond to size, and they are not interchangeable:
+Four ways to respond to size, and they are not interchangeable:
 
 | Need | Use | Why |
 |---|---|---|
 | Different **values** — padding, gap, width, font size | \`*UpProps\` | Pure CSS. Nothing remounts. |
 | A different **tree** — a pane becomes a drawer, two panes become one | \`$surface\` + \`$if\` on \`surface.tier\` | Only a branch can swap DOM. |
 | Same-shaped things **filling a box** — video tiles, a photo wall | \`Grid\` with \`childAspect\` | Needs both axes and an argmax; CSS cannot express it. |
+| A **composition the author placed by hand** — a scrapbook, a poster, a diagram | \`Canvas\` with an \`artboard\` | The coordinates mean something; declaring the space is what lets them be scaled rather than guessed. |
 
 **Prefer \`*UpProps\` for anything that is a value.** \`$if\` on the tier works and is tempting, because
 branching is the familiar tool — but it **unmounts and rebuilds the subtree** every time the surface

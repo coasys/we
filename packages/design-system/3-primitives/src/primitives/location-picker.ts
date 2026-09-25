@@ -4,6 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import sharedStyles from '../shared/styles';
 import { leafletCss } from './leaflet-css';
 
@@ -19,31 +20,26 @@ const styles = css`
     min-width: 0;
   }
 
+  /*
+    Everything about this box that makes it a field — fill, edge, hover, focus — comes from
+    fieldSurface below, so it cannot drift from we-input and we-select again. What is left here is
+    what is this control's alone: it is a button, so it needs the reset, and it is a single row, so
+    it needs a control height.
+  */
   [part='trigger'] {
     all: unset;
     display: inline-flex;
     align-items: center;
     gap: var(--we-space-300);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     height: calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px));
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='trigger']:hover:not([disabled]) {
-    border-color: var(--we-role-border-strong);
-  }
-
-  [part='trigger']:focus-visible {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
-  }
+  /* After the reset above, never before it: all:unset clears border, radius and background. */
+  ${fieldSurface("[part='trigger']")}
 
   [part='pin-icon'] {
     color: var(--we-role-accent);
@@ -216,7 +212,7 @@ export default class LocationPicker extends DesignSystemElement {
     // Custom pin icon using a simple data URI — avoids broken icon path issue in Leaflet+bundlers
     const pinIcon = L.divIcon({
       html: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32">
-        <path d="M12 0C5.373 0 0 5.373 0 12c0 9 12 20 12 20s12-11 12-20C24 5.373 18.627 0 12 0z" fill="var(--we-color-primary-500,#6366f1)"/>
+        <path d="M12 0C5.373 0 0 5.373 0 12c0 9 12 20 12 20s12-11 12-20C24 5.373 18.627 0 12 0z" fill="var(--we-role-accent,#6366f1)"/>
         <circle cx="12" cy="12" r="5" fill="white"/>
       </svg>`,
       className: '',

@@ -208,7 +208,161 @@ function nameDialog(opts: {
 
 // ── Templates ───────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Whether the layouts section is offered yet. Flip to `true` to ship it.
+ *
+ * Layouts, "Remember this arrangement…" and "Fork as a new template" are all built and none has
+ * been exercised. Three unproven entries at the top of the one menu people use to change template
+ * is a busy picker charging every reader for a feature nobody has tried.
+ *
+ * A flag at the composition level rather than a condition inside the section, because the two
+ * answer different questions. A condition asks "should this show *now*", and every honest answer
+ * to that is something a reader can reach: gating on `sessionStore.devTools` was the first
+ * attempt, and it is on in a development build, so it hid the section from everyone except the
+ * person who wanted it hidden. This asks "is it finished", which nothing at runtime should be able
+ * to change.
+ *
+ * Not deleted, because the blocker is testing and a deleted section cannot be tested. It stays
+ * referenced below, so TypeScript keeps it compiling and a rename cannot leave it behind — the
+ * trade being that the schema audits walk the composed tree and so no longer see it. Nothing it
+ * paints is on screen to be wrong, and flipping this puts it back under all of them.
+ */
+const LAYOUTS_READY = false;
+
 const templateRows = matching({ $: 'group.items' });
+
+/**
+ * The arrangements saved for the template on screen, and the way to save another.
+ *
+ * At the top of the template picker rather than in a panel's own menu, for the reason "Reset
+ * layout" is on the template's row: an arrangement is a fact about the whole interface, and a panel
+ * somebody closed has no titlebar to reach a menu from. Absent entirely until there is a layout to
+ * show or something worth saving — an interface with no panels never sees it.
+ *
+ * Not currently placed — see {@link LAYOUTS_READY}.
+ */
+function layoutsSection(): SchemaNode {
+  const rows = { $: 'shellStore.layoutNames' };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: 'count(shellStore.layoutNames) || shellStore.layoutDirty' },
+      then: {
+        type: 'Column',
+        props: { gap: '100' },
+        children: [
+          {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint', px: '200', pt: '200' },
+            children: ['Layouts'],
+          },
+          {
+            type: '$each',
+            props: { items: rows, as: 'layout' },
+            children: [
+              pickerRow({
+                icon: 'bookmark-simple',
+                label: { $: 'layout' },
+                selected: { $: 'layout == shellStore.activeLayout' },
+                select: { $action: 'shellStore.applyLayout', args: [{ $: 'layout' }] },
+                actions: [
+                  {
+                    icon: 'trash',
+                    tooltip: 'Forget this layout',
+                    onClick: { $action: 'shellStore.deleteLayout', args: [{ $: 'layout' }] },
+                  },
+                ],
+              }),
+            ],
+          },
+          {
+            type: 'we-button',
+            props: {
+              variant: 'ghost',
+              size: 'sm',
+              width: '100%',
+              ax: 'start',
+              gap: '200',
+              onClick: { $setLocal: 'saveLayoutOpen', value: true },
+            },
+            children: [
+              { type: 'we-icon', props: { name: 'bookmark-simple' } },
+              { type: 'we-text', children: ['Remember this arrangement…'] },
+            ],
+          },
+          /*
+            The bridge from arranging to authoring — explicit, named, and here beside the other
+            things one can do with an arrangement. Only while there is an arrangement to save: an
+            untouched template forked this way would be the template again.
+
+            Divided from the layouts above it, and worded away from them. The two were both "Save
+            …" and adjacent, which said they were a pair — and they are opposites: a layout is a
+            private bookmark on this device that you switch between, and this makes a template other
+            people can be given. Read cold, nobody could tell which was which.
+          */
+          { type: 'we-divider', props: { my: '100' } },
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'shellStore.layoutDirty' },
+              then: {
+                type: 'we-button',
+                props: {
+                  variant: 'ghost',
+                  size: 'sm',
+                  width: '100%',
+                  ax: 'start',
+                  gap: '200',
+                  onClick: [{ $action: 'shellStore.saveArrangementAsTemplate' }, closeTemplatePicker],
+                },
+                children: [
+                  { type: 'we-icon', props: { name: 'git-fork' } },
+                  { type: 'we-text', children: ['Fork as a new template'] },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
+/** Name the arrangement on screen. Mounted only while open, so the field starts empty each time. */
+function saveLayoutDialog(): SchemaNode {
+  const close = { $setLocal: 'saveLayoutOpen', value: false };
+  return {
+    type: '$if',
+    props: {
+      condition: { $: 'local.saveLayoutOpen' },
+      then: {
+        type: 'we-modal',
+        props: { size: 'sm', close },
+        $localState: { layoutName: { type: 'string', initial: '' } },
+        children: [
+          { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Save layout'] },
+          field({ name: 'layoutName', label: 'Name', placeholder: 'Recording, reviewing, …' }),
+          {
+            type: 'Row',
+            props: { ax: 'end', gap: '200' },
+            children: [
+              { type: 'we-button', props: { size: 'sm', variant: 'ghost', onClick: close }, children: ['Cancel'] },
+              {
+                type: 'we-button',
+                props: {
+                  size: 'sm',
+                  disabled: { $: '!local.layoutName' },
+                  onClick: [{ $action: 'shellStore.saveLayout', args: [{ $: 'local.layoutName' }] }, close],
+                },
+                children: ['Save'],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
 
 /**
  * The template picker.
@@ -225,6 +379,8 @@ const templateRows = matching({ $: 'group.items' });
 export function templatePicker(): SchemaNode {
   return {
     type: 'Column',
+    // The save-layout dialog's flag lives on the picker, which is the only thing that opens it.
+    $localState: { saveLayoutOpen: { type: 'boolean', initial: false } },
     children: [
       pickerPopover({
         openLocal: TEMPLATE_PICKER_OPEN,
@@ -233,27 +389,54 @@ export function templatePicker(): SchemaNode {
         tooltip: 'Template',
         searchPlaceholder: 'Search templates…',
         body: {
-          type: '$each',
-          props: { items: { $: 'templateStore.switcherGroups' }, as: 'group' },
+          type: 'Column',
           children: [
-            section({ $: 'group.label' }, templateRows, {
+            ...(LAYOUTS_READY ? [layoutsSection()] : []),
+            {
               type: '$each',
-              props: { items: templateRows, as: 'template' },
+              props: { items: { $: 'templateStore.switcherGroups' }, as: 'group' },
               children: [
-                pickerRow({
-                  icon: { $: 'template.icon' },
-                  label: { $: 'template.name' },
-                  selected: { $: 'template.id == templateStore.currentSwitcherId' },
-                  isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
-                  select: [
-                    { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                    closeTemplatePicker,
-                  ],
-                  actions: [
-                    {
-                      icon: 'pencil-simple',
-                      tooltip: 'Edit this template',
-                      /*
+                section({ $: 'group.label' }, templateRows, {
+                  type: '$each',
+                  props: { items: templateRows, as: 'template' },
+                  children: [
+                    pickerRow({
+                      icon: { $: 'template.icon' },
+                      label: { $: 'template.name' },
+                      selected: { $: 'template.id == templateStore.currentSwitcherId' },
+                      isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+                      select: [
+                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                        closeTemplatePicker,
+                      ],
+                      actions: [
+                        /*
+                      The way back to the arrangement this template designed — its panels where it
+                      put them, and the ones somebody closed open again.
+
+                      On the row for the template you are looking at, and only while there is
+                      something to undo, which is what `layoutDirty` answers. That is the same shape
+                      the theme pin below follows: a control attached to the row it is about, costing
+                      nothing in the ordinary case because it renders nothing.
+
+                      Here rather than in a panel's own position menu, which already carries a
+                      per-panel "Reset to layout". Three panels dragged out of place is one decision,
+                      not three — and a panel somebody *closed* has no titlebar left to open a menu
+                      from, so the per-panel control cannot be the only way back.
+                    */
+                        {
+                          icon: 'arrow-counter-clockwise',
+                          tooltip: "Reset panels to this template's layout",
+                          when: { $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' },
+                          // Deliberately does not close the picker: the panels move behind it, which is
+                          // the confirmation that the click landed, and the row's control disappearing
+                          // is the other half of that. Same argument as the theme rows below.
+                          onClick: { $action: 'shellStore.resetTemplateLayout' },
+                        },
+                        {
+                          icon: 'pencil-simple',
+                          tooltip: 'Edit this template',
+                          /*
                         Any row that can be edited, not just the one already on screen.
 
                         This used to also require `$template.id` to be the current one, which made
@@ -268,31 +451,33 @@ export function templatePicker(): SchemaNode {
                         offering this on a built-in opens a session over something that cannot be
                         saved.
                       */
-                      when: { $: 'template.editable' },
-                      // Switch first, exactly as forking does below: an editing session is opened
-                      // over whatever is current, so editing a row you are not on has to make it
-                      // current before entering.
-                      onClick: [
-                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                        { $action: 'editorStore.enterTemplateEditing', args: ['edit'] },
-                        closeTemplatePicker,
+                          when: { $: 'template.editable' },
+                          // Switch first, exactly as forking does below: an editing session is opened
+                          // over whatever is current, so editing a row you are not on has to make it
+                          // current before entering.
+                          onClick: [
+                            { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                            { $action: 'editorStore.enterTemplateEditing', args: ['edit'] },
+                            closeTemplatePicker,
+                          ],
+                        },
+                        {
+                          icon: 'git-fork',
+                          tooltip: 'Fork this template',
+                          // Switch first: a fork is seeded from whatever is current, so forking a row you
+                          // are not on has to make it current before asking for a name.
+                          onClick: [
+                            { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
+                            { $action: 'editorStore.startFork' },
+                            closeTemplatePicker,
+                          ],
+                        },
                       ],
-                    },
-                    {
-                      icon: 'git-fork',
-                      tooltip: 'Fork this template',
-                      // Switch first: a fork is seeded from whatever is current, so forking a row you
-                      // are not on has to make it current before asking for a name.
-                      onClick: [
-                        { $action: 'templateStore.switchTemplate', args: [{ $: 'template.id' }] },
-                        { $action: 'editorStore.startFork' },
-                        closeTemplatePicker,
-                      ],
-                    },
+                    }),
                   ],
                 }),
               ],
-            }),
+            },
           ],
         },
         footer: {
@@ -310,6 +495,8 @@ export function templatePicker(): SchemaNode {
           ],
         },
       }),
+
+      saveLayoutDialog(),
 
       nameDialog({
         open: { $: 'editorStore.pickerOpen' },

@@ -3,6 +3,8 @@ import type { CoreEntityDef } from './defs';
 export const Space: CoreEntityDef = {
   base: 'WeNode',
   optional: ['avatar', 'coverImage', 'location', 'url'],
+  // `setTaskStates` is how a column drag writes the community's order — see the relation below.
+  methodRelations: ['taskStates'],
   entity: {
     flag: { predicate: 'we://flag', value: 'we://space' },
     properties: {
@@ -92,28 +94,105 @@ export const Space: CoreEntityDef = {
        */
       autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: true },
       /**
-       * Whether extraction passes broadcast their prompt and response to the rest of the space.
+       * How deep a conversation here may go: `fractal` (a reply may be replied to) or `flat` (only
+       * the record itself may be).
        *
-       * A property of the space for the same reason `autoInterpret` is, though a different one than
-       * might be assumed. It is not about secrecy: in a call the prompt is built from a transcript
-       * every participant already holds, so a member sharing theirs reveals nothing the others lack.
+       * **A reading, not a shape.** Replies are always stored as a tree — a reply hangs off whatever
+       * it answers through `we://comment`, which is true of a post, a block, a drawn connection and
+       * another reply alike. This says only what may be *added*, so a community that switches to
+       * flat keeps showing the nesting it already has rather than silently redrawing a hierarchy as
+       * a list, and switching back loses nothing. Nothing migrates, because nothing about the data
+       * depends on it.
        *
-       * It is about the state being *collective*. "I share and you do not" is an asymmetry with no
-       * use — the reason to turn this on is that a space is working on extraction and wants to see
-       * what it is doing, which is a decision about the space rather than about one member.
+       * A field here rather than a `ModuleSetting`, and the distinction is the one `moduleSettings`
+       * draws below: that field exists so a *module* stops adding columns to this entity on its own
+       * behalf, and setting groups are built from what registered modules declare. Threads are not a
+       * module — `comments` is on `WeNode`, so every record in WE has them whatever is installed —
+       * so there is no group to hang this on and nothing to uninstall it with. It sits beside
+       * `autoInterpret` for the same reason: a core capability whose scope is the community's to
+       * decide.
        *
-       * Defaults off because the payload is tens of KB per pass and rides the ephemeral signalling
-       * transport, which exists for small last-write-wins messages. That is a poor default to impose
-       * on every space forever, and a very reasonable thing to switch on for an afternoon.
+       * Defaults to `fractal`, which is what every surface did before the setting existed.
        */
-      shareExtractionDetail: {
-        type: 'boolean',
-        predicate: 'we://share_extraction_detail',
-        default: false,
+      threadMode: {
+        type: 'string',
+        predicate: 'we://thread_mode',
+        default: 'fractal',
+        options: ['fractal', 'flat'],
       },
+      /**
+       * What this community decides about each capability's settings, as JSON.
+       *
+       * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
+       * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
+       * here as bespoke columns already, and every capability that wanted an opinion added another — a core entity accreting a field on behalf of a module is
+       * the shape this replaces.
+       *
+       * **Absent means "no opinion"**, never "off" — the same rule as `enabledModules`. A level says
+       * nothing until somebody sets something, and the resolver takes the most specific level that
+       * has an opinion. See `moduleSettings.ts` in the app shell for the order and for how a
+       * `restrict` setting differs.
+       *
+       * ## Those two columns are staying, and this is not an oversight
+       *
+       * This field replaced the *shape*, not the instances of it. This resolver answers along one axis, **who is asking**: deployment → agent
+       * everywhere → community here → agent here, most specific wins. `autoInterpret` and
+       * `extractionTargets` carry a second axis it has no concept of, **which call** — a per-call
+       * decision belonging to that call's participants rather than to the space's administrator,
+       * held in `CallExtraction` and read through `spaceStore.autoInterpretForCall(collectionId)`,
+       * which is a function rather than a value for exactly that reason. Migrating them here as-is
+       * would typecheck, pass, and silently drop the layer where participants overrule the space.
+       *
+       * What was worth fixing is fixed: a capability that wants a setting today declares a
+       * `ModuleSetting` and gets a resolved value and a rendered control, so there is no fourth
+       * column coming. **Revisit the subject axis when a second capability wants a per-subject
+       * override** — one is not evidence the resolver needs one. Recording is the one to watch.
+       */
+      moduleSettings: { type: 'string', predicate: 'we://module_settings', default: '' },
     },
     relations: {
       location: { target: 'LocationBlock', cardinality: 'one', predicate: 'we://location' },
+      /**
+       * This space's own board — "Everything", the one that gathers all of the community's work.
+       *
+       * The counterpart of `CollectionBlock.board` one level up, and the same reasoning: which board
+       * is *the* space's is a fact about the space. It is also what makes curating every other board
+       * safe, since this is the catch-all nothing can hide from — see `docs/architecture/boards.md`.
+       */
+      board: { target: 'CollectionBlock', cardinality: 'one', predicate: 'we://board' },
+      /**
+       * The order this community reads its task states in — and only the order.
+       *
+       * Position hints over a membership defined elsewhere, the same shape a board's `children` have
+       * over the tasks a state gathers, and the same shape AD4M's ordering entries have over the
+       * links they order. A state is a state because a `TaskState` record exists, not because it is
+       * listed here; one that is not listed still appears, after the ones that are, sorted by what it
+       * counts as.
+       *
+       * That is what keeps reordering safe on a shared space. It is a relation rather than a number
+       * on each state, so two people dragging columns at the same moment converge instead of writing
+       * the same position and losing one of the answers — which is the whole reason this relation is
+       * `ordered` and the reason a `position` scalar was refused.
+       */
+      taskStates: {
+        target: 'TaskState',
+        cardinality: 'many',
+        predicate: 'we://task_state_order',
+        ordered: true,
+      },
+      /**
+       * The colour this community draws each kind of thing in — its key.
+       *
+       * `TypeStyle` was written for one board, on the argument that two boards legitimately
+       * disagree about what a task looks like. True, and it left the more common question with no
+       * home: "tasks are blue *here*", meaning in this space, so that a canvas made tomorrow starts
+       * out coloured the way every other one is. A canvas can still carry its own records in front
+       * of these; this is what they fall back to. The same shape as `taskStates` — a vocabulary
+       * decision, one record per fact, so two people colouring two kinds at once are two writes.
+       *
+       * The predicate is the record's own flag value, as `we://signal` is for a node's signals.
+       */
+      typeStyles: { target: 'TypeStyle', cardinality: 'many', predicate: 'we://type_style' },
     },
   },
 };

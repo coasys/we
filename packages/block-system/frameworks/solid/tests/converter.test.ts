@@ -126,7 +126,7 @@ describe('content → doc → content', () => {
   });
 
   it('an empty collection gets a paragraph inside, and reads back as such', () => {
-    const [back] = roundTrip([{ _type: 'collection', layout: 'grid', content: [] }]) as Array<{
+    const [back] = roundTrip([{ _type: 'collection', layout: 'grid', content: [] }]) as unknown as Array<{
       content: ContentBlock[];
     }>;
     expect(back.content).toEqual([{ _type: 'block', style: 'normal', text: '' }]);

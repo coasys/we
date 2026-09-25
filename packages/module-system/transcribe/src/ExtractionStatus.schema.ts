@@ -29,36 +29,11 @@
  * which is the shape James asked for, and the right one: a bar that grew a row per concurrent pass
  * would push the whole call's chrome around while somebody was using it.
  */
+import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
-/** Must match `CALL_STATUS_ANCHOR` in `@we/module-call`. Deliberately not imported — a shared
- *  constant would be a hard dependency on the module this is meant to work without, exactly as
- *  `CALL_CONTROLS_ANCHOR` explains at greater length. */
-export const CALL_STATUS_ANCHOR = 'call-status';
-
-/**
- * The panel's own corners — the theme's **surface** radius, not the control radius the bar above it
- * takes.
- *
- * The two look interchangeable and are not. `control-radius` describes a capsule, and a capsule is
- * only coherent on a box about one line tall: the call bar is exactly that, so it follows it and a
- * `pill` theme rounds it beautifully. This panel is a stack of disclosures hundreds of pixels tall,
- * and the same variable turned it into a lozenge with its own text running off both ends.
- *
- * `surface-radius` is the theme's answer for a box that is not a capsule — modals, drawers and
- * alerts all take it — and every preset already caps it for that reason: WE's own `pill` preset sets
- * controls to `pill` and surfaces to `600`.
- */
-const STATUS_RADIUS = 'var(--we-theme-surface-radius, var(--we-radius-400))';
-
-/**
- * Matching the call bar's material exactly.
- *
- * Two floating strips a spacing token apart that disagreed about their surface would read as one
- * piece of chrome and one bug. Restated rather than imported for the reason the anchor is.
- */
-const STATUS_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as const;
+import { VIEWING_LIVE_EXPR } from './subject';
 
 /**
  * How big the leading glyph is, whichever glyph it happens to be.
@@ -80,7 +55,7 @@ const GLYPH_SIZE = 'sm';
  * thing to look at rather than as a hint about where the row goes. 16px is the size the prompt's
  * own caret already used and looked right at, so the three carets in the bar now agree.
  */
-const CARET_SIZE = 'xs';
+export const CARET_SIZE = 'xs';
 
 /**
  * A spinner while it runs, the outcome's own glyph once it stops.
@@ -132,11 +107,24 @@ const runnerFace: SchemaNode = {
  *
  * The elapsed time renders only while the pass is running — the store returns `''` once it has
  * settled, since a finished pass reports what it did and how long it took stops being the question.
+ *
+ * ## Who gives up room
+ *
+ * The label, and only the label. It wraps between words rather than truncating: "Anna is writing
+ * what she found" is a sentence, and cutting it to "Anna is writing wh…" drops the part that says
+ * what is happening — in a panel narrow enough to need it, a second line costs less than that.
+ * `minWidth: '0'` is what lets it wrap at all; without it a flex item will not be narrower than its
+ * longest line.
+ *
+ * The clock never gives up anything. It was a `we-text` like the label, so when the label refused
+ * to shrink the row took the room out of the clock instead and folded "1:23" onto two lines. It is
+ * an elapsed duration rather than an instant, so `we-timestamp` — which already holds this rule —
+ * is not the element for it; the rule is written out here instead.
  */
 const passRowChildren: SchemaNode[] = [
   phaseIcon,
   runnerFace,
-  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: [{ $: 'pass.label' }] },
+  { type: 'we-text', props: { fontSize: '200', flex: '1', minWidth: '0' }, children: [{ $: 'pass.label' }] },
   {
     type: '$if',
     props: {
@@ -144,7 +132,13 @@ const passRowChildren: SchemaNode[] = [
       then: {
         // Tabular, so the seconds column does not jitter the row every time it ticks.
         type: 'we-text',
-        props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
+        props: {
+          fontSize: '200',
+          color: 'text-faint',
+          flexShrink: '0',
+          whiteSpace: 'nowrap',
+          styles: { fontVariantNumeric: 'tabular-nums' },
+        },
         children: [{ $: 'pass.elapsed' }],
       },
       /*
@@ -204,11 +198,17 @@ const disclosureCaret: SchemaNode = {
   },
 };
 
-/** The small caps heading above each pane. */
+/**
+ * The small caps heading above each pane.
+ *
+ * `SECTION_LABEL_PROPS` rather than its own four props: this was one of the near-misses the shared
+ * recipe exists to absorb — a raw `fontSize` where the others named a variant, and no two of them
+ * agreeing on the tracking.
+ */
 function paneLabel(label: string): SchemaNode {
   return {
     type: 'we-text',
-    props: { fontSize: '200', color: 'text-faint', uppercase: true, letterSpacing: 'wide' },
+    props: { ...SECTION_LABEL_PROPS },
     children: [label],
   };
 }
@@ -227,7 +227,7 @@ function paneLabel(label: string): SchemaNode {
  * The label is the control. It is already the heading, and a separate button beside it would be a
  * second thing to aim at for one behaviour.
  */
-function codePane(options: {
+export function codePane(options: {
   label: string;
   /** The already-indented text, from the store — a schema has no `JSON.stringify`. */
   value: SchemaProp;
@@ -235,6 +235,16 @@ function codePane(options: {
   isOpen: SchemaNode | Record<string, unknown>;
   /** The `$localState` array field this pane's toggle writes into. */
   field: string;
+  /**
+   * What identifies the row this pane belongs to, in the `$localState` set.
+   *
+   * The live bar keys on `pass.passId`, the processor id its rows are built around. The durable
+   * history renders `ExtractionPass` *records*, which have an ordinary record id and no passId at
+   * all — so the key is a parameter rather than the constant it started as. Both halves of the
+   * exchange are then read and displayed the same way whichever list they are in, which is the
+   * whole point of the manual and automatic passes now being stored alike.
+   */
+  key?: SchemaProp;
 }): SchemaNode {
   return {
     type: '$if',
@@ -249,7 +259,7 @@ function codePane(options: {
             props: {
               variant: 'bare',
               width: '100%',
-              onClick: { $toggleLocalIn: options.field, value: { $: 'pass.passId' } },
+              onClick: { $toggleLocalIn: options.field, value: options.key ?? { $: 'pass.passId' } },
             },
             children: [
               {
@@ -294,6 +304,9 @@ function codePane(options: {
                     attempt at a maximum did not scroll at all.
                   */
                   maxHeight: '240px',
+                  // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                  // declares no layout layer, so `width` on it is an unknown prop the
+                  // validator warns about and the renderer drops.
                   styles: { width: '100%' },
                 },
               },
@@ -436,97 +449,29 @@ const passEntry: SchemaNode = {
 /** The passes still in flight. Always listed — this is the half somebody is waiting on. */
 const runningList: SchemaNode = {
   type: '$each',
-  props: { items: { $: 'modules.transcribe.runningPasses' }, as: 'pass' },
+  props: { items: { $: 'interpretationStore.runningPasses' }, as: 'pass' },
   children: [passEntry],
 };
 
-/**
- * Everything already finished, folded behind a count.
- *
- * A long call runs a pass every few minutes, and each one that completed stayed on screen — so the
- * bar grew all conversation, pushing the call's own chrome down to make room for a history nobody
- * had asked to see. Collapsing them keeps the bar the size of what is happening now while leaving
- * the record one click away.
- *
- * Deliberately not auto-dismissed after a delay. A result that vanishes on a timer is a result
- * somebody can miss entirely, and "what did that extract?" is asked minutes later as often as
- * immediately.
- */
-const settledSection: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'modules.transcribe.settledCount' },
-    then: {
-      type: 'Column',
-      props: { gap: '200', width: '100%' },
-      children: [
-        {
-          type: 'we-button',
-          props: { variant: 'bare', width: '100%', onClick: { $toggleLocal: 'historyOpen' } },
-          children: [
-            {
-              type: 'Row',
-              props: { ay: 'center', gap: '200', width: '100%' },
-              children: [
-                /*
-                  A sparkle, not a tick.
+/*
+  The settled half of this feed is gone, and the "N extractions processed" fold with it.
 
-                  A tick here said "these succeeded", which is both wrong — some of them found
-                  nothing, some failed — and a repeat of the per-row glyph one level down. The row
-                  is about extraction having happened, so the icon names the activity rather than
-                  grading it, and the ticks stay where they mean something.
-                */
-                { type: 'we-icon', props: { size: GLYPH_SIZE, name: 'sparkle', color: 'text-faint' } },
-                {
-                  type: 'we-text',
-                  props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
-                  children: [
-                    { $: 'modules.transcribe.settledCount' },
-                    ' ',
-                    { $: "plural(modules.transcribe.settledCount, 'extraction processed', 'extractions processed')" },
-                  ],
-                },
-                {
-                  type: 'we-icon',
-                  props: {
-                    size: CARET_SIZE,
-                    color: 'text-muted',
-                    name: { $: "local.historyOpen ? 'caret-up' : 'caret-down'" },
-                  },
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'local.historyOpen' },
-            enterTransition: { type: 'reveal', duration: 200 },
-            exitTransition: { type: 'reveal', duration: 160 },
-            then: {
-              type: 'Column',
-              props: { gap: '200', width: '100%' },
-              children: [
-                {
-                  type: '$each',
-                  props: { items: { $: 'modules.transcribe.settledPasses' }, as: 'pass' },
-                  children: [passEntry],
-                },
-              ],
-            },
-          },
-        },
-      ],
-    },
-  },
-};
+  It collapsed every finished pass behind a count so the bar stayed the size of what was happening
+  now — the right shape while this was the only place a finished pass was reported. It stopped being
+  that when every pass, one-shot and watched alike, started being written down as an `ExtractionPass`
+  and listed under "Logs" in this same panel: two lists of the same rows a few hundred pixels apart,
+  neither saying which was which.
+
+  The durable one wins on every count. It survives a reload, it is scoped to the call by containment
+  rather than to whatever this session happened to observe, and it carries the outcome, the trigger
+  and the stored exchange. What this feed keeps is the half the log cannot give: a pass while it is
+  still running. See `extractionHistory` in Panel.schema.ts.
+*/
 
 /**
  * The disclosures a pass carries, and the state that opens them.
  *
- * Split out from the chrome node because the two now live in different places — see
- * {@link extractionActivity} and {@link extractionSignal} below.
+ * Split out from the chrome node it used to live in — see {@link extractionActivity} below.
  */
 const activityLocalState = {
   /**
@@ -548,14 +493,15 @@ const activityLocalState = {
   openPrompts: { type: 'array', initial: [] },
   /** Which responses have been closed — see `responsePane` on why this one is inverted. */
   closedResponses: { type: 'array', initial: [] },
-  /**
-   * Whether the finished-passes history is open.
-   *
-   * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
-   * bar's job is to report what is happening, and a history that unfolded itself every time
-   * something finished would be the growth this collapse exists to stop.
-   */
-  historyOpen: { type: 'boolean', initial: false },
+  /*
+    There was a `historyOpen` here, folding this readout's own list of finished passes.
+
+    It went with the list. Every pass is written down as an `ExtractionPass` and read back under
+    "Logs" in the panel, so the settled half of this feed was the same rows again a few hundred
+    pixels away; what is left is a pass *while it runs*, which is never a list long enough to fold.
+    The field outlived the thing it opened and nothing read it — declared state that no expression
+    names is invisible, so it sat here through two rewrites of the section it belonged to.
+  */
 };
 
 /**
@@ -577,14 +523,42 @@ const activityLocalState = {
  * the glance stays in the chrome as one line.
  *
  * The original argument for the chrome — that a pass outlives the panel that started it, and that
- * the four people who did *not* start it are the ones most likely to want the readout — is what
- * {@link extractionSignal} still satisfies. It says who and how long, for everybody, without
- * needing the panel open.
+ * the four people who did *not* start it are the ones most likely to want the readout — is now
+ * answered by the module rail: the Extraction launcher declares `busyWhen`, so it spins while any
+ * peer's pass runs, for everybody, without the panel open. The square this module used to add to
+ * the call bar for the same purpose doubled as the switch for automatic extraction — a group
+ * decision, beside a personal one that looked identical — and the bar only exists during a call,
+ * which is the one time nobody needs to be told to open the panel.
  */
 export const extractionActivity: SchemaNode = {
   type: '$if',
+  /*
+    The live feed, and so only about the call this agent is in.
+
+    `interpretationStore` is a subscription to what is happening *now* — every pass this agent knows
+    about, its own and its peers', with no call id on a row to scope it by. So on a call somebody
+    opened from a link it listed the live call's passes above that call's records, and nothing said
+    they were about different conversations.
+
+    What a *past* call did is a different question with a different answer: `ExtractionPass` records,
+    which are written down and hang off the collection. See `extractionHistory`.
+  */
   props: {
-    condition: { $: 'modules.transcribe.hasActivity' },
+    /*
+      Running passes only, and `runningCount` rather than `hasActivity` is the whole of that.
+
+      `hasActivity` counts settled rows too — deliberately, so a readout gated on it did not vanish
+      the instant a pass finished and take its result with it. That was right while this was the only
+      place a finished pass was reported. It is not any more: every pass, one-shot and watched alike,
+      is now written down as an `ExtractionPass` and listed under "Logs" in the same panel, so the
+      settled half of this feed was the same passes again a few hundred pixels higher, with no
+      heading to say which list was which.
+
+      What is left here is the half the log genuinely cannot give: a pass *while it runs*, whoever
+      started it, with its phase and its elapsed clock. A row appears when somebody begins and leaves
+      when the durable entry takes over.
+    */
+    condition: { $: `interpretationStore.runningCount && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
       $localState: activityLocalState,
@@ -592,117 +566,11 @@ export const extractionActivity: SchemaNode = {
         gap: '200',
         width: '100%',
       },
-      children: [
-        runningList,
-        settledSection,
-        /*
-          Why somebody else's row will not open, said once.
-
-          This was a tooltip on every row — the wrong place twice over: hover text is not where
-          anyone looks for an explanation of why a control is inert, and one setting's worth of
-          explanation was repeated per pass. It also happened to be the box that stopped the caret
-          reaching the right edge.
-
-          Shown only while the space's setting is the reason a peer's row will not open, and it
-          names the way out: this is the one moment somebody wants that setting, and settings is not
-          where anyone looks for a control they have never seen. Gated on the setting rather than on
-          a row lacking detail — see `detailWithheld` in the store for what the other gate showed.
-
-          One short line at footnote size. Two sentences at body size took more of the bar than the
-          rows it was explaining, for a fact that is the same on every pass.
-        */
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'modules.transcribe.detailWithheld' },
-            then: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Prompts stay on each person’s machine — share them in space settings.'],
-            },
-          },
-        },
-      ],
-    },
-  },
-};
-
-/**
- * The glance: one line under the call bar saying something is happening.
- *
- * ## Why anything stays in the chrome at all
- *
- * A pass runs for minutes — almost all of it one LLM call, and on a local model several minutes —
- * and it outlives the panel that started it. The person most likely to want to know it is running
- * is one of the four in five who did *not* start it and has no reason to have the transcript panel
- * open. Reporting it only in the panel would mean the app silently spends two minutes of somebody's
- * node on something nobody in the call can see.
- *
- * So the fact stays; the reading moves. This says who and for how long, in a line that cannot grow,
- * and {@link extractionActivity} in the transcript panel holds everything else.
- *
- * ## Why it cannot grow
- *
- * The version this replaces was the whole readout, and it moved the call's furniture to do its job:
- * opening one pass widened the strip to 520px, and each concurrent pass added a row. A floating
- * object that reflows while somebody is reaching for a control under it is worse than one that says
- * less. So concurrent passes collapse to a count here rather than to a list, and there is nothing to
- * open.
- *
- * Absent entirely when nothing is happening — not empty, absent. A permanently reserved strip would
- * be chrome whose only job is to report, sitting there reporting nothing, and pushing the rest of
- * the call's furniture down to do it.
- */
-export const extractionSignal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'modules.transcribe.runningCount' },
-    // Slides down from behind the bar rather than appearing. The bar is a fixed object somebody is
-    // already looking at, and something materialising a few pixels under it reads as a glitch.
-    enterTransition: [
-      { type: 'reveal', duration: 220 },
-      { type: 'fade', duration: 160 },
-    ],
-    then: {
-      type: 'Row',
-      props: {
-        ...STATUS_SURFACE,
-        r: STATUS_RADIUS,
-        px: '300',
-        py: '200',
-        gap: '200',
-        ay: 'center',
-        // Capped, and with nothing inside it that can outgrow the cap: the label truncates and the
-        // count is a number. This is the whole of "cannot grow".
-        maxWidth: '320px',
-      },
-      children: [
-        { type: 'we-spinner', props: { size: 'xs' } },
-        {
-          type: '$if',
-          props: {
-            // One pass reads as itself — the label is already a whole clause ("Anna is waiting on
-            // the model"). Several collapse to a count, because naming them all is the growth this
-            // exists to avoid.
-            condition: { $: 'modules.transcribe.runningCount == 1' },
-            then: {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true },
-              children: [{ $: 'first(modules.transcribe.activity).label' }],
-            },
-            else: {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true },
-              children: [{ $: '`${modules.transcribe.runningCount} extractions running`' }],
-            },
-          },
-        },
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted' },
-          children: [{ $: 'first(modules.transcribe.activity).elapsed' }],
-        },
-      ],
+      /*
+        No footnote about a peer's row not opening: a peer's exchange is never sent live, and every
+        member reads it from the call's `ExtractionPass` record once the pass settles.
+      */
+      children: [runningList],
     },
   },
 };

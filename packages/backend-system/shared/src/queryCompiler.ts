@@ -3,9 +3,9 @@
  *
  * `compileQuery` lifts the flat, post-resolution `$query` (the neutral authoring DSL — `entity`
  * mapped to `model`, plus `where`/`order`/`include`/`limit`) up into the IR. `irToFlatQuery` is the
- * inverse: it lowers the IR back down to the flat query dialect a `EntityClass` ORM consumes (AD4M's
- * `Ad4mModel.query`, the in-memory harness backend). Both are neutral — the AD4M-*specific* pieces
- * (capability profile, scope→predicate resolution) live in the adapter that composes these.
+ * inverse: it lowers the IR back down to the flat query dialect a `EntityClass` ORM consumes. Both
+ * are shared — the backend-*specific* pieces (capability profile, scope→handle resolution) live in
+ * the adapter that composes these.
  *
  * `compileQuery` returns the IR *and* an `unsupported` list. Most shapes map losslessly — including
  * single/filtered `$`-projections (→ an aliased `include` with `over`). `unsupported` flags the shapes
@@ -16,6 +16,7 @@
  * Reference for the flat `$query` grammar: the `$query` docs in `CLAUDE.md`.
  */
 import type { Aggregation, Filter, IncludeMap, IncludeSpec, Op, QueryIR, Scalar, Scope, SortKey } from './queryIR';
+import { RANGE_OPS } from './rangeCompare';
 
 export interface FlatQuery {
   entity: string;
@@ -38,9 +39,34 @@ export interface CompileResult {
 
 // ─── where → Filter tree ────────────────────────────────────────────────────────
 
-function fieldCondition(field: string, cond: unknown): Filter {
+/**
+ * One key of a flat `where` — a scalar comparison, or a quantifier over a relation.
+ *
+ * The two are told apart by the **operator name**, not by asking the manifest whether the key names
+ * a relation: this compiler takes no manifest, and threading one in to answer a question the
+ * operator already answers would put the same knowledge in two places. So `some`/`none` are what
+ * make a key a relation quantifier, and a scalar property can never be compared with them.
+ *
+ * `exists` deliberately stays a scalar operator even against a relation, where it keeps meaning what
+ * it always has. On a to-many that is very nearly `some: {}`, and the overlap is harmless — an
+ * author reaching for a quantifier writes the quantifier.
+ */
+function leafCondition(field: string, cond: unknown): Filter {
   if (cond !== null && typeof cond === 'object' && !Array.isArray(cond)) {
     const c = cond as Record<string, unknown>;
+    // `{ comments: { some: {} } }` — has at least one; `{ some: { body: 'spam' } }` — has one that
+    // matches. An empty clause is "any", so the nested where is dropped rather than compiled to a
+    // filter that matches everything.
+    for (const op of ['some', 'none'] as const) {
+      if (op in c) {
+        const nested = c[op];
+        const where =
+          nested && typeof nested === 'object' && Object.keys(nested).length
+            ? translateWhere(nested as Record<string, unknown>)
+            : undefined;
+        return { rel: field, op, ...(where ? { where } : {}) };
+      }
+    }
     if ('contains' in c) return { field, op: 'contains', value: c.contains as Scalar };
     // `startsWith`/`endsWith` were in the IR and the engine from the start and unreachable from a
     // flat where clause, so a prefix match fell through to the equality below and compared a field
@@ -49,6 +75,18 @@ function fieldCondition(field: string, cond: unknown): Filter {
     if ('startsWith' in c) return { field, op: 'startsWith', value: c.startsWith as Scalar };
     if ('endsWith' in c) return { field, op: 'endsWith', value: c.endsWith as Scalar };
     if ('exists' in c) return { field, op: 'exists', value: c.exists as Scalar };
+    /*
+      Range bounds. The IR, the engine and the production backend all had them; the flat grammar did not, so
+      `{ dueDate: { lt: '2026-10-01' } }` fell through to the equality below and compared the field
+      against the operator object — matching nothing, silently, for every calendar, every price
+      filter and every "due this week".
+
+      Several bounds on one field are one range — `{ gte: from, lt: to }` — so they compile to an
+      AND of leaves rather than to whichever key happened to be read first. What a bound compares
+      against, and why mixed types match nothing, is `rangeCompare`.
+    */
+    const bounds = RANGE_OPS.filter((op) => op in c).map((op): Filter => ({ field, op, value: c[op] as Scalar }));
+    if (bounds.length) return bounds.length === 1 ? bounds[0] : { and: bounds };
     if ('not' in c) {
       const v = c.not;
       return Array.isArray(v) ? { field, op: 'nin', value: v as Scalar[] } : { field, op: 'ne', value: v as Scalar };
@@ -70,7 +108,7 @@ function translateWhere(where: Record<string, unknown>): Filter | undefined {
       const f = translateWhere(cond as Record<string, unknown>);
       if (f) clauses.push({ not: f });
     } else {
-      clauses.push(fieldCondition(key, cond));
+      clauses.push(leafCondition(key, cond));
     }
   }
   if (clauses.length === 0) return undefined;
@@ -118,6 +156,7 @@ function translateInclude(
           as: key,
           over: spec.from as string,
           fn: 'count',
+          ...(spec.transitive ? { transitive: true } : {}),
           ...(spec.where ? { filter: translateWhere(spec.where as Record<string, unknown>) } : {}),
         });
       } else {
@@ -164,7 +203,7 @@ export function compileQuery(query: FlatQuery): CompileResult {
     if (aggregates.length) ir.aggregate = aggregates;
   }
   // `scope` (neutral drill-down) passes straight through; the adapter resolves `via` to a backend
-  // handle (AD4M: the relation's predicate).
+  // handle (the relation's storage predicate, say).
   if (query.scope) ir.scope = query.scope;
   // subscribe defaults true → live default; only record the explicit one-shot case.
   if (query.subscribe === false) ir.live = false;
@@ -174,10 +213,10 @@ export function compileQuery(query: FlatQuery): CompileResult {
 
 // ─── IR → flat $query (the inverse; lower the IR to the flat EntityClass dialect) ──
 //
-// A `EntityClass` ORM (AD4M's `Ad4mModel.query`/`findAll`, the in-memory harness backend) speaks the
-// flat `$query` dialect (`{ where, order, limit, offset, include, parent }`), so lowering the IR is
+// A `EntityClass` ORM (a backend's model statics, the in-memory double) speaks the flat `$query`
+// dialect (`{ where, order, limit, offset, include, parent }`), so lowering the IR is
 // just this projection back to it. It only emits shapes that dialect expresses; a feature it can't (a
-// non-native operator, a to-many relation filter, a non-`count` aggregate) throws, because the adapter
+// non-native operator, a relation `exists`, a non-`count` aggregate) throws, because the adapter
 // should have routed that to the compute-up fallback via `planQuery` rather than pushing it down.
 // Round-tripping `flat → IR → flat` re-derives the identical IR — the losslessness guarantee this rests on.
 
@@ -198,6 +237,11 @@ function conditionFromLeaf(op: Op, value: Scalar | Scalar[]): unknown {
       return { endsWith: value };
     case 'exists':
       return { exists: value };
+    case 'lt':
+    case 'lte':
+    case 'gt':
+    case 'gte':
+      return { [op]: value };
     default:
       throw new Error(`irToFlatQuery: operator "${op}" is not expressible in the flat where clause`);
   }
@@ -211,6 +255,12 @@ function whereFromFilter(filter: Filter): Record<string, unknown> {
     let collision = false;
     for (const part of parts) {
       for (const k of Object.keys(part)) {
+        // Two bounds on one field are one range, `{ gte, lt }`, which is how they arrived — so they
+        // merge back into one operator object rather than forcing the explicit AND form.
+        if (k in merged && isOperatorObject(merged[k]) && isOperatorObject(part[k]) && disjoint(merged[k], part[k])) {
+          merged[k] = { ...(merged[k] as object), ...(part[k] as object) };
+          continue;
+        }
         if (k in merged) collision = true;
         merged[k] = part[k];
       }
@@ -220,34 +270,28 @@ function whereFromFilter(filter: Filter): Record<string, unknown> {
   if ('or' in filter) return { OR: filter.or.map(whereFromFilter) };
   if ('not' in filter) return { NOT: whereFromFilter(filter.not) };
   if ('rel' in filter) {
-    throw new Error('irToFlatQuery: relation filters are not expressible in the flat where clause');
+    // `exists` has no flat quantifier spelling of its own — it is the scalar operator, which a flat
+    // where reaches by naming the field directly. Only `some`/`none` round-trip through here.
+    if (filter.op === 'exists') {
+      throw new Error('irToFlatQuery: a relation `exists` filter has no flat spelling — use `some`');
+    }
+    return { [filter.rel]: { [filter.op]: filter.where ? whereFromFilter(filter.where) : {} } };
   }
   return { [filter.field]: conditionFromLeaf(filter.op, filter.value) };
 }
 
-/**
- * Does this filter reach the backend as an **explicit** `OR`/`AND`/`NOT` in the flat `where`?
- *
- * Only explicit combinators change a backend's execution strategy (AD4M, for one, drops its
- * SPARQL sort/pagination pushdown when it sees them). An *implicit* conjunction — several sibling
- * `where` keys — also compiles to an `and` node in the IR, but {@link whereFromFilter} merges it
- * straight back to sibling keys, which backends handle natively. Testing `'and' in filter` on the
- * IR therefore reports a degradation for the most ordinary query shape there is
- * (`where: { a, b }` + `order`), so adapters must ask this instead.
- *
- * Lives beside `whereFromFilter` deliberately: it answers the question by *performing* the
- * lowering, so the two cannot drift apart.
- */
-export function whereUsesCombinator(filter: Filter | undefined): boolean {
-  if (!filter) return false;
-  try {
-    const where = whereFromFilter(filter);
-    return 'OR' in where || 'AND' in where || 'NOT' in where;
-  } catch {
-    // Not lowerable to a flat where (e.g. a relation filter). That is reported as its own
-    // capability gap by the planner; it is not a sort-pushdown degradation.
-    return false;
-  }
+function isOperatorObject(value: unknown): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0 &&
+    Object.keys(value).every((k) => (RANGE_OPS as readonly string[]).includes(k))
+  );
+}
+
+function disjoint(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return Object.keys(b).every((k) => !(k in a));
 }
 
 function orderFromSort(sort: SortKey[]): Record<string, 'asc' | 'desc'> {
@@ -297,16 +341,16 @@ export function irToFlatQuery(ir: QueryIR): FlatQuery {
       throw new Error(`irToFlatQuery: aggregate fn "${agg.fn}" has no flat projection (only count does)`);
     }
     const entry: Record<string, unknown> = { from: agg.over, count: true };
+    if (agg.transitive) entry.transitive = true;
     if (agg.filter) entry.where = whereFromFilter(agg.filter);
     include[agg.as] = entry;
   }
   if (Object.keys(include).length) flat.include = include;
 
   if (ir.scope) {
-    // A drill-down can't be compiled to the AD4M dialect here: resolving `scope.via` to a backend
-    // handle (an AD4M predicate) needs the manifest binding, which is the adapter's job. The AD4M
-    // adapter resolves `scope` to a `ParentScope` itself and attaches it; this translator handles only
-    // the binding-free parts.
+    // A drill-down can't be lowered here: resolving `scope.via` to a backend handle (a storage
+    // predicate) needs the manifest binding, which is the adapter's job. An adapter resolves `scope`
+    // itself and attaches it; this translator handles only the binding-free parts.
     throw new Error('irToFlatQuery: scope (drill-down) requires adapter binding resolution, not this translator');
   }
   if (ir.live === false) flat.subscribe = false;

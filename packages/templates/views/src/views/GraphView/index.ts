@@ -2,7 +2,7 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 import { recordFormModal } from '@we/template-kit';
 
-import { boardBar, boardCanvas, boardQuery } from './Board';
+import { canvasBar, canvasQuery, canvasSurface } from './Canvas';
 import { openCardModal } from './CardModal';
 import { edgeDetailModal } from './EdgeDetail';
 import { clearOnEmptySelection, expandRequest, nodeDetailPanel, selectNode } from './NodeDetail';
@@ -27,7 +27,7 @@ const MODES = [
   { value: 'content', label: 'Content' },
   // Last, and different in kind from the three before it: those derive an arrangement from the
   // data, and this one is the arrangement.
-  { value: 'board', label: 'Board' },
+  { value: 'canvas', label: 'Canvas' },
 ] as const;
 
 const LAYOUTS = [
@@ -228,14 +228,14 @@ export const graphView: TemplateSchema = {
   type: 'Column',
   props: { width: '100%', height: '100%', gap: '0' },
   /*
-    Hoisted rather than left on the picker: the empty state has to count the same boards the picker
+    Hoisted rather than left on the picker: the empty state has to count the same canvases the picker
     lists, and two subscriptions could disagree about how many there are.
 
     `relationshipKinds` is here for a different reason — the knowledge map's edge styles are built
     from it, and a style rule is a prop rather than a child, so it has to resolve where the graph is
     declared rather than somewhere inside it.
   */
-  $queries: { boards: boardQuery, relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
+  $queries: { canvases: canvasQuery, relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
   $localState: {
     mode: { type: 'string', initial: 'schema' },
     layout: { type: 'string', initial: 'force' },
@@ -254,13 +254,22 @@ export const graphView: TemplateSchema = {
     */
     connecting: { type: 'boolean', initial: false },
     /*
-      Whether the board's key is open.
+      Whether dragging the background sweeps out a selection rather than panning.
 
-      A preference rather than view state: somebody sent a link to a board, and the recipient should
-      see the board rather than whichever panels the sender had open. Kept per device instead, since
+      The same shape `connecting` has and for the same reasons: a visible control, because a
+      touchscreen has no modifier keys and a gesture nobody can discover is a gesture nobody uses.
+      Off, the sweep is still there under Shift or Ctrl for anyone who arrives expecting it from
+      another canvas — arming it is for the reader who wants it to be what a plain drag does.
+    */
+    selecting: { type: 'boolean', initial: false },
+    /*
+      Whether the canvas's key is open.
+
+      A preference rather than view state: somebody sent a link to a canvas, and the recipient should
+      see the canvas rather than whichever panels the sender had open. Kept per device instead, since
       a person who wants the key generally wants it every time.
     */
-    legendOpen: { type: 'boolean', initial: false, persist: 'board.keyOpen' },
+    legendOpen: { type: 'boolean', initial: false, persist: 'canvas.keyOpen' },
     /*
       Which kind of expansion the panel last asked for, and the whole of the request's state.
 
@@ -270,13 +279,13 @@ export const graphView: TemplateSchema = {
     */
     expandKind: { type: 'string', initial: '' },
     /*
-      Which board is open, mirrored into the URL.
+      Which canvas is open, mirrored into the URL.
 
-      View state in the strict sense: someone sent a link to a board, and the recipient should see
-      the board rather than a picker. `push` so the browser's Back button steps between boards, the
+      View state in the strict sense: someone sent a link to a canvas, and the recipient should see
+      the canvas rather than a picker. `push` so the browser's Back button steps between canvases, the
       way it steps between the modes.
     */
-    boardId: { type: 'string', initial: '', syncParam: { name: 'board', push: true } },
+    canvasId: { type: 'string', initial: '', syncParam: { name: 'canvas', push: true } },
     newBoardOpen: { type: 'boolean', initial: false },
     newCardOpen: { type: 'boolean', initial: false },
     /** Where a double-click landed, so the card it opens can be placed there. Null from the toolbar. */
@@ -352,7 +361,7 @@ export const graphView: TemplateSchema = {
               props: { gap: '300', ay: 'center' },
               children: [
                 /*
-                  Connect mode, on the knowledge map. The board has its own, in the board bar with
+                  Connect mode, on the knowledge map. The canvas has its own, in the canvas bar with
                   the rest of its controls.
 
                   The schema map draws types rather than records, and the content tree draws
@@ -378,10 +387,10 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $: "local.mode == 'board'" },
-                    // A board's positions are its data, so there is no layout to choose. Its own
-                    // controls — which board, and adding to it — take the same place instead.
-                    then: boardBar,
+                    condition: { $: "local.mode == 'canvas'" },
+                    // A canvas's positions are its data, so there is no layout to choose. Its own
+                    // controls — which canvas, and adding to it — take the same place instead.
+                    then: canvasBar,
                     else: picker('layout', LAYOUTS),
                   },
                 },
@@ -393,10 +402,10 @@ export const graphView: TemplateSchema = {
                   do with a type on that map was look at it.
 
                   Hidden when the space has no authorable models at all, since a button whose menu is
-                  empty teaches people it is broken — and on a board, where `Record` in the board bar
+                  empty teaches people it is broken — and on a canvas, where `Record` in the canvas bar
                   is the same form and *places* what it makes.
 
-                  It was hidden on boards once before and restored, because at the time this was the
+                  It was hidden on canvases once before and restored, because at the time this was the
                   only way to create a model instance anywhere and removing the sole entry point to a
                   capability leaves somebody with no way to do it at all. `Record` is that entry
                   point now, so the objection has been answered rather than overruled: two buttons
@@ -406,7 +415,10 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $: "local.mode != 'board' && count(recordStore.creatableEntities)" },
+                    // Form-made content only: this opens the record form, which cannot host a composer.
+                    condition: {
+                      $: "local.mode != 'canvas' && count(recordStore.creatableEntities.filter(k, k.via == 'form'))",
+                    },
                     then: {
                       type: 'we-button',
                       props: {
@@ -433,7 +445,7 @@ export const graphView: TemplateSchema = {
       The form sits above the canvas rather than inside it.
 
       A graph is a transformed, zoomable surface, and text entry on one is its own project — the
-      board work says so twice. A modal is not a compromise here: what is being authored is a
+      canvas work says so twice. A modal is not a compromise here: what is being authored is a
       record, which has nothing to do with where it will land.
     */
     recordFormModal({ onCreated: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }] }),
@@ -464,7 +476,7 @@ export const graphView: TemplateSchema = {
         },
         {
           type: '$if',
-          props: { condition: { $: "local.mode == 'board'" }, then: boardCanvas },
+          props: { condition: { $: "local.mode == 'canvas'" }, then: canvasSurface },
         },
         // Inside the graph container, not after it: the panel overlays the canvas rather than
         // taking a slice of the route, which is what keeps the camera still when it opens.

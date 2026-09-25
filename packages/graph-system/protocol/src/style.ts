@@ -58,11 +58,11 @@ export interface MetricRef {
  *
  * The sibling of {@link MetricRef}, and the other half of the same bargain: a metric answers
  * "computed from the graph's shape", this answers "already on the record". It exists because a rule
- * list is fixed when the template is written, and per-instance presentation is not — a board where
+ * list is fixed when the template is written, and per-instance presentation is not — a canvas where
  * every card carries its own size and colour would otherwise need one rule per card, minted by
  * whatever drew them.
  *
- * `from` uses the {@link MatchClause} key vocabulary, so `data.boardColor` reaches into the data bag
+ * `from` uses the {@link MatchClause} key vocabulary, so `data.canvasColor` reaches into the data bag
  * and a bare name reads a field. **A reference the subject cannot answer contributes nothing**: the
  * property falls through to whatever an earlier rule set, rather than to the built-in default. That
  * is what lets a per-card colour sit in front of a per-type colour and only override the cards that
@@ -84,7 +84,7 @@ export type StyleValue<T> = T | MetricRef | FieldRef<T>;
  * values on it: `shape: 'card'` is structural — it decides that the content goes *inside* the box —
  * and a card that stopped being a card the moment somebody rounded it would drop its content.
  */
-export type CardShape = 'note' | 'square' | 'round';
+export type CardShape = 'note' | 'square' | 'round' | 'triangle' | 'diamond' | 'pentagon' | 'hexagon';
 
 export interface NodeStyle {
   /** Radius in world units, or the box's half-height for non-circular shapes. */
@@ -94,11 +94,17 @@ export interface NodeStyle {
   borderColor?: string;
   borderWidth?: number;
   /**
+   * `dashed` for a node that stands for something not yet settled — a suggestion nobody has kept.
+   * Default `solid`. A line style rather than a colour because the difference is a state, and a card
+   * keeps whatever fill a key gives it either way.
+   */
+  borderStyle?: 'solid' | 'dashed';
+  /**
    * `circle` and `rect` draw in both DOM and canvas modes; `template` requires DOM.
    *
    * `card` is the post-it: a sized box with the label *inside* it, wrapped, rather than a mark with a
    * caption underneath. Worth being a shape rather than a flag because it changes what `size` means —
-   * a card is `width` × `height`, not a radius — and because a board is mostly cards.
+   * a card is `width` × `height`, not a radius — and because a canvas is mostly cards.
    */
   shape?: 'circle' | 'rect' | 'card' | 'template';
   /** Card width in world units. Only meaningful for `shape: 'card'`; defaults to a readable box. */
@@ -113,9 +119,18 @@ export interface NodeStyle {
    * Not a zoom and not a font size: it scales the whole content — text, images, everything the
    * content component draws — inside a box whose size does not change, so a smaller scale fits more
    * of the document into the same card. Presentation only. The document is untouched, and the same
-   * post on another board can be shown at another scale.
+   * post on another canvas can be shown at another scale.
    */
   contentScale?: StyleValue<number>;
+  /**
+   * Stacking order among nodes: higher is drawn in front, and is what a press on an overlap picks.
+   * Default 0, and ties keep the order the graph already had.
+   *
+   * A style rather than a layout concern because on a canvas it is presentation a person chose per
+   * card — "this photo goes on top of that note" — and it is kept beside the card's colour and size.
+   * Rounded to a whole number, since that is all a stacking order can be.
+   */
+  z?: StyleValue<number>;
   opacity?: number;
   labelColor?: string;
   labelSize?: number;
@@ -141,14 +156,14 @@ export interface NodeStyle {
    *
    * The sibling of `labelMinZoom`, and the answer to the one thing that decides whether rich cards
    * scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where
-   * a board is a wall of coloured rectangles none of them can be read anyway.
+   * a canvas is a wall of coloured rectangles none of them can be read anyway.
    */
   contentMinZoom?: number;
   /**
    * Whether the label grows and shrinks with the camera. Default `true`.
    *
    * `false` pins it to a constant on-screen size, which keeps text readable at any zoom — right for a
-   * map you navigate by reading, wrong for a board where the text *is* the artwork.
+   * map you navigate by reading, wrong for a canvas where the text *is* the artwork.
    *
    * Only the label. A node's mark always scales: its size is world units and so is its hit area, and
    * letting the two disagree is precisely the class of bug where what you can click stops matching
@@ -176,7 +191,7 @@ export interface EdgeStyle {
   /**
    * Whether stroke width grows with the camera. Default `true`.
    *
-   * `true` treats the edge as part of the drawing, which is what a board wants — zoom in and the line
+   * `true` treats the edge as part of the drawing, which is what a canvas wants — zoom in and the line
    * gets thicker, like ink. `false` keeps it a constant on-screen width, which is what a large network
    * wants, since hairlines vanish when you zoom out to see the whole thing.
    */
@@ -222,4 +237,55 @@ export interface Metric {
     graph: { nodes: { id: string }[]; edges: { source: string; target: string }[] },
     options?: Record<string, unknown>,
   ): Map<string, number>;
+}
+
+/**
+ * What each card shape is actually drawn as, in fractions of its box, clockwise from the top.
+ *
+ * **One outline, four consumers.** The renderer already derived three things from these points so
+ * they could not disagree — the clip a card is cut to, the ring behind it when it is selected, and
+ * the floats its text wraps to. The fourth is where an edge attaches, and it was the one that did
+ * not: routing met the card's *box*, which is what the shape is cut *out of*. Where the outline
+ * touches the box there was no gap and nothing looked wrong; where it does not, the line stopped in
+ * mid-air — 45px short of a triangle's side on a 180px card, a quarter of its width.
+ *
+ * So the table lives here, in the vocabulary both sides share, rather than in the renderer that
+ * happened to need it first.
+ *
+ * Only the shapes a radius cannot make. `square` and `note` are the box (a note's corner radius is
+ * small enough that nothing attaches inside it), and `round` is the ellipse inscribed in the box —
+ * exact by formula, and a polygon of it would be an approximation of something already known.
+ */
+export const CARD_SILHOUETTES: Partial<Record<CardShape, readonly (readonly [number, number])[]>> = {
+  triangle: [
+    [0.5, 0],
+    [1, 1],
+    [0, 1],
+  ],
+  diamond: [
+    [0.5, 0],
+    [1, 0.5],
+    [0.5, 1],
+    [0, 0.5],
+  ],
+  pentagon: [
+    [0.5, 0],
+    [1, 0.38],
+    [0.82, 1],
+    [0.18, 1],
+    [0, 0.38],
+  ],
+  hexagon: [
+    [0.25, 0],
+    [0.75, 0],
+    [1, 0.5],
+    [0.75, 1],
+    [0.25, 1],
+    [0, 0.5],
+  ],
+};
+
+/** The outline of a shape that has one — a cut card. `undefined` for a box, an ellipse, or a dot. */
+export function cardSilhouette(shape?: CardShape): readonly (readonly [number, number])[] | undefined {
+  return shape ? CARD_SILHOUETTES[shape] : undefined;
 }

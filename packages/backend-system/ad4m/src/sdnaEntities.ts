@@ -11,10 +11,15 @@ import {
   CodeBlock,
   CollectionBlock,
   DividerBlock,
+  EdgeRoute,
   EmbedBlock,
   EventBlock,
+  ExtractionAmendment,
+  ExtractionPass,
   FileBlock,
   ImageBlock,
+  Involvement,
+  InvolvementType,
   LinkBlock,
   LocationBlock,
   MutedAgent,
@@ -30,9 +35,11 @@ import {
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,
+  TaskState,
   Template,
   TextBlock,
   Theme,
+  Topic,
   TypeStyle,
   VideoBlock,
   WeNode,
@@ -80,6 +87,30 @@ async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | un
 }
 
 /**
+ * Check which target classes have the SubjectClass marker link, in one round trip.
+ *
+ * Replaces N individual `hasSubjectClassLink` calls with a single unfiltered
+ * `queryLinks(predicate, target)` call, then checks membership client-side.
+ * On a 300 ms RTT connection with 16 models, this saves ~4.5 s of wall-clock time.
+ *
+ * Exported for testing.
+ */
+export async function bulkHasSubjectClassLink(
+  p: PerspectiveProxy,
+  targetClasses: (string | undefined)[],
+): Promise<boolean[]> {
+  // Short-circuit when there are no classes to check.
+  if (targetClasses.length === 0) return [];
+  // Single class — the same one round trip, but source-filtered, so the executor returns one link
+  // rather than every registered class in the space.
+  if (targetClasses.length === 1) return [await hasSubjectClassLink(p, targetClasses[0])];
+
+  const allLinks = await p.get(new LinkQuery({ predicate: 'rdf://type', target: 'ad4m://SubjectClass' }));
+  const registered = new Set(allLinks.map((l) => l.data.source));
+  return targetClasses.map((tc) => (tc ? registered.has(tc) : false));
+}
+
+/**
  * Everything about a stored shape that a *reader* of it can act on.
  *
  * Read as one bundle, and compared as one bundle, because the alternative has now failed three
@@ -97,6 +128,16 @@ async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | un
 export interface StoredShape {
   /** `sh://path` of every property the stored shape declares. */
   paths: Set<string>;
+  /**
+   * How many property shapes sit on each path.
+   *
+   * A set of paths cannot tell one property on a predicate from two, and two is a real shape: a
+   * relation and its `reverseOf` inverse are one link read from both ends, so they share a
+   * predicate by construction. `WeNode` gained `inReplyTo` beside `comments` on `we://comment` and
+   * every existing space read as fresh — the set was unchanged — so the new relation never reached
+   * them and the reverse include silently found nothing to hydrate.
+   */
+  pathCounts: Map<string, number>;
   /** Class-level interpretation hint, decoded. */
   classHint?: string;
   /** `sh://path` of the property marked `ad4m://identity`, if any. */
@@ -127,7 +168,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   const entry = (targetClass: string): StoredShape => {
     const existing = shapes.get(targetClass);
     if (existing) return existing;
-    const created: StoredShape = { paths: new Set(), propHints: new Map() };
+    const created: StoredShape = { paths: new Set(), pathCounts: new Map(), propHints: new Map() };
     shapes.set(targetClass, created);
     return created;
   };
@@ -141,39 +182,99 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
       ?shapeUri <sh://property> ?prop .
       ?prop <sh://path> ?path .`;
 
-  for (const row of await select(`SELECT ?targetClass ?path WHERE { ${CHAIN} }`)) {
-    if (row.targetClass && row.path) entry(row.targetClass).paths.add(row.path);
+  // Run all five queries concurrently — same queries, same processing, but
+  // saves four sequential round trips (~1.2 s on a 300 ms RTT connection).
+  const [pathRows, hintRows, identityRows, propHintRows, customizedRows] = await Promise.all([
+    select(`SELECT ?targetClass ?path WHERE { ${CHAIN} }`),
+    select(
+      `SELECT ?targetClass ?hint WHERE {
+        ?targetClass <rdf://type> <ad4m://SubjectClass> .
+        ?targetClass <ad4m://shape> ?shapeUri .
+        ?shapeUri <ad4m://interpretation_hint> ?hint .
+      }`,
+    ),
+    select(`SELECT ?targetClass ?path WHERE { ${CHAIN} ?prop <ad4m://identity> ?flag . }`),
+    select(`SELECT ?targetClass ?path ?hint WHERE { ${CHAIN} ?prop <ad4m://interpretation_hint> ?hint . }`),
+    select(
+      `SELECT ?targetClass ?flag WHERE {
+        ?targetClass <rdf://type> <ad4m://SubjectClass> .
+        ?targetClass <ad4m://shape> ?shapeUri .
+        ?shapeUri <we://interpretation_customized> ?flag .
+      }`,
+    ),
+  ]);
+
+  for (const row of pathRows) {
+    if (!row.targetClass || !row.path) continue;
+    const shape = entry(row.targetClass);
+    shape.paths.add(row.path);
+    shape.pathCounts.set(row.path, (shape.pathCounts.get(row.path) ?? 0) + 1);
   }
-  for (const row of await select(
-    `SELECT ?targetClass ?hint WHERE {
-      ?targetClass <rdf://type> <ad4m://SubjectClass> .
-      ?targetClass <ad4m://shape> ?shapeUri .
-      ?shapeUri <ad4m://interpretation_hint> ?hint .
-    }`,
-  )) {
+  for (const row of hintRows) {
     if (row.targetClass && row.hint !== undefined) entry(row.targetClass).classHint = decodeHint(row.hint);
   }
-  for (const row of await select(`SELECT ?targetClass ?path WHERE { ${CHAIN} ?prop <ad4m://identity> ?flag . }`)) {
+  for (const row of identityRows) {
     if (row.targetClass && row.path) entry(row.targetClass).identityPath = row.path;
   }
-  for (const row of await select(
-    `SELECT ?targetClass ?path ?hint WHERE { ${CHAIN} ?prop <ad4m://interpretation_hint> ?hint . }`,
-  )) {
+  for (const row of propHintRows) {
     if (row.targetClass && row.path && row.hint !== undefined) {
       entry(row.targetClass).propHints.set(row.path, decodeHint(row.hint));
     }
   }
-  for (const row of await select(
-    `SELECT ?targetClass ?flag WHERE {
-      ?targetClass <rdf://type> <ad4m://SubjectClass> .
-      ?targetClass <ad4m://shape> ?shapeUri .
-      ?shapeUri <we://interpretation_customized> ?flag .
-    }`,
-  )) {
+  for (const row of customizedRows) {
     if (row.targetClass) entry(row.targetClass).hintsCustomized = true;
   }
 
   return shapes;
+}
+
+/**
+ * Short-lived cache for `storedShapes` results, keyed on the perspective UUID.
+ *
+ * During a single `switchDataset` call, `installModules` and `refreshSpace` both read the stored
+ * shapes of the same perspective, one after the other. In the common case nothing is written
+ * between the two reads, so the second returns the cached map instead of issuing five more SPARQL
+ * queries. A 10 s TTL bounds how long a stale map can survive the cases below.
+ *
+ * **The cache is dropped whenever this package writes a shape triple** — `registerEntities`, and
+ * the hint writers in `interpretationHints.ts`. Without that, the first `installModules` of a
+ * switch could write a module's shapes and `refreshSpace` would then read a map that predates
+ * them; and, worse, adopting a shape and re-adopting a modified one within the TTL would read a map
+ * with no entry for the class, which `shapeIsStale` deliberately treats as fresh, and the second
+ * write would silently not happen. A switch that wrote something therefore re-reads once, which is
+ * the correct price; a switch that wrote nothing still gets the saving.
+ *
+ * A failed read is never cached: the callers fall back to an empty map for that call only.
+ */
+const storedShapesCache = new Map<string, { shapes: Map<string, StoredShape>; at: number }>();
+const STORED_SHAPES_CACHE_TTL = 10_000;
+
+async function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, StoredShape>> {
+  const now = Date.now();
+  const cached = storedShapesCache.get(p.uuid);
+  if (cached && now - cached.at < STORED_SHAPES_CACHE_TTL) return cached.shapes;
+  const shapes = await storedShapes(p);
+  storedShapesCache.set(p.uuid, { shapes, at: now });
+  // Prevent the map from growing without bound across many perspectives.
+  if (storedShapesCache.size > 20) {
+    for (const [key, entry] of storedShapesCache) {
+      if (now - entry.at >= STORED_SHAPES_CACHE_TTL) storedShapesCache.delete(key);
+    }
+  }
+  return shapes;
+}
+
+/**
+ * Drop the cached shapes of one perspective. Call after writing anything the stored shape is read
+ * from — a SubjectClass registration, an interpretation hint, the customized marker.
+ */
+export function forgetStoredShapes(p: Pick<PerspectiveProxy, 'uuid'>): void {
+  storedShapesCache.delete(p.uuid);
+}
+
+/** Exported for testing — clears the storedShapes TTL cache. */
+export function clearStoredShapesCache(): void {
+  storedShapesCache.clear();
 }
 
 /**
@@ -185,7 +286,11 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
  * worth more than the tidiness of a narrow export surface.
  */
 export function declaredShape(model: EntityClass): StoredShape {
-  const out: StoredShape = { paths: new Set(getEntityPredicates(model)), propHints: new Map() };
+  const out: StoredShape = {
+    paths: new Set(getEntityPredicates(model)),
+    pathCounts: new Map(),
+    propHints: new Map(),
+  };
   const generate = (
     model as unknown as {
       generateSHACL?: () => {
@@ -202,6 +307,7 @@ export function declaredShape(model: EntityClass): StoredShape {
     out.classHint = shape?.interpretationHint || undefined;
     for (const property of shape?.properties ?? []) {
       if (!property.path) continue;
+      out.pathCounts.set(property.path, (out.pathCounts.get(property.path) ?? 0) + 1);
       if (property.identity) out.identityPath = property.path;
       if (property.interpretationHint) out.propHints.set(property.path, property.interpretationHint);
     }
@@ -250,6 +356,14 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
 
   const declared = declaredShape(model);
   if ([...declared.paths].some((predicate) => !current.paths.has(predicate))) return true;
+  // A path the stored shape already has, but fewer times than the model now declares — a relation
+  // gaining its inverse. Only when the declared side has counts at all: a model whose SHACL could
+  // not be generated has none, and reading that as "declares nothing" would call every shape fresh.
+  if (declared.pathCounts.size) {
+    for (const [path, count] of declared.pathCounts) {
+      if ((current.pathCounts?.get(path) ?? 0) < count) return true;
+    }
+  }
   if (declared.identityPath !== current.identityPath) return true;
   // Hints are space-owned once customized (see StoredShape.hintsCustomized): a stored hint that
   // differs from the declaration is then the community's tuning, not staleness, and rewriting it
@@ -277,10 +391,13 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
  */
 async function ensureEntitiesRegistered(p: PerspectiveProxy, models: readonly (typeof Ad4mModel)[]): Promise<void> {
   const [present, stored] = await Promise.all([
-    Promise.all(models.map((m) => hasSubjectClassLink(p, getEntityTargetClass(m)))),
+    bulkHasSubjectClassLink(
+      p,
+      models.map((m) => getEntityTargetClass(m)),
+    ),
     // A failed read must not make everything look stale and rewrite the space's SDNA, so it falls
     // back to an empty map — and `shapeIsStale` treats a class with no stored paths as fresh.
-    storedShapes(p).catch(() => new Map<string, StoredShape>()),
+    cachedStoredShapes(p).catch(() => new Map<string, StoredShape>()),
   ]);
   const missing = models.filter((_, i) => !present[i]);
   const stale = models.filter((m, i) => present[i] && shapeIsStale(m, stored));
@@ -366,7 +483,13 @@ async function registerEntities(
     for (const m of toRefresh) refreshedThisSession.add(refreshKey(m));
   }
 
-  await Ad4mModel.registerAll(p, toWrite);
+  try {
+    await Ad4mModel.registerAll(p, toWrite);
+  } finally {
+    // Whether or not the write completed, what is stored may no longer be what was read. See
+    // `storedShapesCache`.
+    forgetStoredShapes(p);
+  }
   // registerAll resolves before the written SDNA is actually queryable — settle before callers
   // run reactive queries against the fresh shapes. This wait is a property of THIS backend's
   // write path (the shell used to carry five copies of it as a "HACK" sleep); living here, it
@@ -402,7 +525,10 @@ export async function missingEntities(
     return targetClass ? !stored.get(targetClass)?.paths.size : false;
   });
   if (candidates.length === 0) return [];
-  const present = await Promise.all(candidates.map((m) => hasSubjectClassLink(p, getEntityTargetClass(m))));
+  const present = await bulkHasSubjectClassLink(
+    p,
+    candidates.map((m) => getEntityTargetClass(m)),
+  );
   return candidates.filter((_, i) => !present[i]);
 }
 
@@ -435,10 +561,10 @@ export async function ensureEntityRegistered(p: PerspectiveProxy, model: typeof 
  * Safe to call on every boot, and safe to call from multiple independent peers/processes —
  * only models not already present on the perspective are written.
  */
-export async function installRootSdna(p: PerspectiveProxy, moduleSchemas: readonly unknown[] = []): Promise<void> {
-  // Agent-scoped module entities go here rather than into a space: they are what a module knows
-  // about *you*, and the root perspective is the one that is never synced to anybody.
-  await ensureEntitiesRegistered(p, [...ROOT_MODELS, ...(moduleSchemas as (typeof Ad4mModel)[])]);
+export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
+  // Configuration only. Agent-scoped module entities install into the personal space, beside the
+  // content they belong with — see `SYSTEM_DATASET_NAMES` in the app shell.
+  await ensureEntitiesRegistered(p, [...ROOT_MODELS]);
 }
 
 /**
@@ -458,16 +584,52 @@ export const SPACE_MODELS = [
   // The kinds of connection this community makes — its own vocabulary, alongside SignalType, which
   // is the same idea for reactions.
   RelationshipType,
+  /*
+    And the subjects it talks about — the third member of that family, and it was missing.
+
+    Declared in the manifest, generated as a class, exported, listed in the core manifest, rendered
+    by a section of space settings, and never registered here — so `getEntity('Topic')` threw and
+    every visit to Vocabulary raised "Model Topic is not available in this perspective". The section
+    was complete and the model it queries did not exist as far as the renderer was concerned.
+
+    A space model rather than a root one, for `RelationshipType`'s reason: what a community is about
+    is a claim made *to* that community, and one held privately would be a note to self wearing the
+    shape of a shared term.
+  */
+  Topic,
   // Where things sit on a board. Shared for the same reason: a board everyone sees arranged
   // differently is not a board, it is everyone's own sketch of one.
   Placement,
   // And how a board draws each kind of thing — the board's own vocabulary of colour, which is
   // shared for exactly the reason its arrangement is.
   TypeStyle,
+  // How a board draws its connections. Shared with the arrangement it is part of: a line somebody
+  // routed clear of the cards is tidying everyone can see, and a board where each member's
+  // connectors take a different path is the same non-board as one where the cards move per member.
+  EdgeRoute,
   // What one call extracts, where its participants wanted something other than the space default.
   // Shared, and it has to be: a standing watch is one registration the whole neighbourhood runs, so
   // two members holding different lists would each re-register over the other's.
   CallExtraction,
+  /*
+    That a call was read, and how it went.
+
+    Shared, because the reading is the community's: a pass any member starts spends the node's
+    budget and writes into everyone's space, so "this was read twice and failed once" is a fact
+    about the call rather than about whoever happened to be watching. Private, it would answer
+    differently for every member, and for most of them not at all.
+  */
+  ExtractionPass,
+  /*
+    A change a pass suggested to a record that already existed, and somebody kept.
+
+    Shared for the same reason the pass is, and one step more so: an amendment is the record of a
+    *decision*, and the decision was taken on everyone's behalf — the value it applied is in the
+    space for every member to read, so the account of where that value came from has to be too.
+    Private, a member would see the record change with no explanation that anybody else could see
+    either.
+  */
+  ExtractionAmendment,
   Template,
   Theme,
   WeNode,
@@ -486,8 +648,18 @@ export const SPACE_MODELS = [
   SignalType,
   TagBlock,
   TaskBlock,
+  TaskState,
   TextBlock,
   VideoBlock,
+  /*
+    A person's part in a record, and the community's words for the kinds of part there are.
+
+    Shared, both of them, for `Relationship`'s reason: "Sarah is reviewing this" is a claim made to
+    the community, and an RSVP held privately would be a note to self about an event everyone else
+    is planning around.
+  */
+  Involvement,
+  InvolvementType,
 ] as const;
 
 /**
@@ -555,7 +727,7 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: rea
  * Returns the target classes it wrote, for logging.
  */
 export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
-  const stored = await storedShapes(p).catch(() => new Map<string, StoredShape>());
+  const stored = await cachedStoredShapes(p).catch(() => new Map<string, StoredShape>());
   const missing = await missingEntities(p, SPACE_MODELS, stored);
   return registerEntities(
     p,

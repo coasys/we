@@ -1,7 +1,9 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
+import { reserveId } from '@shared/templateIdentity';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
+import type { NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/entities';
 import {
@@ -15,15 +17,15 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
-import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
+import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
 import { acceptTemplate, describeAcceptance, describeCapabilities } from '../../../shared/templateAcceptance';
-import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 
@@ -52,10 +54,10 @@ export type TemplateSwitcherItem = {
    * only ever offer it for the active row — which is why editing a template you were not already
    * using took two extra clicks: switch, reopen the menu, then edit.
    *
-   * Derived exactly as `isReadOnly` is, through `isBuiltInTemplate` rather than the bare id
-   * predicate the "Built-in" *group* is filtered by. The two differ, and this is the one that
-   * matters: a built-in you have saved over has stored overrides, so it is editable while still
-   * belonging to that group.
+   * Derived exactly as `isReadOnly` is, and from the same predicate the "Built-in" *group* is
+   * filtered by. There used to be two, differing on a built-in somebody had saved over — it had
+   * stored overrides, so it was editable while still being listed as built-in. Ids are reserved
+   * now (see `reserveTemplateId`), so that state cannot arise and one predicate answers both.
    */
   editable: boolean;
 };
@@ -137,14 +139,24 @@ export interface TemplateStore {
   loadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
+  /**
+   * The space on screen has not yet settled which template it renders with.
+   *
+   * True between a dataset becoming current and its template being applied (or found to be the one
+   * already showing) — on a deep link or a reload, the length of a network fetch, during which the
+   * agent's own default is on screen standing in for a template it may not be. Anything that would
+   * act on *which* template this is waits on it: the section guard read the stand-in's section list,
+   * decided a Workshop URL was a section the space did not have, and rewrote the address.
+   */
+  spaceTemplatePending: Accessor<boolean>;
 
   // Loading state
   operationLoading: Accessor<string | null>;
 
   // Queries
-  isBuiltInTemplate: (templateId: string) => boolean;
+  isBuiltInTemplateId: (templateId: string) => boolean;
   isInstalled: (templateId: string) => boolean;
-  getTemplateRecord: (templateId: string) => Template | undefined;
+  getTemplateRecord: (templateId: string) => NewRecord<Template> | undefined;
 }
 
 /**
@@ -156,6 +168,18 @@ export interface TemplateStore {
  */
 const roleOf = (schema: { meta?: { role?: string } }): string => (schema.meta?.role === 'view' ? 'view' : '');
 
+/** A schema as the blob a `Template` record's `schema` field holds. */
+const encodeTemplateSchema = (schema: TemplateSchema): FileData => {
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(createStoredTemplate(schema)));
+  let binary = '';
+  for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+  return {
+    data_base64: btoa(binary),
+    name: 'template-schema.json',
+    file_type: 'application/json',
+  } as FileData;
+};
+
 const TemplateContext = createContext<TemplateStore>();
 
 const SPACE_PREFIX = 'space::';
@@ -165,10 +189,16 @@ export function TemplateStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
   const routeStore = useRouteStore();
 
-  // Map template ID → AD4M model instance for we-root templates
-  const savedTemplateMap = new Map<string, Template>();
-  // Map template ID → AD4M model instance for the current space's templates
-  const spaceTemplateMap = new Map<string, Template>();
+  /*
+    Map template ID → the model instance, for we-root and for the current space's templates.
+
+    `NewRecord` because both are filled from two places — a `findAll` on load, and whatever a save or
+    an install just wrote — and a create carries no relations (see `NewRecord`). Nothing reads one off
+    these: an entry is here to be addressed, saved and deleted by id. Saying so is what lets the two
+    fills agree, rather than leaving a `screenshots` nobody may trust on half the entries.
+  */
+  const savedTemplateMap = new Map<string, NewRecord<Template>>();
+  const spaceTemplateMap = new Map<string, NewRecord<Template>>();
 
   // Per-session cache of space templates keyed by perspective UUID.
   // Populated on first visit; subsequent visits restore synchronously without an AD4M fetch.
@@ -257,7 +287,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       icon: t.meta?.icon || '',
       // From the unprefixed id: the prefix distinguishes a space's copy from your own for keying
       // rows, and is not part of any identity the template registry knows about.
-      editable: !isBuiltInTemplate(t.id || ''),
+      editable: !isBuiltInTemplateId(t.id || ''),
     }));
 
   // Grouped template data for the template switcher UI — flat name/icon fields allow $filter in schemas
@@ -312,7 +342,9 @@ export function TemplateStoreProvider(props: ParentProps) {
         if (accepted.blocked.length) console.warn(describeAcceptance(accepted, 'your library').join('\n'));
         const schema = accepted.schema;
         // Prefer the ID embedded in the schema (set during save) over deriving from name
-        const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
+        const requested = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
+        // Re-ids a record written before ids were reserved, so it stops hiding a built-in.
+        const templateId = await adoptStoredId(template, schema, requested);
 
         const entry = { ...schema, id: templateId, templateVersion: template.version ?? 1 };
         savedTemplates.push(entry);
@@ -467,6 +499,21 @@ export function TemplateStoreProvider(props: ParentProps) {
       : allKnownSpaces.find((s) => s.uuid === dataset.id);
   }
 
+  /**
+   * The dataset whose template question has been answered — applied, or found to have nothing to
+   * apply.
+   *
+   * `spaceTemplatePending` is derived from this against the current dataset rather than being a flag
+   * the effect below raises, so it is true from the very frame the dataset changes. A flag would
+   * depend on that effect running before every reader of it, and the reader that matters — the
+   * section guard in TemplateProvider — is an effect too.
+   */
+  const [templateResolvedFor, setTemplateResolvedFor] = createSignal<string | null>(null);
+  const spaceTemplatePending = () => {
+    const dataset = datasetStore.currentDataset();
+    return !!dataset && templateResolvedFor() !== dataset.id;
+  };
+
   // On space switch: apply default template.
   // When navigateToSpace pre-loads templates, the cache is already populated and the
   // template switches synchronously here. For deep links / page refresh, takes the async path.
@@ -490,9 +537,15 @@ export function TemplateStoreProvider(props: ParentProps) {
           allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId);
         if (template) replaceTemplate(template);
       }
+      setTemplateResolvedFor(perspective.id);
     } else {
-      // Deep link or first boot — async path
-      void applySpaceTemplate(perspective);
+      // Deep link or first boot — async path. Settled on every way out, a failure included: the
+      // template on screen is then the answer, and anything waiting on one should stop waiting. Only
+      // while still in that space: a slow answer for one already left must not overwrite the
+      // answer for the space now open, which would leave it pending for good.
+      void applySpaceTemplate(perspective).finally(() => {
+        if (lastSpacePerspectiveUuid === perspective.id) setTemplateResolvedFor(perspective.id);
+      });
     }
   });
 
@@ -657,15 +710,28 @@ export function TemplateStoreProvider(props: ParentProps) {
       : allTemplates().find((t) => t.id === realId && !t._fromSpace) || shellTemplates.find((t) => t.id === realId);
     if (newTemplate) {
       commitTemplate(newTemplate);
-      const segs = routeStore.segments();
-      const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
-      const view = lastViewByTemplate.get(realId) ?? currentView;
+      /*
+        Every template lives under the space prefix now, so there is one shape here rather than two.
+
+        What still differs is what comes *after* it. A template hosting the space's sections lands
+        on one, and carrying the current section across is what `lastViewByTemplate` is for. A
+        self-routing template's screens are its own, so it lands on the space itself and its own
+        index decides — Workshop's is a `redirect`, precisely so nothing out here has to know its
+        first screen is the board.
+      */
       const p = datasetStore.currentDataset();
-      if (p) {
-        const spaceId = p.sharedId ?? p.id;
-        routeStore.navigate('/space/' + spaceId + '/' + view);
-      } else {
+      if (!p) {
         routeStore.navigate('/');
+        datasetStore.updateAgentSettings({ currentTemplateId: realId });
+        return;
+      }
+      const base = `/space/${canonicalSpaceId(p)}`;
+      if (!hasViewsMarker(newTemplate.routes as RouteSchema[] | undefined)) {
+        routeStore.navigate(base);
+      } else {
+        const segs = routeStore.segments();
+        const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+        routeStore.navigate(`${base}/${lastViewByTemplate.get(realId) ?? currentView}`);
       }
       datasetStore.updateAgentSettings({ currentTemplateId: realId });
     } else {
@@ -793,7 +859,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(`marketplace-install:${marketplaceTemplateId}`);
     try {
       const schema = request.schema;
-      const templateId = schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
+      const templateId = reserveTemplateId(
+        schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId,
+      );
       const newVersion = request.version;
       const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId, templateVersion: newVersion };
 
@@ -863,7 +931,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(`space-install:${marketplaceTemplateId}`);
     try {
       const schema = request.schema;
-      const templateId = schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
+      const templateId = reserveTemplateId(
+        schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId,
+      );
       const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };
 
       const schemaBlob = (() => {
@@ -1015,7 +1085,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       return;
     }
 
-    const templateId = name.toLowerCase().replace(/\s+/g, '-');
+    const templateId = reserveTemplateId(name.toLowerCase().replace(/\s+/g, '-'));
     const schemaToSave: TemplateSchema = {
       ...deepClone(currentTemplate),
       id: templateId,
@@ -1086,9 +1156,25 @@ export function TemplateStoreProvider(props: ParentProps) {
       return false;
     }
 
-    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    const requestedId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    const templateId = reserveTemplateId(requestedId);
+    /*
+      Renamed exactly when the id had to be minted, and never otherwise.
+
+      This is the fork path — "Fork as a new template" arrives here carrying the id and the name of
+      whatever it was forking from — so a minted id means a second thing now exists beside a
+      built-in, and two rows called "Workshop" are barely better than the one row that used to lie
+      about which it was. An id that was already free is a save in place, where renaming somebody's
+      template every time they pressed save would be its own bug.
+    */
+    const name = templateId === requestedId ? schema.meta.name : `${schema.meta.name} (yours)`;
     setOperationLoading('save');
-    const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId, author: session.me()?.did };
+    const schemaToSave: TemplateSchema = {
+      ...deepClone(schema),
+      id: templateId,
+      author: session.me()?.did,
+      meta: { ...schema.meta, name },
+    };
 
     const storedTemplate = createStoredTemplate(schemaToSave);
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
@@ -1239,7 +1325,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const perspective = targetDs.handle;
 
     const schema = currentTemplate;
-    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    const templateId = reserveTemplateId(schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-'));
 
     const existing = await Template.findOne(perspective, { where: { slug: templateId } });
     if (existing) {
@@ -1403,8 +1489,47 @@ export function TemplateStoreProvider(props: ParentProps) {
     return builtInTemplates.some((t) => t.id === templateId);
   }
 
-  function isBuiltInTemplate(templateId: string): boolean {
-    return isBuiltInTemplateId(templateId) && !savedTemplateMap.has(templateId);
+  /**
+   * The id a stored record may have — never a built-in's. Every write of one goes through here.
+   *
+   * The built-in or a fork, and nothing between; `@shared/templateIdentity` is why.
+   */
+  function reserveTemplateId(requested: string): string {
+    return reserveId(
+      requested,
+      builtInTemplates.map((t) => t.id || ''),
+    );
+  }
+
+  /**
+   * Re-id a stored template that was saved over a built-in, once, on the way in.
+   *
+   * Records written before ids were reserved are still out there, and each one is hiding a built-in.
+   * Renamed rather than refused: what is in there is somebody's work — usually a panel arrangement
+   * they pressed "Fork as a new template" to keep — and deleting it to restore the built-in would
+   * answer one silent loss with another. It becomes the fork it should always have been, and the
+   * built-in comes back beside it.
+   *
+   * Best effort. If the write fails the record is still used under its new id for the rest of the
+   * session, so the built-in is un-shadowed either way and the rename is retried next load.
+   */
+  async function adoptStoredId(record: Template, schema: TemplateSchema, requested: string): Promise<string> {
+    const reserved = reserveTemplateId(requested);
+    if (reserved === requested) return requested;
+
+    const name = schema.meta?.name ? `${schema.meta.name} (yours)` : reserved;
+    schema.id = reserved;
+    if (schema.meta) schema.meta.name = name;
+
+    try {
+      record.slug = reserved;
+      record.name = name;
+      record.schema = asFileField(encodeTemplateSchema(schema));
+      await record.save();
+    } catch (error) {
+      console.error('TemplateStore: could not re-id a template saved over a built-in', requested, error);
+    }
+    return reserved;
   }
 
   /** Check if a custom template is installed (visible in sidebar) */
@@ -1412,8 +1537,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     return installedIds().has(templateId);
   }
 
-  /** Get the AD4M Template model instance by slug ID */
-  function getTemplateRecord(templateId: string): Template | undefined {
+  /** Get the AD4M Template model instance by slug ID — to address and save, not to read relations off. */
+  function getTemplateRecord(templateId: string): NewRecord<Template> | undefined {
     return savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
   }
 
@@ -1484,12 +1609,13 @@ export function TemplateStoreProvider(props: ParentProps) {
     preloadSpaceTemplates,
     loadSpaceTemplates,
     clearSpaceTemplates,
+    spaceTemplatePending,
 
     // Loading state
     operationLoading,
 
     // Queries
-    isBuiltInTemplate,
+    isBuiltInTemplateId,
     isInstalled,
     getTemplateRecord,
   };

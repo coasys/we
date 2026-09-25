@@ -20,6 +20,25 @@ export interface Point {
   y: number;
 }
 
+/**
+ * An axis-aligned world rectangle.
+ *
+ * Here beside {@link Point} rather than in the core, because a behaviour asks about one — a marquee
+ * hands the engine a rectangle and gets back what is inside it — and {@link BehaviourContext} is
+ * declared in this package. The core re-exports it, so nothing downstream had to change when it
+ * moved.
+ *
+ * Min/max rather than x/y/width/height: every consumer of a rectangle here is testing overlap, which
+ * is four comparisons against these and four subtractions against the other spelling. A caller
+ * building one from a drag normalises as it goes — see `boundsFromPoints`.
+ */
+export interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 /** A node's placement. `fixed` means the user pinned it and the layout must not move it. */
 export interface Placement extends Point {
   fixed?: boolean;
@@ -86,7 +105,7 @@ export interface Layout {
    * Almost all of them do, so it is omitted by default and only `manual` says otherwise. What it
    * buys is the difference between a pinned node being an *exception* and being the rule: a node held
    * against a force or tree layout is worth marking, because the layout would otherwise move it, while
-   * on a board every node is placed by definition and the same mark is on everything and means
+   * on a canvas every node is placed by definition and the same mark is on everything and means
    * nothing.
    */
   derivesPositions?: boolean;
@@ -123,6 +142,22 @@ export type LayoutFactory<TOptions = unknown> = (options?: TOptions) => Layout;
 export type EdgeCurve = 'straight' | 'arc' | 'smooth' | 'step';
 
 /**
+ * A side of a node, as an edge's anchor names it.
+ *
+ * Which side a connection leaves or arrives on is normally derived from where the two nodes are —
+ * see `attachPoint` — and an anchor is somebody overruling that for one end of one edge. A side
+ * rather than a point along it: a side survives the node being resized, and it is the same four the
+ * connect handles already offer.
+ */
+export type EdgeSide = 'n' | 'e' | 's' | 'w';
+
+/** Which side each end of an edge is pinned to, where either has been. Absent means derived. */
+export interface EdgeAnchors {
+  source?: EdgeSide;
+  target?: EdgeSide;
+}
+
+/**
  * Where an edge actually runs, in world units.
  *
  * Geometry, not drawing instructions: control points rather than an SVG path string, so the engine can
@@ -155,6 +190,18 @@ export interface EdgeGeometry {
    * out top-to-bottom.
    */
   elbows?: Point[];
+  /**
+   * The route as a chain of segments after `from`, when it was shaped by hand.
+   *
+   * Present only for an edge carrying waypoints, and it replaces `control`/`control2`/`elbows`
+   * rather than joining them: those describe one span between two nodes, and a route somebody bent
+   * around a third card is several. A segment with no controls is a straight leg, which is what a
+   * polyline and an orthogonal route are made of, so one field serves every shape.
+   *
+   * `to` is still the last segment's endpoint, so anything that only wants the ends — the arrowhead's
+   * back-off, the bounds, a label — reads the same fields it always did.
+   */
+  segments?: { control?: Point; control2?: Point; to: Point }[];
   curve: EdgeCurve;
   /** Midpoint of the drawn route — where a label sits. */
   mid: Point;

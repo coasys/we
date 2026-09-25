@@ -190,6 +190,35 @@ describe('nesting', () => {
     const { move } = drag(outer, itemsOf(outer)[0], { x: 100, y: 150 });
     expect(move?.to ?? 'outer').toBe('outer');
   });
+
+  /*
+    A nested sortable's events must not reach the sortable it sits inside.
+
+    They bubbled once, and the consequence was not a stray listener but corrupted data: on a kanban
+    board whose columns are sortable and whose cards are sortable, reordering three cards delivered
+    those three *card* ids to the columns' own `reorder` handler, which wrote them into the board's
+    children and drew three empty columns. An outer handler cannot tell whose ids it is holding, so
+    the only place to settle it is here.
+  */
+  it('keeps a nested zone’s events to itself', async () => {
+    const outer = await makeZone({ zone: 'outer', group: 'columns', items: ['a'], top: 0 });
+    const inner = await makeZone({ zone: 'inner', group: 'cards', items: ['b', 'c'], top: 0 });
+    itemsOf(outer)[0].appendChild(inner);
+    stubRect(outer, { top: 0, bottom: 400, left: 0, right: 200 });
+    stubRect(inner, { top: 0, bottom: 200, left: 0, right: 200 });
+
+    const seen: unknown[] = [];
+    outer.addEventListener('reorder', (event) => seen.push((event as CustomEvent).detail));
+    outer.addEventListener('moved', (event) => seen.push((event as CustomEvent).detail));
+
+    const own: unknown[] = [];
+    inner.addEventListener('reorder', (event) => own.push((event as CustomEvent).detail));
+
+    // Reorder within the inner zone: its own handler hears it, the outer one hears nothing.
+    drag(inner, itemsOf(inner)[1], { x: 100, y: 10 });
+    expect(own).toEqual([['c', 'b']]);
+    expect(seen).toEqual([]);
+  });
 });
 
 describe('keyboard', () => {
@@ -368,5 +397,69 @@ describe('items containing form controls', () => {
     key(handle, ' ');
 
     expect(moved[0].detail.ids).toEqual(['b', 'a', 'c']);
+  });
+});
+
+describe('an overlay opened from an item', () => {
+  /*
+    The board's rename modal, in miniature. A modal opened from a column is declared *inside* that
+    column — it needs the column's data to say what it is renaming — and an overlay is promoted to the
+    top layer rather than reparented, so it paints above the board while still being a DOM descendant
+    of the item. Dragging to select the text in the field dragged the column behind it.
+
+    The item declares no handle here on purpose: with one, the existing handle rule would mask this,
+    and the surface that hit it has none.
+  */
+  const key = (el: Element, k: string) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, composed: true }));
+
+  async function makeZoneWithModal(): Promise<{ zone: SortableEl; field: HTMLInputElement }> {
+    const zone = await makeZone({ zone: 'columns', items: ['a', 'b', 'c'] });
+    const overlay = document.createElement('div');
+    // What every OverlayElement sets on itself when it connects.
+    overlay.setAttribute('data-we-overlay', '');
+    const field = document.createElement('input');
+    overlay.appendChild(field);
+    itemsOf(zone)[0].appendChild(overlay);
+    return { zone, field };
+  }
+
+  it('does not drag the item a press inside it happens to sit in', async () => {
+    const { zone, field } = await makeZoneWithModal();
+    const { moves } = drag(zone, field, { x: 100, y: 260 });
+    expect(moves).toHaveLength(0);
+  });
+
+  it('does not pick the item up from the keyboard either', async () => {
+    const { zone, field } = await makeZoneWithModal();
+    const moved: CustomEvent[] = [];
+    zone.addEventListener('moved', (e) => moved.push(e as CustomEvent));
+
+    // Space on a button inside the modal: the text-entry guard does not cover this one.
+    const button = document.createElement('button');
+    (field.parentElement as HTMLElement).appendChild(button);
+    key(button, ' ');
+    key(button, 'ArrowDown');
+    key(button, ' ');
+
+    expect(moved).toHaveLength(0);
+  });
+
+  it('still drags from the item itself', async () => {
+    const { zone } = await makeZoneWithModal();
+    const { reorder } = drag(zone, itemsOf(zone)[0], { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
+  });
+
+  /* A sortable *inside* a modal is an ordinary sortable — only the path below the item is examined. */
+  it('leaves a sortable inside an overlay alone', async () => {
+    const overlay = document.createElement('div');
+    overlay.setAttribute('data-we-overlay', '');
+    document.body.appendChild(overlay);
+    const zone = await makeZone({ zone: 'rows', items: ['a', 'b', 'c'] });
+    // Moved in after building, so it keeps the geometry `makeZone` stubs onto it.
+    overlay.appendChild(zone);
+    const { reorder } = drag(zone, itemsOf(zone)[0], { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
   });
 });

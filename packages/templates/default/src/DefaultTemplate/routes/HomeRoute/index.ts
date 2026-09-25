@@ -12,7 +12,7 @@ import { gatePrompt } from '@we/template-kit';
 export const homeRoute: RouteSchema = {
   path: '/',
   type: 'Column',
-  props: { height: '100dvh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'page' },
+  props: { height: '100dvh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'chrome' },
   children: [
     {
       type: 'Column',
@@ -41,38 +41,42 @@ export const homeRoute: RouteSchema = {
               },
               children: [
                 {
-                  type: 'Card',
-                  props: {
-                    ax: 'center',
-                    bg: 'surface-sunken',
-                    width: '160px',
-                    styles: { cursor: 'pointer' },
-                    onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
-                    title: { $: '`Open ${space.name}`' },
-                  },
+                  type: 'we-tooltip',
+                  props: { content: { $: '`Open ${space.name}`' } },
                   children: [
                     {
-                      type: 'we-avatar',
+                      type: 'Card',
                       props: {
-                        image: { $: 'space.avatar' },
-                        initials: { $: 'space.name' },
-                        size: '56px',
+                        ax: 'center',
+                        bg: 'surface',
+                        width: '160px',
+                        cursor: 'pointer',
+                        onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
                       },
-                    },
-                    {
-                      type: 'we-text',
-                      props: {
-                        variant: 'body',
-                        fontWeight: 'medium',
-                        textAlign: 'center',
-                        styles: {
-                          overflow: 'hidden',
-                          'text-overflow': 'ellipsis',
-                          'white-space': 'nowrap',
-                          'max-width': '140px',
+                      children: [
+                        {
+                          type: 'we-avatar',
+                          props: {
+                            image: { $: 'space.avatar' },
+                            initials: { $: 'space.name' },
+                            size: '56px',
+                          },
                         },
-                      },
-                      children: [{ $: 'space.name' }],
+                        {
+                          type: 'we-text',
+                          props: {
+                            variant: 'body',
+                            fontWeight: 'medium',
+                            textAlign: 'center',
+                            // `truncate` is the three declarations this used to spell out by hand,
+                            // and it writes them on the part that holds the text rather than on the
+                            // host, which is where `text-overflow` has to be to do anything.
+                            truncate: true,
+                            maxWidth: '140px',
+                          },
+                          children: [{ $: 'space.name' }],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -91,7 +95,7 @@ export const homeRoute: RouteSchema = {
             condition: { $: '!count(spaceStore.orderedSidebarItems)' },
             then: {
               type: 'Card',
-              props: { ax: 'center', bg: 'surface-sunken', width: '100%' },
+              props: { ax: 'center', bg: 'surface', width: '100%' },
               children: [
                 // Inside a card that has its own flow, so it does not claim the height a page-level
                 // gate does.

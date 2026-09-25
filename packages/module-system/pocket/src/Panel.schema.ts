@@ -1,4 +1,4 @@
-import { recordCard } from '@we/schema-kit';
+import { loadMore, panelHeader, panelScroll, recordCard } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
 import { POCKET_PREDICATES } from './entities';
@@ -13,8 +13,8 @@ import { POCKET_PREDICATES } from './entities';
  *
  * ## Where its data comes from
  *
- * The root dataset, read straight from the fragments with `dataset: 'datasetStore.rootDataset'` and
- * written with `record.create`'s `perspective` option. That surface already existed; what the module
+ * The agent's personal space, read straight from the fragments with
+ * `dataset: 'datasetStore.personalDataset'` and written with `record.create`'s `dataset` option. That surface already existed; what the module
  * contract was missing was permission for a *module's own* entities to be installed there, which is
  * what `entities: { scope: 'agent' }` adds. Only the parts a template genuinely cannot do — building
  * a reference, asking whether one is already held, going to one, and remembering which folder you
@@ -22,7 +22,7 @@ import { POCKET_PREDICATES } from './entities';
  */
 
 /** The dataset every fragment here reads and writes. Named once so a typo cannot scatter. */
-const ROOT = 'datasetStore.rootDataset';
+const PERSONAL = 'datasetStore.personalDataset';
 
 /**
  * The folder being looked at, straight from the store.
@@ -64,7 +64,13 @@ const dragProps = {
     thumbnail: { $: 'item.thumbnail' },
     author: { $: 'item.sourceAuthor' },
     date: { $: 'item.gatheredAt' },
+    source: { $: 'item.sourceName' },
   },
+  /*
+    The post a kept block came from, so dropping it into a space can read the post and take the block
+    out of it. Empty for anything that is not a block — the draggable ignores a half-empty one.
+  */
+  within: { entity: { $: 'item.withinEntity' }, id: { $: 'item.withinId' } },
   /*
     The row's handle on itself, so a drop on another folder is a *move* rather than a second copy.
 
@@ -78,16 +84,22 @@ const dragProps = {
 
 /** Take this out of the Pocket. The thing itself is untouched — a Pocket holds references. */
 const forgetButton = (extra: Record<string, unknown> = {}): SchemaNode => ({
-  type: 'we-button',
-  props: {
-    variant: 'ghost',
-    size: 'sm',
-    square: true,
-    title: 'Take out of your Pocket',
-    onClick: { $action: 'modules.pocket.forget', args: [{ $: 'item.id' }] },
-    ...extra,
-  },
-  children: [{ type: 'we-icon', props: { name: 'x' } }],
+  type: 'we-tooltip',
+  props: { content: 'Take out of your Pocket' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        label: 'Take out of your Pocket',
+        variant: 'ghost',
+        size: 'sm',
+        square: true,
+        onClick: { $action: 'modules.pocket.forget', args: [{ $: 'item.id' }] },
+        ...extra,
+      },
+      children: [{ type: 'we-icon', props: { name: 'x' } }],
+    },
+  ],
 });
 
 /*
@@ -99,7 +111,15 @@ const forgetButton = (extra: Record<string, unknown> = {}): SchemaNode => ({
   the answer. A control that cannot work is worse than no control.
 */
 const openable = { $: "item.datasetKey != 'agent'" };
-const openAction = { $action: 'modules.pocket.goTo', args: [{ $: 'item.ref' }] };
+/*
+  A kept block opens its post: a paragraph on its own is not somewhere to go, and its own id may not
+  have survived an edit to the post. The post's reference is spelt out rather than stored, since it is
+  the block's own dataset and a template can join strings.
+*/
+const openAction = {
+  $action: 'modules.pocket.goTo',
+  args: [{ $: "item.withinId ? 'we:' + item.datasetKey + '/' + item.withinEntity + '/' + item.withinId : item.ref" }],
+};
 
 // ─── List mode ───────────────────────────────────────────────────────────────
 
@@ -109,7 +129,7 @@ const itemRow: SchemaNode = {
   children: [
     {
       type: 'Row',
-      props: { bg: 'surface-sunken', r: '300', p: '300', gap: '300', ay: 'center', width: '100%' },
+      props: { bg: 'surface', r: '300', p: '300', gap: '300', ay: 'center', width: '100%' },
       children: [
         {
           // The picture where the snapshot has one, the icon where it does not. The same choice the
@@ -151,9 +171,15 @@ const itemRow: SchemaNode = {
           props: {
             condition: openable,
             then: {
-              type: 'we-button',
-              props: { variant: 'ghost', size: 'sm', square: true, title: 'Open', onClick: openAction },
-              children: [{ type: 'we-icon', props: { name: 'arrow-square-out' } }],
+              type: 'we-tooltip',
+              props: { content: 'Open' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: { label: 'Open', variant: 'ghost', size: 'sm', square: true, onClick: openAction },
+                  children: [{ type: 'we-icon', props: { name: 'arrow-square-out' } }],
+                },
+              ],
             },
           },
         },
@@ -383,20 +409,31 @@ const itemTile: SchemaNode = {
       props: { position: 'relative' },
       children: [
         {
-          type: 'we-button',
-          props: { variant: 'bare', title: 'Open', disabled: { $: "item.datasetKey == 'agent'" }, onClick: openAction },
+          type: 'we-tooltip',
+          props: { content: 'Open' },
           children: [
-            recordCard({
-              label: itemLabel,
-              icon: itemIcon,
-              thumbnail: { $: 'item.thumbnail' },
-              // A DID with no name attached: the tile draws an identicon from it, and says where the
-              // thing came from in words. Resolving the DID to a name would mean reading the host's
-              // profile store, which this package will not do.
-              byline: { hash: { $: 'item.sourceAuthor' } },
-              source: itemSource,
-              date: { $: 'item.gatheredAt' },
-            }),
+            {
+              type: 'we-button',
+              props: {
+                label: 'Open',
+                variant: 'bare',
+                disabled: { $: "item.datasetKey == 'agent'" },
+                onClick: openAction,
+              },
+              children: [
+                recordCard({
+                  label: itemLabel,
+                  icon: itemIcon,
+                  thumbnail: { $: 'item.thumbnail' },
+                  // A DID with no name attached: the tile draws an identicon from it, and says where the
+                  // thing came from in words. Resolving the DID to a name would mean reading the host's
+                  // profile store, which this package will not do.
+                  byline: { hash: { $: 'item.sourceAuthor' } },
+                  source: itemSource,
+                  date: { $: 'item.gatheredAt' },
+                }),
+              ],
+            },
           ],
         },
         // Over the tile rather than beside it: at 100px there is no room in flow, and a grid you
@@ -470,6 +507,15 @@ const eachItem = (child: SchemaNode): SchemaNode => ({
  * folder at all. `$queries` on a node run whether or not anything reads them, so leaving these
  * mounted and merely hiding the rows would still fire two drill-downs with no anchor.
  */
+/**
+ * How many gathered things a folder shows at a time.
+ *
+ * The Pocket is where things accumulate — that is its whole purpose — so this is the list here most
+ * likely to grow past what anybody scrolls, and it was unbounded.
+ */
+const ITEMS_PAGE = 30;
+const ITEMS_PAGE_FIELD = 'itemsPageSize';
+
 const folderContents: SchemaNode = {
   type: 'Column',
   props: { gap: '200', width: '100%' },
@@ -477,15 +523,25 @@ const folderContents: SchemaNode = {
     folders: {
       entity: 'PocketFolder',
       scope: { anchor: 'PocketFolder', via: 'folders', anchorId: currentFolder },
-      dataset: ROOT,
+      dataset: PERSONAL,
     },
+    /*
+      A page of what is in this folder, newest first — the Pocket is where things accumulate, so this
+      is the one list here that grows without a ceiling.
+
+      `folders` above is deliberately unbounded beside it: a folder list is navigation, and a page of
+      it would hide somewhere a person had put something with no way to reach it. Sibling lists, two
+      different answers, because completeness means something different to each.
+    */
     items: {
       entity: 'PocketItem',
       scope: { anchor: 'PocketFolder', via: 'items', anchorId: currentFolder },
       order: { gatheredAt: 'desc' },
-      dataset: ROOT,
+      limit: { $: `local.${ITEMS_PAGE_FIELD}` },
+      dataset: PERSONAL,
     },
   },
+  $localState: { [ITEMS_PAGE_FIELD]: { type: 'number', initial: ITEMS_PAGE } },
   children: [
     {
       type: '$if',
@@ -508,6 +564,7 @@ const folderContents: SchemaNode = {
       without this the first frame of every open would claim the Pocket is empty — which for the one
       screen whose whole job is to hold what you kept is the worst possible thing to say.
     */
+    loadMore({ field: ITEMS_PAGE_FIELD, rowsLocal: 'items', pageSize: ITEMS_PAGE }),
     {
       type: '$if',
       props: {
@@ -597,6 +654,64 @@ const breadcrumb: SchemaNode = {
   ],
 };
 
+/**
+ * The panel's name, with the two controls that act on the whole of it.
+ *
+ * This panel used to name itself nowhere: a breadcrumb told you which *folder* you were in, which
+ * only answers "where am I" once you already know what you are looking at, and off the module rail
+ * a panel with no name is identified by an icon somebody has to remember. The trail is a separate
+ * row below, because it changes as you walk and a name that moved with it would not be a name.
+ */
+const title: SchemaNode = panelHeader({
+  title: 'Pocket',
+  aside: {
+    type: 'Row',
+    props: { ay: 'center', gap: '100' },
+    children: [
+      {
+        type: 'we-tooltip',
+        props: { content: { $: "local.pocketView == 'grid' ? 'Show as a list' : 'Show as a grid'" } },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              label: { $: "local.pocketView == 'grid' ? 'Show as a list' : 'Show as a grid'" },
+              variant: 'ghost',
+              size: 'sm',
+              square: true,
+              onClick: {
+                $setLocal: 'pocketView',
+                value: { $: "local.pocketView == 'grid' ? 'list' : 'grid'" },
+              },
+            },
+            children: [
+              { type: 'we-icon', props: { name: { $: "local.pocketView == 'grid' ? 'list' : 'squares-four'" } } },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'we-tooltip',
+        props: { content: 'New folder' },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              label: 'New folder',
+              variant: 'ghost',
+              size: 'sm',
+              square: true,
+              onClick: { $setLocal: 'newFolderOpen', value: true },
+            },
+            children: [{ type: 'we-icon', props: { name: 'folder-plus' } }],
+          },
+        ],
+      },
+    ],
+  },
+});
+
+/** Where in the Pocket you are, and the way back out of it. */
 const header: SchemaNode = {
   type: 'Row',
   props: { ay: 'center', gap: '100', width: '100%' },
@@ -608,44 +723,25 @@ const header: SchemaNode = {
         // is a path to go back along rather than depending on a value the template computed.
         condition: { $: 'modules.pocket.canGoUp' },
         then: {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'sm',
-            square: true,
-            title: 'Back',
-            onClick: { $action: 'modules.pocket.up' },
-          },
-          children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
+          type: 'we-tooltip',
+          props: { content: 'Back' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                label: 'Back',
+                variant: 'ghost',
+                size: 'sm',
+                square: true,
+                onClick: { $action: 'modules.pocket.up' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
+            },
+          ],
         },
       },
     },
     breadcrumb,
-    {
-      type: 'we-button',
-      props: {
-        variant: 'ghost',
-        size: 'sm',
-        square: true,
-        title: { $: "local.pocketView == 'grid' ? 'Show as a list' : 'Show as a grid'" },
-        onClick: {
-          $setLocal: 'pocketView',
-          value: { $: "local.pocketView == 'grid' ? 'list' : 'grid'" },
-        },
-      },
-      children: [{ type: 'we-icon', props: { name: { $: "local.pocketView == 'grid' ? 'list' : 'squares-four'" } } }],
-    },
-    {
-      type: 'we-button',
-      props: {
-        variant: 'ghost',
-        size: 'sm',
-        square: true,
-        title: 'New folder',
-        onClick: { $setLocal: 'newFolderOpen', value: true },
-      },
-      children: [{ type: 'we-icon', props: { name: 'folder-plus' } }],
-    },
   ],
 };
 
@@ -686,7 +782,7 @@ const newFolderForm: SchemaNode = {
                   'PocketFolder',
                   { name: { $: 'local.newFolderName' } },
                   {
-                    perspective: ROOT,
+                    dataset: PERSONAL,
                     parent: { id: currentFolder, predicate: POCKET_PREDICATES.folders },
                   },
                 ],
@@ -734,7 +830,7 @@ const panel: SchemaNode = {
   props: {
     // No dataset of your own, nowhere to keep anything. Unlike the notes panel this does **not**
     // check for a current space: the Pocket's whole point is that it outlives the one you are in.
-    condition: { $: 'datasetStore.rootDataset && modules.pocket.open' },
+    condition: { $: 'datasetStore.personalDataset && modules.pocket.open' },
     then: {
       type: 'we-drop-zone',
       props: {
@@ -778,13 +874,13 @@ const panel: SchemaNode = {
             */
             pocketView: { type: 'string', initial: 'list', persist: 'pocket.displayMode' },
           },
-          props: { width: '100%', height: '100%', p: '400', gap: '300', overflow: 'hidden' },
+          props: { width: '100%', height: '100%', p: '300', gap: '300', overflow: 'hidden' },
           children: [
+            title,
             header,
             newFolderForm,
             deleteFolderConfirm,
-            {
-              type: 'we-scroll-area',
+            panelScroll({
               children: [
                 /*
                   Nothing is listed until there is a folder to list the contents of.
@@ -799,7 +895,7 @@ const panel: SchemaNode = {
                   props: { condition: currentFolder, then: folderContents },
                 },
               ],
-            },
+            }),
           ],
         },
       ],

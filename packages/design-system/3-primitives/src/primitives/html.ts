@@ -65,6 +65,23 @@ const styles = css`
  * Use this instead of `we-text` when content is stored as HTML (e.g. rich-text
  * editor output such as Flux messages). The `content` prop accepts any HTML
  * fragment; it is sanitized before rendering so XSS payloads are stripped.
+ *
+ * ## SVG animation: CSS keyframes, not SMIL
+ *
+ * Inline SVG passes through, and so does animation written as CSS — a `<style>` block with
+ * `@keyframes` inside the SVG, or a `<animateMotion>` following a path. **A SMIL `<animate>` or
+ * `<set>` element does not**: DOMPurify's default allowlist excludes them, so they are removed and
+ * the drawing renders static.
+ *
+ * That exclusion is deliberate and stays. `<set attributeName="href" to="javascript:…">` is a real
+ * XSS vector against an `<a>`, which is precisely the shape of payload this element exists to
+ * strip — and SMIL is a dead end besides, deprecated in spirit and unevenly implemented, where CSS
+ * animation is neither.
+ *
+ * What was wrong was not the policy but the silence: an author wrote something reasonable, it
+ * typechecked, it validated, and it did nothing, with no diagnostic anywhere. {@link warnAboutSmil}
+ * is the diagnostic. It says what was dropped and what to write instead, once per element, in
+ * development only.
  */
 @customElement('we-html')
 export default class Html extends DesignSystemElement {
@@ -77,8 +94,43 @@ export default class Html extends DesignSystemElement {
     return DEFAULT_PROPS;
   }
 
+  /** Said once per element, however many times it re-renders — this is a note about the source. */
+  private warnedAboutSmil = false;
+
+  /**
+   * Say so when the sanitiser has just removed the animation somebody wrote.
+   *
+   * Cheap enough to run unconditionally in development: a regex over a string that was about to be
+   * parsed anyway, and only when the content mentions `<svg` at all. Stripped from a production
+   * build, where nobody is authoring and the string may be long.
+   */
+  private warnAboutSmil(raw: string, safe: string) {
+    if (this.warnedAboutSmil || !raw.includes('<svg')) return;
+    /*
+      Asked per tag and by comparison rather than against a hardcoded list of what DOMPurify
+      refuses. The allowlist is not ours and moves between versions, so "was it there before and
+      not after" is the only phrasing that cannot go stale — and it stays right for a tag that
+      starts being allowed, where the honest answer becomes silence.
+    */
+    const dropped = ['animate', 'animateTransform', 'set'].filter((tag) => {
+      const at = new RegExp(`<${tag}[\\s/>]`, 'i');
+      return at.test(raw) && !at.test(safe);
+    });
+    if (!dropped.length) return;
+    this.warnedAboutSmil = true;
+    console.warn(
+      `[we-html] SMIL animation was removed from this SVG (${dropped.map((tag) => `<${tag}>`).join(', ')}): ` +
+        'these can rewrite an attribute to a javascript: URL, so the sanitiser does not allow them. ' +
+        'Animate it with CSS instead — a <style> block with @keyframes inside the SVG passes through, ' +
+        'and so does <animateMotion>.',
+    );
+  }
+
   render() {
     const safe = DOMPurify.sanitize(this.content);
+    // The same guard `@we/design-utils` uses for its own authoring warnings — replaced at build
+    // time, so a production bundle carries neither the check nor the string.
+    if (process.env.NODE_ENV !== 'production') this.warnAboutSmil(this.content, safe);
     return html`<div part="base">${unsafeHTML(safe)}</div>`;
   }
 }

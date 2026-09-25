@@ -18,6 +18,7 @@ import type { LocalStateField, QueryStateField, SchemaNode, SchemaProp } from '@
 import { expr } from '@we/schema-shared';
 
 import { skeletonList } from '../states/skeletonList.ts';
+import { loadMore } from './loadMore.ts';
 
 export interface CardShellOptions {
   /** Nodes always visible regardless of display mode (compact header row) */
@@ -220,7 +221,23 @@ export interface CardListOptions {
   children: SchemaNode[];
   /** Shown in place of the grid when there are no rows — see `emptyState`. */
   empty: SchemaNode;
+  /**
+   * How many rows to read at a time, with a "Load more" under the grid — `null` for all of them.
+   *
+   * Defaults to a page, and that default is the point: a query-backed list of a space's content
+   * grows without bound, and unbounded it re-read, re-hydrated and re-fingerprinted every row of
+   * every post in the space on every change. A feed is read from the top, so a page of it is what
+   * anybody actually looks at.
+   *
+   * `null` is for a list whose completeness is load-bearing rather than for a long one — a
+   * vocabulary, a set of folders, anything where showing some of it would be wrong rather than
+   * merely shorter. Say so explicitly, so the decision is visible at the call site.
+   */
+  pageSize?: number | null;
 }
+
+/** Rows per page where a caller says nothing — a screenful and a bit, at either column count. */
+const DEFAULT_PAGE = 24;
 
 /**
  * One content type's list: a grid of cards, or a placeholder saying why there isn't one.
@@ -247,18 +264,44 @@ export function cardList(opts: CardListOptions): SchemaNode {
   };
 
   if (!opts.query) return list;
+
+  /*
+    Paged unless the caller says otherwise — see `pageSize`.
+
+    The size lives in a `$localState` number the query's `limit` reads, so "load more" is one
+    `$setLocal` and the subscription re-asks for a longer page. Bounding it matters more than it
+    looks: this is the shape every section of the cards route uses, so one unbounded default is
+    every content type in the space read whole on every change.
+  */
+  /*
+    A limit the caller wrote wins, and takes the paging with it.
+
+    A list that named its own bound has already decided how much it wants — the recorded-calls list
+    asks for twenty — and quietly replacing that with a page would be this fragment overruling a
+    decision it cannot see the reason for. The default is for the lists that said nothing, which are
+    the ones that were unbounded.
+  */
+  const declared = (opts.query as Record<string, unknown>).limit !== undefined;
+  // `??` would be wrong here: `null` is the caller explicitly asking for all of them, and nullish
+  // coalescing would read that as "said nothing" and hand back the default page.
+  const pageSize = declared || opts.pageSize === null ? null : (opts.pageSize ?? DEFAULT_PAGE);
+  const sizeField = `${opts.as}PageSize`;
+  const query = pageSize === null ? opts.query : { ...opts.query, limit: { $: `local.${sizeField}` } };
+
   // A query-backed list holds a skeleton until `<key>Loaded` flips — before the
   // first result set, "no rows yet" and "no rows" are different facts, and the
   // empty state must only ever assert the second.
   return {
     type: 'Column',
     props: { width: '100%' },
-    $queries: { [key]: opts.query },
+    ...(pageSize !== null && { $localState: { [sizeField]: { type: 'number', initial: pageSize } } }),
+    $queries: { [key]: query as QueryStateField },
     children: [
       {
         type: '$if',
         props: { condition: { $: `local.${key}Loaded` }, then: list, else: skeletonList() },
       },
+      ...(pageSize === null ? [] : [loadMore({ field: sizeField, rowsLocal: key, pageSize })]),
     ],
   };
 }

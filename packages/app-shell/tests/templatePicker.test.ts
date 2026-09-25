@@ -34,9 +34,9 @@ function actionFor(node: unknown, tooltip: string): Record<string, unknown> | un
   if (record.type === '$if') {
     const then = props?.then as Record<string, unknown> | undefined;
     const thenProps = then?.props as Record<string, unknown> | undefined;
-    if (thenProps?.title === tooltip) return record;
+    if (thenProps?.content === tooltip) return record;
   }
-  if (record.type === 'we-tooltip' && props?.title === tooltip) return record;
+  if (record.type === 'we-tooltip' && props?.content === tooltip) return record;
 
   for (const value of Object.values(record)) {
     if (value && typeof value === 'object') {
@@ -89,5 +89,37 @@ describe('the picker offers editing on every editable row', () => {
     // again, and one of them is wrong.
     const fork = actionFor(picker, 'Fork this template');
     expect(actionNames(clickOf(fork!))).toEqual(['templateStore.switchTemplate', 'editorStore.startFork']);
+  });
+});
+
+/**
+ * Getting back to the arrangement a template designed.
+ *
+ * A panel's own titlebar carries a per-panel "Reset to layout", and it cannot be the only way back:
+ * a panel somebody *closed* has no titlebar left to open a menu from, and a template whose panels
+ * vary by route declares some that are not on screen at all. This row is the whole-arrangement one.
+ *
+ * Both halves fail silently, as everywhere else in this file. Gate it on `layoutPinned` — the
+ * per-panel answer — and it is absent in exactly the closed-panel case it exists for; leave the gate
+ * off and it sits there permanently offering to undo nothing.
+ */
+describe('the picker offers a way back to the template’s own layout', () => {
+  const reset = actionFor(templatePicker(), "Reset panels to this template's layout");
+
+  it('appears on the current row, and only while there is something to undo', () => {
+    expect(reset).toBeDefined();
+    const condition = (reset!.props as Record<string, unknown>).condition;
+
+    expect(condition).toEqual({ $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' });
+    // Not the per-panel answer: `layoutPinned` is keyed by dock id and false for a panel that was
+    // closed rather than dragged, which is the case with no other way out.
+    expect(JSON.stringify(condition)).not.toContain('layoutPinned');
+  });
+
+  it('resets the whole arrangement rather than one panel', () => {
+    const tooltip = (reset!.props as Record<string, unknown>).then as Record<string, unknown>;
+    const button = (tooltip.children as Record<string, unknown>[])[0];
+
+    expect((button.props as Record<string, unknown>).onClick).toEqual({ $action: 'shellStore.resetTemplateLayout' });
   });
 });

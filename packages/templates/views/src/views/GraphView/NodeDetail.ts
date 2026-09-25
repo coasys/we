@@ -92,12 +92,12 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
 });
 
 /**
- * How this card looks on this board — colour, shape, and how large its content is drawn.
+ * How this card looks on this canvas — colour, shape, and how large its content is drawn.
  *
  * Presentation per placement, which is the reason it can be offered at all: none of it touches the
  * record. Shrinking a post to fit six of them on a wall is not editing the post, the same post on
- * another board keeps its own look, and every setting here is undone by taking the card off the
- * board. That is also why it is a section of the panel rather than a modal — nothing in it needs
+ * another canvas keeps its own look, and every setting here is undone by taking the card off the
+ * canvas. That is also why it is a section of the panel rather than a modal — nothing in it needs
  * confirming.
  *
  * Sizing is not here. A card's size is set by dragging its corner, where the feedback is the card
@@ -105,7 +105,7 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
  */
 const setStyle = (field: string, value: unknown) => ({
   $action: 'recordStore.setCardStyle',
-  args: [{ $: 'local.boardId' }, { $: 'local.selected.recordId' }, field, value],
+  args: [{ $: 'local.canvasId' }, { $: 'local.selected.recordId' }, field, value],
   // The graph re-reads and merges, so the change lands on the card rather than at the next reload.
   onSuccess: [{ $setLocal: 'revision', value: { $: 'local.revision + 1' } }],
 });
@@ -113,7 +113,7 @@ const setStyle = (field: string, value: unknown) => ({
 const cardStyle: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "local.mode == 'board' && local.selected.recordId" },
+    condition: { $: "local.mode == 'canvas' && local.selected.recordId" },
     then: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
@@ -121,7 +121,7 @@ const cardStyle: SchemaNode = {
         { type: 'we-divider' },
         { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Card'] },
         swatchRow({
-          current: { $: 'local.selected.data.boardColor' },
+          current: { $: 'local.selected.data.canvasColor' },
           pick: (token) => setStyle('color', token),
         }),
         {
@@ -133,7 +133,7 @@ const cardStyle: SchemaNode = {
               props: {
                 size: 'sm',
                 width: '100%',
-                value: { $: 'local.selected.data.boardCardShape' },
+                value: { $: 'local.selected.data.canvasCardShape' },
                 options: [
                   { label: 'Note', value: 'note' },
                   { label: 'Square', value: 'square' },
@@ -165,7 +165,7 @@ const cardStyle: SchemaNode = {
                 max: 2,
                 step: 0.05,
                 showValue: true,
-                value: { $: 'local.selected.data.boardContentScale' },
+                value: { $: 'local.selected.data.canvasContentScale' },
                 /*
                   Preview while dragging, write on release.
 
@@ -221,17 +221,17 @@ const actions: SchemaNode = {
       props: { gap: '300', width: '100%' },
       children: [
         /*
-          Opening a node further — and not on a board, where it would do nothing.
+          Opening a node further — and not on a canvas, where it would do nothing.
 
-          A board draws what is *placed* on it, so a node's relations and fields are not part of the
-          map and there is nowhere for them to appear. The board's graph carries no `expandRequest`
+          A canvas draws what is *placed* on it, so a node's relations and fields are not part of the
+          map and there is nowhere for them to appear. The canvas's graph carries no `expandRequest`
           for the same reason, which is what made these two buttons inert there: they set a request
           nothing was listening for.
         */
         {
           type: '$if',
           props: {
-            condition: { $: "local.mode != 'board'" },
+            condition: { $: "local.mode != 'canvas'" },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
@@ -247,7 +247,7 @@ const actions: SchemaNode = {
               Opening the document, wherever the node is one.
 
               Gated on the type rather than on the mode: a `CollectionBlock` is a composed document
-              on a board and on a knowledge map alike, and the modal that reads one does not care
+              on a canvas and on a knowledge map alike, and the modal that reads one does not care
               which map you found it on. A `TaskBlock` has no `editorState`, so it is not offered.
             */
             {
@@ -304,17 +304,17 @@ const actions: SchemaNode = {
               },
             },
             /*
-              Taking something off a board is deleting its placement, and nothing else.
+              Taking something off a canvas is deleting its placement, and nothing else.
 
               The counterpart to dragging it on, and the reason placement being membership is worth
-              having: the record survives untouched, because being on a board was never what made it
-              exist. Board mode only — there is nothing to remove a node from on a map whose
+              having: the record survives untouched, because being on a canvas was never what made it
+              exist. Canvas mode only — there is nothing to remove a node from on a map whose
               membership is a query.
             */
             {
               type: '$if',
               props: {
-                condition: { $: "local.mode == 'board'" },
+                condition: { $: "local.mode == 'canvas'" },
                 then: {
                   type: 'we-button',
                   props: {
@@ -323,15 +323,15 @@ const actions: SchemaNode = {
                     color: 'danger-text',
                     ml: 'auto',
                     onClick: {
-                      $action: 'recordStore.removeFromBoard',
-                      args: [{ $: 'local.boardId' }, { $: 'local.selected.recordId' }],
+                      $action: 'recordStore.removeFromCanvas',
+                      args: [{ $: 'local.canvasId' }, { $: 'local.selected.recordId' }],
                       onSuccess: [
                         { $setLocal: 'selected', value: null },
                         { $setLocal: 'revision', value: { $: 'local.revision + 1' } },
                       ],
                     },
                   },
-                  children: [{ type: 'we-icon', props: { name: 'x-circle' } }, 'Remove from board'],
+                  children: [{ type: 'we-icon', props: { name: 'x-circle' } }, 'Remove from canvas'],
                 },
               },
             },
@@ -362,7 +362,7 @@ const actions: SchemaNode = {
  * in mid-air.
  *
  * `pointerEvents: 'none'` because a column down the side of the canvas would otherwise eat clicks on
- * the board while nothing is selected; the panel inside turns them back on.
+ * the canvas while nothing is selected; the panel inside turns them back on.
  */
 export const nodeDetailPanel: SchemaNode = {
   type: 'Column',

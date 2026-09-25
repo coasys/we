@@ -2,6 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 import {
   agentByline,
+  anchorScope,
   cardList,
   cardShell,
   emptyState,
@@ -36,9 +37,45 @@ import {
  * A scoped drill-down rather than a filter over `children`, because children arrive as bare ids and
  * the ids alone cannot say which are utterances.
  */
+/**
+ * Whether THIS row's call is running right now.
+ *
+ * A list of recorded calls is almost entirely settled records: their transcripts cannot change, so
+ * a live subscription over one has the backend re-running the query on every change in the space to
+ * be told nothing changed — once per card, twenty times over. The one call that can change is the
+ * one somebody is in, and `liveCalls` names it by record.
+ */
+const CALL_IS_LIVE = 'call.id in modules.call.liveCalls.map(c, c.recordId)';
+
+/**
+ * How many utterances a card will count before it stops counting exactly.
+ *
+ * The count below is not decoration — it sits beside the faces and shows COVERAGE, the gap between
+ * who was present and how much of them was captured — so it has to be exact wherever it can be. A
+ * cap is the price of it being bounded at all, and at two hundred lines it is reached by a call long
+ * enough that "200+" is the more useful reading anyway.
+ *
+ * It cannot be a count projection over `children`, which is the obvious cheaper answer: extraction
+ * parents its records onto the call too, so that total is utterances plus findings and destroys the
+ * coverage reading. Filtering such a projection on `source` would be exact for anything written
+ * since that field existed and would silently read zero for every call recorded before it.
+ */
+const UTTERANCE_CAP = 200;
+
 const utterancesQuery = {
   entity: 'TextBlock',
   scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
+  /*
+    Bounded, because this is one query PER CARD in a list of up to twenty.
+
+    Unbounded it fetched, hydrated and fingerprinted every utterance of every call on screen — a
+    space with twenty recorded conversations of four hundred lines held twenty live subscriptions
+    over eight thousand rows to draw a list that shows none of them. The file's own note above
+    explains why `include` was avoided for exactly that reason; the per-card subscription
+    reintroduced it by another route.
+  */
+  limit: UTTERANCE_CAP,
+  subscribe: { $: CALL_IS_LIVE },
 };
 /** Hoisted on each call's card as `utterances`. */
 const utterances = { $: 'local.utterances' };
@@ -54,15 +91,27 @@ const callQueries = { utterances: utterancesQuery };
  * `EventBlock`, so a community that defined a `Sighting` and had one extracted saw the record land
  * in the space and never appear on the call it came out of.
  *
- * A drill-down through `children` rather than an `include`, for the reason the transcript below
- * gives: `CollectionBlock.children` is an *untyped* `@HasMany`, so `include` has no target class to
- * resolve and dies on it. `scope` is the supported traversal and it takes the child type, which is
- * exactly the thing being varied here.
+ * A drill-down through `children` rather than an `include`, and the reason has changed since this
+ * was written. It used to be that `include` had no target class to resolve on an untyped relation
+ * and died on it; that relation is read polymorphically now and an include works. The drill-down
+ * stays because it takes the **child type**, which is the thing being varied here — an include
+ * would return every child of the call and leave the filtering to the template, which is the same
+ * work moved somewhere it reads worse.
  */
+const FINDING_CAP = 25;
+
 const findingsQuery = {
   entity: { $: 'target' },
   scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
   order: { createdAt: 'asc' },
+  /*
+    Bounded for the same reason the transcript above is, and more so: this is one query per
+    extractable model PER CARD, so a space with eight models and twenty recorded calls holds a
+    hundred and sixty live subscriptions to draw a list of titles. An hour of six people talking
+    produced thirty-five records in the conversation that prompted this; the card is a sign that a
+    conversation produced something, and the whole of it is a press away on the call's own page.
+  */
+  limit: FINDING_CAP,
 };
 
 /**
@@ -136,6 +185,19 @@ const findings: SchemaNode = {
                     },
                   ],
                 },
+                // A full page means there is more than this card is showing, and a list that simply
+                // stopped would read as the whole of what the conversation produced.
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: `count(local.found) >= ${FINDING_CAP}` },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-faint' },
+                      children: ['…and more — open the call to read them all.'],
+                    },
+                  },
+                },
               ],
             },
           },
@@ -153,14 +215,14 @@ export const callsList: SchemaNode = {
       query: {
         entity: 'CollectionBlock',
         where: { kind: 'call' },
+        scope: anchorScope(),
         limit: 20,
         order: { createdAt: { $: 'local.sortDirection' } },
-        // No `include` for the utterances, deliberately. `CollectionBlock.children` is an
-        // *untyped* `@HasMany` — it has to be, since children are heterogeneous (TextBlock,
-        // ImageBlock, …) and there is no single target class to name. `include` resolves the
-        // target class to hydrate it, so on an untyped relation it resolves to '' and the
-        // query dies with "No SHACL shape stored for class ''". A scope drill-down is the
-        // supported traversal for this, and it is what the body below uses.
+        // No `include` for the utterances, deliberately — though no longer because it would fail.
+        // `children` is untyped and is read polymorphically, so an include resolves now. It is
+        // omitted because this is a *list* of calls: hydrating every utterance of every call to
+        // render a row that shows none of them is work nobody asked for. The body below drills into
+        // the one call somebody opened.
       },
       as: 'call',
       // Not search-aware: the header's search box filters the other lists, but this query ignores
@@ -270,10 +332,14 @@ export const callsList: SchemaNode = {
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: { $: 'call.id == modules.transcribe.liveCollectionId' },
+                                    condition: { $: 'call.id == modules.call.callRecordId' },
+                                    // `solid`: a call happening right now is the news on this card,
+                                    // not a note about it. The soft pair is a dark tint under pale
+                                    // text, which is the treatment "Retired" and "Not a WE space"
+                                    // want and this does not.
                                     then: {
                                       type: 'we-badge',
-                                      props: { variant: 'success', size: 'xs' },
+                                      props: { variant: 'success', appearance: 'solid', size: 'xs' },
                                       children: ['Live'],
                                     },
                                   },
@@ -347,7 +413,14 @@ export const callsList: SchemaNode = {
                             it does not know the size of. The groups below carry their own counts, one
                             query each, which is where a count and the rows it describes belong.
                           */
-                                text: expr`count(${utterances}) + plural(count(${utterances}), ' utterance', ' utterances')`,
+                                /*
+                            Exact until the cap, and honest at it — see `UTTERANCE_CAP`.
+
+                            "200+" rather than a flat "200": a number that stops moving while the
+                            conversation plainly went on would be a quiet lie about coverage, which
+                            is the one thing this figure exists to tell the truth about.
+                          */
+                                text: expr`count(${utterances}) >= ${UTTERANCE_CAP} ? '${UTTERANCE_CAP}+ utterances' : count(${utterances}) + plural(count(${utterances}), ' utterance', ' utterances')`,
                               },
                             },
                             /*
@@ -431,7 +504,7 @@ export const callsList: SchemaNode = {
                               type: '$if',
                               props: {
                                 condition: {
-                                  $: 'modules.call.canCall && (!modules.call.active || call.id == modules.transcribe.liveCollectionId)',
+                                  $: 'modules.call.canCall && (!modules.call.active || call.id == modules.call.callRecordId)',
                                 },
                                 // A real tooltip rather than the button's `title`, which the browser draws
                                 // itself: unthemed, after its own delay, and never on a keyboard focus.
@@ -441,7 +514,7 @@ export const callsList: SchemaNode = {
                                 then: {
                                   type: 'we-tooltip',
                                   props: {
-                                    title: { $: "modules.call.active ? 'Go to the call' : 'Continue this call'" },
+                                    content: { $: "modules.call.active ? 'Go to the call' : 'Continue this call'" },
                                     placement: 'top',
                                   },
                                   children: [
@@ -472,15 +545,26 @@ export const callsList: SchemaNode = {
                                           {
                                             $if: {
                                               condition: { $: '!modules.call.active' },
-                                              // Two actions rather than one with an `onSuccess`, because
-                                              // `goToCall` returns nothing for a lifecycle key to hang
-                                              // off. `resume` is built for that: it holds the record until
-                                              // there is a call to attach it to, so the order these resolve
-                                              // in does not matter.
-                                              then: [
-                                                { $action: 'modules.call.goToCall' },
-                                                { $action: 'modules.transcribe.resume', args: [{ $: 'call.id' }] },
-                                              ],
+                                              /*
+                                                `continueCall`, which names this record, rather than
+                                                `goToCall`, which is a direction: with nothing running
+                                                the latter starts a *fresh* call, so continuing a past
+                                                one wrote a second record and joined that — an empty
+                                                call left in the space, and every surface reading
+                                                `callRecordId` about it instead of the meeting chosen.
+
+                                                One action, where there were two. A
+                                                `modules.transcribe.resume` was chained after this to
+                                                tell the transcriber which record to adopt without
+                                                waiting for presence — and that method no longer
+                                                exists. It went when the call module started marking
+                                                a continued call's activity `continued`, which the
+                                                transcriber acts on itself; an action naming a
+                                                missing module method resolves to nothing, so this
+                                                had been a silent no-op with a comment claiming
+                                                otherwise.
+                                              */
+                                              then: { $action: 'modules.call.continueCall', args: [{ $: 'call.id' }] },
                                             },
                                           },
                                         ],
@@ -519,7 +603,7 @@ export const callsList: SchemaNode = {
                                 condition: { $: 'modules.transcribe.extractable' },
                                 then: {
                                   type: 'we-tooltip',
-                                  props: { title: 'Find the tasks and events in this call', placement: 'top' },
+                                  props: { content: 'Find the tasks and events in this call', placement: 'top' },
                                   children: [
                                     {
                                       type: 'we-button',
@@ -565,7 +649,7 @@ export const callsList: SchemaNode = {
                         */
                             {
                               type: 'we-tooltip',
-                              props: { title: 'Export the transcript', placement: 'top' },
+                              props: { content: 'Export the transcript', placement: 'top' },
                               children: [
                                 {
                                   type: 'we-button',
@@ -646,7 +730,7 @@ export const callsList: SchemaNode = {
                                 },
                                 then: {
                                   type: 'we-tooltip',
-                                  props: { title: { $: 'modules.transcribe.extractError' }, placement: 'top' },
+                                  props: { content: { $: 'modules.transcribe.extractError' }, placement: 'top' },
                                   children: [
                                     {
                                       type: 'we-text',
@@ -856,6 +940,16 @@ export const callsList: SchemaNode = {
                                     entity: 'TextBlock',
                                     scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
                                     order: { createdAt: 'asc' },
+                                    /*
+                                      The opened transcript, bounded and read as a settled record.
+
+                                      The oldest N rather than the newest, unlike the panel's live
+                                      window: this is a call somebody opened to READ, so it starts
+                                      where the conversation started. A long one is followed in the
+                                      panel, which is the surface built for that.
+                                    */
+                                    limit: UTTERANCE_CAP,
+                                    subscribe: { $: CALL_IS_LIVE },
                                   },
                                 },
                                 as: 'utterance',

@@ -119,8 +119,21 @@ function readProperty(object: unknown, property: string): unknown {
   return readValue((base as Record<string, unknown>)[property]);
 }
 
+/**
+ * `a[b]` — the same read as `a.b`, with the name computed.
+ *
+ * `readValue` rather than `settle`, and that is the whole of the difference between working and
+ * not. `settle` answers with a value *fit to leave the evaluator*, which turns a namespace into
+ * `undefined` — so a keyed lookup written as a namespace was reachable through `a.b` and invisible
+ * through `a[b]`, for no reason anybody chose. `readProperty` below already knows what to do with
+ * one; it was never being handed it.
+ *
+ * A store keying its answers by an id it cannot enumerate — `modules.transcribe.extractionFor[<call>]`
+ * — has no other shape available: a plain object cannot hold every id, and a `Proxy` fails the
+ * `property in base` guard that `readProperty` applies for prototype safety.
+ */
 function readIndex(object: unknown, index: unknown): unknown {
-  const base = settle(object);
+  const base = readValue(object);
   if (base === null || base === undefined) return undefined;
   if (typeof index === 'number') {
     if (Array.isArray(base)) return readValue(base[index]);

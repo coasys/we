@@ -3,7 +3,7 @@
  *
  * The properties worth pinning are the ones the protocol asks for and a layout can quietly not do:
  * warm start (an expansion must not move everything that was already placed), pinning (a node the user
- * dropped stays dropped), and — for the board case — that positions come from the data rather than
+ * dropped stays dropped), and — for the canvas case — that positions come from the data rather than
  * from arithmetic.
  */
 import type { GraphEdge, GraphNode, LayoutInput } from '@we/graph-protocol';
@@ -142,7 +142,7 @@ describe('grid layout', () => {
 });
 
 describe('manual layout', () => {
-  it('reads positions from the node data — the board case', () => {
+  it('reads positions from the node data — the canvas case', () => {
     const result = manualLayout().init(input([node('a', { x: 42, y: 84 })]));
     expect(result.positions.get('a')).toMatchObject({ x: 42, y: 84, fixed: true });
   });
@@ -159,6 +159,57 @@ describe('manual layout', () => {
     layout.fix?.('a', { x: 5, y: 5 });
     const result = layout.init(input([node('a', { x: 42, y: 84 })]));
     expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
+  });
+
+  it('keeps holding the drop while re-reads still carry the old coordinate', () => {
+    // A refresh for some unrelated write can land before this drop's own write does.
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    const result = layout.init(input([node('a', { x: 42, y: 84 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
+  });
+
+  it('lets a peer move a card this agent has already dragged', () => {
+    /*
+      The regression. The hold used to outlive its write for the life of the page, so once
+      somebody had dragged a card their canvas drew their drop point whatever the data said next —
+      and two people who had both touched it each saw their own arrangement until a reload.
+    */
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+    // This agent's write lands…
+    layout.init(input([node('a', { x: 5, y: 5 })]));
+    // …and then a peer moves the same card.
+    const result = layout.init(input([node('a', { x: 300, y: 400 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 300, y: 400 });
+  });
+
+  it('gives way to a peer write that lands before its own', () => {
+    // Both dragged at once: whatever the data settles on is what both canvases show.
+    const layout = manualLayout();
+    layout.init(input([node('a', { x: 42, y: 84 })]));
+    layout.fix?.('a', { x: 5, y: 5 });
+
+    const result = layout.init(input([node('a', { x: 300, y: 400 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 300, y: 400 });
+  });
+
+  it('gives way once a card dragged out of the tray has a placement', () => {
+    const layout = manualLayout();
+    layout.init(input([node('a')]));
+    layout.fix?.('a', { x: 5, y: 5 });
+    expect(layout.init(input([node('a')])).positions.get('a')).toMatchObject({ x: 5, y: 5 });
+
+    const result = layout.init(input([node('a', { x: 6, y: 7 })]));
+
+    expect(result.positions.get('a')).toMatchObject({ x: 6, y: 7 });
   });
 
   it('parks an unplaced node where the reader is looking, not at the origin', () => {
@@ -183,14 +234,72 @@ describe('manual layout', () => {
     expect(result.positions.get('b')!.x - result.positions.get('a')!.x).toBe(100);
   });
 
+  it('spaces parked cards by their size, so neighbours never overlap', () => {
+    // The default slot was 160 and a canvas card 180 wide, so every pair of new cards overlapped.
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const result = manualLayout({ size: { width: 180, height: 135 }, margin: 20 }).init(
+      input([node('a'), node('b')], [], { visible }),
+    );
+
+    expect(result.positions.get('b')!.x - result.positions.get('a')!.x).toBe(200);
+  });
+
+  it('skips a slot a placed card already covers', () => {
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const layout = manualLayout({ size: { width: 180, height: 135 }, margin: 20 });
+    // A placed card sitting over the first slot of the tray.
+    const result = layout.init(input([node('placed', { x: 100, y: 80 }), node('new')], [], { visible }));
+
+    expect(result.positions.get('new')!.x).toBe(300);
+  });
+
+  it('parks a second batch beside the first rather than on top of it', () => {
+    const visible = { x: 0, y: 0, width: 2000, height: 1000 };
+    const layout = manualLayout({ size: { width: 180, height: 135 }, margin: 20 });
+    const first = layout.init(input([node('a')], [], { visible }));
+    const second = layout.init(input([node('a'), node('b')], [], { visible, previous: first.positions }));
+
+    expect(second.positions.get('a')).toEqual(first.positions.get('a'));
+    expect(second.positions.get('b')!.x).not.toBe(second.positions.get('a')!.x);
+  });
+
+  it('never stacks parked cards, even when the view has room for only a few', () => {
+    // Zoomed in close there were two slots in view, and every card after the second landed on them.
+    const visible = { x: 0, y: 0, width: 450, height: 300 };
+    const nodes = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => node(id));
+    const result = manualLayout({ size: { width: 180, height: 135 }, margin: 20 }).init(input(nodes, [], { visible }));
+    const boxes = nodes.map((n) => result.positions.get(n.id)!);
+
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const apart = Math.abs(boxes[i].x - boxes[j].x) >= 180 || Math.abs(boxes[i].y - boxes[j].y) >= 135;
+        expect(apart, `${nodes[i].id} and ${nodes[j].id} overlap`).toBe(true);
+      }
+    }
+    // It still starts where the reader is looking.
+    expect(boxes[0].x).toBeLessThan(visible.width);
+    expect(boxes[0].y).toBeLessThan(visible.height);
+  });
+
+  it('parks a card afresh when it comes back, in the view the reader has now', () => {
+    // Hiding suggestions and showing them again, zoomed out, is how a reader moves a batch that
+    // landed on their work — so a card that left the graph is not held to where it was parked.
+    const layout = manualLayout({ size: { width: 180, height: 135 } });
+    layout.init(input([node('a')], [], { visible: { x: 0, y: 0, width: 800, height: 600 } }));
+    layout.init(input([], [], { visible: { x: 0, y: 0, width: 800, height: 600 } }));
+    const back = layout.init(input([node('a')], [], { visible: { x: 5000, y: 5000, width: 800, height: 600 } }));
+
+    expect(back.positions.get('a')!.x).toBeGreaterThanOrEqual(5000);
+  });
+
   it('falls back to the origin before a surface has been measured', () => {
     // The one moment there is no better answer: no camera, no size, nothing to be relative to.
     const result = manualLayout({ gap: 100 }).init(input([node('a')]));
     expect(result.positions.get('a')).toMatchObject({ x: 50, y: 50 });
   });
 
-  it('says nothing about a fresh board, where carrying no positions is the normal state', () => {
-    // The regression: this warned whenever no node carried x/y, which is every board before anybody
+  it('says nothing about a fresh canvas, where carrying no positions is the normal state', () => {
+    // The regression: this warned whenever no node carried x/y, which is every canvas before anybody
     // has dragged a card. It fired as a matter of course and then stayed on screen after the first
     // drag made it untrue — a permanent warning about a state that had passed.
     const result = manualLayout().init(input([node('a'), node('b')]));
@@ -202,6 +311,37 @@ describe('manual layout', () => {
     const result = manualLayout().init(input([node('a', { x: 10, y: 10 }), node('b')]));
 
     expect(result.warnings ?? []).toEqual([]);
+  });
+
+  it('says nothing on the second run over a canvas whose cards it parked itself', () => {
+    /*
+      The regression this actually shipped with. The first run parks a card that carries no
+      coordinate; on the second, that parked position arrives as `previous` and counts as reused —
+      nothing read from data, nothing newly parked, something reused, which is the exact shape of
+      "this layout did nothing". So a canvas of freshly extracted cards, laid out perfectly well,
+      raised a warning telling its reader to choose a different layout.
+
+      One layout instance across both runs, because that is what the engine keeps and what makes the
+      memory of its own work available at all.
+    */
+    const layout = manualLayout();
+    const first = layout.init(input([node('a'), node('b')]));
+
+    const result = layout.init(input([node('a'), node('b')], [], { previous: first.positions }));
+
+    expect(result.warnings ?? []).toEqual([]);
+  });
+
+  it('warns again once a parked node has been given a position of its own', () => {
+    // Forgetting is what keeps the memory from excusing a genuine no-op forever: a node somebody
+    // dragged is no longer where it is because this layout put it there.
+    const layout = manualLayout();
+    layout.init(input([node('a')]));
+    layout.init(input([node('a', { x: 10, y: 10 })]));
+
+    const result = layout.init(input([node('a')], [], { previous: new Map([['a', { x: 10, y: 10 }]]) }));
+
+    expect(result.warnings?.length).toBe(1);
   });
 
   it('warns when it was chosen for a graph that stores nothing, and so did nothing at all', () => {

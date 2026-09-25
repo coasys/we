@@ -28,9 +28,15 @@ const DEFAULT_CONTROL_WIDTH = '220px';
   which carries alt text and dimensions and can be signalled on, commented on and drawn in the
   graph — none of which a URL in a string can do. The relationship picker already offers every
   block type, so those models are expressible today, by the route that makes them first-class.
+
+  Link and Paragraph are here because they are not content of their own: both are text, differing
+  only in how they are typed and drawn — a web address a card makes clickable, a passage it gives
+  room to.
 */
 const PROPERTY_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' },
+  { label: 'Paragraph', value: 'paragraph' },
+  { label: 'Link', value: 'link' },
   { label: 'Number', value: 'number' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Date', value: 'date' },
@@ -47,22 +53,35 @@ const PROPERTY_TYPE_OPTIONS = [
  * focused handle picks the row up, which is the whole reason the handle is focusable at all.
  */
 const dragHandle: SchemaNode = {
-  type: 'div',
-  props: {
-    'data-we-handle': '',
-    tabindex: '0',
-    title: 'Drag to reorder',
-    // Given the height of one control rather than centred on the card: it grips the whole row, and
-    // a property card grows and shrinks as its conditional inputs appear, so a centred handle would
-    // drift up and down as you change a field's type. This keeps it level with the first line.
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      height: 'var(--we-component-height-sm)',
-      cursor: 'grab',
+  /*
+    The tooltip wraps the handle rather than the handle carrying a `title`.
+
+    `data-we-handle` stays on the div: `we-sortable` looks for that attribute among an item's
+    descendants, so putting a wrapper above it changes nothing about which press starts a drag. The
+    tooltip listens on hover and focus and never claims the pointer, so the grab is untouched.
+  */
+  type: 'we-tooltip',
+  props: { content: 'Drag to reorder', placement: 'right' },
+  children: [
+    {
+      type: 'div',
+      props: {
+        'data-we-handle': '',
+        tabindex: '0',
+        // Given the height of one control rather than centred on the card: it grips the whole row,
+        // and a property card grows and shrinks as its conditional inputs appear, so a centred
+        // handle would drift up and down as you change a field's type. This keeps it level with the
+        // first line.
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          height: 'var(--we-component-height-sm)',
+          cursor: 'grab',
+        },
+      },
+      children: [{ type: 'we-icon', props: { size: 'sm', name: 'dots-six-vertical', color: 'text-faint' } }],
     },
-  },
-  children: [{ type: 'we-icon', props: { size: 'sm', name: 'dots-six-vertical', color: 'text-faint' } }],
+  ],
 };
 
 /**
@@ -119,20 +138,26 @@ const memberNameInput: SchemaNode = {
 
 /** Opens and closes a property's detail panel. Caret direction is the only state it shows. */
 const expandToggle: SchemaNode = {
-  type: 'we-button',
-  props: {
-    variant: 'ghost',
-    size: 'sm',
-    square: true,
-    title: 'Show hint, default and options',
-    onClick: { $action: 'shapeStore.toggleMemberExpanded', args: [{ $: 'member.rowId' }] },
-  },
+  type: 'we-tooltip',
+  props: { content: 'Show hint, default and options' },
   children: [
     {
-      type: 'we-icon',
+      type: 'we-button',
       props: {
-        name: { $: "member.rowId in shapeStore.expandedMembers ? 'caret-up' : 'caret-down'" },
+        label: 'Show hint, default and options',
+        variant: 'ghost',
+        size: 'sm',
+        square: true,
+        onClick: { $action: 'shapeStore.toggleMemberExpanded', args: [{ $: 'member.rowId' }] },
       },
+      children: [
+        {
+          type: 'we-icon',
+          props: {
+            name: { $: "member.rowId in shapeStore.expandedMembers ? 'caret-up' : 'caret-down'" },
+          },
+        },
+      ],
     },
   ],
 };
@@ -216,15 +241,39 @@ const defaultValueControl: SchemaNode = {
               },
             },
             else: {
-              type: 'we-input',
+              type: '$if',
               props: {
-                size: 'sm',
-                width: DEFAULT_CONTROL_WIDTH,
-                placeholder: 'None',
-                value: { $: 'member.defaultValue' },
-                onInput: {
-                  $action: 'shapeStore.setMemberField',
-                  args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+                // A passage gets room to be one — the one default here that is not a short value.
+                condition: { $: "member.type == 'paragraph'" },
+                then: {
+                  type: 'we-textarea',
+                  props: {
+                    size: 'sm',
+                    width: '100%',
+                    rows: 3,
+                    autoGrow: true,
+                    placeholder: 'None',
+                    value: { $: 'member.defaultValue' },
+                    onInput: {
+                      $action: 'shapeStore.setMemberField',
+                      args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+                    },
+                  },
+                },
+                else: {
+                  type: 'we-input',
+                  props: {
+                    size: 'sm',
+                    width: DEFAULT_CONTROL_WIDTH,
+                    // A link is typed as one: the browser's URL keyboard, and a placeholder that says so.
+                    type: { $: "member.type == 'link' ? 'url' : 'text'" },
+                    placeholder: { $: "member.type == 'link' ? 'https://…' : 'None'" },
+                    value: { $: 'member.defaultValue' },
+                    onInput: {
+                      $action: 'shapeStore.setMemberField',
+                      args: [{ $: 'member.rowId' }, 'defaultValue', { $: 'arg.detail' }],
+                    },
+                  },
                 },
               },
             },
@@ -555,22 +604,27 @@ const generateButton: SchemaNode = {
   props: {
     condition: { $: '!shapeStore.editingShapeId && shapeStore.aiAvailable' },
     then: {
-      type: 'we-button',
-      props: {
-        variant: 'secondary',
-        title: 'Fill in the fields from the name and description — and anything above still left blank',
-        loading: { $: 'shapeStore.generating' },
-        // 'none' is the only state with nothing to work from. A generation that would discard
-        // written rows stays clickable and asks instead — refusing the click outright is what made
-        // the first attempt the only attempt.
-        disabled: { $: "shapeStore.generating || shapeStore.generateIntent == 'none'" },
-        onClick: { $action: 'shapeStore.requestGenerateFields' },
-      },
+      type: 'we-tooltip',
+      props: { content: 'Fill in the fields from the name and description — and anything above still left blank' },
       children: [
-        { type: 'we-icon', props: { name: 'sparkle' } },
         {
-          type: 'we-text',
-          children: [{ $: "shapeStore.generateIntent in ['regenerate', 'replace'] ? 'Regenerate' : 'Generate'" }],
+          type: 'we-button',
+          props: {
+            variant: 'secondary',
+            loading: { $: 'shapeStore.generating' },
+            // 'none' is the only state with nothing to work from. A generation that would discard
+            // written rows stays clickable and asks instead — refusing the click outright is what made
+            // the first attempt the only attempt.
+            disabled: { $: "shapeStore.generating || shapeStore.generateIntent == 'none'" },
+            onClick: { $action: 'shapeStore.requestGenerateFields' },
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'sparkle' } },
+            {
+              type: 'we-text',
+              children: [{ $: "shapeStore.generateIntent in ['regenerate', 'replace'] ? 'Regenerate' : 'Generate'" }],
+            },
+          ],
         },
       ],
     },
@@ -886,6 +940,41 @@ const shapeWizardModal: SchemaNode = {
                 options: { $: 'shapeStore.identityOptions' },
                 value: { $: "shapeStore.shapeDraft.identityMember ? shapeStore.shapeDraft.identityMember : 'none'" },
                 onChange: { $action: 'shapeStore.setIdentityMember', args: [{ $: 'arg.detail' }] },
+              },
+            },
+          ],
+        },
+        /*
+          Which field names one of these — beside the identifying field, and deliberately not
+          merged with it.
+
+          The two look like one question and are not. An identity is a dedup key a machine
+          maintains, and may be a composite nobody would recognise; this is the one short string
+          every surface shows when it has room for one line — a card's heading, a node's caption on
+          a canvas, a drag chip, a breadcrumb. WE's own models declare it, and until this picker
+          existed a community's could not: the guess ("a property called `name` or `title`, else
+          whichever string is required or first") is right most of the time and silent when it is
+          not, which is how a code block came to be titled by its entire body.
+
+          "Work it out" rather than "None", because there is no such thing as a record with no name
+          — only one whose name is derived. See `shapeStore.nameOptions`.
+        */
+        {
+          type: 'we-form-field',
+          props: {
+            label: 'Naming field',
+            description:
+              'The field that says what one of these is called — shown as the heading on a card, and as the label on a canvas. Leave as Work it out and a field called name or title will be used.',
+          },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                width: '240px',
+                options: { $: 'shapeStore.nameOptions' },
+                value: { $: "shapeStore.shapeDraft.nameMember ? shapeStore.shapeDraft.nameMember : 'none'" },
+                onChange: { $action: 'shapeStore.setNameMember', args: [{ $: 'arg.detail' }] },
               },
             },
           ],

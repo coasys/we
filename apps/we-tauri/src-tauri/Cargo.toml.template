@@ -1,7 +1,12 @@
+# `name` is the executable, so it is the lowercase spelling — see `mainBinaryName` in
+# tauri.conf.json, which has to match it. The display name is `productName` there.
+#
+# `description` is not decoration either: the AppImage's .desktop entry takes its `Comment=` from
+# it, which is the tooltip a launcher shows.
 [package]
-name = "we-ad4m-launcher"
+name = "we"
 version = "0.1.0"
-description = "WE AD4M Launcher"
+description = "Social infrastructure for communities that own their data"
 authors = ["James Weir"]
 edition = "2021"
 
@@ -44,21 +49,31 @@ dirs = "5"
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
 
-# Must mirror ad4m's workspace-root `[patch.crates-io]`.
+# Must mirror ad4m's workspace-root `[patch.crates-io]`, and mirror whatever is there NOW.
 #
-# Holochain 0.7.0-dev.16 needs kitsune2 code that was never published, so ad4m redirects the whole
-# family to a git rev. `[patch]` only applies from the workspace root being built, and this crate is
-# its own workspace — so without these lines cargo silently resolved the crates.io releases instead.
-# They carry the same version strings but different content, which is why the failure surfaced as a
-# missing struct field (`CoreBootstrapConfig::auth_material_base64`) rather than a version conflict.
-# Keep the rev in step with ad4m's.
+# `[patch]` applies only from the workspace root being built, and cargo does not propagate it
+# through a path or git dependency — ad4m says exactly this above its own block, which it keeps in
+# step with holochain's. This crate is its own workspace and depends on `ad4m-executor` by path, so
+# it is the third link in that chain and has to restate the same entries.
+#
+# The failure mode is not a missing patch line; it is a patch set that has drifted. This block used
+# to redirect the kitsune2 family, which ad4m no longer patches at all, while missing the lair and
+# sqlx entries ad4m added — so `pnpm dev:tauri` resolved a lair_keystore whose rusqlite wants
+# libsqlite3-sys ^0.35 against a deno_cache wanting ^0.38, and cargo refused the build outright over
+# the `links = "sqlite3"` single-owner rule. An out-of-date mirror is worse than none, because the
+# lines look deliberate.
+#
+# When ad4m's block changes, copy it here wholesale — additions AND removals — rather than merging.
 [patch.crates-io]
-kitsune2 = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_api = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_bootstrap_client = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_bootstrap_srv = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_core = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_dht = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_gossip = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_transport_iroh = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
-kitsune2_transport_tx5 = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+# lair 0.7.1 with rusqlite bumped ^0.37 → ^0.40, so its libsqlite3-sys matches deno_cache's ^0.38.
+lair_keystore = { git = "https://github.com/coasys/lair.git", branch = "0.7.1-coasys-rusqlite-0.40" }
+lair_keystore_api = { git = "https://github.com/coasys/lair.git", branch = "0.7.1-coasys-rusqlite-0.40" }
+hc_seed_bundle = { git = "https://github.com/coasys/lair.git", branch = "0.7.1-coasys-rusqlite-0.40" }
+# sqlx built against libsqlite3-sys 0.38, for the same single-owner reason.
+sqlx = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-core = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-macros = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-macros-core = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-mysql = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-postgres = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-sqlite = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }

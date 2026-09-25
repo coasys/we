@@ -108,6 +108,23 @@ defineFunction({
   impl: ([items]) => asList(items).length,
 });
 
+/*
+  `sum` exists for the same reason `count` does, one question along: "how many" has an answer in this
+  library and "how much" did not, so anything totalling a list — a thread's replies across its
+  levels, votes, a column of numbers a model wrote — had to be a host function or a number the
+  template could not say. It is deliberately the only arithmetic over a list: an `average` is
+  `sum(xs) / count(xs)`, and a `reduce` would be the grammar growing, which is the thing this layer
+  refuses.
+*/
+defineFunction({
+  name: 'sum',
+  category: 'list',
+  params: ['items'],
+  doc: 'The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.',
+  example: 'sum(local.replies.map(r, count(r.comments)))',
+  impl: ([items]) => asList(items).reduce((total: number, value) => total + asNumber(value), 0),
+});
+
 defineFunction({
   name: 'first',
   category: 'list',
@@ -127,6 +144,17 @@ defineFunction({
     const list = asList(items);
     return list[list.length - 1];
   },
+});
+
+defineFunction({
+  name: 'reverse',
+  category: 'list',
+  params: ['items'],
+  doc:
+    'The entries of a list, back to front. A new list — the one given is untouched, so a store array ' +
+    'or a query result can be reversed without disturbing anything else reading it.',
+  example: 'reverse(local.utterances)',
+  impl: ([items]) => [...asList(items)].reverse(),
 });
 
 defineFunction({
@@ -153,6 +181,38 @@ defineFunction({
   },
 });
 
+/*
+  Each value once — the question `$each`'s `prev` grouping was standing in for.
+
+  "Which kinds are on this canvas" used to be written as a list ordered by kind with a row rendered
+  only where it differed from the one before, which works for one sorted list and cannot be written
+  across two: the key lists kinds from what extraction wrote *and* from what somebody placed, and
+  the canvas legend and the key both carried the trick with a comment apologising for it.
+
+  Variadic, so two sources are one call rather than a concatenation the grammar has no operator for.
+  Records compare by `id` (two reads of one record are different objects), everything else by value.
+*/
+defineFunction({
+  name: 'distinct',
+  category: 'list',
+  params: ['...lists'],
+  doc: 'The entries of every list given, each once, in the order first seen. Records compare by `id`, other values by value. Anything that is not a list contributes nothing.',
+  example: 'distinct(local.found.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))',
+  impl: (lists) => {
+    const seen = new Set<unknown>();
+    const out: unknown[] = [];
+    for (const list of lists) {
+      for (const entry of asList(list)) {
+        const key = isRecord(entry) && entry.id !== undefined ? entry.id : entry;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(entry);
+      }
+    }
+    return out;
+  },
+});
+
 defineFunction({
   name: 'join',
   category: 'list',
@@ -163,6 +223,19 @@ defineFunction({
     asList(items)
       .map(asText)
       .join(separator === undefined ? ', ' : asText(separator)),
+});
+
+defineFunction({
+  name: 'split',
+  category: 'list',
+  params: ['text', 'separator?'],
+  doc: "The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.",
+  example: 'split(routeStore.params.hide).filter(k, k != kind)',
+  impl: ([text, separator]) =>
+    asText(text)
+      .split(separator === undefined ? ',' : asText(separator))
+      .map((piece) => piece.trim())
+      .filter(Boolean),
 });
 
 // ── Text ────────────────────────────────────────────────────────────────────

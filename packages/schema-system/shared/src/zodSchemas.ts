@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema } from './types';
 
+// Zod's JIT probe trips Electron's production CSP — see the note in @we/backend-shared's
+// queryIR.ts. Repeated per module because the probe fires on the first `z.object()`.
+z.config({ jitless: true });
+
 const lazySchemaNode = z.lazy(() => zSchemaNode);
 const lazySchemaProp = z.lazy(() => zSchemaProp);
 const lazyRouteSchema = z.lazy(() => zRouteSchema);
@@ -52,7 +56,8 @@ const zActionToken = z
 // `where`/`order`/`include`/`limit` are the concise DSL; the compiler maps them to the IR. No AD4M
 // vocab (`model`/`perspective`) — templates author neutral.
 const zQuery = z.object({
-  entity: z.string().min(1),
+  // A name, a list of names (one query over all of them), or an expression answering with either.
+  entity: z.union([z.string().min(1), z.array(z.string().min(1)), z.record(z.string(), z.unknown())]),
   where: z.record(z.string(), z.unknown()).optional(),
   order: z.record(z.string(), z.unknown()).optional(),
   /*
@@ -71,12 +76,27 @@ const zQuery = z.object({
   scope: z
     .object({
       via: z.string().min(1),
-      anchorId: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]),
+      anchorId: z.union([
+        z.string(),
+        z.number(),
+        z.array(z.union([z.string(), z.number()])),
+        z.record(z.string(), z.unknown()),
+      ]),
       anchor: z.string().optional(),
+      transitive: z.boolean().optional(),
+      direction: z.enum(['out', 'in']).optional(),
+      limitPerAnchor: z.number().int().positive().optional(),
+      // A level's breadth may be a token, so "show more" is a local the template raises rather than
+      // a second query shape. Resolved before the IR is built, like every other operand.
+      levels: z.array(z.union([z.number().int().positive(), z.record(z.string(), z.unknown())])).optional(),
     })
     .optional(),
-  subscribe: z.boolean().optional(),
+  // A literal, or an expression — a surface that is live only while its subject is. See
+  // `QueryToken.subscribe`.
+  subscribe: z.union([z.boolean(), z.record(z.string(), z.unknown())]).optional(),
   dataset: z.string().optional(),
+  // Run only while this expression is truthy — a query that waits for another's answer.
+  when: z.record(z.string(), z.unknown()).optional(),
 });
 
 const zQueryToken = z.object({ $query: zQuery }).strict();
@@ -239,6 +259,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
     keepAlive: z.boolean().optional(),
+    /** The modules this interface reaches by name. See `TemplateMeta.requires`. */
+    requires: z.object({ modules: z.array(z.string()).optional() }).optional(),
     /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
     chromeReserve: z
       .object({
@@ -259,16 +281,34 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         z.object({
           id: z.string(),
           module: z.string().optional(),
+          /** Which of a module's panels this places, where it contributes several. */
+          dock: z.string().optional(),
           node: z.custom<SchemaNode>().optional(),
           title: z.string().optional(),
           snap: z
             .enum(['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'])
             .optional(),
           order: z.number().optional(),
+          // How far inboard, where `order` is how far along. See `band` on `TemplatePanel`.
+          band: z.number().optional(),
+          // Position within a shared seat. See `tab` on `TemplatePanel`.
+          tab: z.number().optional(),
+          // Start in the template, at the `$panels` outlet of this name. See `home` on `TemplatePanel`.
+          home: z.string().optional(),
+          // Not promotable. See `fixed` on `TemplatePanel`.
+          fixed: z.boolean().optional(),
           size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
+          // The opening box in pixels, clamped by the host. See `box` on `TemplatePanel`. Listed
+          // because this object is not strict: a key it does not name passes with nothing checked,
+          // so `box: { width: '252px' }` would validate and then resolve to NaN.
+          box: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
           grow: z.number().optional(),
           displace: z.boolean().optional(),
-          route: z.string().optional(),
+          // The smallest usable box, in pixels — a fact about the content. See `min` on `TemplatePanel`.
+          min: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
+          // One segment or several — see `route` on `TemplatePanel` for why it is a list and why
+          // it says *whether* rather than *where*.
+          route: z.union([z.string(), z.array(z.string())]).optional(),
           open: z.boolean().optional(),
         }),
       )

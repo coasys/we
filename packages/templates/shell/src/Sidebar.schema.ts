@@ -40,34 +40,57 @@ const rail: SchemaNode = railShell({
     always been meant to; it simply lost to a neighbour that outranked it.
   */
   zIndex: 'chrome',
-  bg: 'page',
-  // Blends into a page that shares this background rather than drawing a seam against it.
+  // The app's own furniture, not the plane a template renders on — see the `chrome` role.
+  bg: 'chrome',
+  /*
+    No border, because the colour is the seam now.
+
+    This said it blended into a page that shared its background, which was true while the rail and
+    the template both painted `page` — a line was the only thing that could have separated them, and
+    drawing one made a join out of two identical planes. `chrome` is a step off the page in either
+    polarity, so the edge is visible without being drawn, and a rule on top of it would be saying the
+    same thing twice.
+  */
   border: '0',
-  // Whether somebody likes their rail pinned open is about their own window, so it is remembered
-  // per device and never travels in a shared link.
-  persistKey: 'shell.sidebarExpanded',
+  /*
+    Nothing is remembered about whether it is open, because nothing here decides that but the
+    pointer.
+
+    This persisted `expanded` under `shell.sidebarExpanded`, which sounds like a preference and is
+    not: the only thing that sets it is the cursor arriving, and the only thing that clears it is
+    `mouseleave`. Miss one — the rail is removed under the pointer, the window loses focus over it —
+    and the rail is open with nothing to close it, now on this device for good. `railShell` refuses
+    the pair outright; see there.
+  */
   header: {
-    type: 'Column',
-    props: {
-      width: COLLAPSED_WIDTH,
-      height: '80px',
-      flex: '0 0 auto',
-      ax: 'center',
-      ay: 'center',
-      cursor: 'pointer',
-      onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
-      title: 'About WE',
-    },
+    // No box of its own — `we-tooltip` is `display: contents`, so the Column below is the flex
+    // child the rail sizes, exactly as it was before the tooltip was wrapped around it.
+    type: 'we-tooltip',
+    props: { content: 'About WE', placement: 'right' },
     children: [
       {
-        type: 'we-image',
+        type: 'Column',
         props: {
-          src: '/we-text.svg',
-          alt: 'WE Logo',
-          width: '38px',
-          height: '38px',
-          gradient: 'var(--we-gradient-primary)',
+          width: COLLAPSED_WIDTH,
+          height: '80px',
+          flex: '0 0 auto',
+          ax: 'center',
+          ay: 'center',
+          cursor: 'pointer',
+          onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
         },
+        children: [
+          {
+            type: 'we-image',
+            props: {
+              src: '/we-text.svg',
+              alt: 'WE Logo',
+              width: '38px',
+              height: '38px',
+              gradient: 'var(--we-gradient-primary)',
+            },
+          },
+        ],
       },
     ],
   },
@@ -164,13 +187,56 @@ const rail: SchemaNode = railShell({
       // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
       // Solid reaches from `onReorder` by lowercasing — a listener named `we-reorder` never fires.
       onReorder: { $action: 'datasetStore.reorderDatasets', args: [{ $: 'arg.detail' }] },
-      // Creating a space used to mean going to Settings first, which is a long way round for the
-      // thing this group is a list of. The modal is shell chrome, so opening it from here and from
-      // Settings reaches the same one.
+      /*
+        The two ways a space gets into this list, behind one `+`.
+
+        Creating one used to mean going to Settings first, which is a long way round for the thing
+        this group is a list of. Joining one was worse: on the web a share link is self-executing —
+        the URL *is* the invitation — but a desktop build has no address bar and registers no
+        protocol handler, so an address somebody was sent could only be used by knowing to look in
+        Settings → Spaces & data. Both dialogs are shell chrome, so opening them from here and from
+        Settings reaches the same one.
+
+        A menu rather than two icons: this heading is narrow, a second glyph crowds the label, and
+        "add something to this group" is one idea with two answers. It costs creating a space a
+        second click, which is the right trade for making joining discoverable at all — both are
+        rare, and one of them was previously unreachable from here.
+      */
       action: {
-        icon: 'plus',
-        label: 'Create a space',
-        onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+        type: 'DropdownMenu',
+        props: {
+          triggerIcon: 'plus',
+          triggerVariant: 'ghost',
+          triggerTitle: 'Add a space',
+          // Matching what the object form of `action` draws, so this heading stays the same height
+          // as every other group's — see `railGroup`.
+          size: 'sm',
+          itemSize: 'sm',
+          placement: 'right-start',
+          items: [
+            { id: 'create', label: 'Create a space', icon: 'plus' },
+            { id: 'join', label: 'Join a space', icon: 'link' },
+          ],
+          /*
+            One handler over `arg.id`, rather than a handler per item: `DropdownMenu` reports which
+            entry was chosen, and two `$if`s reading that is the shape every other menu in the app
+            uses. Flat, so each condition is one sentence.
+          */
+          onSelect: [
+            {
+              $if: {
+                condition: { $: "arg.id == 'create'" },
+                then: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+              },
+            },
+            {
+              $if: {
+                condition: { $: "arg.id == 'join'" },
+                then: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+              },
+            },
+          ],
+        },
       },
       children: [
         {

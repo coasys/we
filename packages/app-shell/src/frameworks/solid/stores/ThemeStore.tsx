@@ -1,6 +1,7 @@
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { explain } from '@shared/userMessage';
+import type { NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { ThemeData } from '@we/entities';
 import {
@@ -662,8 +663,10 @@ export function ThemeStoreProvider(props: ParentProps) {
   const currentTheme: Accessor<ThemeData> = () =>
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
 
-  // Map theme AD4M model UUID → model instance for save/delete
-  const themeRecordMap = new Map<string, Theme>();
+  // Map theme AD4M model UUID → model instance for save/delete. `NewRecord` because entries arrive
+  // both from a load and from whatever a save or install just wrote, and a create carries no
+  // relations (see `NewRecord`) — nothing here reads one, an entry existing to be saved and deleted.
+  const themeRecordMap = new Map<string, NewRecord<Theme>>();
 
   async function loadSpaceThemes() {
     const perspective = datasetStore.currentDataset()?.handle;
@@ -1430,7 +1433,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         new. Slugs are not unique across perspectives and were never meant to be.
       */
       const installedIds = new Set(installedThemes().map((theme) => theme.id));
-      let existingRecord: Theme | undefined;
+      let existingRecord: NewRecord<Theme> | undefined;
       for (const model of themeRecordMap.values()) {
         if (installedIds.has(model.id) && model.slug === sourceSlug) {
           existingRecord = model;

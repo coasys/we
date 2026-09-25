@@ -19,7 +19,9 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { activePanels as panelsFor } from '@shared/panelScope';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
+import { resolveParts } from '@shared/registries/moduleParts';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
@@ -31,7 +33,8 @@ import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
-import { applyThemeVars, clearThemeVars, parseOverrides, surfaceStyles } from '@we/schema-shared';
+import type { SchemaNode } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, parseOverrides, SPACE_ROUTE_DEPTH, surfaceStyles } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
@@ -39,7 +42,7 @@ import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
 
-import { buildRoutes } from '../utils/buildRoutes';
+import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
 import { resolveShellView, type ShellViewEntry } from './shellViews';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -122,7 +125,26 @@ function ShellOverlayInner({
   */
   const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
   const shellStores: Stores = { ...chromeStores, routeStore: shellRouteBag, ...(storeEntries as Partial<Stores>) };
-  const schema = reactiveSchema ?? view.schema;
+  /*
+    `$part` expanded here too, because a shell view is chrome and chrome may place a module's pieces.
+
+    Every other surface that renders module-aware schema already does this — the slot registry's
+    nodes in `TemplateProvider`, a panel's body in `TemplatePanelBody`, a template's routes on the
+    `$views` path — and the overlays were the one that did not, so a `$part` in Settings rendered as
+    `Unknown component "$part"` rather than as the thing it names.
+
+    It matters for exactly the case that found it. Settings draws the call module's device chooser
+    through `call.deviceSettings` rather than importing it, because a template package importing a
+    module would invert the dependency and make an optional capability mandatory; the part is how a
+    surface places something it must not depend on. Resolving to nothing where the module is absent
+    is the same property, and is why the section is gated on `modules.call` rather than on this.
+
+    At mount rather than in a memo, as `TemplatePanelBody` does it: modules register at boot, before
+    any overlay can be opened, and `resolveParts` returns by identity when there is nothing to
+    expand — so a view that places none pays nothing.
+  */
+  const resolved = resolveParts((reactiveSchema ?? view.schema) as SchemaNode);
+  const schema = (Array.isArray(resolved) ? resolved[0] : resolved) as typeof view.schema;
 
   return (
     <MemoryRouter
@@ -153,13 +175,16 @@ function ShellOverlayInner({
             ref={overlaySurface.outerRef}
           >
             <div {...overlaySurface.tierAttrs} ref={overlaySurface.tierRef} />
-            <RenderSchema
-              node={schema}
-              stores={shellStores}
-              registry={registry}
-              context={{ surface: overlaySurface.surface }}
-              children={props.children}
-            />
+            {/* The overlay's routes measure against the overlay, as its own chrome does — see `RouteSurface`. */}
+            <RouteSurface.Provider value={overlaySurface.surface}>
+              <RenderSchema
+                node={schema}
+                stores={shellStores}
+                registry={registry}
+                context={{ surface: overlaySurface.surface }}
+                children={props.children}
+              />
+            </RouteSurface.Provider>
           </div>
         </ShellRouterRoot>
       )}
@@ -198,7 +223,7 @@ export function TemplateLayout(
 
     Registered from here rather than published by the template, because a template is data and has
     no store to publish from. The host reads the declaration and folds it into the same sum a
-    module's `chromeReserve` lands in — see `moduleChrome` in ShellStore.
+    module's declared reserve lands in — see `moduleChrome` in ShellStore.
 
     Keyed on the template, and withdrawn on unmount: a shell that stops declaring a bar must stop
     reserving the band, or every panel keeps dodging chrome that is not there any more.
@@ -229,26 +254,33 @@ export function TemplateLayout(
    * the screen is the one that gets to overrule it.
    */
   const activePanels = createMemo(() => {
-    const shell = stores.templateStore.currentTemplate?.meta?.panels ?? [];
     const segments = stores.routeStore.segments();
+    // The section on screen, matched the same way its route is, so the two agree about where you
+    // are. Everything after that is `panelScope`'s, where it can be tested without a router.
     const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
       ?.meta?.panels;
-    const merged = (() => {
-      if (!view?.length) return shell;
-      const overridden = new Set(shell.map((panel) => panel.id));
-      return [...view.filter((panel) => !overridden.has(panel.id)), ...shell];
-    })();
-
-    /*
-      A declaration may scope itself to a route segment, which is how a shell that routes *itself*
-      varies its layout — every showcase template does, and has no sections to hang a declaration on.
-      Matched the same way the section above is, so the two agree about what "where you are" means.
-    */
-    return merged.filter((panel) => !panel.route || segments.includes(panel.route));
+    return panelsFor(stores.templateStore.currentTemplate?.meta?.panels ?? [], view, segments);
   });
 
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));
   onCleanup(() => setTemplatePanels([], ''));
+
+  /**
+   * The template's root node with its `$part` markers expanded.
+   *
+   * The root is a template's *chrome* — it is rendered here rather than by the router, so it is the
+   * one part of an interface the route table never sees. An interface putting a module's fragment
+   * in a bar that stands over every page writes it here, and until now the marker reached the
+   * renderer intact and mounted nothing.
+   *
+   * A memo, so the walk happens per template rather than per render. `resolveParts` returns the
+   * node by identity when there is nothing to expand, which is every interface that places no
+   * parts — so this costs one comparison for all of them and changes nothing downstream.
+   */
+  const templateWithParts = createMemo(() => {
+    const expanded = resolveParts(stores.templateStore.currentTemplate);
+    return (Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate;
+  });
 
   // Taken back on unmount. A template switch unmounts this layout, and without the cleanup the
   // store kept navigating through the dead router — a link that silently did nothing.
@@ -461,13 +493,33 @@ export function TemplateLayout(
             }
           >
             <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-              <RenderSchema
-                node={stores.templateStore.currentTemplate}
-                stores={templateStores}
-                registry={registry}
-                context={{ surface: templateSurface.surface }}
-                children={props.children}
-              />
+              {/*
+                The template's routes are rendered into `props.children` below, each through a pass of
+                its own that inherits none of this context — so the surface goes to them as a Solid
+                context as well. Without it `surface.tier` was undefined in every route.
+              */}
+              <RouteSurface.Provider value={templateSurface.surface}>
+                <RenderSchema
+                  node={templateWithParts()}
+                  stores={templateStores}
+                  registry={registry}
+                  /*
+                  `$nav` so a template's own chrome can navigate relatively.
+
+                  Chrome lives in the template's root node, which is rendered here rather than by
+                  the router — so it has no route to take a base depth from, and a relative path in
+                  it reached the router as written and landed on the catch-all. A self-routing
+                  template's nav strip is chrome, and its links are to its own screens, so the base
+                  it wants is the space it is mounted under.
+
+                  `SPACE_ROUTE_DEPTH` rather than a literal 2, derived from the path the host mounts
+                  every template at. Harmless for the marker kind, whose chrome uses absolute paths
+                  because its links cross spaces.
+                */
+                  context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
+                  children={props.children}
+                />
+              </RouteSurface.Provider>
             </Show>
           </TemplateBoundary>
         </Column>

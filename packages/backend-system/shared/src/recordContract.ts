@@ -9,11 +9,11 @@
  * interfaces `@we/entities` generates from its manifest rather than off any one backend's
  * decorator metadata.
  *
- * The generics deliberately mirror the AD4M ORM's typed-query machinery, which is fully
- * structural — the shapes were proven there, and keeping them recognisable is what makes the AD4M
- * classes satisfy this contract without adaptation. Where this contract is *looser* (dataset
- * handles are `unknown`, write values tolerate backend-specific representations), that is the
- * neutrality: those are exactly the points where backends legitimately differ.
+ * The generics are fully structural, so a backend's own model classes satisfy this contract
+ * without adaptation wherever their statics have the same shape. Where the contract is *looser*
+ * than any one implementation (dataset handles are `unknown`, write values tolerate
+ * backend-specific representations), those are exactly the points where backends legitimately
+ * differ.
  */
 
 // ── Instance base ──────────────────────────────────────────────────────────────────────────────
@@ -36,6 +36,33 @@ export interface RecordInstance {
    */
   save(batch?: string): Promise<unknown>;
   delete(batch?: string): Promise<unknown>;
+}
+
+/**
+ * The key a record read through a polymorphic relation carries its concrete entity name under.
+ *
+ * A heterogeneous relation hands back records of several kinds at once, and a consumer that has to
+ * do anything with one — draw it, address it, pick a display for it — needs to know which kind it
+ * got. The declared relation cannot say, because saying is the thing it gave up by being untyped.
+ *
+ * A contract rather than a convenience, and worth stating plainly because the value is not this
+ * repo's to choose: the production backend writes this exact string, so what is written here is a
+ * *record* of somebody else's wire format, and any backend answering a polymorphic read has to
+ * match it. The
+ * failure mode if one does not is quiet — records arrive with no type and every consumer falls back
+ * to whatever it does for an unknown row, which looks the same as a relation that hydrated nothing.
+ *
+ * Named here rather than in an adapter so that the shared layers reading it — the graph
+ * engine, anything picking a display per row — are not reaching into a `__`-prefixed literal they
+ * would have to know an adapter's internals to justify.
+ */
+export const RECORD_TYPE_KEY = '__subjectClass';
+
+/** The concrete entity name of a record read polymorphically, or undefined if it carries none. */
+export function recordTypeOf(row: unknown): string | undefined {
+  if (!row || typeof row !== 'object') return undefined;
+  const value = (row as Record<string, unknown>)[RECORD_TYPE_KEY];
+  return typeof value === 'string' && value ? value : undefined;
 }
 
 // ── Field classification (structural, over the neutral interfaces) ─────────────────────────────
@@ -235,13 +262,64 @@ export type WriteProperties<T extends RecordInstance> = { [K in RecordDataKeys<T
 };
 
 /**
+ * A record as a **write** hands it back: its own fields, and none of its relations.
+ *
+ * A create answers with the thing it just wrote. The scalars are all there — a backend that stamps
+ * `author` and `createdAt` from the write has them without being asked — but a relation is not a
+ * field on the row, it is a separate read, and nothing asked for one. So a relation key on a create
+ * return is whatever it held at the instant of the write, which for a record that did not exist a
+ * moment ago is *empty by construction*, and it is never refreshed as the relation fills.
+ *
+ * Typed away rather than documented, because the failure is silent and reads as data loss. A
+ * conversation's messages read back off the record the conversation was created from came back
+ * empty, so returning to a chat showed nothing in it, and deleting one walked an empty list and left
+ * every message behind with nothing pointing at it. Both cleared on reload, which is what kept it.
+ *
+ * It is also the right type for a **cache of records nobody reads relations off** — a list of
+ * sessions, spaces or themes held only to name and address them. `T` is assignable to it, so a
+ * loaded record and a created one are the same shape there, and the one thing the two genuinely
+ * disagree about is the one thing it refuses.
+ *
+ * To get the relations, read the record: `findOne(dataset, { where: { id }, include: { … } })`.
+ */
+export type NewRecord<T extends RecordInstance> = Omit<T, RelationKeysOf<T>>;
+
+/**
  * The static surface every entity presents — what the entity proxies in `@we/entities` are typed
  * as, and what a backend's registered implementations must answer to. Dataset handles are
- * `unknown`: which kind of handle "a dataset" is, is the backend's business (an AD4M
- * `PerspectiveProxy`, an inmemory store, a connection).
+ * `unknown`: which kind of handle "a dataset" is, is the backend's business (a live proxy, an
+ * in-memory store, a connection).
+ *
+ * ## Why the relation writes below are statics
+ *
+ * Two reasons, and the first is the plain one: until they existed, the neutral write vocabulary was
+ * `create`/`update`/`delete` over a flat field bag, which cannot express a relation at all. So every
+ * relation write in the app went around the contract to a model instance's own accessors, and a
+ * backend could satisfy this interface completely and still be unable to run a board — where a
+ * column's cards, their order, and a board's columns are all relation writes and nothing else.
+ *
+ * The second is about *seeing* the write. `defineEntity` in `@we/entities` forwards statics to
+ * whichever implementation is registered, and it says so plainly: instances come back from the real
+ * implementation, so their methods are the implementation's own. A write spelled as an instance
+ * method is therefore invisible to every neutral layer — nothing can count it, log it, batch it, or
+ * stand in for it while it lands. Spelled as a static it passes through the one place that sees
+ * every read already.
+ *
+ * ## Why they are not on `MutationApi`
+ *
+ * That is the surface templates reach through `record.create`/`update`/`delete`, and whether a
+ * template may relink arbitrary relations is a capability question nobody has answered. These are
+ * for stores, which are code that ships with the app.
  */
 export interface EntityStatic<T extends RecordInstance> {
-  create(dataset: unknown, properties: WriteProperties<T>, options?: Record<string, unknown>): Promise<T>;
+  /**
+   * Write one record, and answer with it — see {@link NewRecord} for why that is less than a `T`.
+   *
+   * A backend is free to return more than this (the AD4M lane re-reads the row it just wrote, so its
+   * instances carry relation keys holding whatever the relation held at that instant). The narrower
+   * type is the promise every backend can keep, and the wider one was read as a guarantee.
+   */
+  create(dataset: unknown, properties: WriteProperties<T>, options?: Record<string, unknown>): Promise<NewRecord<T>>;
   findAll<Q extends TypedEntityQuery<T>>(dataset: unknown, query?: Q): Promise<(T & IncludeExtras<T, IncludeOf<Q>>)[]>;
   findOne<Q extends TypedEntityQuery<T>>(
     dataset: unknown,
@@ -251,4 +329,53 @@ export interface EntityStatic<T extends RecordInstance> {
   update(dataset: unknown, id: string, properties: WriteProperties<T>): Promise<T | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: TypedEntityQuery<T>): Promise<number>;
+
+  /**
+   * Replace a relation's whole membership, in the order given.
+   *
+   * The write a drag makes: a board column's cards after somebody rearranged them, a board's columns
+   * after somebody moved one. `targetIds` is the list as it should now read, and a backend whose
+   * relation is declared `ordered` is expected to preserve that order on the way back — where the
+   * ordering is *held* is its business (a backend that keeps position hints beside the membership
+   * links and merges them lets two people dragging at once converge rather than one write
+   * discarding the other).
+   *
+   * Nothing here indexes, renumbers or breaks a tie. Handing over the whole list and letting the
+   * backend diff it is what makes that possible: a backend that can merge has everything it needs,
+   * and one that cannot can still write the list.
+   *
+   * Ids the relation does not already hold join it; ids it holds that the list omits leave it.
+   *
+   * **To-many relations only, for now.** A to-one link is a different write — "point this at that",
+   * not "your membership is this list" — and the two are told apart by the manifest rather than by
+   * anything a record carries at runtime, so a backend cannot reliably decide which it was handed.
+   * Writing one stays an instance call until there is a reason to settle that, and an implementation
+   * is expected to refuse a to-one here rather than guess.
+   */
+  setRelation(
+    dataset: unknown,
+    id: string,
+    relation: string,
+    targetIds: readonly string[],
+    batch?: string,
+  ): Promise<void>;
+
+  /**
+   * Put one record into a relation, leaving the rest alone.
+   *
+   * Not sugar for {@link EntityStatic.setRelation} with the current list plus one. That spelling
+   * needs a read first, and between the read and the write somebody else's addition is lost — which
+   * is the whole failure an unordered relation should be immune to. Where the relation is ordered,
+   * an addition with no position lands at the end.
+   */
+  addRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
+
+  /**
+   * Take one record out of a relation.
+   *
+   * The counterpart, and the same argument: expressing it as a `set` of everything-but-one turns a
+   * removal into a claim about every other member. Removing something the relation does not hold is
+   * not an error — it is the state the caller asked for.
+   */
+  removeRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
 }

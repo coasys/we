@@ -5,27 +5,34 @@
  * is just the neutral `irToFlatQuery` (in `@we/schema-shared`). What's AD4M-*specific* — and lives
  * here, not in the agnostic renderer — is the capability profile (`ad4mCapabilities`) plus the two
  * conditional degradations that no capability boolean can express (see `plan` below). `planQuery`
- * uses the profile to route anything AD4M can't push down to the compute-up fallback (`executeQueryIR`)
- * instead of silently mis-executing it.
+ * uses the profile to classify anything AD4M can't push down, so that nothing is silently
+ * mis-executed.
  *
- * What's native (verified against AD4M's `Where`/`Order` types and coasys/ad4m #867/#868):
+ * **What a classification then does is the renderer's business, and only two outcomes exist**, in
+ * `compileQueryOptions` (`@we/schema-solid`'s `SchemaRenderer`): a `degraded` gap warns once per
+ * entity/feature and runs; *every other* gap calls `onError` and returns null, so the query does not
+ * run at all. Read the rest of this file with that in mind — `compute-up` names an *intent* (a gap
+ * something could fake in JS) and no such fallback is wired on this path, so it behaves today
+ * exactly as `unsupported` does. `executeQueryIR` is the in-memory backend's own engine, not a
+ * fallback this adapter reaches for; an earlier version of this comment said otherwise.
+ *
+ * What's native (read off the executor's own `WhereOps`, where-clause compiler and pagination gate
+ * at the pinned build, rather than off a changelog):
  * - Scalar operators eq / not(→ne,nin) / lt / lte / gt / gte / contains, plus OR/AND/NOT combinators.
+ * - Relation quantifiers `some` / `none`, which compile to a SPARQL `EXISTS` group.
  * - `include` (nested), `count` projections, `parent` drill-down (`scope`).
  * - Sort by property, by a relation path, and by a projection count — but **one sort key only**
- *   (the SPARQL pagination pushdown is single-key), and only with a `limit`/`offset`.
+ *   (the SPARQL pagination pushdown is single-key), and the last two only with a `limit`/`offset`.
  *
- * Deliberately routed to the compute-up fallback (not native):
- * - `startsWith`/`endsWith` operators, sum/min/max/avg aggregates, and — the confirmed gap —
- *   **filtering by a related model's property** (`{ rel, some/none }`): AD4M's `where` has no
- *   relation quantifier, so `relationFilters` is false.
+ * Classified `compute-up` — not native, and so (per the note above) currently refused rather than
+ * faked. A template using one gets an error and no rows, which is the honest outcome but not the
+ * intended one: `startsWith`/`endsWith` operators, and sum/min/max/avg aggregates.
  *
- * Two documented caveats aren't clean capability booleans, and aren't capability gaps at all — they
- * are **AD4M bugs**: an explicit OR/AND/NOT in `where` disables its sort/pagination pushdown, and a
- * projection / relation-path sort silently needs a `limit`. In both cases AD4M returns the correct
- * rows and simply ignores the ordering, so they are reported as `degraded` (run + warn), not
- * `compute-up` (which would fail loud until something computed them up) — see {@link Disposition}.
- * The real fix is upstream in AD4M; when it lands, grep `sort:under-boolean` / `sort:needs-limit`
- * and delete these two blocks.
+ * One caveat is not a clean capability boolean and is not a capability gap either — it is an **AD4M
+ * bug**: a projection or relation-path sort silently needs a `limit`. The rows come back correct and
+ * the ordering is ignored, so it is reported as `degraded` (run + warn) rather than `compute-up`
+ * (which, per the note above, refuses) — see {@link Disposition}. The real fix is upstream; when it
+ * lands, grep `sort:needs-limit` and delete that block.
  */
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import type {
@@ -41,8 +48,8 @@ import type {
   RendererDataBindings,
   Scope,
 } from '@we/backend-shared';
-import { irToFlatQuery, planQuery, whereUsesCombinator } from '@we/backend-shared';
-import { type EntityClass as Ad4mEntityClass, getEntitiesForPerspective, getEntity } from '@we/entities';
+import { irToFlatQuery, planQuery } from '@we/backend-shared';
+import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } from '@we/entities';
 
 import type { EntityManifestEntry } from './manifestTypes';
 
@@ -74,8 +81,17 @@ function asPerspective(dataset: DatasetHandle): PerspectiveProxy {
   return dataset as PerspectiveProxy;
 }
 
+/**
+ * One adapter per model class, so a lookup answers with the same object every time. A new wrapper per
+ * `$getEntity` call made every query look like a different model to anything comparing them — the
+ * renderer's subscription pool shared nothing because of it.
+ */
+const rendererEntities = new WeakMap<Ad4mEntityClass, RendererEntityClass>();
+
 export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
-  return {
+  const known = rendererEntities.get(Model);
+  if (known) return known;
+  const adapted: RendererEntityClass = {
     query: (dataset, opts) =>
       Model.query(asPerspective(dataset), opts as Parameters<typeof Model.query>[1]) as ReturnType<
         RendererEntityClass['query']
@@ -92,6 +108,8 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
         RendererEntityClass['findAll']
       >,
   };
+  rendererEntities.set(Model, adapted);
+  return adapted;
 }
 
 /**
@@ -112,6 +130,15 @@ export interface Ad4mAdapterDeps {
    * rather than the host's concrete profile type, which keeps this module free of app-layer imports.
    */
   agents: () => Array<{ did?: string }>;
+  /**
+   * One agent, read so that it depends on that agent alone — see `DataBindingDeps.profileFor`.
+   *
+   * `$agent` runs an effect per row and every one of them asks here. Answered by scanning `agents()`
+   * the dependency is the entire cache, so one peer arriving re-runs every row on screen; answered
+   * by a host that can key its cache, it is the row's own agent and nothing else. Optional, and the
+   * scan below stays as the fallback for a host that cannot.
+   */
+  agentFor?: (did: string) => { did?: string } | undefined;
   /** Ask AD4M to fetch a profile this client hasn't cached. */
   fetchAgent: (did: string) => Promise<void> | void;
   /**
@@ -127,9 +154,9 @@ export interface Ad4mAdapterDeps {
  * that aren't backend-specific.
  *
  * This is the artifact another backend copies: everything a host must supply for the renderer to read
- * data, in one place. `$onError` and `$useQueryIR` are deliberately excluded — surfacing an error to
- * the UI and toggling the IR are host concerns any backend would wire the same way, so they stay with
- * the app rather than pretending to be AD4M-specific.
+ * data, in one place. `$onError` is deliberately excluded — surfacing an error to the UI is a host
+ * concern any backend would wire the same way, so it stays with the app rather than pretending to be
+ * AD4M-specific.
  *
  * Note what is *not* here: no query lowering, no capability quirks, no model-shape mapping. Those are
  * `createAd4mQueryAdapter` and `toRendererEntity` above — this only composes them.
@@ -138,14 +165,14 @@ export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getEntity' | '$getEntitiesForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
+  '$getEntity' | '$getEntityForDataset' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
     // so `toRendererEntity` maps them onto the neutral `query`/`findAll` the renderer depends on.
     $getEntity: (name) => toRendererEntity(getEntity(name)),
-    $getEntitiesForPerspective: (name, dataset) => {
-      const model = getEntitiesForPerspective(name, dataset);
+    $getEntityForDataset: (name, dataset) => {
+      const model = getEntityForDataset(name, dataset);
       return model ? toRendererEntity(model) : undefined;
     },
     // The renderer treats this as opaque and hands it straight back, so the proxy passes through
@@ -153,7 +180,9 @@ export function createAd4mDataBindings(
     $currentDataset: deps.currentPerspective,
     // Identity directory behind the `$agent` block, bound to AD4M's agent cache.
     $identities: {
-      get: (did) => deps.agents().find((a) => a.did === did) as Record<string, unknown> | undefined,
+      get: (did) =>
+        (deps.agentFor ? deps.agentFor(did) : deps.agents().find((a) => a.did === did)) as
+          Record<string, unknown> | undefined,
       fetch: (did) => void deps.fetchAgent(did),
     },
     $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveEntities),
@@ -183,14 +212,62 @@ export function createAd4mDataBindings(
  *
  * The pin itself is currently a test tag rather than a release, which is worth knowing when reading
  * "verified": what was verified was that build.
+ *
+ * This one was hand-published from `feat/bounded-traversal` at **3ce8430af**, under npm's `dev`
+ * tag rather than `latest`. The SHA matters more here than usual: a hand-published version
+ * corresponds to no git tag, so it is the only thing tying this string to a build. And the
+ * executor binary is never published at all (WE runs the one at `ad4m/target/release/`, per
+ * `seed-runtime.json`), so the Rust half is pinned by that SHA and by nothing else. A core built
+ * from this commit against an executor built from another is exactly the skew this constant exists
+ * to make visible, and npm cannot catch it.
+ *
+ * It moved off `0.13.0-test-model-layer` because that build emitted an inverse relation **twice**
+ * into the generated SHACL — `@BelongsToOne` registers in both the relation registry and the
+ * property metadata, and `buildSHACL` walked both. `WeNode.inReplyTo` therefore arrived as two
+ * property shapes on every one of the 33 WeNode subclasses, one a literal and one the relation.
+ * The manifest round-trip caught it; left alone it would have been written into each space's SDNA,
+ * where `shapeIsStale` compares path counts in one direction only and so could never have taken it
+ * back out again.
+ *
+ * Note what rides along, the fix having been published from a feature branch rather than from
+ * `dev`: the TypeScript half of bounded traversal is now in core, so `levels`/`limitPerAnchor`
+ * reach the executor instead of being dropped before the call — and the Rust half that answers
+ * them is on that same branch and **not on `dev`**, which is what `electron-package.yaml` defaults
+ * `ad4m_ref` to. Build the executor from the same branch, or pass `ad4m_ref` when packaging.
  */
-export const VERIFIED_AGAINST_AD4M = '0.13.0-test-interpretation-2';
+export const VERIFIED_AGAINST_AD4M = '0.13.0-test-inverse-relations';
 
 export const ad4mCapabilities: AdapterCapabilities = {
-  operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'exists'],
+  /*
+    `exists` is deliberately absent, and its absence is a correction rather than a change of policy.
+    The executor has no such operator: `WhereOps` does not declare one and uses `deny_unknown_fields`,
+    so `{ field: { exists: true } }` is refused as an operator object and re-read as a nested where
+    clause. That is incomplete, so it routes to the post-hydration filter — where a `SubClause`
+    reaching a value comparison returns false. Every row is rejected and the query answers nothing,
+    always, with no error anywhere.
+
+    Claiming it here made that silent. Dropping it makes the query refuse instead, which is the
+    honest answer while the operator does not exist, and nothing in WE regresses: the two live uses
+    are `filter()` in a GlobeView expression and a graph style rule, both evaluated client-side and
+    neither of them a `$query`. It is the *documented* idiom for "absent counts as the default" that
+    this invalidates, which is worth more attention than the code change.
+  */
+  operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains'],
+  /*
+    Numbers only. The executor's `WhereOps` holds each bound as an `f64`, so `{ dueDate: { lt:
+    '2026-10-01' } }` fails to deserialise as an operator, is reread as a nested clause, and rejects
+    every row — the `exists` failure above, again. A number bound is compared against the stored
+    value after the executor parses it, which reads RFC 3339 timestamps but not the zone-less
+    `YYYY-MM-DD` WE writes, so a date range cannot be pushed down by converting the bound either.
+    Refused until the executor compares strings; see ad4m-follow-ups.
+  */
+  rangeBounds: ['number'],
   booleanCombinators: true, // OR / AND / NOT in `where` (#868)
-  relationFilters: false, // no native relation quantifier — the confirmed gap
+  relationFilters: true, // `some` / `none` compile to a SPARQL EXISTS group (#923)
   scope: true, // drill-down via `parent`
+  // The executor's `Scope::Traverse`: several anchors in one query, `+` paths, inbound term
+  // order, and a per-anchor slice applied between selecting ids and hydrating them.
+  boundedTraversal: { multiAnchor: true, transitive: true, inbound: true, perAnchorLimit: true, levelWalk: true },
   include: { supported: true }, // nested include is a core ORM feature
   aggregate: ['count'], // count projections only; sum/min/max/avg → compute-up
   sort: { multiKey: false, byRelationPath: true, byAggregate: true }, // single sort key only (#867)
@@ -210,7 +287,7 @@ function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
  * resolver (`resolveParentPredicate`, broken for synced dynamic models). The predicate is available on
  * every relation (WE + synced) via `EntityManifestProperty.predicate`.
  */
-function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id: unknown; predicate: string } {
+function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Record<string, unknown> {
   const entry = scope.anchor ? models.find((m) => m.name === scope.anchor) : undefined;
   const prop = entry?.properties.find((p) => p.name === scope.via);
   if (!prop?.predicate) {
@@ -219,7 +296,28 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id
         `no such relation in the current perspective's model manifest`,
     );
   }
-  return { id: scope.anchorId, predicate: prop.predicate };
+
+  // The plain drill-down stays exactly as it was: one anchor, one step outward, and the `{ id,
+  // predicate }` shape every existing query already sends.
+  const bounded =
+    Array.isArray(scope.anchorId) ||
+    scope.transitive ||
+    scope.direction === 'in' ||
+    scope.limitPerAnchor !== undefined ||
+    scope.levels !== undefined;
+  if (!bounded) return { id: scope.anchorId, predicate: prop.predicate };
+
+  // Anything more is the executor's traverse form, which names its anchors as `ids`. An empty list
+  // stays an empty list rather than being dropped: "the replies to none of these" answers with
+  // nothing, where omitting the scope would answer with the whole space.
+  return {
+    ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
+    predicate: prop.predicate,
+    ...(scope.transitive ? { transitive: true } : {}),
+    ...(scope.direction === 'in' ? { direction: 'in' } : {}),
+    ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),
+    ...(scope.levels !== undefined ? { levels: scope.levels } : {}),
+  };
 }
 
 /**
@@ -227,10 +325,10 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): { id
  * perspective's model manifest to resolve a `scope` drill-down — so `getEntities` returns the SHACL model
  * entries (including synced ones, e.g. Flux's) at call time.
  *
- * `plan` is `planQuery` over `ad4mCapabilities` plus AD4M's two conditional degradations, which no
- * capability boolean captures: OR/AND/NOT in `where` disables the SPARQL sort/pagination pushdown, and a
- * projection/relation-path sort silently no-ops without a `limit`. `lower` is the neutral `irToFlatQuery`,
- * plus resolving `scope` → `parent` here (AD4M-specific; `irToFlatQuery` throws on `scope` by design).
+ * `plan` is `planQuery` over `ad4mCapabilities` plus the one conditional degradation no capability
+ * boolean captures: a projection or relation-path sort silently no-ops without a `limit`. `lower` is
+ * the neutral `irToFlatQuery`, plus resolving `scope` → `parent` here (AD4M-specific;
+ * `irToFlatQuery` throws on `scope` by design).
  */
 export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[]): QueryAdapter {
   return {
@@ -240,23 +338,22 @@ export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[])
       const base = planQuery(ir, ad4mCapabilities);
       const gaps: CapabilityGap[] = [...base.gaps];
       if (ir.sort?.length) {
-        // Judge this on the *lowered* where, not the IR: an implicit conjunction (sibling `where`
-        // keys) compiles to an `and` node but merges back to sibling keys, which AD4M pushes down
-        // natively. Only an explicit OR/AND/NOT that survives lowering costs the pushdown.
-        if (whereUsesCombinator(ir.filter)) {
-          gaps.push({
-            feature: 'sort:under-boolean',
-            path: 'sort',
-            disposition: 'degraded',
-            note: 'AD4M returns correct rows but silently ignores the sort when where uses an explicit OR/AND/NOT',
-          });
-        }
+        /*
+          `sort:under-boolean` used to be raised here and is gone, because the thing it described
+          stopped being true. The pagination pushdown is gated on `all_where_pushable`, which is now
+          nothing but `compile_where_clause(...).complete` — one compiler answering for its own
+          emission rather than a second function guessing at it — and OR and NOT compile. So a sort
+          beside an explicit combinator keeps its pushdown, and there is no degradation to report.
+        */
         const aggregateAliases = new Set((ir.aggregate ?? []).map((a) => a.as));
         if (!ir.page && ir.sort.some((k) => sortNeedsLimit(k.by, aggregateAliases))) {
           gaps.push({
             feature: 'sort:needs-limit',
             path: 'sort',
             disposition: 'degraded',
+            // Still true, and checked rather than assumed: `sparql_pagination` is only built when
+            // `limit` or `offset` is present, and the post-hydration fallback sort runs before the
+            // projection data is attached — so those two sort kinds have nothing to sort on.
             note: 'AD4M returns correct rows but silently ignores a projection/relation-path sort without a limit',
           });
         }

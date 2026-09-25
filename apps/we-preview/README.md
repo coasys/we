@@ -25,7 +25,7 @@ have. Here the stores are the real stores.
 
 ## Why it is a separate app rather than a flag on we-web
 
-Apps *are* deployments in this monorepo, which is what the seed file expresses. A preview
+Apps _are_ deployments in this monorepo, which is what the seed file expresses. A preview
 deployment wants modules off and no `ad4m` block, and it must not drag `@we/backend-inmemory` or
 fixture data into the production web bundle — which a runtime `?backend=inmemory` flag would, unless
 fought. The cost of the split is one 25-line entry and a platform adapter.

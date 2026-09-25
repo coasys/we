@@ -100,7 +100,8 @@ const styles = css`
        instead of squeezing the host and getting a rectangle. */
     width: var(--we-color-picker-swatch, 48px);
     height: var(--we-color-picker-swatch, 48px);
-    border-radius: var(--we-radius-400);
+    /* Settable like the size, for a caller wanting a disc rather than a rounded square. */
+    border-radius: var(--we-color-picker-radius, var(--we-radius-400));
     border: 2px solid var(--we-role-border);
     cursor: pointer;
     box-sizing: border-box;
@@ -149,6 +150,63 @@ const styles = css`
   [part='tab'][aria-selected='true'] {
     background: var(--we-role-accent-muted);
     color: var(--we-role-accent-text);
+  }
+
+  /* The way back to no colour — a quiet full-width row under the swatches, styled as a tab is. */
+  [part='clear'] {
+    all: unset;
+    cursor: pointer;
+    text-align: center;
+    padding: var(--we-space-100) var(--we-space-200);
+    border-radius: var(--we-radius-300);
+    font-size: var(--we-font-size-200);
+    color: var(--we-role-text-muted);
+    border: 1px dashed var(--we-role-border);
+  }
+
+  [part='clear']:hover {
+    background: var(--we-role-surface-hover);
+    color: var(--we-role-text);
+  }
+
+  /* The decision row, where the picker confirms rather than committing as you browse. */
+  [part='footer'] {
+    display: flex;
+    gap: var(--we-space-200);
+    justify-content: flex-end;
+    padding-top: var(--we-space-100);
+    border-top: 1px solid var(--we-role-border);
+  }
+
+  [part='cancel'],
+  [part='apply'] {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--we-space-100);
+    padding: var(--we-space-100) var(--we-space-300);
+    border-radius: var(--we-radius-300);
+    font-size: var(--we-font-size-200);
+  }
+
+  [part='cancel'] {
+    color: var(--we-role-text-muted);
+  }
+
+  [part='cancel']:hover {
+    background: var(--we-role-surface-hover);
+    color: var(--we-role-text);
+  }
+
+  /* The affirmative one carries the accent, so the pair reads at a glance rather than by reading. */
+  [part='apply'] {
+    background: var(--we-role-accent);
+    color: var(--we-role-on-accent);
+  }
+
+  [part='apply']:hover {
+    background: var(--we-role-accent-hover);
   }
 
   [part='tokens'] {
@@ -302,6 +360,17 @@ const styles = css`
 
 type Tab = 'tokens' | 'custom';
 
+/**
+ * A colour, chosen from the theme's tokens or picked by hand.
+ *
+ * @fires change - detail: the colour as a CSS string. A decision — a swatch clicked, a drag
+ *   released, text left, the eyedropper's answer, Default (which emits `''`). Store this one.
+ * @fires preview - detail: the same, while a thumb is moving or a value is being typed. Show it;
+ *   write nothing. See `_dispatch` for what happened when there was only one of these.
+ *
+ * With `confirm`, every interaction is a `preview` and `change` comes only from Apply — see the
+ * property for why a consumer would want that.
+ */
 @customElement('we-color-picker')
 export default class ColorPicker extends DesignSystemElement {
   static styles = [sharedStyles, styles];
@@ -321,9 +390,36 @@ export default class ColorPicker extends DesignSystemElement {
   @property({ type: Boolean }) tokens = false;
   /** Allow a transparency. Off by default; a role that carries alpha (the scrim) turns it on. */
   @property({ type: Boolean }) alpha = false;
+  /**
+   * Offer a way back to no colour at all — a "Default" at the foot of the popover that emits an
+   * empty value and closes.
+   *
+   * A picker has no notion of none: every swatch is a colour, and a value that means "let the rule
+   * decide" cannot be picked from a grid of them. Where the value is an *override* — a card's own
+   * colour in front of its kind's, a state's in front of its semantic's — the way back belongs in
+   * the same popover the way in is, not as a second control beside the swatch.
+   */
+  @property({ type: Boolean }) clearable = false;
+  /**
+   * Decide on a button rather than on every touch.
+   *
+   * Off, every swatch clicked and every drag released is a `change` — a decision — which is right
+   * where storing one is cheap and where the popover is the only thing on screen that moved.
+   *
+   * On, the popover grows a footer: everything inside it is a `preview` until **Apply**, and
+   * dismissing it any other way emits a final `preview` putting the value back to what it was when
+   * the popover opened. For a consumer whose commit is expensive — a canvas writing a record per
+   * selected card, each a round trip — browsing five colours is otherwise five commits per card,
+   * and five entries in an undo history, for one decision. It also gives the reader a moment where
+   * the change is visibly *not yet made*, which is the thing a picker that commits as you browse
+   * cannot offer.
+   */
+  @property({ type: Boolean }) confirm = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
+  /** What the value was when the popover opened, so `confirm` has something to put back. */
+  private _opened = '';
   @state() private _tab: Tab = 'custom';
   @state() private _format: ColorFormat = 'hex';
   /** The colour being dragged, in HSV — the area's own coordinates, so a drag does not round-trip. */
@@ -374,12 +470,12 @@ export default class ColorPicker extends DesignSystemElement {
     with forty swatch pickers is not forty live listeners.
   */
   private _onDocPointer = (e: Event) => {
-    if (!e.composedPath().includes(this)) this._open = false;
+    if (!e.composedPath().includes(this)) this._cancelChoice();
   };
 
   private _onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this._open) {
-      this._open = false;
+      this._cancelChoice();
       this.shadowRoot?.querySelector<HTMLElement>('[part="preview"]')?.focus();
     }
   };
@@ -442,20 +538,75 @@ export default class ColorPicker extends DesignSystemElement {
   private _openPopover() {
     this._syncFromValue();
     this._draft = null;
+    this._opened = this.value;
     this._open = true;
   }
 
-  private _emit(color: string) {
+  /**
+   * The two things this element says, and why there are two.
+   *
+   * `change` is a **decision**: a swatch clicked, a drag released, a value typed and left, the
+   * eyedropper's answer, Default. `preview` is the colour **under a moving thumb** — the same
+   * split a slider makes, and the one `NodeControl.onPreview` in the graph already expects.
+   *
+   * It was one event, fired on every `pointermove` of a drag, and consumers write on it. So
+   * dragging the saturation area wrote the colour tens of times a second — and where the row being
+   * recoloured comes from that data, as the workshop key's states do, each write handed back a new
+   * row object, `<For>` rebuilt it, and the picker was destroyed under the pointer that was using
+   * it. The popup "closed" halfway through a drag; what actually happened is that the element
+   * dragging it had been unmounted.
+   *
+   * A consumer that wants live feedback listens to `preview` and writes nothing; one that stores a
+   * value listens to `change` and gets exactly one per decision. A consumer that only ever listened
+   * to `change` is unaffected except by no longer being called forty times.
+   */
+  private _dispatch(kind: 'change' | 'preview', color: string) {
     this.value = color;
+    // Nothing is a decision until Apply — see `confirm`. Everything else about the interaction is
+    // unchanged, which is what keeps this one property rather than a second component.
+    const spoken = kind === 'change' && this.confirm ? 'preview' : kind;
+    this.dispatchEvent(new CustomEvent(spoken, { detail: color, bubbles: true, composed: true }));
+  }
+
+  /** Apply: the one place a confirming picker says `change`, and the only way out that commits. */
+  private _confirmChoice() {
+    const color = this.value;
+    this._open = false;
     this.dispatchEvent(new CustomEvent('change', { detail: color, bubbles: true, composed: true }));
   }
 
-  /** The current HSV + alpha as the string this component emits. */
-  private _emitCurrent() {
-    const rgba: Rgba = { ...hsvToRgb(this._hsv.h, this._hsv.s, this._hsv.v), a: this.alpha ? this._alpha : 1 };
-    this._emit(formatColor(rgba, this._format));
+  /**
+   * Every other way out of a confirming popover: Cancel, Escape, a press elsewhere.
+   *
+   * A final `preview` carrying the value the popover opened on, because the consumer has been
+   * drawing each one as it arrived and has no other way to learn the last one was withdrawn.
+   * Silent when nothing moved, so dismissing a popover somebody only looked at says nothing.
+   */
+  private _cancelChoice() {
+    this._open = false;
+    if (!this.confirm || this.value === this._opened) return;
+    this.value = this._opened;
+    this._syncFromValue();
+    this.dispatchEvent(new CustomEvent('preview', { detail: this.value, bubbles: true, composed: true }));
   }
 
+  private _emit(color: string) {
+    this._dispatch('change', color);
+  }
+
+  /** The current HSV + alpha as the string this component emits. */
+  private _emitCurrent(kind: 'change' | 'preview' = 'change') {
+    const rgba: Rgba = { ...hsvToRgb(this._hsv.h, this._hsv.s, this._hsv.v), a: this.alpha ? this._alpha : 1 };
+    this._dispatch(kind, formatColor(rgba, this._format));
+  }
+
+  /*
+    Typing is a preview until it is left alone.
+
+    A hex is seven characters and only the last one makes it a colour, so `#ff0000` parsed as `#ff0`
+    on the way through and committed a colour nobody asked for. The field previews while it is being
+    typed and commits on blur or Enter — which is also what a native text input means by `change`.
+  */
   private _onText(e: Event) {
     const raw = (e.target as HTMLInputElement).value;
     this._draft = raw;
@@ -463,7 +614,15 @@ export default class ColorPicker extends DesignSystemElement {
     if (!parsed) return;
     this._hsv = rgbToHsv(parsed);
     this._alpha = parsed.a;
-    this._emit(formatColor(parsed, this._format));
+    this._dispatch('preview', formatColor(parsed, this._format));
+  }
+
+  /** The typed value, settled. Invalid text leaves the last good colour alone, as it always did. */
+  private _commitText() {
+    if (this._draft === null) return;
+    const parsed = parseColor(this._draft);
+    this._draft = null;
+    if (parsed) this._emit(formatColor(parsed, this._format));
   }
 
   /**
@@ -482,13 +641,16 @@ export default class ColorPicker extends DesignSystemElement {
         Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height)),
       );
       this._draft = null;
-      this._emitCurrent();
+      // Moving, so nothing is decided yet — see `_dispatch`. The thumb and the swatch follow this;
+      // only the release below is a value anybody should store.
+      this._emitCurrent('preview');
     };
     apply(e);
     const move = (ev: PointerEvent) => apply(ev);
     const up = () => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
+      this._emitCurrent('change');
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
@@ -587,7 +749,11 @@ export default class ColorPicker extends DesignSystemElement {
           spellcheck="false"
           .value=${shown}
           @input=${(e: Event) => this._onText(e)}
-          @blur=${() => (this._draft = null)}
+          @change=${() => this._commitText()}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === 'Enter') this._commitText();
+          }}
+          @blur=${() => this._commitText()}
         />
         ${
           ColorPicker._canDrop
@@ -610,7 +776,7 @@ export default class ColorPicker extends DesignSystemElement {
         aria-label=${`Colour: ${this.value}`}
         style=${styleMap(swatchLayers(this.value || 'transparent'))}
         ?disabled=${this.disabled}
-        @click=${() => (this._open ? (this._open = false) : this._openPopover())}
+        @click=${() => (this._open ? this._cancelChoice() : this._openPopover())}
       ></button>
 
       ${
@@ -654,6 +820,32 @@ export default class ColorPicker extends DesignSystemElement {
                           )}
                         </div>
                         ${this._renderCustom()}`
+              }
+              ${
+                this.clearable
+                  ? html`<button
+                      part="clear"
+                      @click=${() => {
+                        this._emit('');
+                        // A choice like any other while confirming, so it waits for Apply with the
+                        // rest; without one it is the decision and the popover has done its job.
+                        if (!this.confirm) this._open = false;
+                      }}
+                    >
+                      Default
+                    </button>`
+                  : ''
+              }
+              ${
+                this.confirm
+                  ? html`<div part="footer">
+                      <button part="cancel" @click=${() => this._cancelChoice()}>Cancel</button>
+                      <button part="apply" @click=${() => this._confirmChoice()}>
+                        <we-icon name="check" size="xs"></we-icon>
+                        Apply
+                      </button>
+                    </div>`
+                  : ''
               }
             </div>`
           : ''

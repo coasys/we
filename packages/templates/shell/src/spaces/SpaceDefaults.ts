@@ -1,5 +1,6 @@
 import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr, ref } from '@we/schema-shared';
+import { sectionLabel } from '@we/template-kit';
 
 import { marketplaceBrowser } from './vocabulary/MarketplaceBrowser.ts';
 import { themeMarketplaceBrowser } from './vocabulary/ThemeMarketplaceBrowser.ts';
@@ -98,7 +99,7 @@ const themeRow = defaultPickerRow({
 
 const sectionBox = (title: string, description: string, children: SchemaNode[]): SchemaNode => ({
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -115,14 +116,7 @@ const sectionBox = (title: string, description: string, children: SchemaNode[]):
 const group = (label: string, items: SchemaProp, as: string, row: SchemaNode): SchemaNode => ({
   type: 'Column',
   props: { gap: '200' },
-  children: [
-    {
-      type: 'we-text',
-      props: { variant: 'footnote', fontWeight: 'semibold', textTransform: 'uppercase', color: 'text-faint' },
-      children: [label],
-    },
-    { type: '$each', props: { items, as }, children: [row] },
-  ],
+  children: [sectionLabel({ label }), { type: '$each', props: { items, as }, children: [row] }],
 });
 
 /** Browse-and-install, shown only to whoever may change what everyone sees. */

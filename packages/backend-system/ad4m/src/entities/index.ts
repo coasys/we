@@ -1,5 +1,5 @@
 /**
- * The AD4M lane's entity implementations — generated from `@we/entities`' manifest, living where
+ * GENERATED — the AD4M lane's entity implementations, from `@we/entities`' manifest, living where
  * they belong: in the adapter that registers them. Everything else in the application reaches
  * these only through the entity proxies on `@we/entities`, which resolve to whatever this adapter
  * registered at connect time; importing from here is asking for one specific backend's
@@ -15,10 +15,15 @@ export * from './ChatSession';
 export * from './CodeBlock';
 export * from './CollectionBlock';
 export * from './DividerBlock';
+export * from './EdgeRoute';
 export * from './EmbedBlock';
 export * from './EventBlock';
+export * from './ExtractionAmendment';
+export * from './ExtractionPass';
 export * from './FileBlock';
 export * from './ImageBlock';
+export * from './Involvement';
+export * from './InvolvementType';
 export * from './LinkBlock';
 export * from './LocationBlock';
 export * from './MutedAgent';
@@ -34,9 +39,11 @@ export * from './SpacePreference';
 export * from './SpaceTemplatePreference';
 export * from './TagBlock';
 export * from './TaskBlock';
+export * from './TaskState';
 export * from './Template';
 export * from './TextBlock';
 export * from './Theme';
+export * from './Topic';
 export * from './TypeStyle';
 export * from './VideoBlock';
 export { WeNode } from './WeNode';

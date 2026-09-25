@@ -30,7 +30,7 @@ The only dependency is `@we/schema-shared`, for the types.
 This package has **no build step**, and its `exports` point at `src/`.
 
 Templates reference assets (`import forBuilders from '../assets/CTAv1/ForBuilders.jpg'`). If the
-package were pre-bundled, esbuild would resolve those imports at *package* build time — emitting the
+package were pre-bundled, esbuild would resolve those imports at _package_ build time — emitting the
 images into this package's `dist/` and freezing plain relative strings like
 `"./ForBuilders-4RJHDICV.jpg"` into the JS. The consuming app's bundler cannot rewrite a plain
 string, so the URLs ship unchanged and 404 at runtime: the about page renders with every image

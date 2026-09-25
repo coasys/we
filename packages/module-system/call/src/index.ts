@@ -23,7 +23,7 @@
  * - **No SFU.** Mesh only, so roughly four to six participants — see `mesh.ts`.
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
-import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+import { defineModule, type ModuleHost } from '@we/module-shared';
 /*
   A compile-time dependency, and the only kind a module may have on a shape.
 
@@ -36,6 +36,7 @@ import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 import { peopleTooltip } from '@we/schema-kit';
 import { expr, type SchemaNode } from '@we/schema-shared';
 
+import { deviceSettings, deviceSettingsModal } from './DeviceSettings.schema';
 import { devPeersAvailable } from './devPeers';
 import { createCallStore } from './store';
 
@@ -49,7 +50,7 @@ export {
   parseCallMessage,
   recordCallId,
 } from './protocol';
-export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
+export { type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
  * How far the call's chrome sits off the bottom edge.
@@ -73,7 +74,8 @@ export { type CallDockEdge, type CallTile, type CallTileState, createCallStore }
  *
  * The stage no longer derives an offset from this. It used to: a second constant here restated the
  * bar's height so the two would stack, which is a relationship nothing enforced. The stage is a
- * *dock* now, and where a dock lands is the host's business — see `docks` at the bottom of this file.
+ * *panel* now, and where a panel lands is the host's business — see `contributes.panels` at the
+ * bottom of this file.
  */
 const CALL_BAR_INSET = '10px';
 
@@ -112,7 +114,7 @@ const CALL_BAR_INSET = '10px';
  * ## Why the strip is a `$surface`
  *
  * The strip's width is the content's width, which is exactly the number the bar needs in order to
- * decide how much of itself to show — see `COMPACT`. A surface is the one mechanism the system has
+ * decide how much of itself to show — see `ROOMY`. A surface is the one mechanism the system has
  * for a schema to read its own room, and it needs a box whose inline size is decided from outside,
  * which a strip pinned at both ends is and a shrink-to-fit bar is not.
  *
@@ -129,7 +131,14 @@ function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
       right: 'var(--we-chrome-right, 0px)',
       [edge]: `calc(${CALL_BAR_INSET} + var(--we-chrome-${edge}, 0px))`,
       transition: [ease('left'), ease('right'), ease(edge)].join(', '),
-      zIndex: 'sticky',
+      /*
+        `chrome`, above every panel — the rung the module rail and the sidebar are on, for the same
+        reason. Panels count up from `sticky` by how recently they were touched, so on `sticky` the
+        bar lost to any panel that had been raised, and maximising raises: a full-screen call hid its
+        own hang-up button. A maximised panel pads its content by this bar's reserve (`padBottom`),
+        so painting over it covers nothing the panel needs.
+      */
+      zIndex: 'chrome',
       pointerEvents: 'none',
     },
     children: [
@@ -161,18 +170,21 @@ function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
  *
  * One tier rather than a gradual collapse, because a control that moves at 700 and another at 500
  * is a bar nobody can learn. The rule is: below `base` it is the small bar, otherwise the whole
- * one, and both are one schema with these two gates in it rather than two schemas that drift.
+ * one, and both are one schema with this gate in it rather than two schemas that drift.
  *
  * The same question the mobile plan asks, answered once — a narrow window and a narrow content
  * box are the same problem to a bar, and the surface reports them as one number.
+ *
+ * Stated as its negative — "the row has room" — because that is the direction every use runs in
+ * now. The row shows a control while roomy, and the menu keeps the same control `hidden` while
+ * roomy; there is no longer anything mounted only *because* the bar is compact, so the positive
+ * spelling and the `whenCompact` built on it are gone rather than kept as a second way to say this.
  */
-const COMPACT = { $: "surface.tier == 'base'" };
 const ROOMY = { $: "surface.tier != 'base'" };
 const whenRoomy = (node: SchemaNode): SchemaNode => ({
   type: '$if',
   props: { condition: ROOMY, then: node },
 });
-const whenCompact = (node: SchemaNode): SchemaNode => ({ type: '$if', props: { condition: COMPACT, then: node } });
 
 /**
  * The bar's own corners, following the theme's **control** radius.
@@ -240,6 +252,25 @@ const BAR_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as 
 export const CALL_CONTROLS_ANCHOR = 'call-controls';
 
 /**
+ * Where development-only controls go: a region at the END of the bar, after everything shipped.
+ *
+ * A separate region from `CALL_CONTROLS_ANCHOR` rather than a high `order` within it, because the two
+ * differ in a way an order cannot express. A contributed *control* is part of the bar a user gets and
+ * belongs among the others; a contributed *harness* is absent from a shipped build entirely, and the
+ * thing worth being able to see at a glance is that what a developer is looking at differs from what
+ * everybody else gets by one trailing group and nothing else.
+ *
+ * It also puts the harness triples next to each other, which no ordering could: contributions from one
+ * module land at a single point, so this module's own fake-participant triple cannot be threaded in
+ * between another module's controls. Two identical-looking counters separated by the fold button was
+ * the state this replaced.
+ *
+ * Declared, and marked, only in a development build — see `anchors` — so a production bundle carries
+ * neither the region nor anything that could reach it.
+ */
+export const CALL_DEV_ANCHOR = 'call-dev';
+
+/**
  * A second extension point, under the bar rather than inside it — for chrome that *reports* rather
  * than chrome you press.
  *
@@ -287,6 +318,42 @@ const faceOf = (field: string) => ({ $: `find(modules.call.tileFaces, { id: tile
  * say whose it is.
  */
 const hasVideo = stateOf('hasPicture');
+
+/**
+ * What the chip in the corner of a tile says.
+ *
+ * A name where there is one, and otherwise what is happening instead of one — which is the whole
+ * point, because the case that produced an empty chip was a peer whose profile had not arrived
+ * *and* whose connection was still being made. Neither fact was reaching the person looking at it.
+ *
+ * The order is a ranking of usefulness, not of certainty. A repair in progress outranks a late
+ * profile, because "Reconnecting…" is the more useful thing to know about somebody whose name you
+ * were not going to read off this chip anyway. "Someone" is the floor: a peer who is connected,
+ * named nothing, and is doing nothing that needs explaining still deserves a word, or the chip
+ * collapses to an avatar with a blank beside it — which is what this replaced.
+ */
+const tileLabel = expr`tile.isSelf ? 'You'
+  : ${faceOf('name')} ? ${faceOf('name')}
+  : ${stateOf('retrying')} ? 'Reconnecting…'
+  : ${stateOf('failed')} ? 'Not connected'
+  : ${stateOf('connection')} != 'connected' ? 'Connecting…'
+  : 'Someone'`;
+
+/**
+ * What the connection badge says when you point at it.
+ *
+ * The one diagnostic that separates the two failures that look identical from outside: a pair whose
+ * handshake was lost, and a pair that cannot traverse its NAT. Nothing in the app could tell them
+ * apart before, which is why "it doesn't connect" had no next question — and the second one has a
+ * fix (a relay, in the `iceServers` setting) that the first one does not.
+ *
+ * `relay` is the interesting word: it means this pair only works *because* a TURN server is carrying
+ * it, so a deployment seeing it everywhere is a deployment whose relay is load-bearing. Nothing at
+ * all means no route was ever selected, which is the case where the setting is worth reading about.
+ */
+const transportTip = expr`${stateOf('transport')}
+  ? 'Connected over ' + ${stateOf('transport')} + (${stateOf('attempts')} ? ' · retried ' + ${stateOf('attempts')} : '')
+  : 'No route to this person yet. If this keeps happening on a call, this network may need a TURN relay.'`;
 
 /**
  * One participant: a picture the right shape, and everything that belongs on top of it.
@@ -512,24 +579,126 @@ const tile: SchemaNode = {
               },
             },
             /**
-             * Click anyone to give them the stage; click them again to go back to an even grid.
+             * The tile's own controls, and the hover state that reveals them.
              *
-             * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
-             * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
-             * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
-             * order so those stay readable, and above the video so the whole picture is the target.
+             * One box over the whole picture holding both the click target and the reconnect button, so
+             * that pointing anywhere at the video brings the button up — see the note on the button
+             * itself for why that could not be done with the button alone.
+             *
+             * `opacity` on a parent composites its whole subtree, and the click target inside is the
+             * `bare` variant, which paints nothing — so fading this box fades exactly one visible thing.
+             * The badges are deliberately *outside* it: a name and "Reconnecting…" are not controls and
+             * must not dim, and a child cannot exceed its parent's opacity, so keeping them legible means
+             * keeping them out rather than setting `opacity: 1` on them.
+             *
+             * `focusProps` is what keeps the keyboard path open: the shared focus selector matches
+             * `:has(:focus-visible)`, so tabbing onto either button inside brings the box to full opacity
+             * rather than leaving a focus ring at 35%.
              */
             {
-              type: 'we-button',
+              type: 'Column',
               props: {
-                variant: 'bare',
                 position: 'absolute',
                 top: '0',
+                right: '0',
+                bottom: '0',
                 left: '0',
-                width: '100%',
-                height: '100%',
-                onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
+                opacity: expr`${stateOf('failed')} || ${stateOf('retrying')} ? 1 : 0.35`,
+                hoverProps: { opacity: 1 },
+                focusProps: { opacity: 1 },
               },
+              children: [
+                /**
+                 * Click anyone to give them the stage; click them again to go back to an even grid.
+                 *
+                 * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
+                 * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
+                 * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
+                 * order so those stay readable, and above the video so the whole picture is the target.
+                 */
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'bare',
+                    position: 'absolute',
+                    top: '0',
+                    left: '0',
+                    width: '100%',
+                    height: '100%',
+                    onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
+                  },
+                },
+                /**
+                 * Build this one connection again, without leaving the call.
+                 *
+                 * The honest bottom of the recovery ladder. Everything above it is the mesh repairing
+                 * itself and most of the time that is enough; this is what is left when it is not, and
+                 * the alternative people were using is leaving the call and rejoining — which takes
+                 * everyone's picture down to fix one pair, and briefly tells the whole room you left.
+                 *
+                 * ## Why it is not gated on the connection looking broken
+                 *
+                 * A pair can be `connected` and useless: one-way audio, a picture that froze a minute
+                 * ago, a stream that never recovered from a laptop lid. Offering the button only in the
+                 * states WebRTC admits to would be the app insisting that what somebody is plainly
+                 * looking at is fine. It is faint on state instead — always reachable, never in the way.
+                 *
+                 * ## Why it sits in the bottom corner rather than the middle of the picture
+                 *
+                 * It used to be pinned to the top right, which put it over the one part of a tile that
+                 * is reliably somebody's face. The bottom strip is already chrome — the name and the
+                 * status badges live there — so the button lands in the row that is *for* this, at the
+                 * far end of it from the name. Both are `size: 'xs'` and so exactly one
+                 * `--we-component-height-xs` tall, which is why a shared `bottom` lines them up with no
+                 * arithmetic.
+                 *
+                 * ## Why the fade is on the box above and not here
+                 *
+                 * Zero opacity was never available: a control at zero has to be revealed by hovering
+                 * something *else*, and hovering the button itself cannot reveal it, because you cannot
+                 * point at what you cannot see. The earlier fix was to keep it faint and reveal it on its
+                 * own hover — which works, and asks somebody to find a 35%-opacity glyph before they know
+                 * it is there.
+                 *
+                 * Hovering the *tile* is the discoverable version, and a schema can express it after all:
+                 * not as an `$if` on a hover state (a tile has none to read, and remounting a node over
+                 * the video on every pointer move would be worse than the problem), but as `opacity` on a
+                 * box that covers the picture. `--we-ds-*` custom properties are declared
+                 * `inherits: false`, so a parent's `hoverProps` cannot reach in and restyle a child — but
+                 * it does not need to, because opacity composites the subtree on its own.
+                 *
+                 * Deliberately *not* on your own tile: there is no connection to yourself, and a control
+                 * that did nothing would be worse than no control.
+                 */
+                {
+                  type: '$if',
+                  props: {
+                    condition: expr`!tile.isSelf`,
+                    then: {
+                      type: 'we-tooltip',
+                      props: { content: 'Reconnect to this person', placement: 'top' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'secondary',
+                            size: 'xs',
+                            square: true,
+                            position: 'absolute',
+                            bottom: '200',
+                            right: '200',
+                            // A repair already running is not a reason to hide it, but it is a reason to
+                            // say something is happening rather than inviting a second press.
+                            loading: stateOf('retrying'),
+                            onClick: { $action: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
             },
             {
               type: 'Row',
@@ -543,55 +712,88 @@ const tile: SchemaNode = {
                  * small tile: one absolutely positioned strip, laid out left to right, name first.
                  */
                 {
-                  type: '$if',
+                  /**
+                   * Whose tile this is, and what it is doing.
+                   *
+                   * Always rendered, which is the change. It used to be gated on
+                   * `tile.isSelf || name`, so a peer whose profile had not arrived — which is *every*
+                   * peer for the first seconds of a call, and any peer whose profile never resolves —
+                   * had no chip at all. The result read as a bug rather than as a delay: a wall of
+                   * faces where some of them are labelled and some are not, and the unlabelled ones
+                   * are exactly the ones you cannot identify from the picture.
+                   *
+                   * A name is never *absent* now, only late: `label` below falls back to what is
+                   * being done about the missing one.
+                   */
+                  type: 'we-badge',
                   props: {
-                    // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
-                    // Your own tile always has something to say, so it is exempt.
-                    condition: expr`tile.isSelf || ${faceOf('name')}`,
-                    then: {
-                      type: 'we-badge',
-                      props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
-                      children: [
-                        {
-                          /**
-                           * The small avatar appears only while video is playing.
-                           *
-                           * With the camera off the large avatar is already in the middle of the tile, and a
-                           * second copy of the same face two centimetres below it is noise. While video is
-                           * playing it is the opposite: a shared desktop carries no clue whose it is.
-                           */
-                          type: '$if',
+                    variant: 'neutral',
+                    size: 'xs',
+                    maxWidth: '150px',
+                    /*
+                      Tighter than the badge's own `xs` padding, which is `space-200` each side.
+
+                      A badge is normally a thing in a row of things and wants room around its word.
+                      This one sits on a picture, at a corner, beside other badges — the padding is
+                      the gap between it and its neighbours twice over, and at this size it read as a
+                      pill with a word lost in the middle of it. `gap` comes down with it so the
+                      avatar and the name stay one object rather than two.
+                    */
+                    px: '100',
+                    gap: '100',
+                  },
+                  children: [
+                    {
+                      /**
+                       * The small avatar appears only while video is playing.
+                       *
+                       * With the camera off the large avatar is already in the middle of the tile, and a
+                       * second copy of the same face two centimetres below it is noise. While video is
+                       * playing it is the opposite: a shared desktop carries no clue whose it is.
+                       */
+                      type: '$if',
+                      props: {
+                        condition: hasVideo,
+                        then: {
+                          type: 'we-avatar',
                           props: {
-                            condition: hasVideo,
-                            then: {
-                              type: 'we-avatar',
-                              props: {
-                                image: faceOf('image'),
-                                hash: faceOf('hash'),
-                                initials: faceOf('name'),
-                                size: 'xxs',
-                              },
-                            },
+                            image: faceOf('image'),
+                            hash: faceOf('hash'),
+                            initials: faceOf('name'),
+                            size: 'xxs',
                           },
                         },
-                        {
-                          type: 'we-text',
-                          // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
-                          // minimum is its content, so without it a long name pushes the badge wider than
-                          // its own `maxWidth` instead of being clipped.
-                          props: { variant: 'footnote', truncate: true, minWidth: '0' },
-                          // "You" rather than your own name: it is shorter, and it is the thing you are
-                          // actually looking for when scanning a grid for your own picture.
-                          children: [
-                            {
-                              type: '$if',
-                              props: { condition: { $: 'tile.isSelf' }, then: 'You', else: faceOf('name') },
-                            },
-                          ],
-                        },
-                      ],
+                      },
                     },
-                  },
+                    {
+                      type: 'we-text',
+                      // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
+                      // minimum is its content, so without it a long name pushes the badge wider than
+                      // its own `maxWidth` instead of being clipped.
+                      props: {
+                        variant: 'footnote',
+                        truncate: true,
+                        minWidth: '0',
+                        // A status is not a name, and should not be read as one.
+                        color: expr`${faceOf('name')} ? 'text' : 'text-muted'`,
+                        italic: expr`!${faceOf('name')} && !tile.isSelf`,
+                      },
+                      /*
+                        Name, else what is happening instead.
+
+                        The ladder matters as much as the words: a repair in progress outranks the
+                        profile being late, because "Reconnecting…" is the more useful thing to know
+                        about somebody whose name you were never going to read off this chip anyway.
+                        "Connecting…" is last before giving up and saying nothing, and it covers the
+                        case that produced the empty chip — a peer who is here, whose profile has not
+                        landed, and whose connection is still being made.
+
+                        "You" rather than your own name: it is shorter, and it is the thing you are
+                        actually looking for when scanning a grid for your own picture.
+                      */
+                      children: [tileLabel],
+                    },
+                  ],
                 },
                 {
                   type: '$if',
@@ -625,9 +827,15 @@ const tile: SchemaNode = {
                   props: {
                     condition: expr`${hasVideo} && ${stateOf('connection')} in ['connecting', 'disconnected', 'failed']`,
                     then: {
-                      type: 'we-badge',
-                      props: { variant: 'warning', size: 'xs' },
-                      children: [stateOf('connection')],
+                      type: 'we-tooltip',
+                      props: { content: transportTip, placement: 'top' },
+                      children: [
+                        {
+                          type: 'we-badge',
+                          props: { variant: 'warning', size: 'xs', px: '100' },
+                          children: [stateOf('connection')],
+                        },
+                      ],
                     },
                   },
                 },
@@ -647,7 +855,8 @@ const tile: SchemaNode = {
  * `right: '72px'`, a hardcoded copy of the module rail's width that nothing kept in step, and a
  * `38vh` height that turned out to be a floor rather than a ceiling. Where the panel sits, how big
  * it is, and whether it insets the app or floats over it are all the host's now — this module only
- * says which edge and how much, through the store keys named in `docks` below.
+ * says which edge and how much, through the opening bid the panel declaration names (`stageBid`) —
+ * see `contributes.panels` below.
  *
  * `overflow: hidden`, not `auto`, and that is a statement rather than a detail: the grid divides a
  * definite box, so content that does not fit is a bug to be seen rather than a scrollbar to be
@@ -674,13 +883,23 @@ const stage: SchemaNode = {
         Padding the wrapper insets the scroller by that padding, so the scrollbar sits 12px in, clear
         of the handle, and the inset stays symmetrical — which a gutter added to one side would not.
       */
+      /*
+        The one panel that does not name itself, and the exception is deliberate.
+
+        Every other panel opens with `panelHeader` — see `@we/schema-kit`. This one draws pictures of
+        people, which need every pixel of the panel they are given, and the height maths is exact:
+        the aspect in `stageBid` subtracts `STAGE_PADDING_PX` and `STAGE_GAP_PX` so that "fit to
+        content" lands on a box the tiles fit rather than one that squeezes them, and a header row
+        is a height no schema here could tell it about. A stage of faces is also the one panel
+        nobody has to be told the name of.
+      */
       type: 'Column',
       props: {
         width: '100%',
         height: '100%',
-        // `300` is 12px — `STAGE_PADDING_PX`, which `dockAspect` subtracts so that "fit to content"
-        // lands on a height that fits the pictures rather than one that squeezes them. Change it
-        // here and the constant has to follow.
+        // `300` is 12px — `STAGE_PADDING_PX`, which `stageBid`'s aspect subtracts so that "fit to
+        // content" lands on a height that fits the pictures rather than one that squeezes them.
+        // Change it here and the constant has to follow.
         p: '300',
         overflow: 'hidden',
       },
@@ -690,9 +909,9 @@ const stage: SchemaNode = {
           props: {
             width: '100%',
             height: '100%',
-            // `300` is 12px — `STAGE_GAP_PX`, which `dockAspect` subtracts alongside the wrapper's
-            // padding so that "fit to content" lands on a height that fits the pictures rather than one
-            // that squeezes them. The *solver* needs no telling: the grid reads its own gap.
+            // `300` is 12px — `STAGE_GAP_PX`, which `stageBid`'s aspect subtracts alongside the
+            // wrapper's padding so that "fit to content" lands on a height that fits the pictures rather
+            // than one that squeezes them. The *solver* needs no telling: the grid reads its own gap.
             gap: '300',
             /*
           Scrolls along the strip's axis, and only when the strip is scrolling — see `stageOverflow`.
@@ -757,10 +976,25 @@ const devPeerControls: SchemaNode = {
   type: 'Row',
   props: { gap: '100', ay: 'center' },
   children: [
-    { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+    /*
+      The glyph, without which this is unreadable, and where the triple's own tooltip lives.
+
+      There is a second `−  N  +` immediately after it and the two were indistinguishable: identical
+      minus, number and plus. The icon is what tells them apart, so the icon is what a pointer looking
+      for an explanation lands on — the number is the one part of the triple somebody is *reading*
+      rather than interrogating, and a tooltip over it covers the value it explains.
+
+      No rule here. The region draws its own separators, so a contributed triple never has to know
+      whether it happens to be first.
+    */
     {
       type: 'we-tooltip',
-      props: { title: 'One fewer fake participant', placement: 'bottom' },
+      props: { content: 'Fake participants — development only', placement: 'bottom' },
+      children: [{ type: 'we-icon', props: { name: 'users', size: 'sm', color: 'text-faint' } }],
+    },
+    {
+      type: 'we-tooltip',
+      props: { content: 'One fewer fake participant', placement: 'bottom' },
       children: [
         {
           type: 'we-button',
@@ -778,19 +1012,13 @@ const devPeerControls: SchemaNode = {
       ],
     },
     {
-      type: 'we-tooltip',
-      props: { title: 'Fake participants — development only', placement: 'bottom' },
-      children: [
-        {
-          type: 'we-text',
-          props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
-          children: [{ type: 'we-number', props: { value: { $: 'modules.call.fakePeerCount' } } }],
-        },
-      ],
+      type: 'we-text',
+      props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
+      children: [{ type: 'we-number', props: { value: { $: 'modules.call.fakePeerCount' } } }],
     },
     {
       type: 'we-tooltip',
-      props: { title: 'One more fake participant', placement: 'bottom' },
+      props: { content: 'One more fake participant', placement: 'bottom' },
       children: [
         {
           type: 'we-button',
@@ -838,7 +1066,7 @@ function mediaToggle(opts: {
 
   return {
     type: 'we-tooltip',
-    props: { title: toggled(opts.tip.on, opts.tip.off), placement: 'bottom' },
+    props: { content: toggled(opts.tip.on, opts.tip.off), placement: 'bottom' },
     children: [
       {
         type: 'we-button',
@@ -901,12 +1129,13 @@ const participants: SchemaNode = peopleTooltip({
             },
             max: 3,
             size: 'sm',
-            // The faces overlap, so each needs the surface behind it to show between them.
-            ring: '0 0 0 2px var(--we-ring-color)',
+            // The faces overlap, so each is edged in the bar's own colour to show where one ends. It was
+            // `--we-ring-color` — the focus colour — which put a permanent accent ring on everyone.
+            edge: 'var(--we-role-page)',
           },
         },
         /*
-          The sentence is the first thing to go when the bar is short of room — see `COMPACT`. The
+          The sentence is the first thing to go when the bar is short of room — see `ROOMY`. The
           faces stay, and the stack's own "+N" carries the count past three; the roster on hover is
           unchanged, so nothing is lost that was not already a hover away.
         */
@@ -922,12 +1151,11 @@ const participants: SchemaNode = peopleTooltip({
             wrap, "11 in the call" broke between the number and the words and made the whole bar a
             row taller, which moves every control in it.
 
-            Not a design-system prop, and `truncate` is the wrong one: that clips with an ellipsis,
-            where the honest behaviour for a bar too narrow for its contents is to overflow. Below
-            the compact tier this text is not rendered at all, which is the answer for the widths
-            where it actually happened.
+            `truncate` is the wrong prop: that clips with an ellipsis, where the honest behaviour
+            for a bar too narrow for its contents is to overflow. Below the compact tier this text
+            is not rendered at all, which is the answer for the widths where it actually happened.
           */
-            styles: { whiteSpace: 'nowrap' },
+            whiteSpace: 'nowrap',
           },
           children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.tiles)' } } }, ' in the call'],
         }),
@@ -1035,7 +1263,8 @@ function menuToggle(opts: CallToggle) {
 }
 
 /**
- * Where the secondary controls go when the row is compact — see `COMPACT`.
+ * The bar's secondary controls: what the row folds away when it is compact — see `ROOMY` — and what
+ * belongs in a menu at any width.
  *
  * The design system's `DropdownMenu`, which this could not use until recently: it drew a filled pill
  * for a trigger with no way to say otherwise, and this has to sit in a row of ghost squares as one
@@ -1046,14 +1275,28 @@ function menuToggle(opts: CallToggle) {
  *
  * Opens upward: the bar is on the bottom edge and there is nothing below it.
  *
- * What is in here is exactly what `whenRoomy` takes out of the row, and it is built from the same
+ * What folds in here is exactly what `whenRoomy` takes out of the row, and it is built from the same
  * three specs, so a toggle cannot be lost in the fold or appear twice. Mute, camera and hang-up
  * never fold: they are the call, and a menu between a person and their microphone is a step too
  * many at the moment they need it.
  *
- * Solo is only offered while something is focused. A `$if` with no `else` resolves to nothing, and
- * the dropdown skips an entry that resolved to nothing — which is what makes a conditional line
- * expressible here at all, and was the second reason this was hand-rolled.
+ * A line that comes and goes says so on itself, with `hidden`, rather than being wrapped in
+ * anything: the items are a *prop*, and an entry carries a handler, which no value expression can
+ * hold — so there is nowhere outside an entry to put the condition. That is what makes a conditional
+ * line expressible here at all, and it was the second reason this was hand-rolled. Solo uses it for
+ * "only while something is focused"; the three folding toggles use it for the fold.
+ *
+ * ## It is always in the row now, not only when the row is compact
+ *
+ * The menu used to be `whenCompact(moreMenu)` — present only below `base`, because folding was the
+ * only reason it existed. That made it the wrong home for anything that is not a fold, and the bar
+ * needed one: starting a second call is a real thing to want mid-call (see the join bar's `+`, which
+ * offers exactly that to somebody who is *not* in one) and there was nowhere in the in-call bar to
+ * put it. On a wide screen the control simply did not exist, so a breakout meant hanging up first.
+ *
+ * So the menu stands at every width and the fold is expressed on the entries instead, with `hidden`
+ * — which keeps the invariant the paragraph above states, since the same three specs still build
+ * them. What is left in a roomy bar is the one entry that never folds.
  */
 const moreMenu: SchemaNode = {
   type: 'DropdownMenu',
@@ -1064,11 +1307,50 @@ const moreMenu: SchemaNode = {
     placement: 'top',
     itemSize: 'sm',
     items: [
-      menuToggle(SCREEN_SHARE),
-      menuToggle(STAGE),
+      // Folded away while the row is roomy, because the row is showing them itself — the other half
+      // of `whenRoomy`, said on the entry now that the menu outlives the fold.
+      { ...menuToggle(SCREEN_SHARE), hidden: ROOMY },
+      { ...menuToggle(STAGE), hidden: ROOMY },
       // Solo is only offered while something is focused. On the entry rather than around it: an
       // entry carries a handler, which no value expression can hold — see `hidden` on the menu.
-      { ...menuToggle(SOLO), hidden: { $: '!modules.call.focusedId' } },
+      { ...menuToggle(SOLO), hidden: { $: "surface.tier != 'base' || !modules.call.focusedId" } },
+      {
+        /*
+          Which microphone and camera this agent is sending.
+
+          In the menu rather than beside the mute button, and the distinction the bar's own docblock
+          draws is why: mute and camera never fold, because "a menu between a person and their
+          microphone is a step too many". Choosing a *device* is not that — it is a thing done once
+          and then forgotten, usually before anybody notices it was wrong, and it costs a press to
+          reach rather than a press to use.
+
+          Never hidden. The two entries above fold away when the row is roomy because the row is
+          showing them itself; this one has no counterpart in the bar at any width.
+        */
+        id: 'devices',
+        label: 'Camera and microphone…',
+        icon: 'sliders-horizontal',
+        onAction: { $action: 'modules.call.openDeviceSettings' },
+      },
+      {
+        /*
+          Start a second call from inside one — a breakout, a different subject.
+
+          The counterpart of the `+` in the join bar, which only somebody *not* in a call ever sees.
+          In a menu rather than as a button in the row, and spelt out rather than called "New call",
+          because of what it actually does: this agent can be in one call at a time, so `join` tears
+          the current one down before the new one starts — see the store. Everyone else stays where
+          they are; what ends is your part in it.
+
+          `args: ['']` rather than no args: a handler with none forwards the click, and `startCall`
+          takes an optional anchor id, so it would be handed a PointerEvent and the write refused.
+          `''` is how the store already spells "about the space rather than about some node in it".
+        */
+        id: 'start-another',
+        label: 'Leave and start a new call',
+        icon: 'plus',
+        onAction: { $action: 'modules.call.startCall', args: [''] },
+      },
     ],
   },
 };
@@ -1095,7 +1377,7 @@ const returnToCall: SchemaNode = {
     then: {
       type: 'we-tooltip',
       props: {
-        title: {
+        content: {
           $: "modules.call.callSpace.name ? `Back to the call in ${modules.call.callSpace.name}` : 'Back to the call'",
         },
         placement: 'bottom',
@@ -1198,17 +1480,23 @@ const bar: SchemaNode = {
               ],
             },
             {
-              // Starting a second call beside one already running is a real thing to want — a
-              // breakout, a different subject — and the only control that used to exist for it
-              // joined the call that was already there.
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                size: 'sm',
-                title: 'Start another call',
-                onClick: { $action: 'modules.call.startCall' },
-              },
-              children: [{ type: 'we-icon', props: { name: 'plus' } }],
+              type: 'we-tooltip',
+              props: { content: 'Start another call' },
+              children: [
+                {
+                  // Starting a second call beside one already running is a real thing to want — a
+                  // breakout, a different subject — and the only control that used to exist for it
+                  // joined the call that was already there.
+                  type: 'we-button',
+                  props: {
+                    label: 'Start another call',
+                    variant: 'ghost',
+                    size: 'sm',
+                    onClick: { $action: 'modules.call.startCall' },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'plus' } }],
+                },
+              ],
             },
           ],
         }),
@@ -1254,7 +1542,11 @@ const bar: SchemaNode = {
             it, a growing status panel would push the controls off the bottom of the window; above,
             it grows into empty space.
 
-            Renders nothing at all when nobody has contributed, so the bar keeps its own shape.
+            Renders nothing at all when nobody has contributed, so the bar keeps its own shape —
+            which is what it does today: transcription's extraction readout was the one contributor
+            and became a *control* in the bar itself once extraction had a panel of its own. Kept
+            rather than removed with it. It is a general affordance — anything that takes minutes and
+            wants a sentence above the controls belongs here — and an unfilled slot costs nothing.
           */
           type: '$slot',
           props: { anchor: CALL_STATUS_ANCHOR },
@@ -1285,7 +1577,7 @@ const bar: SchemaNode = {
               tip: { on: 'Turn camera off', off: 'Turn camera on' },
             }),
             // From here to the divider, everything but the contributed controls folds into `moreMenu`
-            // when the row is compact — see `COMPACT`. The glyph is explained on `SCREEN_SHARE`.
+            // when the row is compact — see `ROOMY`. The glyph is explained on `SCREEN_SHARE`.
             whenRoomy(mediaToggle(SCREEN_SHARE)),
             {
               // Where other modules put their call controls — see `anchors` below. The marker is replaced
@@ -1302,8 +1594,11 @@ const bar: SchemaNode = {
               "recording" button, say) precisely because it has to be seen. So the menu holds only
               what this module owns, and sits where the folded buttons were, so the row reads the
               same in either state: your devices, then the rest.
+
+              Unconditional now, where it was `whenCompact`. It carries one entry that is not a fold
+              — see `moreMenu` — and a control that exists only below 640px is a control most people
+              never find.
             */
-            whenCompact(moreMenu),
             /*
           Show/hide sits with the devices, not with the call.
 
@@ -1313,25 +1608,6 @@ const bar: SchemaNode = {
           microphone, your camera, your screen, your transcript, and whether you are looking at the
           video. Everything right of it is the call itself — who is in it, and how much room it has.
         */
-            /*
-              Development only, and absent rather than inert in a production build — see
-              `devPeerControls`. Placed with the things you do to your own machine rather than with
-              the call itself, which is what the divider below separates: how many fake participants
-              you are looking at is a property of your session, not of the call.
-
-              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
-              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
-              developer looking at what a user sees loses these on the press rather than on the next
-              reload, and gets them back the same way.
-            */
-            ...(devPeersAvailable
-              ? [
-                  {
-                    type: '$if',
-                    props: { condition: { $: 'sessionStore.devTools' }, then: devPeerControls },
-                  },
-                ]
-              : []),
             /*
               Solo — the spotlight with the stage to itself.
 
@@ -1345,6 +1621,64 @@ const bar: SchemaNode = {
               props: { condition: { $: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
             }),
             whenRoomy(mediaToggle(STAGE)),
+            /*
+              The fold, after the controls it folds.
+
+              It was above the show/hide toggle, which put it between that toggle and the contributed
+              controls; since `STAGE` is one of the things it swallows when the row is compact, sitting
+              after it means the button occupies the place its own contents just left. The row reads the
+              same in either state either way, which was the original point.
+            */
+            moreMenu,
+            /*
+              Development only, and last, which is the whole arrangement in one line: a shipped bar and
+              a developer's bar differ by this trailing group and nothing else. Absent rather than inert
+              in a production build — see `devPeerControls` and `CALL_DEV_ANCHOR`.
+
+              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
+              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
+              developer looking at what a user sees loses these on the press rather than on the next
+              reload, and gets them back the same way.
+
+              The region takes other modules' harnesses too, and they draw no rule of their own: this
+              triple leads the group and brackets it once. The `$if` covers them as well, so the switch
+              puts away every harness in the bar rather than only this module's.
+            */
+            ...(devPeersAvailable
+              ? [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'sessionStore.devTools' },
+                      then: {
+                        type: 'Row',
+                        /*
+                          The region owns its separators, rather than each triple drawing its own.
+
+                          Two reasons. A contributed fragment cannot know whether it is first, so a rule
+                          drawn inside one is either missing or doubled depending on what else is
+                          installed. And a rule inside a triple sits against the triple's own tight gap,
+                          which reads as the icon being jammed against it; here each rule gets the bar's
+                          own gap on both sides.
+
+                          One rule in front of the contributed region rather than one between every
+                          contribution, since a slot renders its contributions in order and nothing can
+                          be interleaved between them. With one contributor that is exactly right, and
+                          with more it is a region of harnesses behind a single rule, which is still the
+                          truth about them.
+                        */
+                        props: { gap: '200', ay: 'center' },
+                        children: [
+                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                          devPeerControls,
+                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                          { type: '$slot', props: { anchor: CALL_DEV_ANCHOR } },
+                        ],
+                      },
+                    },
+                  },
+                ]
+              : []),
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
             // that already, and left alone against `md` it would have been half.
@@ -1352,7 +1686,7 @@ const bar: SchemaNode = {
             participants,
             {
               type: 'we-tooltip',
-              props: { title: 'Leave the call', placement: 'bottom' },
+              props: { content: 'Leave the call', placement: 'bottom' },
               children: [
                 {
                   // Square like the toggles at the other end, being an icon and nothing else.
@@ -1464,6 +1798,166 @@ const anchoredCallButton: SchemaNode = {
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
 
+/**
+ * Which call the surface is showing: the one named in the address, else the one running.
+ *
+ * The address alone was wrong, and the way it was wrong is the reason this button used to vanish.
+ * A surface showing a *live* call usually has no `?call=` at all — the parameter is how somebody
+ * opens a meeting that has finished — so reading it alone meant the control disappeared for the
+ * whole of every call, which is the state it now has the most to say in.
+ *
+ * The same fallback every other surface about a call uses, which is what keeps this button talking
+ * about the thing beside it rather than about the address.
+ */
+const CALL_ON_SCREEN = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
+
+/**
+ * Whether this agent is in the call being shown.
+ *
+ * Compared against the record rather than asking `active`, which is true of *any* call: with a call
+ * running in one meeting and another being read, `active` says yes about the wrong one. This is the
+ * test the calls list already uses to mark its live row, so the two cannot disagree about which row
+ * is red.
+ */
+const IN_THIS_CALL = `modules.call.callRecordId && modules.call.callRecordId == (${CALL_ON_SCREEN})`;
+
+/**
+ * Whether somebody *else* is in the call being looked at.
+ *
+ * The difference between joining a conversation and restarting one, and the only thing separating
+ * two presses that are otherwise identical: `continueCall` derives the call's id from its record, so
+ * arriving at one somebody is already in *is* joining them. What changes is the word for it, and an
+ * offer to "pick up" a meeting three people are sitting in describes the wrong act.
+ */
+const CALL_ON_SCREEN_IS_LIVE = `modules.call.liveCalls.exists(c, c.recordId == (${CALL_ON_SCREEN}))`;
+
+/**
+ * What the press would do, in one sentence — tooltip and accessible name, so the two cannot drift.
+ *
+ * Four states, and the third is the one worth spelling out. A call running somewhere else cannot be
+ * swapped for this one: `continueCall` would tear the live one down and re-point every peer's
+ * transcript at this record. The button says so rather than going quiet, because a control that is
+ * present and refuses with a reason is easier to understand than one that is not there.
+ */
+const CONTINUE_LABEL =
+  `${IN_THIS_CALL} ? 'Go to the call' : ` +
+  `modules.call.active ? 'Leave your current call to pick this one up' : ` +
+  `${CALL_ON_SCREEN_IS_LIVE} ? 'Join this call' : 'Pick this call back up'`;
+
+/**
+ * The way back into a call somebody is reading.
+ *
+ * ## Why the call module owns it rather than a panel
+ *
+ * It lived in the transcript panel's header, and being there was a category error that showed up as
+ * an asymmetry: two panels sit side by side about the same call, and only one of them offered the
+ * way into it. A panel's header control is for the thing that panel *is* about — Transcribe belongs
+ * beside "Transcript" — and picking a call back up is about the call.
+ *
+ * So it is published here, as a part, and whatever draws a call's name places it. That also means it
+ * survives both panels being closed, which the panel copy could not: closing the transcript took the
+ * only visible way back with it and left the module rail, which nobody finds.
+ *
+ * ## It stays put, and changes colour
+ *
+ * It used to be absent whenever a call was running, which made it the only thing on a pill that
+ * came and went — and it went at the moment the pill had the most to say, since a live call is
+ * usually shown with no `?call=` in the address at all.
+ *
+ * So the control is always there while there is a call to be about, and the four things it can mean
+ * are carried by its colour, its label and whether it can be pressed. Red for the call you are in,
+ * which is the calls list's own marker for its live row, tested the same way so the two cannot
+ * disagree. Refused with a reason while a *different* call runs, rather than vanishing: continuing
+ * this one would tear that one down and re-point every peer's transcript at this record, which is
+ * the call store's rule and not a preference. `goToCall` refuses in the same words.
+ *
+ * ## No subject
+ *
+ * Deliberately, where `transcriptFeed` has one. Substitution is whole-token, and every expression
+ * here mentions the record inside a longer sentence — the liveness tests, the colour, the guard — so
+ * a `subject` would rewrite the action and leave all of them talking about the screen. Half a
+ * rewritten sentence is worse than none, and this button has one honest meaning anyway: the call in
+ * front of you.
+ */
+const continueCallButton: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `modules.call.canCall && (${CALL_ON_SCREEN})` },
+    then: {
+      type: 'we-tooltip',
+      props: { content: { $: CONTINUE_LABEL } },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            square: true,
+            // Icon-only, so the accessible name has to be said: there is no visible word to serve as
+            // one. The same expression as the tooltip, for the reason `CONTINUE_LABEL` exists.
+            label: { $: CONTINUE_LABEL },
+            /*
+              Present and refused, rather than gone.
+
+              The one state with nothing to offer is a call running somewhere else. Disabling says
+              which control is unavailable and the tooltip says why; removing it says neither, and
+              leaves the pill's leading position to close up and reopen as somebody moves between
+              calls.
+            */
+            disabled: { $: `modules.call.active && !(${IN_THIS_CALL})` },
+            /*
+              Branched when it fires, not when it paints.
+
+              A handler array resolves lazily, so these read the store as it is at the press — which
+              matters here because the whole point is that the button survives a call starting and
+              ending underneath it. Choosing at render time would bake in whichever state the pill
+              first drew in. The calls list branches its own phone button the same way.
+            */
+            onClick: [
+              { $if: { condition: { $: IN_THIS_CALL }, then: { $action: 'modules.call.goToCall' } } },
+              {
+                $if: {
+                  condition: { $: '!modules.call.active' },
+                  then: { $action: 'modules.call.continueCall', args: [{ $: CALL_ON_SCREEN }] },
+                },
+              },
+            ],
+          },
+          /*
+            The default height, and no explicit glyph size — which is the usual rule, and here it is
+            also the answer that was arrived at the long way round.
+
+            It was `size: 'sm'`, a 32px box with a 16px icon, which put it a step below whatever it
+            is placed beside. Then a default box with the glyph pinned at 20px, on the reasoning that
+            a full 24px is for a glyph that *is* the button and would shout beside a heading. Tested
+            in the pill, both are too timid: the box is what the eye aims at, and a glyph that does
+            not fill it reads as an afterthought rather than as a quiet control.
+
+            So the button sizes its own icon, as a sized primitive is meant to. Matching the box
+            matters too where a pill reserves a band measured from a control at that height.
+          */
+          children: [
+            {
+              type: 'we-icon',
+              props: {
+                name: 'phone-call',
+                /*
+                  Red for the call you are in, and the fill role rather than the foreground one.
+
+                  The calls list marks its live row exactly this way, and its note gives the reason:
+                  a live-call marker is a signal rather than a sentence, and the derived foreground
+                  goes pale in a dark theme. Nothing for the other states — the button is an offer,
+                  and a colour on it would be saying something about a call that is not happening.
+                */
+                color: { $: `${IN_THIS_CALL} ? 'danger' : ''` },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /** A bare "start a call here" trigger, for templates that want one in their own chrome. */
 const startCallButton: SchemaNode = {
   type: 'we-button',
@@ -1472,97 +1966,204 @@ const startCallButton: SchemaNode = {
 };
 
 export const callModule = defineModule({
-  id: 'call',
-  name: 'Calls',
-  description: 'Audio, video and screen share with the people in a space.',
-  icon: 'phone-call',
-
-  // Displayed at install, never scored. These three are the whole reason a user should think twice
-  // before installing a call module from a stranger.
-  capabilities: ['microphone', 'camera', 'screen-share', 'slot:dock-bottom', 'dock'],
-
-  // No `backends`: signalling goes through the ephemeral port, so this runs on anything that
-  // implements one. No `frameworks`: every piece of UI here is a fragment.
-
-  schemas: { anchoredCallButton, startCallButton, tile },
-
-  // What the transcriber listens to. Declared rather than wired: this module knows it has a
-  // microphone open, and only the host knows who else might want to hear it.
-  audioSource: 'localAudio',
-
-  // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
-  // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
-  anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
-
-  /*
-    Drawn by the host's module rail.
-
-    `activeWhen` used to be omitted, on the grounds that this starts a call rather than toggling a
-    panel and the call bar already says one is running — a highlighted rail tab would be saying it
-    twice. Two things were wrong with that.
-
-    The rail is the surface people scan for "where am I", and it is the only chrome that is always
-    there: the bar is a strip at the bottom centre, this is a column at the right edge, and they are
-    not read at the same moment. Being in a call is the most stateful thing this app does, and it was
-    the one row of that rail that could never show it.
-
-    Worse, a launcher with no state is a launcher whose click has to mean one thing, and this one's
-    meant three — dead in the space call, and a silent teardown of any other. `goToCall` is the
-    reading that survives every state, so the button lights up and stays useful rather than becoming
-    an unlabelled hazard. `activeLabel` is what stops the tooltip describing the act it no longer
-    performs; see the store.
-  */
-  launcher: {
+  // ── Who it is ────────────────────────────────────────────────────────────
+  manifest: {
+    id: 'call',
+    name: 'Calls',
+    description: 'Audio, video and screen share with the people in a space.',
     icon: 'phone-call',
-    label: 'Start call',
-    activeLabel: 'Go to the call',
-    action: 'goToCall',
-    activeWhen: 'active',
-    availableWhen: 'canCall',
+
+    // No `backends`: signalling goes through the ephemeral port, so this runs on anything that
+    // implements one. No `frameworks`: every piece of UI here is a fragment.
+    requires: {
+      /*
+        Exactly the kernels the store reaches, and the whole of what it reaches past `signal` and
+        scope. `records` writes the call's record before anyone joins; `presence` is the roster and
+        `ephemeral` the signalling the mesh reconciles against it; `peerConnection` lends the
+        constructor the mesh used to get from a private extension on the deps bag; and `media` is
+        both how the camera and microphone are reached and how the microphone is *published* — the
+        transcriber reads `media.input()` where it used to be handed whatever `audioSource` named.
+        A kernel not listed here is absent from `deps.kernels`, so adding a reach means adding it
+        here first, which is the point.
+      */
+      kernels: ['records', 'presence', 'ephemeral', 'media', 'peerConnection'],
+      // Displayed at install, never scored. These three are the whole reason a user should think
+      // twice before installing a call module from a stranger. The rest of what used to be an
+      // authored `capabilities` list — the dock, the bottom slot — is derived from `contributes`
+      // now, so it cannot go stale.
+      permissions: ['microphone', 'camera', 'screen-share'],
+    },
   },
 
-  /*
-    A call in progress keeps its chrome wherever you go.
+  // ── What it puts in front of a person ────────────────────────────────────
+  contributes: {
+    // Named fragments an interface places. Public API — see the note on `ModuleContributions.parts`.
+    parts: { anchoredCallButton, continueCallButton, deviceSettings, startCallButton, tile },
 
-    Module chrome is otherwise gated on the space you are looking at, which is right for chrome that
-    is *about* that space and wrong for this: a call outlives navigating away from where it started,
-    so in a space that has not enabled calls the bar vanished while the call carried on — hang-up
-    button included. Nothing was broken underneath, which is what made it read as a crash.
+    // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
+    // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
+    anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR, ...(devPeersAvailable ? [CALL_DEV_ANCHOR] : [])],
 
-    `active` is false the moment the call ends, which is the condition this has to satisfy: a key
-    that stayed true would make the bar permanent.
-  */
-  holdsWhen: 'modules.call.active',
-
-  slots: [
-    { anchor: 'dock-bottom', node: bar, order: 100 },
-    { anchor: 'dock-bottom', node: problem, order: 80 },
     /*
-      The audio, at the same anchor as the bar rather than in the dock.
+      Drawn by the host's module rail. A launcher of its own rather than a panel's button, because
+      pressing it does more than open one panel — see `goToCall` in the store. The stage panel below
+      has no `icon` for the same reason: this is its rail entry.
 
-      Chrome, not a panel: it renders nothing and takes no room, and it has to outlive every state
-      the stage can be in — including not existing. A slot contribution is mounted for as long as the
-      shell is, which is the property the sound needs and the dock deliberately does not have.
+      `activeWhen` used to be omitted, on the grounds that this starts a call rather than toggling a
+      panel and the call bar already says one is running — a highlighted rail tab would be saying it
+      twice. Two things were wrong with that.
+
+      The rail is the surface people scan for "where am I", and it is the only chrome that is always
+      there: the bar is a strip at the bottom centre, this is a column at the right edge, and they are
+      not read at the same moment. Being in a call is the most stateful thing this app does, and it was
+      the one row of that rail that could never show it.
+
+      Worse, a launcher with no state is a launcher whose click has to mean one thing, and this one's
+      meant three — dead in the space call, and a silent teardown of any other. `goToCall` is the
+      reading that survives every state, so the button lights up and stays useful rather than becoming
+      an unlabelled hazard. `activeLabel` is what stops the tooltip describing the act it no longer
+      performs; see the store.
     */
-    { anchor: 'dock-bottom', node: audioSink, order: 60 },
-  ],
+    launchers: [
+      {
+        icon: 'phone-call',
+        label: 'Start call',
+        activeLabel: 'Go to the call',
+        action: 'goToCall',
+        activeWhen: 'active',
+        availableWhen: 'canCall',
+      },
+    ],
 
-  /**
-   * The stage, as a panel the host places rather than chrome that places itself.
-   *
-   * The distinction the bar above makes clear by contrast. Both are call chrome; only one of them
-   * should take room. You glance at the bar while doing something else, so it overlays — shrinking
-   * the app for a row of buttons would be absurd. You *watch* the stage, usually while reading the
-   * space beside it, and a panel that covers what you are reading is a panel you keep closing.
-   *
-   * Three store keys and no geometry. The module cannot see the sidebar's width, the module rail's,
-   * or the size of the window, and the previous version's `right: '72px'` was a copy of one of
-   * those that nothing kept in step. Saying "the right edge, medium" and letting the host answer is
-   * what makes the same declaration inset on a monitor and float on a laptop.
-   */
-  docks: [
-    { edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', close: 'closeStage', node: stage },
-  ],
+    /*
+      A call in progress keeps its chrome wherever you go.
 
-  createStore: (deps: ModuleStoreDeps) => createCallStore(deps),
+      Module chrome is otherwise gated on the space you are looking at, which is right for chrome that
+      is *about* that space and wrong for this: a call outlives navigating away from where it started,
+      so in a space that has not enabled calls the bar vanished while the call carried on — hang-up
+      button included. Nothing was broken underneath, which is what made it read as a crash.
+
+      `active` is false the moment the call ends, which is the condition this has to satisfy: a key
+      that stayed true would make the bar permanent. A bare store key, like every other key here —
+      it was `modules.call.active`, the one field spelt as a template path.
+    */
+    holds: 'active',
+
+    // The band the bar occupies, for floating panels to keep clear of — see `chromeReserve` in the
+    // store. Named here rather than found by a magic member name, so the host reads what is declared.
+    reserve: 'chromeReserve',
+
+    slots: [
+      { anchor: 'dock-bottom', node: bar, order: 100 },
+      { anchor: 'dock-bottom', node: problem, order: 80 },
+      /*
+        The audio, at the same anchor as the bar rather than in the panel.
+
+        Chrome, not a panel: it renders nothing and takes no room, and it has to outlive every state
+        the stage can be in — including not existing. A slot contribution is mounted for as long as
+        the shell is, which is the property the sound needs and the panel deliberately does not have.
+      */
+      { anchor: 'dock-bottom', node: audioSink, order: 60 },
+      /*
+        The device chooser, as chrome for the same reason the sound is: it is opened from the call
+        bar and from a settings page, and neither of those can own a dialog the other also opens.
+        Order above the bar so a sheet is never drawn behind the row that raised it.
+      */
+      { anchor: 'overlay', node: deviceSettingsModal, order: 120 },
+    ],
+
+    /**
+     * The stage, as a panel the host places rather than chrome that places itself.
+     *
+     * The distinction the bar above makes clear by contrast. Both are call chrome; only one of them
+     * should take room. You glance at the bar while doing something else, so it overlays — shrinking
+     * the app for a row of buttons would be absurd. You *watch* the stage, usually while reading the
+     * space beside it, and a panel that covers what you are reading is a panel you keep closing.
+     *
+     * One bid and no geometry. The module cannot see the sidebar's width, the module rail's, or the
+     * size of the window, and the previous version's `right: '72px'` was a copy of one of those that
+     * nothing kept in step. Saying "the bottom edge, small, floating" and letting the host answer is
+     * what makes the same declaration inset on a monitor and float on a laptop. `bid` is a store key
+     * rather than a static object because the aspect it carries depends on who is in the call.
+     *
+     * ## Openness is the module's, for this one panel
+     *
+     * Nearly every panel's openness is the host's — a notes panel being open is a fact about the
+     * screen. Whether the stage is up is a fact about the *call*: `join` raises it, leaving lowers
+     * it, and `goToCall` brings it back. So this names `open`, and with it `show` and `close`, or the
+     * titlebar would have no way to dismiss it. No `icon`: the rail entry is the `goToCall` launcher,
+     * which does more than open a panel.
+     */
+    panels: [
+      {
+        name: 'stage',
+        title: 'Call',
+        node: stage,
+        bid: 'stageBid',
+        open: 'stageOpen',
+        show: 'openStage',
+        close: 'closeStage',
+      },
+    ],
+
+    /*
+      What this module publishes on presence, declared so the kernel can check it and the next module
+      to cooperate with a call can read the fields rather than copy this one's guesses. `record` and
+      `continued` are what the transcriber reads to adopt a call's record before anybody speaks —
+      see `publishActivity` in the store; `anchor` is what the call is about; `media` is each
+      participant's mute/camera/share for the roster to render.
+    */
+    activities: {
+      call: { id: 'string', anchor: 'object', media: 'object', record: 'string', continued: 'boolean' },
+    },
+
+    /**
+     * Where to find NAT traversal.
+     *
+     * The module ships public STUN and no TURN, and that is a real ceiling rather than a
+     * conservative default: two peers behind symmetric NAT — ordinary on mobile carriers and
+     * corporate networks — cannot reach each other without a relay, however healthy the signalling
+     * is. It is also invisible, because a pair that cannot traverse looks exactly like a pair whose
+     * handshake was lost. (`modules.call.tileTransport` is what tells them apart.)
+     *
+     * A module still must not *require* infrastructure, so it does not ship a relay. What it had no
+     * business doing was making one unreachable. Flux had this right and WE lost it on the way over:
+     * Flux shipped `turn:relay.ad4m.dev` as a default and let anybody add their own in settings. That
+     * relay is decommissioned now, which argues against shipping a default and not at all against the
+     * setting — a deployment that runs a relay declares it in its seed, and a community or a person
+     * who has one can say so without waiting for a release.
+     *
+     * Three levels and no `agent-in-space`: which relay reaches you is a fact about your network, not
+     * about the room you are in.
+     *
+     * Deliberately `string` rather than `secret`. TURN credentials are commonly ephemeral and
+     * shared — Flux's were literally `openrelay`/`openrelay` in a constants file — and a `secret` is
+     * agent-level only, which would take the deployment and space levels away. A relay whose
+     * credentials are worth protecting should mint short-lived ones, which is a property of the
+     * relay rather than of this field.
+     */
+    settings: [
+      {
+        key: 'iceServers',
+        label: 'ICE servers',
+        description:
+          'Where calls look for NAT traversal, one per line — stun:host:port, or ' +
+          'turn:user:password@host:port for a relay. Empty uses public STUN, which cannot connect ' +
+          'every pair of networks. A JSON array of RTCIceServer objects is also accepted.',
+        type: 'string',
+        default: '',
+        levels: ['deployment', 'space', 'agent'],
+      },
+    ],
+  },
+
+  // ── The one piece that is code ───────────────────────────────────────────
+  createStore: createCallStore,
 });
+
+/**
+ * What a host calls to get the module. Nothing is injected — every piece of UI here is a fragment,
+ * so there are no framework components for the host to lend — but the factory is the shape every
+ * module package exports, and the host loads them all the same way.
+ */
+export const createModule = (_host: ModuleHost) => callModule;

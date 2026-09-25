@@ -54,7 +54,8 @@ without knowing what holds the data.
 Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in schemas):
 - **Agent / DID** — a user identity; addressed by a DID (\`sessionStore.me.did\`).
 - **Perspective** — a local knowledge graph (links/triples). Each Space is backed by one;
-  \`datasetStore.currentDataset\` is the active one, \`rootPerspective\` holds we-root models.
+  \`datasetStore.currentDataset\` is the active one, \`datasetStore.rootDataset\` holds we-root (the app's
+  configuration), and \`datasetStore.personalDataset\` holds we-personal (the agent's notes and Pocket).
 - **Neighbourhood** — a *shared* perspective, synced peer-to-peer. A shared Space is a neighbourhood.
 - **SDNA (Social DNA)** — SHACL schemas installed into a perspective that define its data model.
   WE's models are SDNA-typed; \`initializeAsWeSpace\` installs WE's Space SDNA into a foreign perspective.
@@ -94,10 +95,14 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
 | \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | \`@we/backend-inmemory\` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
-| \`@we/module-shared\` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
-| \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| \`@we/module-shared\` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, \`lintModule\` — what a module author installs | Agnostic |
+| \`@we/module-testing\` | module-system/testing | Fakes for testing a module store without a host: \`fakeDeps\`, \`fakeRecords\`, \`fakePresence\`, \`buildStore\` | Agnostic |
+| \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-pocket\` · \`-polls\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules — each exports \`createModule(host)\` and the seed's \`modules\` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | \`@we/graph-protocol\` · \`-core\` · \`-expanders\` · \`-layouts\` · \`-solid\` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
+| \`@we/optimism\` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
+| \`@we/history\` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
+| \`@we/drag\` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | \`@we/entities\` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | \`@we/ai-context\` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
@@ -166,6 +171,11 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → \`packages/app-shell/src/shared/dockGeometry.ts\` (see docs/architecture/chrome-and-panels.md).
 
+**Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
+two capabilities cooperate without depending on each other — is
+docs/architecture/capabilities-and-surfaces.md. Read it before adding a module, a panel or a store:
+it is four rules, and half of it is the shapes that are refused on purpose.
+
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
@@ -185,4 +195,12 @@ declared on the model class — and they are not interchangeable. The short vers
 relation gets the full query surface and can carry nothing about itself (no author, no date, nothing
 to comment on or rate); a reified one carries all of that and has no query pushdown at all. Declare
 what is a fact about the *type*; reify what is a claim about a *pair*.
+
+**Before changing anything about boards, read docs/architecture/boards.md.** A board's columns are
+records, and a column is *a saved query with an arrangement*: what is in it comes from each task's
+\`status\`, and the column's ordered \`children\` are only where the cards sit. That split is why work an
+extraction pass writes appears on every board without anyone placing it, why deleting a column must
+never delete its cards, and why the link state can be inconsistent after a partition and the board
+still renders one answer. The same doc records where new per-column state goes, so the entity does
+not accrete a scalar per feature.
 `;

@@ -7,17 +7,17 @@
 import { Ad4mModel, Flag, HasOne, Model, Property } from '@coasys/ad4m';
 
 /**
- * Where something sits, on one board.
+ * Where something sits, on one canvas.
  *
  * A position is a fact about a **pair** — this view, this node — and not about either one alone.
  * Every design that stores it on one side loses information the moment the other side multiplies:
- * `x`/`y` on a block means a record can be on one board only, and the same note pinned to two
- * boards in two places is the ordinary case rather than the exotic one. So the coordinate lives on
+ * `x`/`y` on a block means a record can be on one canvas only, and the same note pinned to two
+ * canvases in two places is the ordinary case rather than the exotic one. So the coordinate lives on
  * the relation, which is what this is.
  *
- * ## Why many small records rather than a map on the board
+ * ## Why many small records rather than a map on the canvas
  *
- * A board holding `{ nodeId: {x, y} }` in one field is a read-modify-write, and a shared board is
+ * A canvas holding `{ nodeId: {x, y} }` in one field is a read-modify-write, and a shared canvas is
  * the worst possible place for one: two people dragging two *different* cards would clobber each
  * other, and the loser would watch their card snap back with no explanation. `MutedAgent` made the
  * same call for the same reason — one record per fact, so two independent changes are two
@@ -35,12 +35,12 @@ import { Ad4mModel, Flag, HasOne, Model, Property } from '@coasys/ad4m';
  *
  * It is still authored, because every expression is — which is what makes "everybody shares one
  * arrangement" and "everybody keeps their own" a difference of one `where` clause rather than a
- * migration. Shared is the default, since a board is a shared artifact; per-agent stays free.
+ * migration. Shared is the default, since a canvas is a shared artifact; per-agent stays free.
  *
  * ## What it does not decide
  *
- * A board is the container today. It should not be the container forever: the general thing is a
- * *saved view*, and a board is its degenerate case — one where every node happens to be placed and
+ * A canvas is the container today. It should not be the container forever: the general thing is a
+ * *saved view*, and a canvas is its degenerate case — one where every node happens to be placed and
  * the layout is `manual`. The evidence is already in the engine, where pinning a node on a knowledge
  * map holds it exactly until the page reloads. When that becomes durable it wants this record and a
  * different thing on the other end of the parent link, which costs a query rather than a model.
@@ -55,7 +55,7 @@ export class Placement extends Ad4mModel {
    *
    * The same fact `Relationship` carries beside its endpoints, for the same reason: a graph
    * address is minted from a dataset, a type and an id, and an untyped relation supplies no
-   * type. Storing it means the board can work out what to query without first resolving every
+   * type. Storing it means the canvas can work out what to query without first resolving every
    * reference to ask it what it is.
    */
   @Property({ through: 'we://node_type' })
@@ -77,7 +77,13 @@ export class Placement extends Ad4mModel {
   @Property({ through: 'we://content_scale' })
   contentScale: number = 0;
 
-  /** Design token or CSS colour. Empty is unset, so the board's own rules decide. */
+  @Property({ through: 'we://rotation' })
+  rotation: number = 0;
+
+  @Property({ through: 'we://z' })
+  z: number = 0;
+
+  /** Design token or CSS colour. Empty is unset, so the canvas's own rules decide. */
   @Property({ through: 'we://color' })
   color: string = '';
 
@@ -86,13 +92,13 @@ export class Placement extends Ad4mModel {
   cardShape: string = '';
 
   /**
-   * What is placed. Untyped, because a board holds whatever its community puts on it.
+   * What is placed. Untyped, because a canvas holds whatever its community puts on it.
    *
-   * Read as a bare URI rather than hydrated — deliberately, and it is why the board never asks
+   * Read as a bare URI rather than hydrated — deliberately, and it is why the canvas never asks
    * for `include` on this. An untyped relation has no target class for the ORM to hydrate into,
-   * and the board wants the id anyway: it queries the placed records by type, in batches, and
+   * and the canvas wants the id anyway: it queries the placed records by type, in batches, and
    * matches them up here.
    */
-  @HasOne({ through: 'we://placed_node' })
+  @HasOne({ through: 'we://placed_node', polymorphic: true })
   node?: string;
 }

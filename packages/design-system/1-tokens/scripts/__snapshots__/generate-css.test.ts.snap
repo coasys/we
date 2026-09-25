@@ -138,17 +138,19 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   /* Semantic Roles — intent over scale position. Defaults are parametric expressions
      so every theme keeps working untouched; themes may pin individual roles
      (ThemeOverrides.roles in @we/themes → --we-role-*). */
-  --we-role-page: var(--we-color-neutral-50);
-  --we-role-surface: oklch(from var(--we-role-page) calc(l + 0.045) c h);
-  --we-role-surface-raised: oklch(from var(--we-role-page) calc(l + 0.06) c h);
+  --we-role-page: oklch(from var(--we-role-chrome) calc(l + 0.03) c h);
+  --we-role-chrome: oklch(from var(--we-color-neutral-50) calc(l + 0.01) c h);
+  --we-role-surface: oklch(from var(--we-role-page) calc(l + 0.025) c h);
+  --we-role-surface-raised: oklch(from var(--we-role-page) calc(l + 0.04) c h);
   --we-role-surface-sunken: oklch(from var(--we-role-page) calc(l - 0.035) c h);
   --we-role-text: var(--we-color-neutral-900);
   --we-role-text-muted: var(--we-color-neutral-600);
   --we-role-text-faint: var(--we-color-neutral-400);
   --we-role-on-inverse: oklch(98.5% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.0300) var(--we-color-neutral-hue));
-  --we-role-surface-inverse: oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue));
+  --we-role-surface-inverse: oklch(from var(--we-role-page) clamp(0.04, calc(l - 0.09), 0.25) c h);
   --we-role-border: var(--we-color-neutral-200);
   --we-role-border-strong: var(--we-color-neutral-500);
+  --we-role-border-hover: color-mix(in oklab, var(--we-role-border) 60%, var(--we-role-border-strong));
   --we-role-accent: oklch(calc(var(--we-accent-lightness, 55) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663)) var(--we-color-primary-hue));
   --we-role-on-accent: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-on-accent-muted: oklch(from var(--we-role-on-accent) l c h / 0.8);
@@ -158,6 +160,7 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-accent-active: oklch(from var(--we-role-accent) calc(l + var(--we-state-active-accent, var(--we-state-active))) c h);
   --we-role-surface-hover: var(--we-color-neutral-100);
   --we-role-surface-active: var(--we-color-neutral-200);
+  --we-role-surface-sunken-hover: color-mix(in oklab, var(--we-role-surface-sunken) 65%, var(--we-role-surface));
   --we-role-control-surface: var(--we-color-neutral-200);
   --we-role-overlay: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%);
   --we-role-shadow-color: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue));
@@ -197,6 +200,7 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
     --we-role-surface: var(--we-color-neutral-0);
     --we-role-surface-raised: var(--we-color-neutral-0);
     --we-role-surface-sunken: var(--we-color-neutral-100);
+    --we-role-surface-inverse: oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue));
     --we-role-on-accent-muted: var(--we-role-on-accent);
     --we-role-accent-hover: var(--we-role-accent);
     --we-role-accent-active: var(--we-role-accent);
@@ -257,12 +261,13 @@ exports[`token CSS generation > component.css — scrollbar values come from the
 
 :root {
   /* Scrollbar Styles */
-  --we-scrollbar-width: 6px;
+  --we-scrollbar-width: 10px;
   --we-scrollbar-background-image: none;
   --we-scrollbar-background: transparent;
   --we-scrollbar-corner-background: transparent;
   --we-scrollbar-thumb-box-shadow: none;
   --we-scrollbar-thumb-border-radius: var(--we-radius-pill);
+  --we-scrollbar-thumb-inset: 2px;
   --we-scrollbar-thumb-background: var(--we-role-control-surface);
 }"
 `;

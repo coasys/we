@@ -112,6 +112,18 @@ export interface SortableMoveDetail {
  * under the pointer wins, so dropping into a nested list does not also count as dropping into its
  * parent.
  *
+ * ## A zone that can be empty needs a size
+ *
+ * Hit-testing is by the zone's own bounding rectangle, so a zone holding nothing is a zero-height
+ * rectangle and nothing can be dropped into it — which is precisely the zone a person most wants to
+ * drop into. **Give any zone that can empty a `flex` or a `minHeight`**; without one the surrounding
+ * box may look like the target while not being it, which is worse than looking undroppable.
+ *
+ * Left to the consumer rather than defaulted here, because how much room an empty list should hold
+ * is a design decision and differs per surface — a kanban column reserves a trough, a reorderable
+ * settings list should collapse. What the primitive owes is that the rule is written down where
+ * somebody wiring one up will read it.
+ *
  * ## Keyboard
  *
  * Space or Enter picks up the focused item; the arrow keys move it, along the list and across
@@ -138,6 +150,21 @@ export interface SortableMoveDetail {
  *
  * Make the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space
  * on a focused handle picks the row up exactly as it does on a plain item.
+ *
+ * ## Overlays opened from an item are not part of it
+ *
+ * A press that begins inside an `OverlayElement` — a modal, a drawer, a popover — never drags the
+ * item that overlay happens to sit inside, and no consumer has to declare anything for that.
+ *
+ * It is worth knowing why the case exists at all. A modal opened from a row is usually *declared* in
+ * that row, because it needs the row's data to say what it is renaming; overlays are promoted to the
+ * browser's top layer rather than reparented, so the sheet paints above the whole page while DOM
+ * containment still says it is inside the row. Without this rule, dragging to select text in a rename
+ * field dragged the column behind the modal.
+ *
+ * Same principle as nested zones, one layer up: the innermost thing under the pointer owns the
+ * gesture. A sortable *inside* an overlay is unaffected — only the path between the press and the
+ * item is considered.
  *
  * @fires moved - detail: {@link SortableMoveDetail}, on every completed move
  * @fires reorder - detail: string[] — the destination's order, fired only when an item stayed in
@@ -232,6 +259,29 @@ export default class Sortable extends DesignSystemElement {
     return path.some((node) => node instanceof Element && node.hasAttribute('data-we-handle'));
   }
 
+  /**
+   * Whether the gesture began inside an overlay that happens to sit under this item in the DOM.
+   *
+   * A modal, drawer or popover opened *from* a row is usually declared inside that row — it needs the
+   * row's data to say what it is renaming — and `OverlayElement` promotes it to the browser's top
+   * layer rather than moving it. So the eye sees a sheet floating above the whole board while
+   * containment still says "inside this column", and a press meant for a text field started dragging
+   * the column behind it.
+   *
+   * The same rule the nested zones already follow, one layer up: the innermost thing under the
+   * pointer owns the gesture, and that decision has to survive the DOM. Keyed on `data-we-overlay`,
+   * which every `OverlayElement` already sets on itself, so this needs no list of tag names and picks
+   * up an overlay somebody writes later.
+   *
+   * Only the part of the path *between the press and the item* is examined. An overlay containing the
+   * whole board is not what this is about, and a sortable inside a modal must stay draggable.
+   */
+  private _fromOverlay(item: Element, path: EventTarget[]): boolean {
+    const reachedItem = path.indexOf(item);
+    const below = reachedItem === -1 ? path : path.slice(0, reachedItem);
+    return below.some((node) => node instanceof Element && node.hasAttribute('data-we-overlay'));
+  }
+
   /** An element that owns its own text input: a space keypress there is typing, never a pickup. */
   private _isTextEntry(node: EventTarget): boolean {
     if (!(node instanceof HTMLElement)) return false;
@@ -300,7 +350,7 @@ export default class Sortable extends DesignSystemElement {
     if (dragSession.isClaimed(e)) return;
     const path = e.composedPath();
     const dragged = this._getItems().find((item) => path.includes(item));
-    if (!dragged || !this._mayDrag(dragged, path)) return;
+    if (!dragged || this._fromOverlay(dragged, path) || !this._mayDrag(dragged, path)) return;
     dragSession.claimPress(e);
 
     this._stopWatch = watchPointerDrag(e, {
@@ -480,7 +530,12 @@ export default class Sortable extends DesignSystemElement {
         const { item, zone, index } = this._held;
         this._releaseHold();
         this._commit(item, zone, index);
-      } else if (focused && !path.some((node) => this._isTextEntry(node)) && this._mayDrag(focused, path)) {
+      } else if (
+        focused &&
+        !path.some((node) => this._isTextEntry(node)) &&
+        !this._fromOverlay(focused, path) &&
+        this._mayDrag(focused, path)
+      ) {
         this._held = { item: focused, zone: this, index: this._getItems().indexOf(focused) };
         (focused as HTMLElement).style.opacity = '0.3';
         this.setAttribute('data-drop-target', '');
@@ -563,12 +618,27 @@ export default class Sortable extends DesignSystemElement {
       index: insertAt,
       ids,
     };
-    this.dispatchEvent(new CustomEvent('moved', { detail, bubbles: true, composed: true }));
+    /*
+      These do **not** bubble, for the reason `we-drop-zone`'s do not: the innermost sortable owns
+      the drag, and that decision has to survive the DOM.
+
+      Nesting is the whole point of the design — a sortable inside an item of another sortable is
+      just a zone inside a zone — so an ancestor receiving its descendant's `reorder` is not an edge
+      case, it is the ordinary arrangement. And the payload is *ids of the inner list*, which an
+      outer handler will read as ids of its own: a kanban board whose columns are sortable and whose
+      cards are sortable wrote three task ids into the board's own children on the first card
+      reorder, and rendered them as three empty columns.
+
+      Nothing loses anything by this. The event is dispatched on the host element, which is the
+      element a consumer binds `onReorder` to; bubbling only ever offered it to somebody who should
+      not have been listening.
+    */
+    this.dispatchEvent(new CustomEvent('moved', { detail, bubbles: false, composed: true }));
 
     // The single-list specialisation. A reorderable sidebar wants the new order and nothing else,
     // and would otherwise have to filter out every cross-zone move to get it.
     if (sameZone) {
-      this.dispatchEvent(new CustomEvent('reorder', { detail: ids, bubbles: true, composed: true }));
+      this.dispatchEvent(new CustomEvent('reorder', { detail: ids, bubbles: false, composed: true }));
     }
   }
 

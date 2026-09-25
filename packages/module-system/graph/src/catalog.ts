@@ -46,34 +46,64 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "source": "schema" }`,
     },
     {
-      id: 'board',
+      id: 'canvas',
       category: 'seed',
       description:
-        "A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the board is found like any child; position comes from Placement records parented to the same board, which is why the same note can sit on two boards in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnBoard. Loads nothing until a board is chosen.",
+        "A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the canvas is found like any child; position comes from Placement records parented to the same canvas, which is why the same note can sit on two canvases in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnCanvas. Loads nothing until a canvas is chosen.",
       options: [
-        { name: 'board', type: 'string', description: 'Record id of the board (required).' },
+        { name: 'canvas', type: 'string', description: 'Record id of the canvas (required).' },
         {
           name: 'contains',
           type: 'string[]',
           description:
-            'Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
+            'Types the canvas may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
         },
         { name: 'via', type: 'string', description: 'Relation holding the contents. Defaults to "children".' },
         {
           name: 'connections',
           type: 'string',
           description:
-            'Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.',
+            'Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the canvas are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a canvas with no connections.',
         },
         {
           name: 'typeStyles',
           type: 'string',
           description:
-            'Entity holding this board\'s colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board\'s key writes.',
+            'Entity holding this canvas\'s colour per kind of thing — WE passes "TypeStyle". Read onto every node as `canvasTypeColor`, for a style rule to pick up with `{ from: "data.canvasTypeColor" }`. This is what a canvas\'s key writes.',
+        },
+        {
+          name: 'routes',
+          type: 'string',
+          description:
+            'Entity holding how this canvas draws its connections — WE passes "EdgeRoute". Read onto each edge as `sourceAnchor` / `targetAnchor`, which pin which SIDE of a card a line leaves and arrives on (`n`, `e`, `s`, `w`) instead of letting the geometry decide. Per canvas, like a placement: the same connection shown on two canvases is tidied on each separately. Also carries the points a line is bent through, read onto the edge as `waypoints`. Pair with onEdgeAnchor/recordStore.anchorOnCanvas and onEdgeReroute/recordStore.rerouteOnCanvas to let people set them.',
+        },
+        {
+          name: 'pending',
+          type: 'string[]',
+          description:
+            'Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.',
+        },
+        {
+          name: 'changed',
+          type: 'string[]',
+          description:
+            'Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.',
+        },
+        {
+          name: 'hidden',
+          type: 'string[]',
+          description:
+            'Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.',
+        },
+        {
+          name: 'counts',
+          type: 'string[]',
+          description:
+            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
         },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
-      example: `{ "source": "board", "options": { "board": { "$": "local.boardId" } } }`,
+      example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,
     },
     {
       id: 'dataset',
@@ -176,12 +206,25 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'manual',
       category: 'layout',
       description:
-        'Positions come from the nodes themselves — a board, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.',
+        'Positions come from the nodes themselves — a canvas, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.',
       options: [
         { name: 'xField', type: 'string', description: 'Node data field holding x. Default "x".' },
         { name: 'yField', type: 'string', description: 'Node data field holding y. Default "y".' },
+        {
+          name: 'size',
+          type: '{ width: number; height: number }',
+          description:
+            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.',
+        },
+        {
+          name: 'widthField',
+          type: 'string',
+          description: 'Node data field holding a resized card’s own width, so parking keeps clear of it.',
+        },
+        { name: 'heightField', type: 'string', description: 'The same, for height.' },
+        { name: 'margin', type: 'number', description: 'Clear space around a parked card. Default 24 with `size`.' },
       ],
-      example: `{ "type": "manual" }`,
+      example: `{ "type": "manual", "options": { "size": { "width": 180, "height": 135 } } }`,
     },
 
     // ─── Presentation ──────────────────────────────────────────────────────────
@@ -203,21 +246,21 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'scaleWithZoom',
       category: 'style',
       description:
-        'Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a board. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.',
+        'Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a canvas. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.',
       example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`,
     },
     {
       id: 'content',
       category: 'style',
       description:
-        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
+        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, and `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
       example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`,
     },
     {
       id: 'contentMinZoom',
       category: 'style',
       description:
-        'Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a board reads as coloured rectangles none of them is legible anyway.',
+        'Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a canvas reads as coloured rectangles none of them is legible anyway.',
       example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`,
     },
     {
@@ -271,7 +314,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'pin',
       category: 'control',
       description:
-        'Holds the selected nodes where they are, so the layout stops moving them; press again to release. The usual way to shape a force graph — put the thing you care about where you want it, hold it there, and let the rest settle around it. Held nodes are ringed so the state is visible. Not shown by default: on a board every node is placed already and it means nothing.',
+        'Holds the selected nodes where they are, so the layout stops moving them; press again to release. The usual way to shape a force graph — put the thing you care about where you want it, hold it there, and let the rest settle around it. Held nodes are ringed so the state is visible. Not shown by default: on a canvas every node is placed already and it means nothing.',
       example: `"controls": ["zoom-in", "zoom-out", "fit", "pin"]`,
     },
     {
@@ -285,7 +328,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'relayout',
       category: 'control',
       description:
-        'Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a board, where it would discard every position somebody chose.',
+        'Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a canvas, where it would discard every position somebody chose.',
       example: `"controls": ["zoom-in", "zoom-out", "fit", "relayout"]`,
     },
 
@@ -304,10 +347,25 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         'Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.',
     },
     {
+      id: 'marquee-select',
+      category: 'behaviour',
+      description:
+        'Drag a rectangle over empty canvas to select everything it touches, marking each card as the rectangle reaches it. Additive rather than a mode: it takes a background press only when Shift or Ctrl/Cmd is held, or when `armed` is set, so a plain drag still pans. List it BEFORE pan-zoom, which is the background fallback and would otherwise claim the press first. Selecting touches rather than encloses, so a card wider than the view can still be caught. Holding the modifier adds to whatever is already selected.',
+      options: [
+        {
+          name: 'armed',
+          type: 'boolean',
+          description:
+            'Whether a plain background drag sweeps rather than pans. Default false. Arm it from a control the user can see — a touchscreen has no modifier keys.',
+        },
+      ],
+      example: `"behaviours": [{ "type": "marquee-select", "options": { "armed": { "$": "local.selecting" } } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`,
+    },
+    {
       id: 'drag-node',
       category: 'behaviour',
       description:
-        'Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a board.',
+        'Drag a node to move it, and every other selected node with it — so a selection built by clicking or sweeping travels as one. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.',
       options: [{ name: 'pin', type: 'boolean', description: 'Leave the node pinned where it was dropped.' }],
       example: `{ "type": "drag-node", "options": { "pin": true } }`,
     },

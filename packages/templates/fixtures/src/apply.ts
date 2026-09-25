@@ -146,6 +146,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
       kind: node.kind,
       mode: node.mode ?? (hasBody ? 'document' : 'feed'),
       ...(node.title ? { title: node.title } : {}),
+      ...(node.slug ? { slug: node.slug } : {}),
       ...(node.description ? { description: node.description } : {}),
       ...(hasBody ? { editorState: editorState(node.body!, id), textContent: textContent(node.body!) } : {}),
       // Both are overrides of values the entity layer would otherwise stamp with `selfId()` and
@@ -206,10 +207,19 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     }
 
     for (const child of node.children ?? []) await write(child, instance);
+    if (node.arranges?.length) arrangements.push({ instance, ids: node.arranges });
     return instance;
   }
 
+  // Deferred until every node exists: an arrangement names records by id, and a fixture reads
+  // better with the columns first and the cards after them.
+  const arrangements: { instance: RecordInstance; ids: string[] }[] = [];
   for (const node of fixture.content) await write(node);
+  for (const { instance, ids } of arrangements) {
+    const arranger = instance as { setArranges?: (ids: string[]) => Promise<unknown> };
+    if (!arranger.setArranges) throw new Error(`fixture '${fixture.id}': the backend has no arranges relation`);
+    await arranger.setArranges(ids);
+  }
 
   return { datasetId, nodes: created, path: pathFor(fixture) };
 }
