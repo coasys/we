@@ -68,6 +68,17 @@ async function started(spec: Parameters<typeof GraphEngine.prototype.setSpec>[0]
 
 const xOf = (engine: GraphEngine, id: string) => engine.getPositions().get(id)?.x;
 
+/**
+ * What a renderer does on every frame: read every node's visual.
+ *
+ * Which is what makes one *drawn*, and a shape travel starts from what was drawn — see
+ * `GraphEngine.drawnVisual`. A test that never draws has nothing to travel a shape from, exactly as a host
+ * that never draws has nothing on screen to move.
+ */
+const drew = (engine: GraphEngine) => {
+  for (const node of engine.store.nodes()) engine.visualOf(node);
+};
+
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -518,6 +529,7 @@ describe('shape travel', () => {
 
   it('eases the box across, on the same clock as the positions', async () => {
     const engine = await started(spec('left', 100));
+    drew(engine);
     expect(engine.visualOf(nodes()[0]).width).toBe(100);
 
     engine.setSpec(spec('right', 300));
@@ -537,6 +549,7 @@ describe('shape travel', () => {
 
   it('carries the silhouette between two card shapes, and stops carrying it at the end', async () => {
     const engine = await started(spec('left', 200, 'triangle'));
+    drew(engine);
 
     engine.setSpec(spec('right', 200, 'note'));
     engine.relayout({ travel: 400 });
@@ -554,6 +567,7 @@ describe('shape travel', () => {
 
   it('blends nothing when only the arrangement changed', async () => {
     const engine = await started(spec('left', 200, 'triangle'));
+    drew(engine);
 
     engine.setSpec(spec('right', 200, 'triangle'));
     engine.relayout({ travel: 400 });
@@ -565,16 +579,17 @@ describe('shape travel', () => {
 
   it('does not hold a restyling nobody travelled away from', async () => {
     const engine = await started(spec('left', 100));
+    drew(engine);
 
-    // A restyling on its own — a card resized on a canvas. No travel follows it.
+    // A restyling on its own — a card resized on a canvas. No travel follows it, and it is drawn at once.
     engine.setSpec(spec('left', 300));
     engine.relayout({});
     expect(engine.visualOf(nodes()[0]).width).toBe(300);
+    drew(engine);
 
     /*
-      A later rearrangement with no restyling behind it must not resurrect that one. Held, this is a
-      card easing out of a width it left two actions ago — correct-looking code producing a movement
-      nobody asked for.
+      A later rearrangement must not resurrect the width the card left two actions ago. Nothing remembers
+      the rules, so the only way this could happen is a snapshot older than what was last on screen.
     */
     engine.setSpec({ ...spec('right', 300), nodeStyle: spec('left', 300).nodeStyle });
     engine.relayout({ travel: 400 });
@@ -584,6 +599,7 @@ describe('shape travel', () => {
 
   it('is pickable at the box it is drawn at, not the one it is heading for', async () => {
     const engine = await started(spec('left', 100));
+    drew(engine);
 
     engine.setSpec(spec('right', 1000));
     engine.relayout({ travel: 400 });
@@ -834,14 +850,19 @@ describe('anchor travel', () => {
 });
 
 /**
- * The order a renderer asks in.
+ * What a renderer does around a switch, in every order it might do it in.
  *
- * A mode that rearranges and restyles at once does both in one flush — swap the spec and relayout, then
- * swap the spec and refresh the hit areas — and only one order works, because refreshing is also how a
- * styling nothing travelled away from is let go of. This pins the sequence the Solid adapter uses, which
- * is otherwise only a fact about which `createEffect` was declared first.
+ * A mode that rearranges and restyles at once calls `setSpec` several times in one flush — the seeds
+ * effect, the layout effect, the style effect — relayouts from one of them and refreshes the hit areas from
+ * another, and a subscription can land in the middle of all of it. This used to matter: the shape travel
+ * blended from a styling that `setSpec` set aside and a travel had to claim, so whichever call happened to
+ * be first or last decided whether the morph happened at all. It broke twice, most visibly as a morph that
+ * worked for a few switches and then stopped until the graph was remounted.
+ *
+ * Nothing depends on the order now — a travel blends from what was last DRAWN — and these are here to keep
+ * it that way rather than to describe a sequence anybody has to follow.
  */
-describe('a rearrangement and a restyling in one flush', () => {
+describe('a rearrangement and a restyling, in any order', () => {
   const nodes = () => [{ id: 'a', kind: 'entity' as const, type: 'Thing', label: 'a' }];
   const spec = (layout: string, width: number) => ({
     seeds: { source: 'test' },
@@ -849,67 +870,82 @@ describe('a rearrangement and a restyling in one flush', () => {
     nodeStyle: [{ style: { shape: 'card', width } }] as never,
   });
 
-  it('keeps the blend when the travel is asked for first', async () => {
+  /** Mid-blend: past the start, short of the end. */
+  const between = (engine: GraphEngine) => {
+    const width = engine.visualOf(nodes()[0]).width!;
+    return width > 100 && width < 300;
+  };
+
+  it('blends when the travel is asked for before the restyling is acknowledged', async () => {
     const engine = await started(spec('left', 100));
+    drew(engine);
 
     engine.setSpec(spec('right', 300));
     engine.relayout({ travel: 400 });
-    // The restyling half, exactly as the adapter's second effect does it.
+    // The restyling half, as the adapter's second effect does it.
     engine.setSpec(spec('right', 300));
     engine.refreshHitAreas();
 
     await vi.advanceTimersByTimeAsync(200);
-    const midway = engine.visualOf(nodes()[0]).width!;
-    expect(midway).toBeGreaterThan(100);
-    expect(midway).toBeLessThan(300);
+    expect(between(engine)).toBe(true);
   });
 
-  it('survives a relayout that lands in between, which is what stopped it every few switches', async () => {
+  it('blends when the restyling is acknowledged first', async () => {
     /*
-      The reported symptom: after a few switches the shapes stop animating and jump, while the positions
-      keep travelling.
-
-      One change calls `setSpec` several times — the seeds effect, the layout effect, the style effect —
-      and only the FIRST sees the styling change, so only the first arms. Anything that relayouts in
-      between then ate the arm, and there are several: a subscription landing, an optimistic write, an
-      expansion, a reconcile. By the time the travelling relayout arrived the rules were already installed,
-      so there was nothing to re-arm, and the morph was silently skipped.
-
-      Rehearsed here in that order: arm, relayout with no travel, swap the same spec in again, then travel.
+      The order that used to lose the morph outright: refreshing the hit areas was also how a styling nothing
+      had travelled away from was let go of, so doing it before the travel threw away the very thing the
+      travel was about to blend from.
     */
     const engine = await started(spec('left', 100));
+    drew(engine);
+
+    engine.setSpec(spec('right', 300));
+    engine.refreshHitAreas();
+    engine.relayout({ travel: 400 });
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(between(engine)).toBe(true);
+  });
+
+  it('blends with a relayout landing in between, which is what stopped it every few switches', async () => {
+    /*
+      The reported symptom. A subscription landing, an optimistic write, an expansion and a reconcile all
+      relayout without travel, and one arriving in the gap used to consume the thing the travelling relayout
+      needed — after which the rules were already installed, so nothing re-armed and every switch from then
+      on jumped.
+    */
+    const engine = await started(spec('left', 100));
+    drew(engine);
     const wide = spec('right', 300).nodeStyle;
 
     engine.setSpec({ ...spec('left', 300), nodeStyle: wide });
-    // A subscription landing, in the gap. It rearranges nothing and says nothing about styling.
     engine.relayout({});
-    // And the layout effect, swapping in a spec whose rules are already the ones in force.
     engine.setSpec({ ...spec('right', 300), nodeStyle: wide });
     engine.relayout({ travel: 400 });
 
     await vi.advanceTimersByTimeAsync(200);
-    const midway = engine.visualOf(nodes()[0]).width!;
-    expect(midway).toBeGreaterThan(100);
-    expect(midway).toBeLessThan(300);
+    expect(between(engine)).toBe(true);
   });
 
-  it('lets go of a styling that nothing is travelling away from', async () => {
+  it('goes on blending switch after switch', async () => {
+    /*
+      And the shape of the report: it worked for a few and then stopped. Nothing in the mechanism accumulates
+      now, but a test that switches once cannot tell.
+    */
     const engine = await started(spec('left', 100));
-    // One array, handed over twice. `setSpec` arms on the rules CHANGING, so a fresh copy of the same
-    // rules would re-arm with what is already in force and the sweep would be a no-op either way —
-    // which is a test that cannot fail rather than a test that passes.
-    const wide = spec('left', 300).nodeStyle;
+    drew(engine);
 
-    // A restyle on its own: the new box is drawn at once, and there is nothing left to come back from.
-    engine.setSpec({ ...spec('left', 300), nodeStyle: wide });
-    engine.refreshHitAreas();
-    expect(engine.visualOf(nodes()[0]).width).toBe(300);
-
-    // A later rearrangement must not resurrect it.
-    engine.setSpec({ ...spec('right', 300), nodeStyle: wide });
-    engine.relayout({ travel: 400 });
-    await vi.advanceTimersByTimeAsync(200);
-    expect(engine.visualOf(nodes()[0]).width).toBe(300);
+    for (let round = 0; round < 6; round += 1) {
+      const wide = round % 2 === 0;
+      engine.setSpec(spec(wide ? 'right' : 'left', wide ? 300 : 100));
+      engine.relayout({ travel: 400 });
+      await vi.advanceTimersByTimeAsync(200);
+      drew(engine);
+      expect(between(engine)).toBe(true);
+      await vi.advanceTimersByTimeAsync(400);
+      drew(engine);
+      expect(engine.visualOf(nodes()[0]).width).toBe(wide ? 300 : 100);
+    }
   });
 });
 
@@ -1029,5 +1065,81 @@ describe('ignoring a stored route', () => {
     }
     expect(seen[seen.length - 1]).toBeCloseTo(0);
     expect(seen.some((x) => x > 5 && x < 80)).toBe(true);
+  });
+});
+
+/**
+ * Switching again before the first switch has finished.
+ *
+ * A reader will, and the answer has to be that the cards turn round from wherever they are — not that
+ * everything jumps. It did jump: the re-aim carries the clock, which is right for a subscription landing
+ * mid-switch (keep the deadline the reader's action set, rather than restarting it on every frame a query
+ * happens to arrive on) and wrong for a second action. Carried, the new travel's first frame was computed
+ * against a start time a second and a half in the past, so every card was drawn most of the way to its new
+ * place before easing the last of it.
+ */
+describe('switching again mid-switch', () => {
+  const nodes = () => [{ id: 'a', kind: 'entity' as const, type: 'Thing', label: 'a' }];
+  const spec = (layout: string, width: number) => ({
+    seeds: { source: 'test' },
+    layout: { type: layout },
+    nodeStyle: [{ style: { shape: 'card', width } }] as never,
+  });
+
+  it('turns the cards round from where they are, rather than jumping them', async () => {
+    const engine = await started(spec('left', 100));
+    drew(engine);
+
+    engine.setSpec(spec('right', 300));
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+    const caught = xOf(engine, 'a')!;
+    // Eased out, so half the time is well past half the distance — which is what makes the carried clock
+    // so visible when it happens.
+    expect(caught).toBeGreaterThan(500);
+    expect(caught).toBeLessThan(1000);
+
+    // And now the reader changes their mind.
+    engine.setSpec(spec('left', 100));
+    engine.relayout({ travel: 400 });
+
+    // The first frame is exactly where the card was.
+    expect(xOf(engine, 'a')).toBeCloseTo(caught);
+
+    await vi.advanceTimersByTimeAsync(40);
+    const oneFrame = xOf(engine, 'a')!;
+    // Moving back the way it came, and by one frame's worth. Carrying the clock put it near zero here.
+    expect(oneFrame).toBeLessThan(caught);
+    expect(oneFrame).toBeGreaterThan(caught * 0.6);
+
+    await vi.advanceTimersByTimeAsync(600);
+    expect(xOf(engine, 'a')).toBe(0);
+  });
+
+  it('carries the half-morphed shape on rather than starting it again', async () => {
+    /*
+      The same question about the shape. It comes out of the drawn snapshot for free — what was on screen
+      half-way through a morph is a half-morphed card — where anything that remembered the styling being
+      left would have sent it back to the shape it started from before easing it forward again.
+    */
+    const engine = await started(spec('left', 100));
+    drew(engine);
+
+    engine.setSpec(spec('right', 300));
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+    drew(engine);
+    const caught = engine.visualOf(nodes()[0]).width!;
+    expect(caught).toBeGreaterThan(100);
+    expect(caught).toBeLessThan(300);
+
+    engine.setSpec(spec('left', 100));
+    engine.relayout({ travel: 400 });
+
+    // Still the width it was drawn at, then narrowing back towards where it began.
+    expect(engine.visualOf(nodes()[0]).width).toBeCloseTo(caught);
+    await vi.advanceTimersByTimeAsync(600);
+    drew(engine);
+    expect(engine.visualOf(nodes()[0]).width).toBe(100);
   });
 });

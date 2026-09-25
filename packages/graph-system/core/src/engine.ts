@@ -12,7 +12,6 @@ import type {
   Bounds,
   CardShape,
   EdgeGeometry,
-  EdgeStyleRules,
   ExpandDirection,
   ExpanderContext,
   GraphEdge,
@@ -23,7 +22,6 @@ import type {
   GraphValue,
   Layout,
   LayoutRegion,
-  NodeStyleRules,
   NodeVisual,
   Placement,
   Point,
@@ -261,17 +259,6 @@ interface Sweep {
   delta: number;
 }
 
-/**
- * A styling that has been replaced, boxed.
- *
- * So that "replaced by nothing" is a different answer from "not replaced". Held bare, a graph whose spec
- * gained its first edge rules blended from those same rules — the outgoing value being absent read as
- * nothing having changed — and the lines snapped while every card eased.
- */
-interface Replaced<T> {
-  rules: T | undefined;
-}
-
 export class GraphEngine {
   readonly store = new GraphStore();
   readonly expansion = new ExpansionState();
@@ -389,18 +376,25 @@ export class GraphEngine {
    */
   private travelProgress = 1;
   /**
-   * The styling the arrangement is travelling *from*, while a travel is in flight.
+   * How each node was last DRAWN, and how each was drawn when the travel in flight began.
    *
-   * A card's box and silhouette come from `nodeStyle`, so a mode that stretches a rectangle into a
-   * uniform note changes the rules rather than the card — which leaves nothing to interpolate unless
-   * the rules it is leaving are kept. Armed by a {@link setSpec} that changes the styling and consumed
-   * by the travel that follows it, so a rearrangement with no restyling behind it blends nothing.
+   * The start of a shape's travel, and knowable only from what was on screen — the same fact, and for the
+   * same reason, as the `before` positions {@link applyPositions} captures one line before replacing them.
+   *
+   * This replaced an arming protocol: `setSpec` set the outgoing styling aside and the travel that followed
+   * claimed it. Which is a correct mechanism and an order-sensitive one, and it broke twice. `setSpec` is
+   * called several times for one change — the seeds effect, the layout effect, the style effect — and only
+   * the FIRST sees the styling change, so only the first armed; anything that relayouted in between could
+   * eat the arm, and by the time the travelling relayout arrived there was nothing left to re-arm. The
+   * symptom was a morph that worked for a few switches and then stopped until the graph was remounted.
+   *
+   * Nothing here can go stale that way, because nothing is being *remembered about the rules*. A travel
+   * blends from what was on screen to whatever the rules now say, and where those agree the blend is a
+   * no-op. It is also what makes switching back MID-travel continuous: the snapshot is the half-morphed
+   * card, so it carries on from where it is rather than starting again from the shape it left.
    */
-  private travelStyle?: Replaced<NodeStyleRules>;
-  /** The styling a travel would come from, set aside by `setSpec` until a travel claims it. */
-  private priorNodeStyle?: Replaced<NodeStyleRules>;
-  /** The same, for the edges — which is where a *repinned anchor* comes from. See {@link travelFacing}. */
-  private priorEdgeStyle?: Replaced<EdgeStyleRules>;
+  private drawnVisual = new Map<string, NodeVisual>();
+  private travelFrom = new Map<string, NodeVisual>();
   /**
    * The sweep each end of each edge is making, while a travel is in flight: a start angle and the signed
    * turn to the end of it.
@@ -593,14 +587,10 @@ export class GraphEngine {
    * queries. Changing a colour rule must not re-fetch a graph, and an adapter that could only swap the
    * whole spec would have no way to express that difference.
    *
-   * The styling being replaced is set aside for {@link travelStyle}. This is the only moment it exists:
-   * a caller swapping the arrangement and the card styling together — a tree mode — replaces the spec
-   * and then asks for a travel, by which time the rules the cards are leaving would be gone. Set aside
-   * rather than acted on, because a restyling with no rearrangement behind it should morph nothing.
+   * Nothing about the styling being replaced is recorded here, deliberately — see {@link drawnVisual} for
+   * the mechanism that used to need it and the two ways it broke.
    */
   setSpec(spec: GraphSpec): void {
-    if (spec.nodeStyle !== this.spec.nodeStyle) this.priorNodeStyle = { rules: this.spec.nodeStyle };
-    if (spec.edgeStyle !== this.spec.edgeStyle) this.priorEdgeStyle = { rules: this.spec.edgeStyle };
     this.spec = spec;
   }
 
@@ -1630,6 +1620,9 @@ export class GraphEngine {
     */
     const before = this.positions;
     this.positions = positions;
+    // Nothing is drawn that is not placed, so a card that has gone — deleted, or folded away — takes its
+    // record of how it looked with it. Bounds `drawnVisual` to the graph on screen.
+    for (const id of this.drawnVisual.keys()) if (!this.positions.has(id)) this.drawnVisual.delete(id);
 
     /*
       The camera before the travel, and against where the layout actually put things.
@@ -1707,28 +1700,17 @@ export class GraphEngine {
   private beginTravel(before: ReadonlyMap<string, Placement>, travel?: number): void {
     const asked = Math.max(0, travel ?? 0);
     /*
-      Claimed only by a travel, and this is the fix for a morph that stopped happening every few switches.
+      Carried over for a RE-AIM, so a subscription landing mid-switch keeps the speed and the deadline the
+      reader's action set rather than restarting the clock on every frame one happens to arrive on.
 
-      `setSpec` is called several times for one change — the seeds effect, the layout effect, the style
-      effect — and only the FIRST of them sees the styling change, so only the first arms. Consumed by any
-      relayout, the arm was routinely eaten before the travelling one got to it: a subscription landing, an
-      optimistic write, an expansion, or `refresh` reconciling all relayout without travel, and by the time
-      the layout effect swapped the spec again the rules were already installed and there was nothing left
-      to arm. The positions still travelled and the shapes jumped, intermittently, depending on what
-      happened to land in between.
-
-      A relayout with no travel says nothing about styling. What says the styling has settled is
-      `refreshHitAreas`, which is the other half of this claim.
+      Not for a travel the reader asked for. Carried there, a second switch made half-way through the first
+      inherited a start time a second and a half in the past — so its very first frame was computed as most
+      of the way through, and every card jumped to near its new place before easing the last of the way.
+      Reported as exactly that. A reader's own action is a new movement and gets a new clock, which is also
+      what makes switching back mid-switch read as the cards turning round.
     */
-    const armed = asked > 0 ? this.priorNodeStyle : undefined;
-    const armedEdges = asked > 0 ? this.priorEdgeStyle : undefined;
-    if (asked > 0) {
-      this.priorNodeStyle = undefined;
-      this.priorEdgeStyle = undefined;
-    }
-    // Carried over, so a re-aim keeps the speed and the deadline the reader's action set rather than
-    // restarting the clock on every frame a live query happens to land on.
-    const started = new Map([...this.travelAnim].map(([id, anim]) => [id, anim.started]));
+    const started =
+      asked > 0 ? new Map<string, number>() : new Map([...this.travelAnim].map(([id, anim]) => [id, anim.started]));
     this.travelAnim.clear();
     if (asked > 0) this.travelDuration = asked;
     if (!this.travelDuration) {
@@ -1740,8 +1722,7 @@ export class GraphEngine {
       Planned before the rewind below, because it needs both arrangements: `this.positions` still holds
       what the layout answered, and the loop is about to write the old coordinates back over it.
     */
-    const planned =
-      asked > 0 ? this.planFacings(before, armedEdges) : new Map<string, { source?: Sweep; target?: Sweep }>();
+    const planned = asked > 0 ? this.planFacings(before) : new Map<string, { source?: Sweep; target?: Sweep }>();
 
     const now = Date.now();
     for (const [id, to] of this.positions) {
@@ -1768,7 +1749,9 @@ export class GraphEngine {
     // Only a travel the reader asked for carries a morph: a re-aim mid-flight must keep whatever the
     // cards are already becoming rather than restarting it against the styling they have now.
     if (asked > 0) {
-      this.travelStyle = armed;
+      // Where every card was drawn a moment ago — see `drawnVisual`. Copied rather than referenced, so the
+      // frames that follow can keep recording what they draw without moving the start of the travel.
+      this.travelFrom = new Map(this.drawnVisual);
       this.travelProgress = 0;
       this.travelFacing = planned;
     }
@@ -1777,10 +1760,12 @@ export class GraphEngine {
   /**
    * Work out the sweep each end of each edge makes across this rearrangement.
    *
-   * Two arrangements and two stylings, compared once. The *old* facing comes from where the cards were
-   * and the rules they were drawn under, which is why `setSpec` has to set the outgoing edge styling
-   * aside — by the time a travel is asked for, the rules the lines are leaving are gone. The *new* one
-   * comes from where the layout has put them and the rules now in force.
+   * The *old* facing is read off the line as it was DRAWN — the direction from its node's centre out to the
+   * endpoint the last routing gave it — for the same reason the shape blend starts from the drawn visual
+   * and the position travel from the drawn position: it is the only fact that cannot be stale. It also
+   * needs no knowledge of *why* the anchor is moving, so a stored route, a style rule and the geometry
+   * simply deciding differently are all one case. The *new* one comes from where the layout has put the
+   * cards and the rules now in force.
    *
    * **Every end gets one, including the ones that are not turning.** That looks like waste and is the
    * point: an end with no plan falls back to the live derivation, and the live derivation reads a boolean
@@ -1792,10 +1777,7 @@ export class GraphEngine {
    * Which is also why this runs for every travel rather than only for one that restyles. The flip has
    * nothing to do with styling; it is the cards moving.
    */
-  private planFacings(
-    before: ReadonlyMap<string, Placement>,
-    priorEdgeStyle: Replaced<EdgeStyleRules> | undefined,
-  ): Map<string, { source?: Sweep; target?: Sweep }> {
+  private planFacings(before: ReadonlyMap<string, Placement>): Map<string, { source?: Sweep; target?: Sweep }> {
     const planned = new Map<string, { source?: Sweep; target?: Sweep }>();
 
     for (const edge of [...this.store.edges(), ...this.fold.bundles]) {
@@ -1807,20 +1789,18 @@ export class GraphEngine {
       const now = { from: this.positions.get(sourceId), to: this.positions.get(targetId) };
       if (!was.from || !was.to || !now.from || !now.to) continue;
 
-      const sides = (rules: EdgeStyleRules | undefined) => {
-        const style = resolveStyle(edge, rules);
-        return {
-          curve: normaliseCurve(style.curve as string | undefined),
-          anchors: anchorsOf(this.routeData(edge, patch, style.ignoreRoute === true), {
-            source: style.sourceAnchor,
-            target: style.targetAnchor,
-          }),
-        };
+      const style = resolveStyle(edge, this.spec.edgeStyle);
+      const next = {
+        curve: normaliseCurve(style.curve as string | undefined),
+        anchors: anchorsOf(this.routeData(edge, patch, style.ignoreRoute === true), {
+          source: style.sourceAnchor,
+          target: style.targetAnchor,
+        }),
       };
-      // Nothing set aside means the styling did not change, so the rules the lines are leaving are the
-      // rules they are arriving under — the positions are what is moving.
-      const then = sides(priorEdgeStyle ? priorEdgeStyle.rules : this.spec.edgeStyle);
-      const next = sides(this.spec.edgeStyle);
+      // The line as it was drawn. Absent for one that has only just appeared, which belongs where it is
+      // drawn rather than swinging in from a direction it never left.
+      const drawn = this.edgeGeometry.get(edge.id);
+      if (!drawn) continue;
 
       const sweep = (end: 'source' | 'target'): Sweep | undefined => {
         if (end === 'source' ? looseFrom : looseTo) return undefined;
@@ -1828,9 +1808,9 @@ export class GraphEngine {
         const own = (at: { from: Point; to: Point }) => (end === 'target' ? at.to : at.from);
         const other = (at: { from: Point; to: Point }) => (end === 'target' ? at.from : at.to);
         const axis = (at: { from: Point; to: Point }) => Math.abs(at.to.x - at.from.x) >= Math.abs(at.to.y - at.from.y);
-        const a0 = angleOf(
-          facingOf(other(was as never), own(was as never), then.curve, axis(was as never), then.anchors[end]),
-        );
+        const centreWas = own(was as never);
+        const endpoint = end === 'target' ? drawn.to : drawn.from;
+        const a0 = Math.atan2(endpoint.y - centreWas.y, endpoint.x - centreWas.x);
         const a1 = angleOf(
           facingOf(other(now as never), own(now as never), next.curve, axis(now as never), next.anchors[end]),
         );
@@ -1859,7 +1839,7 @@ export class GraphEngine {
    * a shape nobody is looking at any more.
    */
   private settleShapes(): void {
-    this.travelStyle = undefined;
+    this.travelFrom.clear();
     this.travelFacing.clear();
     this.travelProgress = 1;
   }
@@ -2152,9 +2132,9 @@ export class GraphEngine {
   private resolvedVisual(rawNode: GraphNode, metrics: ReadonlyMap<string, ReadonlyMap<string, number>>) {
     const node = this.overlaid(rawNode);
     const to = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), metrics);
-    if (!this.travelStyle || this.travelProgress >= 1) return to;
-    const from = nodeVisual(node, resolveStyle(node, this.travelStyle.rules), metrics);
-    return blendVisual(from, to, this.travelProgress);
+    if (this.travelProgress >= 1) return to;
+    const from = this.travelFrom.get(node.id);
+    return from ? blendVisual(from, to, this.travelProgress) : to;
   }
 
   /**
@@ -2164,7 +2144,12 @@ export class GraphEngine {
    * for why the engine owns this rather than the renderer.
    */
   visualOf(node: GraphNode): NodeVisual {
-    return this.resolvedVisual(node, this.metrics);
+    const visual = this.resolvedVisual(node, this.metrics);
+    // What was drawn, which is where the next travel's shapes start from — see `drawnVisual`. Recorded
+    // here rather than in `resolvedVisual` because this is the drawing path; the hit area resolves from the
+    // same blend and deliberately without metrics, and is not what anybody saw.
+    this.drawnVisual.set(node.id, visual);
+    return visual;
   }
 
   private hitArea(rawNode: GraphNode): {
@@ -2457,24 +2442,11 @@ export class GraphEngine {
    * Public because the radius comes from `nodeStyle`, and a renderer may change styling without
    * anything moving — at which point the index is holding areas sized by the old rules.
    *
-   * **Ask for the travel first.** A caller changing the arrangement and the styling together does both
-   * — a rearrangement needs `relayout`, a restyling needs this — and the order matters, because this is
-   * also where a styling that nothing travelled away from is let go of. Called first it would let go of
-   * the very styling the travel was about to blend from, and the cards and lines would snap while their
-   * positions eased. There is a test for that order.
+   * Order-independent with respect to `relayout`, which it did not used to be: a travel blends from what was
+   * drawn rather than from a styling something had to set aside, so neither call can take the other's start
+   * away. See {@link drawnVisual}.
    */
   refreshHitAreas(): void {
-    /*
-      Nothing is travelling, so the styling this one replaced has been drawn and is over.
-
-      Left armed it would be claimed by whatever rearrangement came next, which is a card easing out of a
-      box it left an action ago and a line sweeping off a side nobody has been looking at. `beginTravel`
-      makes the same claim for the case where a travel does follow; this is the other half.
-    */
-    if (!this.isTravelling()) {
-      this.priorNodeStyle = undefined;
-      this.priorEdgeStyle = undefined;
-    }
     this.recomputeMetrics();
     this.reindex();
     // Node size decides where an edge stops, and the edge's own shape decides how it gets there, so a
