@@ -10,6 +10,7 @@ import {
   type WeSeedFile,
 } from '@we/app-shell/solid';
 import { ToastContainer } from '@we/components/solid';
+import { buildValidationContext, contextData, validateSemantic, validateStructure } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { datasetIdFor, pathFor } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
@@ -29,7 +30,24 @@ if (templateUrl) {
     const id = externalTemplate.id || 'cli-external';
     (templateRegistry as Record<string, unknown>)[id] = externalTemplate;
     (window as unknown as Record<string, unknown>).__externalTemplateId = id;
+    reportSchemaFindings(externalTemplate);
   }
+}
+
+/**
+ * WE's own verdict on an injected template, as console warnings — which `we-render` already relays
+ * under "problems".
+ *
+ * The renderer forgives much of what these checks catch: a spacing step the scale lacks renders no
+ * space rather than an error. A render alone cannot show that, and the author reading it is often
+ * an agent that only has the picture.
+ */
+function reportSchemaFindings(template: unknown): void {
+  const findings = [
+    ...validateStructure(template).errors,
+    ...validateSemantic(template, buildValidationContext(contextData)).errors,
+  ];
+  for (const f of findings) console.warn(`schema ${f.severity} at ${f.path || '(root)'}: ${f.message}`);
 }
 
 type SchemaNode = { type?: string; props?: Record<string, unknown>; children?: unknown[]; [key: string]: unknown };

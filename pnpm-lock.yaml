@@ -313,6 +313,9 @@ importers:
       '@we/entities':
         specifier: workspace:*
         version: link:../../packages/entities
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../packages/schema-system/shared
       '@we/schema-solid':
         specifier: workspace:*
         version: link:../../packages/schema-system/frameworks/solid
