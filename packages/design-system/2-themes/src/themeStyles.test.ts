@@ -373,3 +373,25 @@ describe('a preset and a theme both pinning roles', () => {
     expect(withOther['--we-role-surface-raised']).toBe(bare['--we-role-surface-raised']);
   });
 });
+
+describe('a theme parameter that would fetch', () => {
+  it('never reaches a custom property, since parameters come from other people', () => {
+    const style = themeParametersToStyle({
+      roles: {
+        page: 'url(https://attacker.example/ping)',
+        surface: 'image-set("https://attacker.example/i.png" 1x)',
+        accent: 'oklch(85% 0.12 160)',
+      },
+      fontFamily: 'Inter, url(https://attacker.example/f)',
+      surfaceRadius: '20px',
+    });
+    expect(JSON.stringify(style)).not.toContain('attacker.example');
+    expect(style['--we-role-accent']).toBe('oklch(85% 0.12 160)');
+    expect(style['--we-theme-surface-radius']).toBe('20px');
+  });
+
+  it('keeps a data URL, which is bytes rather than a request', () => {
+    const style = themeParametersToStyle({ roles: { page: 'url(data:image/png;base64,AA)' } });
+    expect(style['--we-role-page']).toBe('url(data:image/png;base64,AA)');
+  });
+});
