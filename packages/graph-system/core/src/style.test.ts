@@ -347,3 +347,75 @@ describe('blendVisual', () => {
     expect(half.morph).toBeUndefined();
   });
 });
+
+describe('reversing a morph that is already in flight', () => {
+  const card = (cardShape: NodeVisual['cardShape'], over: Partial<NodeVisual> = {}): NodeVisual => ({
+    shape: 'card',
+    size: 90,
+    width: 180,
+    height: 135,
+    color: '#111',
+    cardShape,
+    ...over,
+  });
+
+  /** How far an outline reaches from the box's centre along one direction. */
+  const reach = (outline: readonly (readonly [number, number])[], angle: number) => {
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    let nearest = Infinity;
+    for (let i = 0; i < outline.length; i += 1) {
+      const [ax, ay] = outline[i];
+      const [bx, by] = outline[(i + 1) % outline.length];
+      const px = ax - 0.5;
+      const py = ay - 0.5;
+      const ex = bx - ax;
+      const ey = by - ay;
+      const denominator = ux * ey - uy * ex;
+      if (Math.abs(denominator) < 1e-12) continue;
+      const along = (px * ey - py * ex) / denominator;
+      const across = (px * uy - py * ux) / denominator;
+      if (along > 0 && across >= -1e-9 && across <= 1 + 1e-9) nearest = Math.min(nearest, along);
+    }
+    return nearest;
+  };
+
+  it('leaves the outline it is drawn as, not the one its name says', () => {
+    /*
+      A blended visual takes the destination's `cardShape`, like everything else discrete — so a card half
+      way from a triangle to a note is NAMED a note while being drawn as neither. Reversing from its name
+      snapped it to a full note before it started leaving one, which is what a reader who changes their mind
+      half way through sees.
+    */
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    expect(halfWay.cardShape).toBe('note');
+    expect(halfWay.morph).toBeDefined();
+
+    // Now back the other way, from that half-morphed card.
+    const reversing = blendVisual(halfWay, card('triangle'), 0);
+    expect(reversing.morph).toBeDefined();
+    // At the very first frame of the reversal the outline is exactly the one that was on screen.
+    for (const angle of [-1.3, -0.4, 0.6, 1.9, 3.0]) {
+      expect(reach(reversing.morph!.outline, angle)).toBeCloseTo(reach(halfWay.morph!.outline, angle), 5);
+    }
+  });
+
+  it('still morphs when the same switch is asked for twice', () => {
+    // Both names equal, and a card that is still half of something else. Skipped on the names alone, this
+    // is the card jumping to its destination shape while every position carries on easing.
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    const again = blendVisual(halfWay, card('note'), 0);
+
+    expect(again.morph).toBeDefined();
+    for (const angle of [-1.3, 0.6, 3.0]) {
+      expect(reach(again.morph!.outline, angle)).toBeCloseTo(reach(halfWay.morph!.outline, angle), 5);
+    }
+  });
+
+  it('arrives at the destination shape all the same', () => {
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    // At the end the blend is the destination visual outright, morph and all.
+    expect(blendVisual(halfWay, card('triangle'), 1).morph).toBeUndefined();
+    expect(blendVisual(halfWay, card('triangle'), 1).cardShape).toBe('triangle');
+  });
+});

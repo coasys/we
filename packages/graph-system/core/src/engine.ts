@@ -36,14 +36,12 @@ import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, woul
 import type { EdgeClearance } from './geometry';
 import {
   anchorsOf,
-  angleOf,
   bowOffsets,
   distanceToEdge,
   edgeBounds,
   endOf,
   type Facing,
   facingAt,
-  facingOf,
   groupByEndpoints,
   normaliseCurve,
   routeEdge,
@@ -1767,6 +1765,13 @@ export class GraphEngine {
    * simply deciding differently are all one case. The *new* one comes from where the layout has put the
    * cards and the rules now in force.
    *
+   * **The ends only.** A route's SHAPE is not part of the travel: the points a canvas bends a line through
+   * appear and disappear in one frame, because `ignoreRoute` drops them for a tree and hands them back for a
+   * canvas, and nothing interpolates between having a bend and not having one. That is the remaining half of
+   * this mechanism and it wants the same treatment — snapshot the route that was drawn, sample both it and
+   * the destination along their length, and blend — which would subsume this, the waypoints and a change of
+   * curve in one thing. Left out deliberately rather than forgotten.
+   *
    * **Every end gets one, including the ones that are not turning.** That looks like waste and is the
    * point: an end with no plan falls back to the live derivation, and the live derivation reads a boolean
    * — is this span mostly horizontal — that flips the moment a card travelling from beside its parent to
@@ -1790,37 +1795,53 @@ export class GraphEngine {
       if (!was.from || !was.to || !now.from || !now.to) continue;
 
       const style = resolveStyle(edge, this.spec.edgeStyle);
-      const next = {
-        curve: normaliseCurve(style.curve as string | undefined),
-        anchors: anchorsOf(this.routeData(edge, patch, style.ignoreRoute === true), {
-          source: style.sourceAnchor,
-          target: style.targetAnchor,
-        }),
-      };
+      const routed = this.routeData(edge, patch, style.ignoreRoute === true);
       // The line as it was drawn. Absent for one that has only just appeared, which belongs where it is
       // drawn rather than swinging in from a direction it never left.
       const drawn = this.edgeGeometry.get(edge.id);
       if (!drawn) continue;
+      /*
+        And the line as it WILL be drawn, routed for real against the destination rather than re-derived.
+
+        The rule for which way an end faces is the router's, and it has more to it than the two cases this
+        used to restate: a route bent through waypoints faces its NEAREST WAYPOINT rather than the far node,
+        which is most of a right angle away from what a re-derivation answered. So the sweep aimed somewhere
+        the ordinary path never lands and jumped to the real answer on its last frame — switching from a
+        tree back to a canvas whose lines somebody had bent, which is exactly where it was reported.
+
+        Asking the router removes the second copy of the rule rather than correcting it, which is the same
+        reason `anchorsOf` and `endOf` exist at all.
+      */
+      const destination = routeEdge(
+        edge.id,
+        now.from as Point,
+        now.to as Point,
+        normaliseCurve(style.curve as string | undefined),
+        0,
+        looseTo ? 0 : this.clearanceFor(this.store.node(targetId)),
+        looseFrom ? 0 : this.clearanceFor(this.store.node(sourceId), 0),
+        anchorsOf(routed, { source: style.sourceAnchor, target: style.targetAnchor }),
+        waypointsOf(routed).map((point) => waypointToWorld(point, now.from as Point, now.to as Point)),
+      );
 
       const sweep = (end: 'source' | 'target'): Sweep | undefined => {
         if (end === 'source' ? looseFrom : looseTo) return undefined;
         // Roles as the router takes them: the end being attached to, and the other one.
         const own = (at: { from: Point; to: Point }) => (end === 'target' ? at.to : at.from);
         const other = (at: { from: Point; to: Point }) => (end === 'target' ? at.from : at.to);
-        const axis = (at: { from: Point; to: Point }) => Math.abs(at.to.x - at.from.x) >= Math.abs(at.to.y - at.from.y);
+        // Both ends read off a real route — the one on screen, and the one the layout has just answered.
         const centreWas = own(was as never);
-        const endpoint = end === 'target' ? drawn.to : drawn.from;
-        const a0 = Math.atan2(endpoint.y - centreWas.y, endpoint.x - centreWas.x);
-        const a1 = angleOf(
-          facingOf(other(now as never), own(now as never), next.curve, axis(now as never), next.anchors[end]),
-        );
+        const was0 = end === 'target' ? drawn.to : drawn.from;
+        const a0 = Math.atan2(was0.y - centreWas.y, was0.x - centreWas.x);
+        const centreNow = own(now as never);
+        const at1 = end === 'target' ? destination.to : destination.from;
+        const a1 = Math.atan2(at1.y - centreNow.y, at1.x - centreNow.x);
         /*
           Toward the near side at exactly half a turn — the direction the rest of the line already lies
           in, so an ambiguous swing goes round the front of the card rather than behind it.
         */
         const near = other(now as never);
-        const centre = own(now as never);
-        const delta = turnBetween(a0, a1, Math.atan2(near.y - centre.y, near.x - centre.x));
+        const delta = turnBetween(a0, a1, Math.atan2(near.y - centreNow.y, near.x - centreNow.x));
         return { from: a0, delta };
       };
 

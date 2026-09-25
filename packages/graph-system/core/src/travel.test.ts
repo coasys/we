@@ -1035,6 +1035,80 @@ describe('ignoring a stored route', () => {
     expect(geometry.curve).toBe('smooth');
   });
 
+  it('turns continuously back onto a canvas whose lines are bent', async () => {
+    /*
+      Going the OTHER way — a tree back to a canvas whose lines somebody has bent — which is the direction
+      that was reported as jumping. This guards the ENDS: they turn continuously and hand over to the
+      ordinary path without a step.
+      
+      It does not cover the reported jump itself, which is the bend in the MIDDLE appearing in one frame.
+      A route's shape is not part of the travel yet; see the note in `planFacings`.
+    */
+    // A BEND and no anchor, which is where the two disagree: an anchor overrules the facing in both the
+    // router and any re-derivation of it, so a stored side hides this entirely.
+    const bentOnly: SeedSource = {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: ['a', 'b'].map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+          edges: [
+            {
+              id: 'a->b',
+              source: 'a',
+              target: 'b',
+              type: 'rel',
+              data: { waypoints: JSON.stringify([{ along: 0.5, across: 0.55 }]) },
+            },
+          ],
+        };
+      },
+    };
+    const registry = new PluginRegistry({ seeds: [bentOnly], expanders: [], layouts: grid });
+    const engine = new GraphEngine({
+      spec: {
+        seeds: { source: 'test' },
+        layout: { type: 'down' },
+        nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+        edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }] as never,
+      },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+
+    const at = (e: GraphEngine) => {
+      const to = e.getEdgeGeometry().get('a->b')!.to;
+      const centre = e.getPositions().get('b')!;
+      return Math.atan2(to.y - centre.y, to.x - centre.x);
+    };
+
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'far' },
+      nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+      // The canvas: no rule, so the stored bend comes back and decides which way each end faces.
+      edgeStyle: [] as never,
+    });
+    engine.relayout({ travel: 400 });
+
+    const seen = [at(engine)];
+    for (let step = 0; step < 11; step += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      seen.push(at(engine));
+    }
+
+    // No single frame may turn much more than its neighbours, including the one where the sweep ends and
+    // the ordinary derivation takes over.
+    const turn = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)));
+    const steps = seen.slice(1).map((angle, i) => turn(seen[i], angle));
+    const spike = steps.reduce((most, step, i) => {
+      const neighbours = Math.max(steps[i - 1] ?? 0, steps[i + 1] ?? 0);
+      return neighbours > 1e-6 ? Math.max(most, step / neighbours) : most;
+    }, 0);
+    expect(spike).toBeLessThan(3);
+  });
+
   it('sweeps from the side the line was actually drawn on', async () => {
     /*
       The half that is easy to get wrong. The sweep's starting direction comes from the styling the lines are

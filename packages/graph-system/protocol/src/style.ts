@@ -341,7 +341,7 @@ export function cardSilhouette(shape?: CardShape): readonly (readonly [number, n
  * under one percent of the card's half-extent, which is under a pixel on any card somebody would read,
  * and matches the sampling the text floats already use for the same ellipse.
  */
-const ROUND_STEPS = 24;
+const ROUND_STEPS = 48;
 
 /**
  * Every shape as a polygon, for the one job a name cannot do: turning into another shape.

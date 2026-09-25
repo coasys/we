@@ -280,9 +280,18 @@ function foldTravel(): number {
  * `TRAVEL_MS` in the engine — and asked here for the same reason: the engine has no business knowing
  * there is a browser, so it takes a duration and interpolates.
  */
+/**
+ * TEMPORARY — slowed 10x so the movement can be watched frame by frame. REVERT BEFORE MERGING.
+ *
+ * One number, because everything in the switch reads the same clock: the positions, the camera, the card
+ * boxes, the silhouettes and the anchor sweep. Which is itself the thing worth checking while it is slow
+ * — anything that does *not* stretch with this is on a clock of its own and should not be.
+ */
+const SLOW_MOTION = 10;
+
 function layoutTravel(): number {
-  if (typeof window === 'undefined' || !window.matchMedia) return TRAVEL_MS;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : TRAVEL_MS;
+  if (typeof window === 'undefined' || !window.matchMedia) return TRAVEL_MS * SLOW_MOTION;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : TRAVEL_MS * SLOW_MOTION;
 }
 
 /**

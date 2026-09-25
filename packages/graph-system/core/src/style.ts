@@ -381,8 +381,18 @@ export function blendVisual(from: NodeVisual, to: NodeVisual, t: number): NodeVi
   */
   const fromShape = from.cardShape ?? 'note';
   const toShape = to.cardShape ?? 'note';
-  if (fromShape === toShape) return blended;
+  /*
+    A card caught MID-MORPH is drawn as neither of its two shapes, so the outline it is leaving is the one on
+    screen rather than the one its name says — a blended visual takes the destination's `cardShape`, like
+    everything else discrete, and a reader who switches back half-way through would otherwise watch the card
+    snap to the shape it was becoming before starting to leave it again. Reported as exactly that.
 
-  blended.morph = { outline: blendOutlines(morphOutline(fromShape), morphOutline(toShape), at), from: fromShape, at };
+    It is also why the name matching is not enough to skip: the same switch asked for twice lands here with
+    both names equal and a card that is still half of something else.
+  */
+  const leaving = from.morph?.outline ?? morphOutline(fromShape);
+  if (!from.morph && fromShape === toShape) return blended;
+
+  blended.morph = { outline: blendOutlines(leaving, morphOutline(toShape), at), from: fromShape, at };
   return blended;
 }
