@@ -1,6 +1,7 @@
+import { role } from '@we/tokens';
 import { z } from 'zod';
 
-import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema } from './types';
+import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
 
 // Zod's JIT probe trips Electron's production CSP — see the note in @we/backend-shared's
 // queryIR.ts. Repeated per module because the probe fires on the first `z.object()`.
@@ -10,22 +11,73 @@ const lazySchemaNode = z.lazy(() => zSchemaNode);
 const lazySchemaProp = z.lazy(() => zSchemaProp);
 const lazyRouteSchema = z.lazy(() => zRouteSchema);
 
-const zThemeOverrides = z
-  .object({
-    themeName: z.string().optional(),
-    primaryHue: z.number().optional(),
-    successHue: z.number().optional(),
-    warningHue: z.number().optional(),
-    dangerHue: z.number().optional(),
-    neutralHue: z.number().optional(),
-    // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
-    saturation: z.number().optional(),
-    neutralSaturation: z.number().optional(),
-    multiplier: z.number().optional(),
-    subtractor: z.string().optional(),
-    fontFamily: z.string().optional(),
-  })
-  .strict();
+/*
+  `ThemeOverrides`, key for key.
+
+  A key missing here is refused on every template that sets it, while the renderer applies it
+  happily: that is how `polarity`, the lightness range, `roles` and every radius, typography and
+  density key came to fail `acceptTemplate` and the editor's validation. The `satisfies` makes the
+  drift a type error that names the key, in either direction.
+
+  `multiplier` and `subtractor` predate `polarity` and the lightness range (see @we/themes
+  `migrate.ts`). They stay accepted so a template saved before then is not newly refused.
+*/
+type LegacyThemeKey = 'multiplier' | 'subtractor';
+
+// Role names come from the token table the runtime resolves them against, not from a restated list.
+const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typeof role)[]]);
+
+const themeOverridesShape = {
+  schemaVersion: z.number().int().positive().optional(),
+  themeName: z.string().optional(),
+  primaryHue: z.number().optional(),
+  successHue: z.number().optional(),
+  warningHue: z.number().optional(),
+  dangerHue: z.number().optional(),
+  neutralHue: z.number().optional(),
+  // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
+  saturation: z.number().optional(),
+  neutralSaturation: z.number().optional(),
+  accentLightness: z.number().optional(),
+  dangerLightness: z.number().optional(),
+  successLightness: z.number().optional(),
+  warningLightness: z.number().optional(),
+  polarity: z.enum(['light', 'dark']).optional(),
+  lightnessFloor: z.string().optional(),
+  lightnessCeiling: z.string().optional(),
+  roles: z.partialRecord(zThemeRole, z.string()).optional(),
+  fontFamily: z.string().optional(),
+  headingFontFamily: z.string().optional(),
+  monoFontFamily: z.string().optional(),
+  letterSpacing: z.string().optional(),
+  lineHeight: z.string().optional(),
+  fontScale: z.number().optional(),
+  controlRadius: z.string().optional(),
+  surfaceRadius: z.string().optional(),
+  inputRadius: z.string().optional(),
+  avatarRadius: z.string().optional(),
+  borderWidth: z.string().optional(),
+  stateDuration: z.string().optional(),
+  focusRingWidth: z.string().optional(),
+  controlPaddingX: z.string().optional(),
+  controlGap: z.string().optional(),
+  controlHeightOffset: z.string().optional(),
+  surfacePadding: z.string().optional(),
+  surfaceGap: z.string().optional(),
+  inputPadding: z.string().optional(),
+  spacingScale: z.number().optional(),
+  disabledOpacity: z.number().optional(),
+  shadowIntensity: z.enum(['flat', 'subtle', 'elevated', 'dramatic']).optional(),
+  surfaceOpacity: z.number().optional(),
+  surfaceBlur: z.number().optional(),
+  animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),
+  multiplier: z.number().optional(),
+  subtractor: z.string().optional(),
+} satisfies {
+  [K in keyof ThemeOverrides | LegacyThemeKey]-?: z.ZodType<(ThemeOverrides & Record<LegacyThemeKey, unknown>)[K]>;
+};
+
+const zThemeOverrides = z.object(themeOverridesShape).strict();
 
 // --- Token shape Zod schemas ---
 // Each matches the corresponding TypeScript type in types.ts.
