@@ -42,9 +42,9 @@ export type ForeignShape = { name: string; shape: SHACLShape };
 
   The client the app runs comes from `@coasys/ad4m-connect`, which bundles its own copy of
   `@coasys/ad4m` — not the one this package depends on. In that copy `getAllShacl()` is not one
-  call: it lists the names, then reads every shape with `getShacl()`, at three round trips plus one
-  per property. A space with ~40 shapes paid ~650 `queryLinks` on every load to keep the handful
-  that are foreign, and a remote executor queued them for seconds.
+  call: it lists the names, then reads every shape with `getShacl()`, which costs 3 + P calls for a
+  shape of P properties. A space with ~40 shapes paid ~650 `queryLinks` on every load to keep the
+  handful that are foreign, and a remote executor queued them for seconds.
 
   What a caller here needs to know about most shapes is a few links each — name → shape → target
   class, shape → property → path — so one SPARQL query answers it for every shape at once, and a
@@ -92,6 +92,10 @@ function propertyName(propShape: string): string | undefined {
 /**
  * Every installed shape's properties — path, and name where the shape gives one — in the order
  * `getShaclNames()` lists the shapes. Two round trips however many shapes there are.
+ *
+ * Where the graph holds more than one answer, this keeps all of them and `getShacl()` kept one: a
+ * name mapped to two shapes gives both shapes' properties, and a property with two paths gives
+ * both. Either takes a merged or damaged registry.
  */
 export async function readShapeProperties(
   perspective: PerspectiveProxy,
@@ -112,6 +116,10 @@ export async function readShapeProperties(
  * A shape is foreign when no native model has its name, or when it takes a native name over a
  * different target class. The index answers that for every shape in one query, so only foreign
  * shapes are read in full, and a native name is read only when the index says it might be one.
+ *
+ * A native name with no stored target class counts as the native model and is not read. Read in
+ * full, it would not have: `SHACLShape.fromLinks` falls back to the shape's own URI as its target
+ * class, which made such a shape look foreign and built a second model under the native name.
  *
  * Callers that need both the entity classes (`buildEntityClasses`) and the AI
  * manifest (`buildEntityManifest`) for the same perspective should fetch here

@@ -530,8 +530,8 @@ not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only wh
 republishes, so measure performance work against that copy, not the workspace one.
 
 In that copy, \`getAllShacl()\` reads every shape one at a time — \`getShaclNames()\`, then \`getShacl()\`
-per shape at three round trips plus one per property — and it rejects outright when one shape
-carries a property transform a newer SDK encoded. For a question about many shapes, ask the executor
+per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
+property transform a newer SDK encoded. For a question about many shapes, ask the executor
 once with SPARQL, and read a shape in full only when the answer needs it: \`readShapeProperties\` and
 \`getForeignShacl\` in \`perspectiveHelpers.ts\` show how.
 

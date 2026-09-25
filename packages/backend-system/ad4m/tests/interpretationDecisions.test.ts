@@ -85,6 +85,8 @@ describe('hearing that the staged suggestions moved', () => {
     expect(p.queries).toHaveLength(1);
     expect(p.queries[0]).toMatch(/^\s*SELECT\b/i);
     expect([...p.queries[0].matchAll(triplePredicate)].map((m) => m[1])).toEqual(['<ad4m://interp/kind>']);
+    // And no variable predicate anywhere, which the executor reads as "re-run for every diff".
+    expect(p.queries[0]).not.toMatch(/(?:\?\w+|<[^>]+>)\s+\?\w+\s+(?:\?\w+|<[^>]+>)\s*\./);
   });
 
   it('fires every time the executor pushes a subscription update', async () => {

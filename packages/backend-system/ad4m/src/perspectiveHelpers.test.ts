@@ -36,12 +36,15 @@ function makeShape(targetClass?: string): SHACLShape {
 function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>, listed = shapes.map((s) => s.name)) {
   return {
     getShaclNames: vi.fn().mockResolvedValue(listed),
-    querySparql: vi.fn().mockResolvedValue(
-      shapes.map(({ name, shape }) => ({
-        name: `literal:string:shacl://${name}`,
-        shape: shape.nodeShapeUri,
-        ...(shape.targetClass ? { targetClass: shape.targetClass } : {}),
-      })),
+    // Rows only for a query that walks name → shape → target class, so a broken query fails here.
+    querySparql: vi.fn(async (query: string) =>
+      query.includes('<ad4m://shacl_shape_uri>') && query.includes('<sh://targetClass>')
+        ? shapes.map(({ name, shape }) => ({
+            name: `literal:string:shacl://${name}`,
+            shape: shape.nodeShapeUri,
+            ...(shape.targetClass ? { targetClass: shape.targetClass } : {}),
+          }))
+        : [],
     ),
     getShacl: vi.fn(async (name: string) => shapes.find((s) => s.name === name)?.shape ?? null),
     getAllShacl: vi.fn(() => {
@@ -129,6 +132,16 @@ describe('getForeignShacl', () => {
     expect(perspective.getShaclNames).toHaveBeenCalledTimes(1);
     expect(perspective.getAllShacl).not.toHaveBeenCalled();
     expect(shapesRead(perspective)).toEqual(['X']);
+  });
+
+  it('decides on the shape as read when the index and the shape disagree', async () => {
+    // The index marks Message as another target class, so it is read — and the rule then runs on
+    // what `getShacl` returns, which here is WE's own Message after all.
+    const perspective = mockPerspective([{ name: 'Message', shape: makeShape('other-app://Message') }]);
+    vi.mocked(perspective.getShacl).mockResolvedValue(makeShape('flux://Message'));
+
+    expect(await getForeignShacl(perspective)).toEqual([]);
+    expect(shapesRead(perspective)).toEqual(['Message']);
   });
 
   it('builds the other foreign models when one shape cannot be read', async () => {

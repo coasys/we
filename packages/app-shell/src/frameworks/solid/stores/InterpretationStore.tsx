@@ -24,6 +24,7 @@
  */
 import { watchPassRecord } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+import { holdSubscription } from '@shared/utils';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -318,24 +319,21 @@ export function InterpretationStoreProvider(props: ParentProps) {
       local socket regardless, so taking it costs nothing and is what makes the disclosure instant.
       It never leaves this machine live — the relay does not send it; the record carries it.
     */
-    let stop: (() => void) | undefined;
-    void ports.interpretation
-      .observe?.(
+    const stop = holdSubscription(
+      ports.interpretation.observe?.(
         handle,
         (activity) => {
           local.publish(activity);
           record(activity);
         },
         { detail: true },
-      )
-      .then((off) => {
-        stop = off;
-      })
-      .catch((error) => {
+      ),
+      (error) => {
         // A runtime that cannot report progress is a runtime the surfaces below simply do not show
         // a bar for. Not worth interrupting anyone over.
         console.info('[interpretation] this runtime does not report pass progress', error);
-      });
+      },
+    );
 
     /*
       Hear about suggestions being staged and settled, whoever settles them.
@@ -347,25 +345,24 @@ export function InterpretationStoreProvider(props: ParentProps) {
       Coalesced: a pass stages its suggestions in a burst, and accepting a whole record removes
       several links at once, so an event per link would be a re-read per link.
     */
-    let stopProposals: (() => void) | undefined;
     let coalesce: ReturnType<typeof setTimeout> | undefined;
-    void ports.interpretation
-      .onProposalsChanged?.(handle, () => {
+    // Held rather than awaited: the watch takes an executor round trip to start, and a space switch
+    // inside it would otherwise leave it — and its keepalive — running for the life of the app.
+    const stopProposals = holdSubscription(
+      ports.interpretation.onProposalsChanged?.(handle, () => {
         clearTimeout(coalesce);
         coalesce = setTimeout(() => setProposalsRevision((n) => n + 1), PROPOSALS_COALESCE_MS);
-      })
-      .then((off) => {
-        stopProposals = off;
-      })
-      .catch((error) => {
+      }),
+      (error) => {
         // Settling still works without it; peers' screens just catch up on the next pass, as before.
         console.info('[interpretation] this runtime does not report staged-suggestion changes', error);
-      });
+      },
+    );
 
     onCleanup(() => {
       unwatch();
-      stop?.();
-      stopProposals?.();
+      stop();
+      stopProposals();
       clearTimeout(coalesce);
       local.dispose();
     });

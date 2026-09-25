@@ -65,7 +65,7 @@ function perspectiveWith(
     },
     querySparql: async (query: string) => {
       reads.sparql++;
-      if (!query.includes('<sh://property>')) return [];
+      if (!['<ad4m://shacl_shape_uri>', '<sh://property>', '<sh://path>'].every((p) => query.includes(p))) return [];
       return Object.entries(shapes()).flatMap(([name, shape]) =>
         shape.properties.map((p) => ({
           name: `literal:string:shacl://${name}`,
@@ -177,8 +177,8 @@ describe("reading the dataset's own shapes", () => {
   });
 
   it('names a value by a shape installed since the last read', async () => {
-    // Nothing is kept between reads. A model installed a moment ago names its fields on the very
-    // next read, rather than after however long a cache of the old shapes took to expire.
+    // Nothing here is kept between reads (the SDK's own 200 ms query cache aside). A model installed
+    // a moment ago names its fields on the next read, not after a cache of the old shapes expires.
     let shapes: typeof SHAPES = {};
     const p = perspectiveWith(staged, { 'we://task/1': ['TaskBlock'] }, () => shapes);
 
