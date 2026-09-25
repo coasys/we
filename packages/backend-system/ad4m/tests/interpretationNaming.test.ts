@@ -38,27 +38,53 @@ const SHAPES: Record<string, { properties: { path: string; name: string }[] }> =
   },
 };
 
+type Overlay = { base: string; kind: 'create' | 'update'; inferred: [string, unknown][] };
+
 /**
  * Enough of a `PerspectiveProxy` for `proposals` to run.
  *
- * The shapes are served through `getShacl`, the perspective-only path, so this exercises the same
- * code a community's own model goes down rather than the compiled-in registry.
+ * The shapes are served as the executor answers the property query — name node, property shape,
+ * path — so this exercises the same code a community's own model goes down rather than the
+ * compiled-in registry. There is no `getShacl` and no `getAllShacl`: in the SDK the app runs, both
+ * read shapes one at a time, and a mock that answered them would let that come back unnoticed.
  */
 function perspectiveWith(
-  overlays: { base: string; kind: 'create' | 'update'; inferred: [string, unknown][] }[],
+  overlays: Overlay[],
   classes: Record<string, string[]> | Error,
+  shapes: () => typeof SHAPES = () => SHAPES,
+  registry: () => string[] = () => Object.keys(shapes()),
 ) {
-  return {
+  const reads = { names: 0, sparql: 0 };
+  const decided: (string | undefined)[] = [];
+  const handle = {
     runInterpretation: () => undefined,
     interpretationOverlays: async () => overlays,
-    getShaclNames: async () => Object.keys(SHAPES),
-    getShacl: async (name: string) => SHAPES[name],
+    getShaclNames: async () => {
+      reads.names++;
+      return registry();
+    },
+    querySparql: async (query: string) => {
+      reads.sparql++;
+      if (!['<ad4m://shacl_shape_uri>', '<sh://property>', '<sh://path>'].every((p) => query.includes(p))) return [];
+      return Object.entries(shapes()).flatMap(([name, shape]) =>
+        shape.properties.map((p) => ({
+          name: `literal:string:shacl://${name}`,
+          prop: `test://${name}Shape.${p.name}`,
+          path: p.path,
+        })),
+      );
+    },
     get: async () => [],
     subjectClassesOf: async () => {
       if (classes instanceof Error) throw classes;
       return classes;
     },
-  } as never;
+    rejectInterpretation: async (_base: string, predicate?: string) => {
+      decided.push(predicate);
+      return true;
+    },
+  };
+  return { handle: handle as never, reads, decided };
 }
 
 const literal = (value: string) => `literal:string:${value}`;
@@ -72,7 +98,7 @@ describe('naming a staged suggestion', () => {
       { 'we://task/1': ['TaskBlock'] },
     );
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBe('TaskBlock');
     // `title`, not `label` — the whole point. EmbedBlock also claims this predicate.
@@ -86,7 +112,7 @@ describe('naming a staged suggestion', () => {
       'we://embed/1': ['EmbedBlock'],
     });
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBe('EmbedBlock');
     expect(proposal.values).toEqual({ label: 'A link' });
@@ -103,7 +129,7 @@ describe('naming a staged suggestion', () => {
       'we://task/1': ['InterpretationOverlay', 'TaskBlock'],
     });
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBe('TaskBlock');
   });
@@ -119,7 +145,7 @@ describe('naming a staged suggestion', () => {
       Object.assign(new Error('Unknown type: subjectClassesOf'), { status: 404 }),
     );
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBeUndefined();
     expect(proposal.values).toEqual({ status: 'todo' });
@@ -130,8 +156,58 @@ describe('naming a staged suggestion', () => {
     // and "not a subject instance" are not distinguishable from there.
     const p = perspectiveWith([{ base: 'we://mystery/1', kind: 'update', inferred: [] }], {});
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBeUndefined();
+  });
+});
+
+describe("reading the dataset's own shapes", () => {
+  const port = createAd4mInterpretationPort();
+  const staged: Overlay[] = [{ base: 'we://task/1', kind: 'create', inferred: [[STATUS, literal('todo')]] }];
+
+  it('asks one query for every shape, however many there are', async () => {
+    // `proposals()` re-reads on every change to the staged set. Read one at a time, the shapes of a
+    // space with a few modules cost hundreds of round trips per read.
+    const p = perspectiveWith(staged, { 'we://task/1': ['TaskBlock'] });
+
+    await port.proposals(p.handle);
+
+    expect(p.reads).toEqual({ names: 1, sparql: 1 });
+  });
+
+  it('names a value by a shape installed since the last read', async () => {
+    // Nothing here is kept between reads (the SDK's own 200 ms query cache aside). A model installed
+    // a moment ago names its fields on the next read, not after a cache of the old shapes expires.
+    let shapes: typeof SHAPES = {};
+    const p = perspectiveWith(staged, { 'we://task/1': ['TaskBlock'] }, () => shapes);
+
+    expect((await port.proposals(p.handle))[0].values).toEqual({});
+    shapes = SHAPES;
+    expect((await port.proposals(p.handle))[0].values).toEqual({ status: 'todo' });
+  });
+
+  it('reads only the shapes the registry lists', async () => {
+    // A shape's links can outlive its entry in `ad4m://has_shacl`. The registry is what says a shape
+    // is installed, as it was when each listed shape was read on its own.
+    const p = perspectiveWith(
+      [{ base: 'we://embed/1', kind: 'create', inferred: [[TITLE, literal('A link')]] }],
+      { 'we://embed/1': ['EmbedBlock'] },
+      () => SHAPES,
+      () => ['TaskBlock'],
+    );
+
+    expect((await port.proposals(p.handle))[0].values).toEqual({ title: 'A link' });
+  });
+
+  it('sends a per-field decision the predicate its name maps to', async () => {
+    // A reviewer decides on `label`, and the executor knows only `we://title`. EmbedBlock's shape
+    // says the one is the other, and here only the dataset holds it.
+    const p = perspectiveWith([], {});
+
+    await expect(port.reject(p.handle, 'we://embed/1', 'label')).resolves.toBe(true);
+
+    expect(p.decided).toEqual([TITLE]);
+    expect(p.reads).toEqual({ names: 1, sparql: 1 });
   });
 });

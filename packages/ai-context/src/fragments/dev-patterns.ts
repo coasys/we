@@ -185,8 +185,8 @@ pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
 pnpm --filter @we/primitives build                      # a Lit primitive
 \`\`\`
 
-**Do rebuild, though — a stale \`dist\` is invisible and wastes more time than the build saves.** Two
-symptoms worth recognising, both of which have happened here:
+**Do rebuild, though — a stale \`dist\` is invisible and wastes more time than the build saves.** Three
+symptoms worth recognising, all of which have happened here:
 
 - *"I changed the source and the app is unchanged."* The package ships a \`dist\` and it was not
   rebuilt. Note that packages differ: \`@we/template-shell\` has no \`dist\` and is consumed as source,
@@ -195,6 +195,9 @@ symptoms worth recognising, both of which have happened here:
 - *"The build says it failed but the error names a package I did not touch."* A dependency's types
   moved. Rebuild the chain in dependency order — tokens, then themes, then schema-shared, then
   whatever consumes them.
+- *"The adapter's test still sees the old behaviour."* A test that imports \`@we/backend-ad4m\` by its
+  own name resolves through the package's \`exports\` to \`dist\`, so it runs the last build rather than
+  \`src\`. Rebuild the package before \`pnpm --filter @we/backend-ad4m test\`.
 
 To find what is stale rather than guessing:
 
@@ -495,6 +498,42 @@ await space.save();
 // ✅ Correct
 const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name: 'My Space' });
 \`\`\`
+
+---
+
+### Watching the graph from \`@we/backend-ad4m\`
+
+To hear that something changed in a perspective, subscribe on the executor with \`subscribeQuery\`
+rather than \`addListener('link-added' | 'link-removed')\`. A link listener receives every link of a
+peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
+touches one of its predicates, and pushes only when the result changes.
+
+That filter needs SPARQL that writes each predicate out as a full \`<iri>\`: the executor reads the
+predicates from the query text. A variable predicate (even one a \`FILTER\` pins down), a prefixed
+name, or a Prolog query makes it re-run the subscription on every diff. \`onProposalsChanged\` in
+\`interpretationAdapter.ts\` shows the pattern, and \`interpretationDecisions.test.ts\` pins its query.
+
+What the SDK and executor do around a subscription, so a watch can rely on it:
+
+- A callback registered after \`subscribeQuery\` resolves does not receive the initial result — only
+  the changes after it.
+- After a websocket reconnect, the SDK re-subscribes and hands the current result to every
+  callback, so a watch hears a refresh rather than nothing.
+- The executor shares one server-side subscription between identical queries from the same user.
+  Disposing one ends it for the other too, until the other's 30-second keepalive fails and
+  re-subscribes. Two live watches with the same query text see that gap.
+
+### Reading shapes from \`@we/backend-ad4m\`
+
+The \`PerspectiveProxy\` the app holds comes from the SDK copy bundled inside \`@coasys/ad4m-connect\`,
+not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only when ad4m-connect
+republishes, so measure performance work against that copy, not the workspace one.
+
+In that copy, \`getAllShacl()\` reads every shape one at a time — \`getShaclNames()\`, then \`getShacl()\`
+per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
+property transform a newer SDK encoded. For a question about many shapes, ask the executor
+once with SPARQL, and read a shape in full only when the answer needs it: \`readShapeProperties\` and
+\`getForeignShacl\` in \`perspectiveHelpers.ts\` show how.
 
 ---
 
