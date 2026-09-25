@@ -43,24 +43,36 @@ type Overlay = { base: string; kind: 'create' | 'update'; inferred: [string, unk
 /**
  * Enough of a `PerspectiveProxy` for `proposals` to run.
  *
- * The shapes are served through `getAllShacl`, the perspective-only path, so this exercises the same
- * code a community's own model goes down rather than the compiled-in registry. There is no
- * `getShacl`: reading the shapes one at a time is the round trip per shape this adapter stopped
- * paying, and a mock that answered it would let that come back unnoticed.
+ * The shapes are served as the executor answers the property query — name node, property shape,
+ * path — so this exercises the same code a community's own model goes down rather than the
+ * compiled-in registry. There is no `getShacl` and no `getAllShacl`: in the SDK the app runs, both
+ * read shapes one at a time, and a mock that answered them would let that come back unnoticed.
  */
 function perspectiveWith(
   overlays: Overlay[],
   classes: Record<string, string[]> | Error,
   shapes: () => typeof SHAPES = () => SHAPES,
+  registry: () => string[] = () => Object.keys(shapes()),
 ) {
-  const reads = { shapes: 0 };
+  const reads = { names: 0, sparql: 0 };
   const decided: (string | undefined)[] = [];
   const handle = {
     runInterpretation: () => undefined,
     interpretationOverlays: async () => overlays,
-    getAllShacl: async () => {
-      reads.shapes++;
-      return Object.entries(shapes()).map(([name, shape]) => ({ name, shape }));
+    getShaclNames: async () => {
+      reads.names++;
+      return registry();
+    },
+    querySparql: async (query: string) => {
+      reads.sparql++;
+      if (!query.includes('<sh://property>')) return [];
+      return Object.entries(shapes()).flatMap(([name, shape]) =>
+        shape.properties.map((p) => ({
+          name: `literal:string:shacl://${name}`,
+          prop: `test://${name}Shape.${p.name}`,
+          path: p.path,
+        })),
+      );
     },
     get: async () => [],
     subjectClassesOf: async () => {
@@ -154,14 +166,14 @@ describe("reading the dataset's own shapes", () => {
   const port = createAd4mInterpretationPort();
   const staged: Overlay[] = [{ base: 'we://task/1', kind: 'create', inferred: [[STATUS, literal('todo')]] }];
 
-  it('asks once per read, however many shapes there are', async () => {
-    // `proposals()` re-reads on every change to the staged set. At one round trip per shape, a peer
-    // syncing a burst of decisions cost a space with a few modules hundreds of them.
+  it('asks one query for every shape, however many there are', async () => {
+    // `proposals()` re-reads on every change to the staged set. Read one at a time, the shapes of a
+    // space with a few modules cost hundreds of round trips per read.
     const p = perspectiveWith(staged, { 'we://task/1': ['TaskBlock'] });
 
     await port.proposals(p.handle);
 
-    expect(p.reads.shapes).toBe(1);
+    expect(p.reads).toEqual({ names: 1, sparql: 1 });
   });
 
   it('names a value by a shape installed since the last read', async () => {
@@ -175,6 +187,19 @@ describe("reading the dataset's own shapes", () => {
     expect((await port.proposals(p.handle))[0].values).toEqual({ status: 'todo' });
   });
 
+  it('reads only the shapes the registry lists', async () => {
+    // A shape's links can outlive its entry in `ad4m://has_shacl`. The registry is what says a shape
+    // is installed, as it was when each listed shape was read on its own.
+    const p = perspectiveWith(
+      [{ base: 'we://embed/1', kind: 'create', inferred: [[TITLE, literal('A link')]] }],
+      { 'we://embed/1': ['EmbedBlock'] },
+      () => SHAPES,
+      () => ['TaskBlock'],
+    );
+
+    expect((await port.proposals(p.handle))[0].values).toEqual({ title: 'A link' });
+  });
+
   it('sends a per-field decision the predicate its name maps to', async () => {
     // A reviewer decides on `label`, and the executor knows only `we://title`. EmbedBlock's shape
     // says the one is the other, and here only the dataset holds it.
@@ -183,6 +208,6 @@ describe("reading the dataset's own shapes", () => {
     await expect(port.reject(p.handle, 'we://embed/1', 'label')).resolves.toBe(true);
 
     expect(p.decided).toEqual([TITLE]);
-    expect(p.reads.shapes).toBe(1);
+    expect(p.reads).toEqual({ names: 1, sparql: 1 });
   });
 });

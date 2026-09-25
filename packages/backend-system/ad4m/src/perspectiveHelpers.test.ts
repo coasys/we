@@ -27,11 +27,30 @@ function makeShape(targetClass?: string): SHACLShape {
   } as unknown as SHACLShape;
 }
 
-function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>): PerspectiveProxy {
+/**
+ * The shape registry as the executor answers it: the names, the index query's rows, and `getShacl`.
+ *
+ * `getAllShacl` throws: in the SDK copy the app runs it reads every shape one at a time, which is
+ * the cost `getForeignShacl` exists to avoid.
+ */
+function mockPerspective(shapes: Array<{ name: string; shape: SHACLShape }>, listed = shapes.map((s) => s.name)) {
   return {
-    getAllShacl: vi.fn().mockResolvedValue(shapes),
+    getShaclNames: vi.fn().mockResolvedValue(listed),
+    querySparql: vi.fn().mockResolvedValue(
+      shapes.map(({ name, shape }) => ({
+        name: `literal:string:shacl://${name}`,
+        shape: shape.nodeShapeUri,
+        ...(shape.targetClass ? { targetClass: shape.targetClass } : {}),
+      })),
+    ),
+    getShacl: vi.fn(async (name: string) => shapes.find((s) => s.name === name)?.shape ?? null),
+    getAllShacl: vi.fn(() => {
+      throw new Error('getAllShacl reads every shape one at a time');
+    }),
   } as unknown as PerspectiveProxy;
 }
+
+const shapesRead = (perspective: PerspectiveProxy) => vi.mocked(perspective.getShacl).mock.calls.map(([name]) => name);
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +79,8 @@ describe('getForeignShacl', () => {
 
     expect(foreign.length).toBe(1);
     expect(foreign[0].name).toBe('Task');
+    // The native shape is recognised from the index alone — never read in full.
+    expect(shapesRead(perspective)).toEqual(['Task']);
   });
 
   it('keeps shapes that share a native name but have a different targetClass', async () => {
@@ -86,6 +107,7 @@ describe('getForeignShacl', () => {
     // Nothing distinguishes it from WE's own Channel, so it is treated as native and skipped —
     // the same call the multi-round-trip version made when getShaclTargetClass came back empty.
     expect(foreign.length).toBe(0);
+    expect(shapesRead(perspective)).toEqual([]);
   });
 
   it('returns an empty array when the perspective has no shapes', async () => {
@@ -94,11 +116,49 @@ describe('getForeignShacl', () => {
     expect(foreign).toEqual([]);
   });
 
-  it('calls getAllShacl exactly once', async () => {
-    const perspective = mockPerspective([{ name: 'X', shape: makeShape('app://X') }]);
+  it('asks one index query, whatever the number of shapes, and never getAllShacl', async () => {
+    const perspective = mockPerspective([
+      { name: 'Message', shape: makeShape('flux://Message') },
+      { name: 'Channel', shape: makeShape('flux://Channel') },
+      { name: 'X', shape: makeShape('app://X') },
+    ]);
 
     await getForeignShacl(perspective);
 
-    expect(perspective.getAllShacl).toHaveBeenCalledTimes(1);
+    expect(perspective.querySparql).toHaveBeenCalledTimes(1);
+    expect(perspective.getShaclNames).toHaveBeenCalledTimes(1);
+    expect(perspective.getAllShacl).not.toHaveBeenCalled();
+    expect(shapesRead(perspective)).toEqual(['X']);
+  });
+
+  it('builds the other foreign models when one shape cannot be read', async () => {
+    // The SDK the app runs cannot parse a property transform a newer SDK encoded, and throws.
+    const perspective = mockPerspective([
+      { name: 'Task', shape: makeShape('app://Task') },
+      { name: 'Broken', shape: makeShape('app://Broken') },
+    ]);
+    vi.mocked(perspective.getShacl).mockImplementation(async (name: string) => {
+      if (name === 'Broken') throw new Error('Failed to deserialize transform');
+      return makeShape('app://Task');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('reads nothing the registry does not list', async () => {
+    // A shape's links can outlive its `ad4m://has_shacl` entry; the registry says what is installed.
+    const perspective = mockPerspective(
+      [
+        { name: 'Task', shape: makeShape('app://Task') },
+        { name: 'Removed', shape: makeShape('app://Removed') },
+      ],
+      ['Task'],
+    );
+
+    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
+    expect(shapesRead(perspective)).toEqual(['Task']);
   });
 });

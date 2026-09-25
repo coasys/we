@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { Link, LinkQuery, Literal, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
+import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationActivity,
@@ -36,6 +36,7 @@ import { trace } from '@we/backend-shared';
 import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
 import { recordMissingMethod } from './missingMethods';
+import { readShapeProperties } from './perspectiveHelpers';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -201,7 +202,7 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
   // failure here costs a proposal its readable field names, which is worth degrading over rather
   // than failing the whole review list for.
   try {
-    for (const { name, shape } of await perspectiveOnlyShapes(perspective)) absorb(name, shape.properties);
+    for (const { name, properties } of await perspectiveOnlyShapes(perspective)) absorb(name, properties);
   } catch {
     // Leave what we have.
   }
@@ -210,16 +211,16 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
 }
 
 /**
- * The shapes this perspective holds beyond the compiled-in registry, in one round trip. Every read
- * of `proposals()` and every per-field decision asks, so a round trip per shape added up.
+ * The properties of every shape this perspective holds beyond the compiled-in registry. Every read
+ * of `proposals()` and every per-field decision asks, and reading the shapes one at a time cost a
+ * round trip per shape and per property — see `readShapeProperties` for what it costs instead.
  *
- * A shape with a native model's name is skipped whatever its target class, as the per-shape reads
- * did: the compiled-in shape answers for that name. `getForeignShacl` keeps one whose target class
- * differs, which would change what a proposal's fields are called.
+ * A shape with a native model's name is skipped whatever its target class: the compiled-in shape
+ * answers for that name, as it always has here.
  */
-async function perspectiveOnlyShapes(perspective: PerspectiveProxy): Promise<{ name: string; shape: SHACLShape }[]> {
+async function perspectiveOnlyShapes(perspective: PerspectiveProxy) {
   const native = new Set(getRegisteredEntityNames());
-  return (await perspective.getAllShacl()).filter(({ name }) => !native.has(name));
+  return (await readShapeProperties(perspective)).filter(({ name }) => !native.has(name));
 }
 
 /**
@@ -1053,7 +1054,6 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     async onProposalsChanged(dataset: DatasetHandle, cb: () => void): Promise<() => void> {
       if (!runtimeSupportsInterpretation(dataset)) return () => {};
       const perspective = proxy(dataset);
-
       /*
         The overlay's `kind` link, and nothing else, is what "staged" means here.
 
@@ -1394,9 +1394,9 @@ async function toPredicate(perspective: PerspectiveProxy, property: string): Pro
 
   // Then the perspective's own shapes — a module's entities, or a foreign app's.
   try {
-    for (const { shape } of await perspectiveOnlyShapes(perspective)) {
-      for (const p of shape.properties) {
-        if (p.name === property && p.path) return p.path;
+    for (const { properties } of await perspectiveOnlyShapes(perspective)) {
+      for (const p of properties) {
+        if (p.name === property) return p.path;
       }
     }
   } catch {
