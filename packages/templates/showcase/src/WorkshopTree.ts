@@ -238,7 +238,8 @@ export const TREE_EDGE_RULES: SchemaProp = {
       one thing: a line somebody had pulled to a card's left side on the canvas, or bent around something
       that is no longer in the way, kept doing both here. Those are decisions about one connection on one
       canvas, which is the narrower fact and wins everywhere the canvas is what is being read — and this is
-      not that. Nothing is unwritten; going back to the canvas finds every one of them again.
+      not that. Nothing is unwritten; going back to the canvas finds every one of them again, and the bend
+      going away and coming back is animated rather than snapped.
     */
     `{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } },` +
     ` { when: { 'data.relationshipTypeId': { not: local.spine } },` +

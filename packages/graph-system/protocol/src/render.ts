@@ -61,7 +61,17 @@ export interface NodeVisual {
    * Absent whenever a card is at rest, which is the point — a note keeps its real corner radius and its
    * real `box-shadow`, and borrows a polygon only while it needs one.
    */
-  morph?: { outline: readonly (readonly [number, number])[]; from: CardShape; at: number };
+  morph?: {
+    outline: readonly (readonly [number, number])[];
+    from: CardShape;
+    at: number;
+    /**
+     * The radii the outline was built from, per direction — what a blend carries forward so that blending it
+     * AGAIN never has to ask a blended polygon how far it reaches. See `sampledBlend`; the renderer has no
+     * use for it and reads `outline`.
+     */
+    samples?: readonly { ux: number; uy: number; r: number }[];
+  };
 }
 
 /**

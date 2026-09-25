@@ -167,7 +167,9 @@ function polygonReach(
     if (Math.abs(denominator) < 1e-9) continue; // Parallel to this side.
     const along = (px * ey - py * ex) / denominator;
     const across = (px * uy - py * ux) / denominator;
-    if (along > 0 && across >= 0 && across <= 1) nearest = Math.min(nearest, along);
+    // Tolerant at both ends, because a ray aimed exactly at a vertex meets two edges at their shared
+    // endpoint and floating point can put both a hair outside the range, which answers with nothing.
+    if (along > 0 && across >= -1e-9 && across <= 1 + 1e-9) nearest = Math.min(nearest, along);
   }
   return nearest;
 }
@@ -981,6 +983,172 @@ export function bendPoints(drawn: Point[], waypoints: Point[]): Point[] {
   return edges.slice(1).map((end, index) => pointAlong(drawn, (edges[index] + end) / 2));
 }
 
+/** A cubic Bézier as its four points: the start, the two controls, and the end. */
+export type Cubic = readonly [Point, Point, Point, Point];
+
+const mix = (a: Point, b: Point, t: number): Point => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+
+/**
+ * Any route, as a chain of cubics drawing exactly the same line.
+ *
+ * Every shape a route can take already is one, or converts without loss: a `smooth` curve is a cubic, an
+ * `arc` is a quadratic (which a cubic represents exactly), and a straight leg is a cubic whose controls sit
+ * on the line. A route bent through waypoints is a chain of those. So this is a change of representation
+ * and not an approximation — which is what lets {@link blendRoutes} morph any route into any other.
+ */
+export function cubicsOf(geometry: EdgeGeometry): Cubic[] {
+  const line = (a: Point, b: Point): Cubic => [a, mix(a, b, 1 / 3), mix(a, b, 2 / 3), b];
+  if (geometry.segments) {
+    const chain: Cubic[] = [];
+    let at = geometry.from;
+    for (const segment of geometry.segments) {
+      // The same test `pathFrom` draws by: both controls or a straight leg.
+      chain.push(
+        segment.control && segment.control2
+          ? [at, segment.control, segment.control2, segment.to]
+          : line(at, segment.to),
+      );
+      at = segment.to;
+    }
+    return chain;
+  }
+  if (geometry.elbows) {
+    const corners = [geometry.from, ...geometry.elbows, geometry.to];
+    return corners.slice(1).map((corner, index) => line(corners[index], corner));
+  }
+  const { from, to, control, control2 } = geometry;
+  if (control && control2) return [[from, control, control2, to]];
+  // A quadratic raised to a cubic: each control two thirds of the way from its end to the quadratic's one.
+  if (control) return [[from, mix(from, control, 2 / 3), mix(to, control, 2 / 3), to]];
+  return [line(from, to)];
+}
+
+/** De Casteljau: the two pieces of a cubic either side of parameter `t`, each exactly on the original. */
+export function splitCubic(cubic: Cubic, t: number): [Cubic, Cubic] {
+  const [p0, p1, p2, p3] = cubic;
+  const a = mix(p0, p1, t);
+  const b = mix(p1, p2, t);
+  const c = mix(p2, p3, t);
+  const d = mix(a, b, t);
+  const e = mix(b, c, t);
+  const f = mix(d, e, t);
+  return [
+    [p0, a, d, f],
+    [f, e, c, p3],
+  ];
+}
+
+/** How finely a cubic's length is measured, which bounds how exactly a chain is cut by length. */
+const LENGTH_STEPS = 32;
+
+/** Distance travelled along a cubic at each of `LENGTH_STEPS` even steps of its parameter. */
+function lengthTable(cubic: Cubic): number[] {
+  const table = [0];
+  let previous = cubic[0];
+  for (let step = 1; step <= LENGTH_STEPS; step += 1) {
+    const point = cubicAt(cubic[0], cubic[1], cubic[2], cubic[3], step / LENGTH_STEPS);
+    table.push(table[step - 1] + Math.hypot(point.x - previous.x, point.y - previous.y));
+    previous = point;
+  }
+  return table;
+}
+
+/** The parameter at which a cubic has travelled `distance`, read off its table. */
+function parameterAt(table: readonly number[], distance: number): number {
+  let step = 1;
+  while (step < table.length - 1 && table[step] < distance) step += 1;
+  const span = table[step] - table[step - 1];
+  const into = span > 0 ? (distance - table[step - 1]) / span : 0;
+  return (step - 1 + Math.min(1, Math.max(0, into))) / LENGTH_STEPS;
+}
+
+/** Two cut positions closer than this, as fractions of a route's length, are one cut. */
+const CUT_TOLERANCE = 1e-6;
+
+/** A chain measured: each piece's table, where each piece ends as a fraction of the whole, and the whole. */
+function measure(chain: readonly Cubic[]): { tables: number[][]; ends: number[]; total: number } {
+  const tables = chain.map(lengthTable);
+  const total = tables.reduce((sum, table) => sum + table[table.length - 1], 0);
+  let travelled = 0;
+  const ends = tables.map((table) => {
+    travelled += table[table.length - 1];
+    return total > 0 ? travelled / total : 1;
+  });
+  return { tables, ends, total };
+}
+
+/** A chain cut at each of `cuts` — fractions of its length, ascending — that is not already a joint. */
+function cutAt(chain: readonly Cubic[], measured: ReturnType<typeof measure>, cuts: readonly number[]): Cubic[] {
+  const out: Cubic[] = [];
+  let next = 0;
+  chain.forEach((cubic, index) => {
+    const start = index === 0 ? 0 : measured.ends[index - 1];
+    const end = measured.ends[index];
+    const table = measured.tables[index];
+    // The parameters, on this piece as it stands, of every cut falling strictly inside it.
+    const inside: number[] = [];
+    while (next < cuts.length && cuts[next] < end - CUT_TOLERANCE) {
+      if (cuts[next] > start + CUT_TOLERANCE) inside.push(parameterAt(table, (cuts[next] - start) * measured.total));
+      next += 1;
+    }
+    // Each cut splits what is left, so its parameter is rescaled onto the remainder.
+    let rest = cubic;
+    let used = 0;
+    for (const t of inside) {
+      const [head, tail] = splitCubic(rest, (t - used) / (1 - used));
+      out.push(head);
+      rest = tail;
+      used = t;
+    }
+    out.push(rest);
+  });
+  return out;
+}
+
+/**
+ * Two routes as one, `weight` of the way from `a` to `b`, control point by control point.
+ *
+ * The standard way to morph one path into another, and the reason it works where interpolating points
+ * does not is that a control point carries a TANGENT. Two chains are first cut into the same number of
+ * pieces at the same fractions of their lengths — each at the other's joints — so piece `i` of both covers
+ * the same stretch of line; then all four points of each piece are interpolated. A point sampled off a
+ * curve knows where the line is and nothing about which way it is going, so a morph built from samples
+ * has to be told the direction at the ends separately, and an arrowhead drawn along the last few pixels
+ * of one points wherever the sampling happened to leave it. Here the direction at every end is the
+ * interpolation of two real directions, held by controls a sizeable fraction of the route away.
+ *
+ * Exact at both ends of the weight: 0 is `a` and 1 is `b`, drawn as themselves, so a morph hands over to
+ * the ordinary route with nothing to jump. Two routes of zero length have no fractions to match, and
+ * answer with whichever the weight is nearer.
+ */
+export function blendRoutes(a: EdgeGeometry, b: EdgeGeometry, weight: number): EdgeGeometry {
+  if (weight <= 0) return a;
+  if (weight >= 1) return b;
+  const chainA = cubicsOf(a);
+  const chainB = cubicsOf(b);
+  const measuredA = measure(chainA);
+  const measuredB = measure(chainB);
+  if (measuredA.total <= 0 || measuredB.total <= 0) return weight < 0.5 ? a : b;
+  // Every joint of either, once: each chain is then cut wherever the other has a joint it lacks.
+  const cuts = [...measuredA.ends.slice(0, -1), ...measuredB.ends.slice(0, -1)]
+    .sort((x, y) => x - y)
+    .filter((cut, index, all) => index === 0 || cut - all[index - 1] > CUT_TOLERANCE);
+  const piecesA = cutAt(chainA, measuredA, cuts);
+  const piecesB = cutAt(chainB, measuredB, cuts);
+  if (piecesA.length !== piecesB.length) return weight < 0.5 ? a : b;
+  const chain = piecesA.map(
+    (piece, index) => piece.map((point, which) => mix(point, piecesB[index][which], weight)) as unknown as Cubic,
+  );
+  return {
+    id: b.id,
+    from: chain[0][0],
+    to: chain[chain.length - 1][3],
+    segments: chain.map((piece) => ({ control: piece[1], control2: piece[2], to: piece[3] })),
+    curve: b.curve,
+    mid: mix(a.mid, b.mid, weight),
+  };
+}
+
 /**
  * The route as a polyline.
  *
@@ -1093,13 +1261,45 @@ const TURN = Math.PI * 2;
  * as its inner hull, and would want a matched-point blend back with a correspondence somebody chose.
  */
 export function blendOutlines(from: Outline, to: Outline, t: number): Outline {
+  return sampledBlend(from, to, t).outline;
+}
+
+/**
+ * How far a blend reaches along one of its own directions — what it has to carry to be blended AGAIN.
+ *
+ * A reversal half way through a morph starts from the outline that is on screen, and asking a *blended*
+ * polygon how far it reaches is the one fragile step in all of this: its directions come from whatever pair
+ * produced it, two can end up close enough together to leave an edge pointing almost at the centre, and a
+ * ray between them misses both. The answer then fell back to the box, and the card grew a spike for a frame.
+ * Reported as exactly that, at random, because which fractions a reader catches decides whether it happens.
+ *
+ * So a blend carries its own answers forward. Nothing ever ray-casts a blended outline — only the shape
+ * table, which is written by hand and cannot produce that case.
+ */
+export interface OutlineSample {
+  ux: number;
+  uy: number;
+  r: number;
+}
+
+/** A blend of two shapes from the table, with the radii it was built from. */
+export function sampledBlend(from: Outline, to: Outline, t: number): { outline: Outline; samples: OutlineSample[] } {
   const at = Math.min(1, Math.max(0, t));
   // Per frame this is a lerp and two multiplies per direction. Everything that needed a ray cast against
   // the two outlines was answered once, for the pair — see `directionsFor`.
-  return directionsFor(from, to).map(({ ux, uy, a, b }) => {
-    const r = a + (b - a) * at;
-    return [0.5 + ux * r, 0.5 + uy * r] as const;
-  });
+  const samples = directionsFor(from, to).map(({ ux, uy, a, b }) => ({ ux, uy, r: a + (b - a) * at }));
+  return { outline: samples.map(({ ux, uy, r }) => [0.5 + ux * r, 0.5 + uy * r] as const), samples };
+}
+
+/** The same, continuing from a blend already in flight — its own directions, its own radii. */
+export function resampleBlend(
+  from: readonly OutlineSample[],
+  to: Outline,
+  t: number,
+): { outline: Outline; samples: OutlineSample[] } {
+  const at = Math.min(1, Math.max(0, t));
+  const samples = from.map(({ ux, uy, r }) => ({ ux, uy, r: r + (radiusAt(to, ux, uy) - r) * at }));
+  return { outline: samples.map(({ ux, uy, r }) => [0.5 + ux * r, 0.5 + uy * r] as const), samples };
 }
 
 /**
@@ -1147,7 +1347,10 @@ function directionsFor(from: Outline, to: Outline): Sampled[] {
   const found: number[] = [];
   const add = (angle: number) => {
     const spun = turned(angle);
-    if (!found.some((other) => Math.abs(other - spun) < 1e-6)) found.push(spun);
+    // A thousandth of a radian — a twentieth of a degree, which is far below anything anybody can see and
+    // wide enough to collapse two directions that would otherwise leave a near-radial edge between them.
+    // At 1e-6 they survived, and a ray between them missed both of its neighbours: see `radiusAt`.
+    if (!found.some((other) => Math.abs(other - spun) < 1e-3)) found.push(spun);
   };
   for (let i = 0; i < MORPH_FILL; i += 1) add(MORPH_START + (i / MORPH_FILL) * TURN);
   for (const [x, y] of [...from, ...to]) add(Math.atan2(y - 0.5, x - 0.5));
@@ -1166,7 +1369,20 @@ function directionsFor(from: Outline, to: Outline): Sampled[] {
 /** How far an outline reaches from the box's centre along one direction, in fractions of the box. */
 function radiusAt(outline: Outline, ux: number, uy: number): number {
   const reach = polygonReach(ux, uy, outline, 0.5, 0.5);
-  // A closed outline containing its own centre always answers; half a box is the honest fallback if one
-  // somehow does not, since that is the box's own edge.
-  return Number.isFinite(reach) ? reach : 0.5;
+  if (Number.isFinite(reach)) return reach;
+  /*
+    The box's own reach along this direction, which is the honest answer for an outline that failed to
+    answer — and the fix for a spike.
+    
+    It used to be a flat half, which is the box's edge on an axis and two-thirds of the way to it on a
+    diagonal. So a direction the outline could not answer along came back a long way inside the shape, or a
+    long way outside a narrow part of it, and the card grew a spike for a frame or two. Reachable at all
+    only because a *blended* outline can carry two directions close enough together to leave an edge
+    pointing almost at the centre, which both of its rays then miss — see `directionsFor`, which no longer
+    produces them.
+  */
+  return Math.min(
+    Math.abs(ux) > 1e-9 ? Math.abs(0.5 / ux) : Infinity,
+    Math.abs(uy) > 1e-9 ? Math.abs(0.5 / uy) : Infinity,
+  );
 }

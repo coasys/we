@@ -400,6 +400,27 @@ describe('reversing a morph that is already in flight', () => {
     }
   });
 
+  it('continues on the directions it was already using, rather than deriving new ones', () => {
+    /*
+      What stops a spike. Deriving the directions again from the half-morphed POLYGON gives a set that shifts
+      under the blend — and one of them can be a direction that polygon cannot answer along, which used to
+      fall back to the box and put one point a long way off the shape for a frame.
+    */
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    expect(halfWay.morph?.samples?.length).toBeGreaterThan(0);
+
+    let previous = halfWay.morph!.samples!;
+    for (let step = 1; step <= 8; step += 1) {
+      const frame = blendVisual(halfWay, card('diamond'), step / 10).morph!.samples!;
+      expect(frame).toHaveLength(previous.length);
+      for (let i = 0; i < frame.length; i += 1) {
+        expect(frame[i].ux).toBeCloseTo(previous[i].ux, 9);
+        expect(Math.abs(frame[i].r - previous[i].r)).toBeLessThan(0.2);
+      }
+      previous = frame;
+    }
+  });
+
   it('still morphs when the same switch is asked for twice', () => {
     // Both names equal, and a card that is still half of something else. Skipped on the names alone, this
     // is the card jumping to its destination shape while every position carries on easing.

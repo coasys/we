@@ -147,18 +147,37 @@ export function pathFrom(route: EdgeGeometry, endGap = 0): string {
  * Backing off along the closing tangent rather than re-solving the curve is an approximation, and a
  * deliberate one — over an arrowhead's length the error is far below a pixel, and the alternative is
  * splitting a cubic at an arc length nobody can see.
+ *
+ * On a route made of *straight* legs the tangent is walked back through them until it has covered the
+ * gap, rather than read off the one point before the end. A leg shorter than the arrowhead would
+ * otherwise send the direction all the way back to the route's start, which on a line that turns is the
+ * chord rather than the approach — so the head would point one way and the line arrive from another.
+ * Reachable on a canvas with a `straight` line bent twice near its target.
  */
 function backOff(route: EdgeGeometry, gap: number): Point {
   const { to, control, control2, elbows, segments } = route;
-  // The closing tangent of whichever shape this is. For a hand-shaped route that is the last
-  // segment's second control, or the point before it when the leg is straight.
   const last = segments?.[segments.length - 1];
-  const previous =
-    (last && (last.control2 ?? (segments!.length > 1 ? segments![segments!.length - 2].to : route.from))) ??
-    elbows?.[elbows.length - 1] ??
-    control2 ??
-    control ??
-    route.from;
+  // A chain of straight legs: walk back through them until the gap is covered, so the direction comes
+  // from a span long enough to have one.
+  if (segments && !last?.control2) {
+    const back = [
+      ...segments
+        .slice(0, -1)
+        .map((segment) => segment.to)
+        .reverse(),
+      route.from,
+    ];
+    for (const point of back) {
+      const length = Math.hypot(to.x - point.x, to.y - point.y);
+      if (length > gap) {
+        return { x: to.x - ((to.x - point.x) / length) * gap, y: to.y - ((to.y - point.y) / length) * gap };
+      }
+    }
+    return to;
+  }
+  // The closing tangent of whichever shape this is. For a hand-shaped route that is the last
+  // segment's second control.
+  const previous = last?.control2 ?? elbows?.[elbows.length - 1] ?? control2 ?? control ?? route.from;
   const dx = to.x - previous.x;
   const dy = to.y - previous.y;
   const length = Math.hypot(dx, dy);

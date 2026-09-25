@@ -88,6 +88,42 @@ describe('pathFrom', () => {
     const route = { ...base, to: { x: 4, y: 0 }, curve: 'straight' } as EdgeGeometry;
     expect(pathFrom(route, 10)).toBe('M 0 0 L 4 0');
   });
+
+  it('walks back through short straight legs until it has covered the gap', () => {
+    /*
+      A chain of straight legs shorter than the arrowhead. Reading the one point before the end answers
+      "no room" and hands back the end untouched, which is the line running under the whole arrowhead —
+      the case this back-off exists to stop, reappearing on the shape least likely to be checked.
+
+      Reachable on a canvas by bending a line twice near its target, and reached on every frame of a
+      route that is part way through a change of bend, which is drawn through several dozen short legs.
+    */
+    const route = {
+      ...base,
+      to: { x: 100, y: 12 },
+      curve: 'smooth',
+      segments: [{ to: { x: 100, y: 0 } }, { to: { x: 100, y: 6 } }, { to: { x: 100, y: 12 } }],
+    } as EdgeGeometry;
+    // The line arrives travelling straight DOWN through two 6-unit legs, so the gap comes off y alone.
+    // Falling back to the route's start instead gives the chord, which is almost horizontal here.
+    expect(pathFrom(route, 10)).toBe('M 0 0 L 100 0 L 100 6 L 100 2');
+  });
+
+  it("still backs off along a bent route's own closing tangent", () => {
+    // A splined route's last leg carries controls, so its tangent is the second control and the walk
+    // above must not claim it.
+    const route = {
+      ...base,
+      to: { x: 100, y: 100 },
+      curve: 'smooth',
+      segments: [
+        { control: { x: 0, y: 40 }, control2: { x: 20, y: 50 }, to: { x: 50, y: 50 } },
+        { control: { x: 80, y: 50 }, control2: { x: 100, y: 60 }, to: { x: 100, y: 100 } },
+      ],
+    } as EdgeGeometry;
+    // Closing tangent runs straight down from (100, 60), so the gap comes off y alone.
+    expect(pathFrom(route, 10)).toContain('100 90');
+  });
 });
 
 /**

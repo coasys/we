@@ -30,7 +30,7 @@ import type {
 } from '@we/graph-protocol';
 import { morphOutline } from '@we/graph-protocol';
 
-import { blendOutlines, normaliseCurve } from './geometry';
+import { normaliseCurve, resampleBlend, sampledBlend } from './geometry';
 
 /** Normalised metric output, by metric id then node id. Produced by the algorithms package. */
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
@@ -390,9 +390,12 @@ export function blendVisual(from: NodeVisual, to: NodeVisual, t: number): NodeVi
     It is also why the name matching is not enough to skip: the same switch asked for twice lands here with
     both names equal and a card that is still half of something else.
   */
-  const leaving = from.morph?.outline ?? morphOutline(fromShape);
   if (!from.morph && fromShape === toShape) return blended;
+  const carried = from.morph?.samples;
+  const blend = carried
+    ? resampleBlend(carried, morphOutline(toShape), at)
+    : sampledBlend(morphOutline(fromShape), morphOutline(toShape), at);
 
-  blended.morph = { outline: blendOutlines(leaving, morphOutline(toShape), at), from: fromShape, at };
+  blended.morph = { outline: blend.outline, samples: blend.samples, from: fromShape, at };
   return blended;
 }

@@ -11,7 +11,9 @@ import type {
   BehaviourContext,
   Bounds,
   CardShape,
+  EdgeAnchors,
   EdgeGeometry,
+  EdgeStyle,
   ExpandDirection,
   ExpanderContext,
   GraphEdge,
@@ -33,9 +35,10 @@ import { addressKind } from '@we/graph-protocol';
 import { connectionTarget } from './connect';
 import { ExpansionState, SEED_OPENER } from './expansion';
 import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, wouldFold } from './fold';
-import type { EdgeClearance } from './geometry';
+import type { EdgeClearance, EdgeWaypoint } from './geometry';
 import {
   anchorsOf,
+  blendRoutes,
   bowOffsets,
   distanceToEdge,
   edgeBounds,
@@ -54,6 +57,24 @@ import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
 import { blendVisual, flattenRules, nodeVisual, resolveStyle } from './style';
 import { boundsOf, Viewport } from './viewport';
+
+/**
+ * What one edge was routed WITH — the parameters a travel interpolates, rather than the line they produce.
+ *
+ * A line is a function of its two endpoints' positions, the direction each end faces, and how much of any
+ * bend somebody stored for it is drawn. The positions travel with the cards. These are the rest: an angle
+ * per end and a weight for the bend. Interpolating them and routing the line afresh every frame is the same
+ * move the positions make — animate the inputs, derive the drawing — and it is why nothing here snapshots
+ * or resamples a drawn path any more.
+ *
+ * An end that follows the pointer has no angle, since a point has no side to face out of.
+ */
+interface RouteState {
+  source?: number;
+  target?: number;
+  /** How much of the stored bend was drawn: 1 all of it, 0 none, and between only while a switch runs. */
+  bend: number;
+}
 
 /**
  * The id the connect gesture's preview is routed under.
@@ -392,6 +413,27 @@ export class GraphEngine {
    * card, so it carries on from where it is rather than starting again from the shape it left.
    */
   private drawnVisual = new Map<string, NodeVisual>();
+  /**
+   * What every edge was routed with on the last routing — see {@link RouteState}. Rebuilt whole each time,
+   * so a map a reader has taken hold of is never written to again.
+   */
+  private routeState = new Map<string, RouteState>();
+  /**
+   * What every edge was routed with when a renderer last READ the geometry — the sibling of
+   * {@link drawnVisual}, taken for the same reason and at the same moment.
+   *
+   * A travel starts from what was on screen, and for a line that is this rather than {@link routeState}.
+   * The engine routes on its own schedule — every relayout, every subscription that lands, every
+   * reconcile — and a mode switch installs its rules in several steps, so a routing can land between the
+   * restyle and the travelling relayout and route every line to its destination before the travel has
+   * begun. Planned from that, the travel saw nothing to do and the bend snapped; and since whatever triggers
+   * the in-between routing tends to keep doing so, it snapped on every switch from then on. The shapes did
+   * exactly this and were fixed exactly this way. Reading the geometry is drawing it, so taking this when
+   * it is read cannot be overtaken by a routing nobody saw.
+   *
+   * Taken by reference, which is O(1): {@link routeEdges} builds a new map rather than writing into this one.
+   */
+  private drawnRoute = new Map<string, RouteState>();
   private travelFrom = new Map<string, NodeVisual>();
   /**
    * The sweep each end of each edge is making, while a travel is in flight: a start angle and the signed
@@ -406,8 +448,11 @@ export class GraphEngine {
    * Planned once, in {@link beginTravel}, rather than resolved per frame: the final positions are
    * already known there, so the plan lands exactly on what the ordinary path answers at the end and
    * there is no jump at either edge of the movement.
+   *
+   * Carries how much of the edge's stored bend is being drawn, alongside the two ends, for an edge whose
+   * bend is appearing or going away — planned together and consumed on the same clock.
    */
-  private travelFacing = new Map<string, { source?: Sweep; target?: Sweep }>();
+  private travelFacing = new Map<string, { source?: Sweep; target?: Sweep; bend?: { from: number; to: number } }>();
   /**
    * The camera's own travel, alongside the cards'.
    *
@@ -523,6 +568,8 @@ export class GraphEngine {
    * where drift means clicking an edge that is not the one under the cursor.
    */
   getEdgeGeometry(): ReadonlyMap<string, EdgeGeometry> {
+    // Reading it is drawing it — see `drawnRoute`.
+    this.drawnRoute = this.routeState;
     return this.edgeGeometry;
   }
 
@@ -1720,7 +1767,7 @@ export class GraphEngine {
       Planned before the rewind below, because it needs both arrangements: `this.positions` still holds
       what the layout answered, and the loop is about to write the old coordinates back over it.
     */
-    const planned = asked > 0 ? this.planFacings(before) : new Map<string, { source?: Sweep; target?: Sweep }>();
+    const planned = asked > 0 ? this.planFacings() : new Map<string, { source?: Sweep; target?: Sweep }>();
 
     const now = Date.now();
     for (const [id, to] of this.positions) {
@@ -1756,98 +1803,93 @@ export class GraphEngine {
   }
 
   /**
-   * Work out the sweep each end of each edge makes across this rearrangement.
+   * Work out how each edge's route parameters travel across this rearrangement: the sweep each end makes,
+   * and — for an edge with a stored bend — how much of that bend is drawn.
    *
-   * The *old* facing is read off the line as it was DRAWN — the direction from its node's centre out to the
-   * endpoint the last routing gave it — for the same reason the shape blend starts from the drawn visual
-   * and the position travel from the drawn position: it is the only fact that cannot be stale. It also
-   * needs no knowledge of *why* the anchor is moving, so a stored route, a style rule and the geometry
-   * simply deciding differently are all one case. The *new* one comes from where the layout has put the
-   * cards and the rules now in force.
+   * **The start is what was DRAWN**, read from {@link drawnRoute}: the angle each end was last seen facing
+   * and the bend weight last seen. The only fact that cannot be stale, for the same reason the shape travel
+   * starts from the visual last drawn and the position travel from the position last drawn, and it needs no
+   * knowledge of *why* anything is changing — a stored anchor, a style rule and the geometry simply deciding
+   * differently are all one case. The *end* comes from routing the edge for real against where the layout
+   * has put the cards and the rules now in force, so the plan lands on what the ordinary path answers.
    *
-   * **The ends only.** A route's SHAPE is not part of the travel: the points a canvas bends a line through
-   * appear and disappear in one frame, because `ignoreRoute` drops them for a tree and hands them back for a
-   * canvas, and nothing interpolates between having a bend and not having one. That is the remaining half of
-   * this mechanism and it wants the same treatment — snapshot the route that was drawn, sample both it and
-   * the destination along their length, and blend — which would subsume this, the waypoints and a change of
-   * curve in one thing. Left out deliberately rather than forgotten.
+   * **A line is otherwise not animated at all, and should not be.** It is routed afresh every frame from its
+   * endpoints' positions and these parameters, and moves smoothly because they do. There are exactly three
+   * inputs that can change discontinuously across a switch, and this is all three: two facings and a bend.
    *
-   * **Every end gets one, including the ones that are not turning.** That looks like waste and is the
+   * **Every end gets a sweep, including the ones that are not turning.** That looks like waste and is the
    * point: an end with no plan falls back to the live derivation, and the live derivation reads a boolean
    * — is this span mostly horizontal — that flips the moment a card travelling from beside its parent to
    * below it crosses the diagonal. So an end whose start and finish agree could still jump to the side
    * half-way and jump back, which is exactly what it was reported as. A plan holds it steady instead, and
-   * a zero turn lands where it started.
+   * a zero turn lands where it started. It is also what gives the two routes a bend is blended between the
+   * same endpoints: with a facing given, an attach point depends only on its own card.
    *
    * Which is also why this runs for every travel rather than only for one that restyles. The flip has
    * nothing to do with styling; it is the cards moving.
    */
-  private planFacings(before: ReadonlyMap<string, Placement>): Map<string, { source?: Sweep; target?: Sweep }> {
-    const planned = new Map<string, { source?: Sweep; target?: Sweep }>();
+  private planFacings(): Map<string, { source?: Sweep; target?: Sweep; bend?: { from: number; to: number } }> {
+    const planned = new Map<string, { source?: Sweep; target?: Sweep; bend?: { from: number; to: number } }>();
 
     for (const edge of [...this.store.edges(), ...this.fold.bundles]) {
+      // Never drawn: an edge that has only just appeared, which belongs where it is drawn rather than
+      // swinging in from a direction it never left.
+      const drawn = this.drawnRoute.get(edge.id);
+      if (!drawn) continue;
       const patch = this.edgeOverlay.get(edge.id);
       const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
       const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
-      // A loose end follows the pointer and has no side to be on, so there is nothing to sweep.
-      const was = { from: before.get(sourceId), to: before.get(targetId) };
       const now = { from: this.positions.get(sourceId), to: this.positions.get(targetId) };
-      if (!was.from || !was.to || !now.from || !now.to) continue;
+      if (!now.from || !now.to) continue;
 
       const style = resolveStyle(edge, this.spec.edgeStyle);
-      const routed = this.routeData(edge, patch, style.ignoreRoute === true);
-      // The line as it was drawn. Absent for one that has only just appeared, which belongs where it is
-      // drawn rather than swinging in from a direction it never left.
-      const drawn = this.edgeGeometry.get(edge.id);
-      if (!drawn) continue;
+      const route = this.routeOf(edge, patch, style);
       /*
-        And the line as it WILL be drawn, routed for real against the destination rather than re-derived.
+        The line as it WILL be drawn, routed for real against the destination rather than re-derived.
 
-        The rule for which way an end faces is the router's, and it has more to it than the two cases this
-        used to restate: a route bent through waypoints faces its NEAREST WAYPOINT rather than the far node,
-        which is most of a right angle away from what a re-derivation answered. So the sweep aimed somewhere
-        the ordinary path never lands and jumped to the real answer on its last frame — switching from a
-        tree back to a canvas whose lines somebody had bent, which is exactly where it was reported.
-
-        Asking the router removes the second copy of the rule rather than correcting it, which is the same
-        reason `anchorsOf` and `endOf` exist at all.
+        The rule for which way an end faces is the router's, and it has more to it than a restatement would
+        capture: a route bent through waypoints faces its NEAREST WAYPOINT rather than the far node, which is
+        most of a right angle away. Asking the router removes the second copy of the rule rather than
+        correcting it, which is the same reason `anchorsOf` and `endOf` exist at all.
       */
       const destination = routeEdge(
         edge.id,
-        now.from as Point,
-        now.to as Point,
+        now.from,
+        now.to,
         normaliseCurve(style.curve as string | undefined),
         0,
         looseTo ? 0 : this.clearanceFor(this.store.node(targetId)),
         looseFrom ? 0 : this.clearanceFor(this.store.node(sourceId), 0),
-        anchorsOf(routed, { source: style.sourceAnchor, target: style.targetAnchor }),
-        waypointsOf(routed).map((point) => waypointToWorld(point, now.from as Point, now.to as Point)),
+        route.anchors,
+        route.bend > 0 ? route.waypoints.map((point) => waypointToWorld(point, now.from!, now.to!)) : [],
       );
 
       const sweep = (end: 'source' | 'target'): Sweep | undefined => {
-        if (end === 'source' ? looseFrom : looseTo) return undefined;
-        // Roles as the router takes them: the end being attached to, and the other one.
-        const own = (at: { from: Point; to: Point }) => (end === 'target' ? at.to : at.from);
-        const other = (at: { from: Point; to: Point }) => (end === 'target' ? at.from : at.to);
-        // Both ends read off a real route — the one on screen, and the one the layout has just answered.
-        const centreWas = own(was as never);
-        const was0 = end === 'target' ? drawn.to : drawn.from;
-        const a0 = Math.atan2(was0.y - centreWas.y, was0.x - centreWas.x);
-        const centreNow = own(now as never);
-        const at1 = end === 'target' ? destination.to : destination.from;
-        const a1 = Math.atan2(at1.y - centreNow.y, at1.x - centreNow.x);
+        const a0 = drawn[end];
+        // A loose end follows the pointer and has no side to be on, so there is nothing to sweep.
+        if (a0 === undefined || (end === 'source' ? looseFrom : looseTo)) return undefined;
+        const centre = end === 'target' ? now.to! : now.from!;
+        const at = end === 'target' ? destination.to : destination.from;
+        const a1 = Math.atan2(at.y - centre.y, at.x - centre.x);
         /*
           Toward the near side at exactly half a turn — the direction the rest of the line already lies
           in, so an ambiguous swing goes round the front of the card rather than behind it.
         */
-        const near = other(now as never);
-        const delta = turnBetween(a0, a1, Math.atan2(near.y - centreNow.y, near.x - centreNow.x));
-        return { from: a0, delta };
+        const near = end === 'target' ? now.from! : now.to!;
+        return { from: a0, delta: turnBetween(a0, a1, Math.atan2(near.y - centre.y, near.x - centre.x)) };
       };
 
       const source = sweep('source');
       const target = sweep('target');
-      if (source || target) planned.set(edge.id, { source, target });
+      /*
+        And the bend, where there is one and its weight is changing. An edge nobody bent has no stored
+        points and is never given a plan, so it is routed exactly as it always was — and one whose weight
+        is not changing needs none either: a bend drawn in full on both sides travels with the cards on its
+        own, because it is held relative to the chord.
+      */
+      const bend =
+        route.waypoints.length && drawn.bend !== route.bend ? { from: drawn.bend, to: route.bend } : undefined;
+      if (source || target || bend) planned.set(edge.id, { source, target, bend });
     }
     return planned;
   }
@@ -2257,6 +2299,8 @@ export class GraphEngine {
   private routeEdges(): void {
     this.edgeGeometry = new Map();
     this.edgeBoxes = new Map();
+    // A new map rather than cleared, so the one a reader took as `drawnRoute` keeps what it saw.
+    this.routeState = new Map();
 
     /*
       The real lines, plus the ones standing in for what a fold hid.
@@ -2292,12 +2336,11 @@ export class GraphEngine {
         const to = looseTo ?? this.positions.get(targetId);
         if (!from || !to) return;
         const style = resolveStyle(edge, this.spec.edgeStyle);
-        // Where a connection leaves and arrives, when somebody has said. Off the edge's own data, so
-        // whatever loaded it decides — the canvas seed reads them from an `EdgeRoute` — with any
-        // overlay in front, which is how a drag previews and how a write holds until it lands. Unless the
-        // rules say to ignore one canvas's tidying, which is what makes a tree's ranks uniform.
-        const routed = this.routeData(edge, patch, style.ignoreRoute === true);
-        const anchors = anchorsOf(routed, { source: style.sourceAnchor, target: style.targetAnchor });
+        // Where a connection leaves and arrives, and what it is bent through, when somebody has said. Off
+        // the edge's own data, so whatever loaded it decides — the canvas seed reads them from an
+        // `EdgeRoute` — with any overlay in front, which is how a drag previews and how a write holds until
+        // it lands. See `routeOf` for what the rules may override.
+        const route = this.routeOf(edge, patch, style);
         // No node at a loose end, so nothing to stand off from: the line reaches the pointer itself.
         const targetNode = looseTo ? undefined : this.store.node(targetId);
         const sourceNode = looseFrom ? undefined : this.store.node(sourceId);
@@ -2318,33 +2361,61 @@ export class GraphEngine {
           card and wrong under everything else — a translucent one has a line running through its
           text, and a round node has one crossing it.
         */
-        const geometry = routeEdge(
-          edge.id,
-          from,
-          to,
-          normaliseCurve(style.curve),
-          offsets[index],
-          // A loose end stands off nothing — the point IS the end, so any clearance would leave the
-          // line trailing the cursor by a gap that reads as lag.
-          looseTo ? 0 : this.clearanceFor(targetNode),
-          // No standoff where the line leaves: it should touch the card it comes from.
-          looseFrom ? 0 : this.clearanceFor(sourceNode, 0),
-          // A loose end has no side, whatever the fields still say: the end is a point, and pinning
-          // it to an axis would send the line off north from wherever the cursor happens to be.
-          { source: looseFrom ? undefined : anchors.source, target: looseTo ? undefined : anchors.target },
-          // Stored in the edge's own frame, so a bend keeps its proportions when either card moves —
-          // see `EdgeWaypoint`. Converted here, where both centres are in hand.
-          waypointsOf(routed).map((point) => waypointToWorld(point, from, to)),
-          /*
-            Where this end is *part way to* being anchored — see `travelFacing`.
+        const routeThrough = (waypoints: Point[]) =>
+          routeEdge(
+            edge.id,
+            from,
+            to,
+            normaliseCurve(style.curve),
+            offsets[index],
+            // A loose end stands off nothing — the point IS the end, so any clearance would leave the
+            // line trailing the cursor by a gap that reads as lag.
+            looseTo ? 0 : this.clearanceFor(targetNode),
+            // No standoff where the line leaves: it should touch the card it comes from.
+            looseFrom ? 0 : this.clearanceFor(sourceNode, 0),
+            // A loose end has no side, whatever the fields still say: the end is a point, and pinning
+            // it to an axis would send the line off north from wherever the cursor happens to be.
+            {
+              source: looseFrom ? undefined : route.anchors.source,
+              target: looseTo ? undefined : route.anchors.target,
+            },
+            waypoints,
+            /*
+              Where each end is *part way to* facing — see `travelFacing`.
 
-            A direction rather than a side, so the attach point walks the card's own outline round to the
-            new side and the arrowhead keeps pointing at the centre the whole way. Empty for every edge
-            whose ends are not turning, which is every edge on most rearrangements.
-          */
-          this.sweptFacing(edge.id),
-        );
-        this.edgeGeometry.set(edge.id, geometry);
+              A direction rather than a side, so the attach point walks the card's own outline round to the
+              new side and the arrowhead keeps pointing at the centre the whole way. Shared by both routes
+              a bend is blended between, which is what gives them the same two endpoints.
+            */
+            this.sweptFacing(edge.id),
+          );
+        /*
+          How much of the stored bend to draw, and the line that makes.
+
+          All of it or none is one route, which is every edge nobody bent and every bent edge at rest. Part
+          of it is the two routes this edge can have — through its points and without them — routed
+          against this frame's positions and facings, and blended control point by control point. Both are
+          real, current routes, so the blend tracks the cards and the sweep exactly and has nothing of its
+          own to keep in step; see `blendRoutes` for why a control point, and not a point on the line, is
+          what gets interpolated.
+        */
+        const bend = route.waypoints.length ? this.bendOf(edge.id, route.bend) : 0;
+        // Stored in the edge's own frame, so a bend keeps its proportions when either card moves — see
+        // `EdgeWaypoint`. Converted here, where both centres are in hand.
+        const bentThrough = () => route.waypoints.map((point) => waypointToWorld(point, from, to));
+        const drawn =
+          bend >= 1
+            ? routeThrough(bentThrough())
+            : bend <= 0
+              ? routeThrough([])
+              : blendRoutes(routeThrough([]), routeThrough(bentThrough()), bend);
+        this.edgeGeometry.set(edge.id, drawn);
+        // What this line was routed with, for the next travel to start from once it has been seen.
+        this.routeState.set(edge.id, {
+          source: looseFrom ? undefined : Math.atan2(drawn.from.y - from.y, drawn.from.x - from.x),
+          target: looseTo ? undefined : Math.atan2(drawn.to.y - to.y, drawn.to.x - to.x),
+          bend,
+        });
         /*
           A bundle is drawn and not picked.
 
@@ -2353,24 +2424,44 @@ export class GraphEngine {
           interface would then act on. No bounds means no hit, and the cards at either end are still
           there to be clicked.
         */
-        if (edge.type !== FOLD_BUNDLE) this.edgeBoxes.set(edge.id, edgeBounds(geometry));
+        if (edge.type !== FOLD_BUNDLE) this.edgeBoxes.set(edge.id, edgeBounds(drawn));
       });
     }
   }
 
   /**
-   * What an edge carries about its own route — or nothing, where the rules say to ignore it.
+   * What an edge carries about its own route, and how much of it the rules let through.
    *
-   * One function, because the router draws the line and {@link planFacings} works out where its ends are
-   * sweeping from, and a second copy of this rule is how the sweep would come to start at a side the line
-   * was never drawn on. See `EdgeStyle.ignoreRoute`.
+   * The anchors are the edge's own unless the rules say to ignore one canvas's tidying — `ignoreRoute`, which
+   * is what makes a tree's ranks uniform — and then the rules' instead. The stored bend is ALWAYS read, and
+   * what the rules decide is how much of it to draw: all of it, or none. Read rather than dropped, because a
+   * bend going away has to be drawn going away, and that needs to know what it was.
+   *
+   * One function, because the router draws the line and {@link planFacings} works out where it is heading,
+   * and a second copy of this rule is how the two would come to disagree about the destination.
    */
-  private routeData(
+  private routeOf(
     edge: GraphEdge,
     patch: Record<string, GraphValue> | undefined,
-    ignore: boolean,
-  ): Record<string, unknown> | undefined {
-    return ignore ? undefined : { ...edge.data, ...patch };
+    style: EdgeStyle,
+  ): { anchors: EdgeAnchors; waypoints: EdgeWaypoint[]; bend: number } {
+    const data = { ...edge.data, ...patch };
+    const ignore = style.ignoreRoute === true;
+    return {
+      anchors: anchorsOf(ignore ? undefined : data, { source: style.sourceAnchor, target: style.targetAnchor }),
+      waypoints: waypointsOf(data),
+      bend: ignore ? 0 : 1,
+    };
+  }
+
+  /**
+   * How much of one edge's stored bend is drawn this frame: part way from where the travel found it to where
+   * the rules want it, or where the rules want it once nothing is travelling.
+   */
+  private bendOf(id: string, wanted: number): number {
+    const plan = this.travelFacing.get(id)?.bend;
+    if (!plan || this.travelProgress >= 1) return wanted;
+    return plan.from + (plan.to - plan.from) * this.travelProgress;
   }
 
   /**

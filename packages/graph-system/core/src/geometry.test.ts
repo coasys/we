@@ -12,7 +12,10 @@ import {
   anchorsOf,
   bendPoints,
   blendOutlines,
+  blendRoutes,
   bowOffsets,
+  type Cubic,
+  cubicsOf,
   distanceToEdge,
   endOf,
   facingOf,
@@ -21,8 +24,12 @@ import {
   normaliseCurve,
   type Outline,
   pointAlong,
+  polyline,
+  resampleBlend,
   routeEdge,
   routesAlike,
+  sampledBlend,
+  splitCubic,
   trimToRadius,
   turnBetween,
   waypointFromWorld,
@@ -1286,5 +1293,195 @@ describe('the note a shape blends into', () => {
         expect(y).toBeLessThanOrEqual(1 + 1e-9);
       }
     }
+  });
+});
+
+describe('a spike in a blended outline', () => {
+  /*
+    Reported as a card growing a spike, or one cutting into it, at random while somebody kept toggling.
+
+    Random because it needed a *blended* outline as the starting point — which is what a reversal half way
+    through a morph blends from. Those carry whatever directions the pair before them did, two can end up
+    close enough together to leave an edge pointing almost at the centre, and a ray between them missed both;
+    the answer then fell back to the box. Whether it happened at all depended on the fraction the reader
+    caught the morph at, which is why it looked random.
+
+    A spike is not a shape you can recognise from one frame — a sharp vertex legitimately stands a long way
+    off its neighbours, and no local test separates the two. What a spike IS, unambiguously, is a
+    DISCONTINUITY IN TIME: one direction's reach jumping between one frame and the next while every other
+    direction moves smoothly. That is what these measure.
+  */
+  const shapes = ['note', 'square', 'round', 'triangle', 'diamond', 'pentagon', 'hexagon'] as const;
+
+  it('moves every direction smoothly through a reversal, for every pair of pairs', () => {
+    for (const a of shapes) {
+      for (const b of shapes) {
+        if (a === b) continue;
+        const caught = sampledBlend(morphOutline(a), morphOutline(b), 0.41);
+        for (const c of shapes) {
+          let previous = caught.samples;
+          for (let step = 1; step <= 10; step += 1) {
+            const now = resampleBlend(caught.samples, morphOutline(c), step / 10).samples;
+            expect(now).toHaveLength(previous.length);
+            for (let i = 0; i < now.length; i += 1) {
+              // Same direction, frame to frame — the set cannot shift under the blend.
+              expect(now[i].ux).toBeCloseTo(previous[i].ux, 9);
+              expect(now[i].uy).toBeCloseTo(previous[i].uy, 9);
+              // And a tenth of the way is at most a tenth of the distance between the two shapes, which for
+              // anything inscribed in a box is well under a fifth of the box.
+              expect(Math.abs(now[i].r - previous[i].r)).toBeLessThan(0.2);
+            }
+            previous = now;
+          }
+        }
+      }
+    }
+  });
+
+  it('starts a continuation exactly where the blend it continues from was', () => {
+    const halfWay = sampledBlend(morphOutline('triangle'), morphOutline('round'), 0.5);
+    expect(resampleBlend(halfWay.samples, morphOutline('note'), 0).outline).toEqual(halfWay.outline);
+  });
+
+  it('lands on the destination shape, whatever it was continuing from', () => {
+    const halfWay = sampledBlend(morphOutline('diamond'), morphOutline('round'), 0.6);
+    const arrived = resampleBlend(halfWay.samples, morphOutline('note'), 1).samples;
+    // Every direction now reaches exactly as far as the note does along it.
+    for (const { ux, uy, r } of arrived) {
+      const note = sampledBlend(morphOutline('note'), morphOutline('note'), 0).samples;
+      const same = note.find((s) => Math.abs(s.ux - ux) < 1e-6 && Math.abs(s.uy - uy) < 1e-6);
+      if (same) expect(r).toBeCloseTo(same.r, 6);
+    }
+  });
+});
+
+/**
+ * Routes as chains of cubics, and one morphed into another control point by control point.
+ *
+ * The conventional way to morph a path, and the replacement for a morph built from points sampled off the
+ * line — which carried no direction, so a line's ends had to be told which way to go by a patch, and
+ * the patch showed.
+ */
+describe('morphing one route into another', () => {
+  const at = (x: number, y: number) => ({ x, y });
+  /**
+   * How far apart two drawings of a line are, at their furthest: the furthest any point of either lies from
+   * the other line. Independent of how either is cut into pieces, which is the whole of what is being
+   * tested — comparing samples by index or by fraction of a polyline's length measures the sampling.
+   */
+  const apart = (a: Parameters<typeof polyline>[0], b: Parameters<typeof polyline>[0]) => {
+    const toLine = (point: { x: number; y: number }, line: { x: number; y: number }[]) => {
+      let nearest = Infinity;
+      for (let i = 1; i < line.length; i += 1) {
+        const p = line[i - 1];
+        const q = line[i];
+        const dx = q.x - p.x;
+        const dy = q.y - p.y;
+        const span = dx * dx + dy * dy;
+        const t = span ? Math.max(0, Math.min(1, ((point.x - p.x) * dx + (point.y - p.y) * dy) / span)) : 0;
+        nearest = Math.min(nearest, Math.hypot(point.x - (p.x + dx * t), point.y - (p.y + dy * t)));
+      }
+      return nearest;
+    };
+    const one = polyline(a, 200);
+    const other = polyline(b, 200);
+    let most = 0;
+    for (const point of one) most = Math.max(most, toLine(point, other));
+    for (const point of other) most = Math.max(most, toLine(point, one));
+    return most;
+  };
+  /** A chain of cubics drawn as a route, so it can be measured by the same functions. */
+  const drawn = (chain: Cubic[]) => ({
+    id: 'e',
+    from: chain[0][0],
+    to: chain[chain.length - 1][3],
+    segments: chain.map((piece) => ({ control: piece[1], control2: piece[2], to: piece[3] })),
+    curve: 'smooth' as const,
+    mid: chain[0][0],
+  });
+
+  const shapes = {
+    smooth: routeEdge('e', at(0, 0), at(300, 400), 'smooth'),
+    arc: routeEdge('e', at(0, 0), at(300, 400), 'arc', 40),
+    straight: routeEdge('e', at(0, 0), at(300, 400), 'straight'),
+    step: routeEdge('e', at(0, 0), at(300, 400), 'step'),
+    bent: routeEdge('e', at(0, 0), at(300, 400), 'smooth', 0, 0, 0, {}, [at(250, 100), at(50, 300)]),
+    bentStraight: routeEdge('e', at(0, 0), at(300, 400), 'straight', 0, 0, 0, {}, [at(250, 100)]),
+  };
+
+  it('draws every kind of route as the same line when it is written as cubics', () => {
+    for (const [kind, route] of Object.entries(shapes)) {
+      expect(apart(route, drawn(cubicsOf(route))), kind).toBeLessThan(0.01);
+    }
+  });
+
+  it('splits a cubic into two pieces lying exactly on it', () => {
+    // Exactly, so measured by evaluating rather than by drawing: the head at `s` is the original at
+    // `t × s`, and the tail at `s` is the original at `t + (1 − t) × s`.
+    const point = (c: Cubic, u: number) => {
+      const v = 1 - u;
+      const w = [v * v * v, 3 * v * v * u, 3 * v * u * u, u * u * u];
+      return { x: c.reduce((sum, p, i) => sum + p.x * w[i], 0), y: c.reduce((sum, p, i) => sum + p.y * w[i], 0) };
+    };
+    const cubic: Cubic = [at(0, 0), at(100, 0), at(0, 200), at(200, 200)];
+    const t = 0.3;
+    const [head, tail] = splitCubic(cubic, t);
+    for (let i = 0; i <= 10; i += 1) {
+      const s = i / 10;
+      const h = point(head, s);
+      const k = point(tail, s);
+      const hWant = point(cubic, t * s);
+      const kWant = point(cubic, t + (1 - t) * s);
+      expect(Math.hypot(h.x - hWant.x, h.y - hWant.y)).toBeLessThan(1e-9);
+      expect(Math.hypot(k.x - kWant.x, k.y - kWant.y)).toBeLessThan(1e-9);
+    }
+  });
+
+  it('draws each route as itself at either end of the morph, so the handover has nothing to jump', () => {
+    // Just inside the ends, where every cut has been made and nothing has been interpolated yet: cutting
+    // a chain must not change the line it draws. A hundredth of a unit is the measurement's own resolution
+    // — the chord error of the polylines it compares — and a real mismatch would be whole units.
+    const { smooth, bent } = shapes;
+    expect(apart(blendRoutes(smooth, bent, 1e-9), smooth)).toBeLessThan(0.01);
+    expect(apart(blendRoutes(smooth, bent, 1 - 1e-9), bent)).toBeLessThan(0.01);
+    expect(blendRoutes(smooth, bent, 0)).toBe(smooth);
+    expect(blendRoutes(smooth, bent, 1)).toBe(bent);
+  });
+
+  it('turns the direction a line arrives from part way round, rather than leaving it to chance', () => {
+    /*
+      The property that a morph of sampled points could not have, and the one an arrowhead is drawn by. Two
+      routes into the same end from different directions: the blend arrives from a direction between the
+      two, moving monotonically from one to the other as the weight goes — never from outside that arc.
+    */
+    const end = at(300, 400);
+    const fromAbove = routeEdge('e', at(0, 0), end, 'smooth', 0, 0, 0, { source: 's', target: 'n' });
+    const fromLeft = routeEdge('e', at(0, 0), end, 'smooth', 0, 0, 0, { source: 's', target: 'w' });
+    const arriving = (route: ReturnType<typeof blendRoutes>) => {
+      const last = route.segments ? route.segments[route.segments.length - 1] : undefined;
+      const before = last?.control2 ?? route.control2!;
+      return Math.atan2(route.to.y - before.y, route.to.x - before.x);
+    };
+    const a = arriving(fromAbove);
+    const b = arriving(fromLeft);
+    let previous = a;
+    for (let i = 1; i < 10; i += 1) {
+      const angle = arriving(blendRoutes(fromAbove, fromLeft, i / 10));
+      expect(angle).toBeGreaterThanOrEqual(Math.min(a, b) - 1e-9);
+      expect(angle).toBeLessThanOrEqual(Math.max(a, b) + 1e-9);
+      expect(Math.sign(angle - previous) || Math.sign(b - a)).toBe(Math.sign(b - a));
+      previous = angle;
+    }
+  });
+
+  it('meets the other route piece for piece, whatever each was made of', () => {
+    // One cubic against three, and a line against a spline: both come out with the same number of pieces,
+    // since each is cut at the other's joints.
+    const morph = blendRoutes(shapes.smooth, shapes.bent, 0.5);
+    expect(morph.segments).toHaveLength(cubicsOf(shapes.bent).length + cubicsOf(shapes.smooth).length - 1);
+    const lines = blendRoutes(shapes.straight, shapes.bentStraight, 0.5);
+    expect(lines.segments!.length).toBeGreaterThanOrEqual(2);
+    expect(lines.from).toEqual(at(0, 0));
+    expect(lines.to).toEqual(at(300, 400));
   });
 });

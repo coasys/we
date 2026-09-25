@@ -15,6 +15,7 @@ import type { ExpanderContext, SeedSource } from '@we/graph-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphEngine } from './engine';
+import { pointAlong, polyline } from './geometry';
 import { PluginRegistry } from './registry';
 
 const context: ExpanderContext = {
@@ -69,14 +70,15 @@ async function started(spec: Parameters<typeof GraphEngine.prototype.setSpec>[0]
 const xOf = (engine: GraphEngine, id: string) => engine.getPositions().get(id)?.x;
 
 /**
- * What a renderer does on every frame: read every node's visual.
+ * What a renderer does on every frame: read every node's visual, and the edges' geometry.
  *
- * Which is what makes one *drawn*, and a shape travel starts from what was drawn — see
- * `GraphEngine.drawnVisual`. A test that never draws has nothing to travel a shape from, exactly as a host
- * that never draws has nothing on screen to move.
+ * Which is what makes them *drawn*, and a travel starts from what was drawn — see `GraphEngine.drawnVisual`
+ * and `GraphEngine.drawnRoute`. A test that never draws has nothing to travel from, exactly as a host that
+ * never draws has nothing on screen to move.
  */
 const drew = (engine: GraphEngine) => {
   for (const node of engine.store.nodes()) engine.visualOf(node);
+  engine.getEdgeGeometry();
 };
 
 beforeEach(() => {
@@ -681,6 +683,7 @@ describe('anchor travel', () => {
     });
     engine.resize(800, 600);
     await engine.start();
+    drew(engine);
     return engine;
   }
 
@@ -776,8 +779,14 @@ describe('anchor travel', () => {
     for (let step = 0; step < 14; step += 1) {
       const geometry = engine.getEdgeGeometry().get('a->b')!;
       const at = engine.getPositions().get('b')!;
+      /*
+        Three quarters along the drawn line, read off the polyline rather than off a control point: a route
+        mid-travel is a spline through sampled points and has no control pair, and a probe that only worked
+        for one of the two representations would be measuring which branch ran rather than the shape.
+      */
+      const three = pointAlong(polyline(geometry), 0.75);
       // Relative to the card, so the card's own travel is not counted as a change of shape.
-      controls.push({ x: geometry.control2!.x - at.x, y: geometry.control2!.y - at.y });
+      controls.push({ x: three.x - at.x, y: three.y - at.y });
       await vi.advanceTimersByTimeAsync(40);
     }
 
@@ -956,6 +965,10 @@ describe('a rearrangement and a restyling, in any order', () => {
  * that card, and no rule about a whole arrangement is a better answer than a decision about the thing
  * itself. In a tree it is the wrong way round — every child hangs off its parent's underside and is met at
  * its own top, and that uniformity is the whole of what makes a rank readable.
+ *
+ * Both halves of it are ignored — the sides and the bends — so both have to become continuous over a
+ * switch rather than snapping. The sides sweep; the bend is resampled and blended, and only for the
+ * lines that have one.
  */
 describe('ignoring a stored route', () => {
   const bent = (): SeedSource => ({
@@ -1007,6 +1020,7 @@ describe('ignoring a stored route', () => {
     });
     engine.resize(800, 600);
     await engine.start();
+    drew(engine);
     return engine;
   }
 
@@ -1035,14 +1049,434 @@ describe('ignoring a stored route', () => {
     expect(geometry.curve).toBe('smooth');
   });
 
+  /** A bend and nothing else, so the bow off the chord is the only thing being measured. */
+  const bentOnly: SeedSource = {
+    id: 'test',
+    async seed() {
+      return {
+        nodes: ['a', 'b'].map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+        edges: [
+          {
+            id: 'a->b',
+            source: 'a',
+            target: 'b',
+            type: 'rel',
+            data: { waypoints: JSON.stringify([{ along: 0.5, across: 0.5 }]) },
+          },
+        ],
+      };
+    },
+  };
+
+  /*
+    Both sides PINNED, in both states, and only `ignoreRoute` differing between them.
+
+    That is what isolates the bend. Left to the geometry, dropping a bend also moves the ends — the router
+    faces a bent line's end at its nearest waypoint — so the anchor sweep eases the line's middle all by
+    itself and a measurement of the middle cannot tell which mechanism it is watching. It cannot: with the
+    sides pinned to the same two values either side of the switch the sweep has zero to turn, so anything
+    the middle does is the bend and nothing else.
+  */
+  const bowStyle = (ignoreRoute: boolean) =>
+    [{ style: { sourceAnchor: 's', targetAnchor: 'n', ...(ignoreRoute ? { ignoreRoute: true } : {}) } }] as never;
+
+  async function bowEngine(seed: SeedSource, ignoreRoute: boolean, layout: string) {
+    const registry = new PluginRegistry({ seeds: [seed], expanders: [], layouts: grid });
+    const engine = new GraphEngine({
+      spec: {
+        seeds: { source: 'test' },
+        layout: { type: layout },
+        nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+        edgeStyle: bowStyle(ignoreRoute),
+      },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    drew(engine);
+    return engine;
+  }
+
+  /**
+   * How far a line bows off the span between its two cards, at its midpoint, as a FRACTION of that span.
+   *
+   * A fraction rather than a distance, and that is the whole reason this measures anything. A waypoint is
+   * stored relative to the chord, so a bend that is merely travelling grows in absolute terms as the two
+   * cards move apart — which means a line that snapped straight into its full bend on the first frame
+   * still passes through every intermediate *distance* on its way, and a distance cannot tell that apart
+   * from a bend being eased in. The fraction holds still while a bend only travels, and moves only when
+   * the bend itself is changing.
+   */
+  function bowOf(engine: GraphEngine) {
+    const geometry = engine.getEdgeGeometry().get('a->b')!;
+    const a = engine.getPositions().get('a')!;
+    const b = engine.getPositions().get('b')!;
+    const mid = pointAlong(polyline(geometry), 0.5);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy) || 1;
+    // Distance from the chord: the perpendicular component.
+    return Math.abs((mid.x - a.x) * (dy / length) - (mid.y - a.y) * (dx / length)) / length;
+  }
+
+  /**
+   * The bow on every frame of a switch to `to`.
+   *
+   * Sampled from the first frame the switch has actually been drawn on — `relayout` schedules that rather
+   * than doing it in hand, so reading before the first tick answers with the frame BEFORE the switch, and
+   * an assertion about it is really an assertion about the state being left.
+   */
+  async function bowsAcross(engine: GraphEngine, to: { layout: string; ignoreRoute: boolean }) {
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: to.layout },
+      nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+      edgeStyle: bowStyle(to.ignoreRoute),
+    });
+    engine.relayout({ travel: 400 });
+    const seen: number[] = [];
+    for (let step = 0; step < 12; step += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      seen.push(bowOf(engine));
+    }
+    return seen;
+  }
+
+  /** The largest step any one frame took, as a multiple of what its neighbours took. */
+  const spikeIn = (seen: number[]) => {
+    const steps = seen.slice(1).map((value, i) => Math.abs(value - seen[i]));
+    return steps.reduce((most, step, i) => {
+      const neighbours = Math.max(steps[i - 1] ?? 0, steps[i + 1] ?? 0);
+      return neighbours > 1e-6 ? Math.max(most, step / neighbours) : most;
+    }, 0);
+  };
+
+  it('eases a stored bend away on the way into an arrangement that ignores it', async () => {
+    /*
+      A canvas bends a line through points it stores and a tree ignores them, so without this the middle
+      of the line snapped straight on the first frame while its ends eased — half a movement.
+
+      The fix is not to tween the line, which is a pure function of its inputs and needs no help: it is to
+      make its one discontinuous input continuous. Both routes are resampled at even distances ALONG
+      THEIR OWN LENGTH and the line is drawn through the blend, which is what the first attempt got wrong
+      — it sampled at even curve parameter, where the tenth of thirty samples sits at a different fraction
+      of the way along a gentle curve than a tight one, so lerped points overtook each other and the line
+      rippled.
+    */
+    const engine = await bowEngine(bentOnly, false, 'down');
+    expect(bowOf(engine)).toBeGreaterThan(0.2);
+
+    const seen = await bowsAcross(engine, { layout: 'far', ignoreRoute: true });
+
+    // It arrives straight…
+    expect(seen[seen.length - 1]).toBeLessThan(0.02);
+    // …having been part way out on the way, which is the assertion that bites: snapped, every frame holds
+    // either the whole bend or none of it and there is nothing in between.
+    expect(seen.some((bow) => bow > 0.05 && bow < 0.2)).toBe(true);
+    expect(spikeIn(seen)).toBeLessThan(3);
+  });
+
+  it('eases a stored bend back in on the way to a canvas', async () => {
+    // The direction that was reported: going back, the bend appeared in one frame while everything else
+    // was still moving.
+    const engine = await bowEngine(bentOnly, true, 'down');
+    expect(bowOf(engine)).toBeLessThan(0.02);
+
+    const seen = await bowsAcross(engine, { layout: 'far', ignoreRoute: false });
+
+    expect(seen[seen.length - 1]).toBeGreaterThan(0.2);
+    expect(seen.some((bow) => bow > 0.05 && bow < 0.2)).toBe(true);
+    expect(spikeIn(seen)).toBeLessThan(3);
+  });
+
+  it('leaves a line with no bend alone entirely, on every frame', async () => {
+    /*
+      The guard, and the whole reason this version is safe where the last one was not. That one resampled
+      and re-splined EVERY edge, so a line nobody had ever bent came out of the switch rippling.
+
+      Asserted on the representation rather than on the shape, because it is the representation that was
+      the bug: a blended line is drawn as a chain of straight legs, so `segments` appearing on an edge
+      with no waypoints is this mechanism touching something it has no business touching.
+    */
+    const plain: SeedSource = {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: ['a', 'b'].map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+          edges: [{ id: 'a->b', source: 'a', target: 'b', type: 'rel' }],
+        };
+      },
+    };
+    const engine = await bowEngine(plain, false, 'down');
+
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'far' },
+      nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+      edgeStyle: [{ style: { ignoreRoute: true } }] as never,
+    });
+    engine.relayout({ travel: 400 });
+
+    for (let step = 0; step < 13; step += 1) {
+      const geometry = engine.getEdgeGeometry().get('a->b')!;
+      expect(geometry.segments).toBeUndefined();
+      expect(geometry.control2).toBeDefined();
+      await vi.advanceTimersByTimeAsync(40);
+    }
+  });
+
+  it('keeps the travelling line ending on the card rather than inside it', async () => {
+    /*
+      The other half of the first attempt's damage: it handed the blended points to the ROUTER as
+      waypoints, so the router derived each end against the nearest of them — a sample a few units from
+      the endpoint — and the arrowhead spent the switch behind the card it pointed at, snapping out on the
+      last frame.
+
+      Unreachable by construction now: the blend never reaches `routeEdge`, which is asked for the real
+      route and has only its middle replaced afterwards. So this is an invariant guard rather than a
+      reproduction — it holds today and would stop anyone reconnecting the two. The sweep here is a real
+      one (a stored `e` on the canvas, the rule's `n` in the tree), so the endpoint travels right round
+      the card while the bend goes away underneath it, and at no point may it pass through the middle.
+    */
+    const engine = await engineWith(false);
+    expect(engine.getEdgeGeometry().get('a->b')!.segments).toBeDefined();
+
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'far' },
+      nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+      edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }] as never,
+    });
+    engine.relayout({ travel: 400 });
+
+    for (let step = 0; step < 13; step += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      const geometry = engine.getEdgeGeometry().get('a->b')!;
+      const centre = engine.getPositions().get('b')!;
+      const reach = Math.hypot(geometry.to.x - centre.x, geometry.to.y - centre.y);
+      // Outside the card's own half-height, and not out in space beyond its corner.
+      expect(reach).toBeGreaterThan(60);
+      expect(reach).toBeLessThan(140);
+    }
+  });
+
+  it('goes on easing when the reader switches back mid-switch', async () => {
+    /*
+      Reported as the bend snapping "only sometimes", which is the tell for a state-dependent guard rather
+      than a geometry mistake — and at a tenth speed a travel lasts four seconds, so almost every second
+      click lands mid-switch.
+
+      The guard asks whether each route has `segments`, which is the router's mark for a bent one. Mid-blend
+      the line on screen IS drawn as segments — that is how a blend is drawn — so a reversal back to the
+      canvas compared a blended polyline against a bent destination, found segments on both, concluded
+      nothing was changing shape, and drew the destination outright.
+    */
+    const engine = await bowEngine(bentOnly, false, 'down');
+
+    // Out to the tree, and stopped a third of the way.
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'far' },
+      nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+      edgeStyle: bowStyle(true),
+    });
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(160);
+    const midway = bowOf(engine);
+    expect(midway).toBeGreaterThan(0.05);
+    expect(midway).toBeLessThan(0.2);
+
+    // And back to the canvas from there. The frame the reversal is asked on counts: a snap shows up in the
+    // step from where the line was to the first frame after, which is exactly the interval a sequence
+    // starting after the switch leaves out.
+    const seen = [midway, ...(await bowsAcross(engine, { layout: 'down', ignoreRoute: false }))];
+
+    // It ends bent, and no frame put the bend back on its own — from a third of the way out, a snap is a
+    // single step covering the rest of the distance.
+    expect(seen[seen.length - 1]).toBeGreaterThan(0.2);
+    const steps = seen.slice(1).map((bow, i) => Math.abs(bow - seen[i]));
+    expect(Math.max(...steps)).toBeLessThan((seen[seen.length - 1] - midway) / 2);
+  });
+
+  it('keeps a travelling line out of the card and its arrowhead pointing at it', async () => {
+    /*
+      Reported twice: first as the head turning round mid-switch "as if there were an extra waypoint just
+      before it", then as the head moving behind the card and jumping out on the last frame. Both were the
+      same thing — a morph built from points sampled off the line knows where the line is and nothing about
+      which way it is going, so the direction it arrives from had to be patched in at the ends, and the patch
+      disagreed with the sweep. Blending the two routes' CONTROL POINTS instead carries the tangents with
+      them, so the direction a line arrives from is itself interpolated. See `blendRoutes`.
+
+      A bent line whose anchor is repinned as well, which is the case that exposed it: a stored `e` on the
+      canvas and the rule's `n` in the tree, so the end sweeps a quarter-turn round the card while the bend
+      goes away underneath it. And a few shapes of bend, since which side of the chord a bend sits on and how
+      near an end decide how hard the two routes disagree.
+    */
+    const half = { x: 90, y: 67.5 };
+    const depthInto = (engine: GraphEngine) => {
+      const geometry = engine.getEdgeGeometry().get('a->b')!;
+      const centre = engine.getPositions().get('b')!;
+      let deepest = 0;
+      for (const point of polyline(geometry, 32)) {
+        deepest = Math.max(
+          deepest,
+          Math.min(1 - Math.abs(point.x - centre.x) / half.x, 1 - Math.abs(point.y - centre.y) / half.y),
+        );
+      }
+      return deepest;
+    };
+
+    const cases = {
+      'bend beside the pinned side': { targetAnchor: 'e', waypoints: JSON.stringify([{ along: 0.5, across: -0.4 }]) },
+      'bend with no anchor': { waypoints: JSON.stringify([{ along: 0.5, across: -0.4 }]) },
+      'bend close to the target': { targetAnchor: 'e', waypoints: JSON.stringify([{ along: 0.85, across: -0.3 }]) },
+    };
+    for (const [name, data] of Object.entries(cases)) {
+      const seed: SeedSource = {
+        id: 'test',
+        async seed() {
+          return {
+            nodes: ['a', 'b'].map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+            edges: [{ id: 'a->b', source: 'a', target: 'b', type: 'rel', data }],
+          };
+        },
+      };
+      const registry = new PluginRegistry({ seeds: [seed], expanders: [], layouts: grid });
+      const engine = new GraphEngine({
+        spec: {
+          seeds: { source: 'test' },
+          layout: { type: 'down' },
+          nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+          edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n' } }] as never,
+        },
+        registry,
+        context,
+      });
+      engine.resize(800, 600);
+      await engine.start();
+      drew(engine);
+      // A line somebody could have drawn: clear of the card it points at before anything moves. A bend on
+      // the far side from its pinned anchor would cut through the card at rest, and a morph that starts
+      // there is right to start there.
+      expect(depthInto(engine), name).toBeLessThan(0.02);
+
+      engine.setSpec({
+        seeds: { source: 'test' },
+        layout: { type: 'far' },
+        nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never,
+        edgeStyle: [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }] as never,
+      });
+      engine.relayout({ travel: 400 });
+
+      // Every engine tick, since the moments that go wrong are the first few.
+      for (let step = 0; step < 30; step += 1) {
+        await vi.advanceTimersByTimeAsync(16);
+        const geometry = engine.getEdgeGeometry().get('a->b')!;
+        const centre = engine.getPositions().get('b')!;
+        const drawn = polyline(geometry, 32);
+
+        expect(depthInto(engine), `${name}, tick ${step}`).toBeLessThan(0.02);
+
+        // The head is drawn along the closing TANGENT — `backOff` reads the last control point — so that
+        // is what has to point at the card.
+        const last = geometry.segments?.[geometry.segments.length - 1];
+        const before = last?.control2 ?? geometry.control2 ?? drawn[drawn.length - 2];
+        const along = { x: geometry.to.x - before.x, y: geometry.to.y - before.y };
+        const inward = { x: centre.x - geometry.to.x, y: centre.y - geometry.to.y };
+        expect(along.x * inward.x + along.y * inward.y, `${name}, tick ${step}`).toBeGreaterThan(0);
+
+        // And no joint in it doubles back on itself.
+        for (let i = 1; i < drawn.length - 1; i += 1) {
+          const into = Math.atan2(drawn[i].y - drawn[i - 1].y, drawn[i].x - drawn[i - 1].x);
+          const out = Math.atan2(drawn[i + 1].y - drawn[i].y, drawn[i + 1].x - drawn[i].x);
+          expect(Math.abs(Math.atan2(Math.sin(out - into), Math.cos(out - into)))).toBeLessThan(Math.PI / 2);
+        }
+      }
+    }
+  });
+
+  it('eases the bend with a relayout landing between the restyle and the travel', async () => {
+    /*
+      Reported as a bend that morphed for a while and then snapped on every switch, even after half a
+      minute of sitting still — the pattern the shapes had, and the same cause. A mode switch installs its
+      rules in several steps, and a routing that lands in between (a subscription, a reconcile, an
+      optimistic write) routes every line to its destination before the travel begins. The travel planned
+      from the engine's own last routing, found nothing to change, and the bend snapped. It now plans from
+      what was last READ — see `GraphEngine.drawnRoute` — which no routing in between can move.
+    */
+    const engine = await bowEngine(bentOnly, false, 'down');
+    const style = { seeds: { source: 'test' }, nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never };
+
+    // The restyle lands first, and something relayouts without a travel…
+    engine.setSpec({ ...style, layout: { type: 'down' }, edgeStyle: bowStyle(true) });
+    engine.relayout({});
+    // …then the rearrangement, with one.
+    engine.setSpec({ ...style, layout: { type: 'far' }, edgeStyle: bowStyle(true) });
+    engine.relayout({ travel: 400 });
+
+    const seen: number[] = [];
+    for (let step = 0; step < 12; step += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      seen.push(bowOf(engine));
+    }
+    expect(seen[seen.length - 1]).toBeLessThan(0.02);
+    expect(seen.some((bow) => bow > 0.05 && bow < 0.2)).toBe(true);
+  });
+
+  it('sweeps the anchor with a relayout landing between the restyle and the travel', async () => {
+    // The same ordering for the other half of a line's route: its ends. Planned from the geometry the
+    // engine last routed, the sweep started at the destination side and the anchor jumped there.
+    const engine = await engineWith(false);
+    const side = (e: GraphEngine) => e.getEdgeGeometry().get('a->b')!.to.x - e.getPositions().get('b')!.x;
+    expect(side(engine)).toBeGreaterThan(80);
+    const tree = [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }] as never;
+    const nodeStyle = [{ style: { shape: 'card', width: 180 } }] as never;
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'down' }, nodeStyle, edgeStyle: tree });
+    engine.relayout({});
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'far' }, nodeStyle, edgeStyle: tree });
+    engine.relayout({ travel: 400 });
+
+    const seen: number[] = [];
+    for (let step = 0; step < 14; step += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      seen.push(side(engine));
+    }
+    expect(seen[seen.length - 1]).toBeCloseTo(0);
+    expect(seen.some((x) => x > 5 && x < 80)).toBe(true);
+  });
+
+  it('goes on easing the bend switch after switch, with routings landing in between', async () => {
+    // And the shape of the report: it worked for a while and then stopped. A test that switches once
+    // cannot tell a mechanism that accumulates from one that does not.
+    const engine = await bowEngine(bentOnly, false, 'down');
+    const style = { seeds: { source: 'test' }, nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never };
+    for (let round = 0; round < 6; round += 1) {
+      const toTree = round % 2 === 0;
+      const layout = toTree ? 'far' : 'down';
+      engine.setSpec({ ...style, layout: { type: toTree ? 'down' : 'far' }, edgeStyle: bowStyle(toTree) });
+      engine.relayout({});
+      engine.setSpec({ ...style, layout: { type: layout }, edgeStyle: bowStyle(toTree) });
+      engine.relayout({ travel: 400 });
+      const seen: number[] = [];
+      for (let step = 0; step < 12; step += 1) {
+        await vi.advanceTimersByTimeAsync(40);
+        seen.push(bowOf(engine));
+      }
+      expect(
+        seen.some((bow) => bow > 0.05 && bow < 0.2),
+        `round ${round}`,
+      ).toBe(true);
+      expect(seen[seen.length - 1], `round ${round}`)[toTree ? 'toBeLessThan' : 'toBeGreaterThan'](toTree ? 0.02 : 0.2);
+    }
+  });
+
   it('turns continuously back onto a canvas whose lines are bent', async () => {
     /*
       Going the OTHER way — a tree back to a canvas whose lines somebody has bent — which is the direction
       that was reported as jumping. This guards the ENDS: they turn continuously and hand over to the
-      ordinary path without a step.
-      
-      It does not cover the reported jump itself, which is the bend in the MIDDLE appearing in one frame.
-      A route's shape is not part of the travel yet; see the note in `planFacings`.
+      ordinary path without a step. The bend in the middle is the tests above.
     */
     // A BEND and no anchor, which is where the two disagree: an anchor overrules the facing in both the
     // router and any re-derivation of it, so a stored side hides this entirely.
@@ -1076,6 +1510,7 @@ describe('ignoring a stored route', () => {
     });
     engine.resize(800, 600);
     await engine.start();
+    drew(engine);
 
     const at = (e: GraphEngine) => {
       const to = e.getEdgeGeometry().get('a->b')!.to;

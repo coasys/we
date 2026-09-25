@@ -225,7 +225,10 @@ export interface EdgeStyle {
    * a reason that belonged to a different reading of the same records.
    *
    * Nothing is unwritten. The route is still stored, still the canvas's, and comes back the moment the
-   * arrangement that reads it does.
+   * arrangement that reads it does — and the change of shape in between is animated rather than snapped:
+   * the engine routes the line both with and without its bend and blends the two control point by control
+   * point for the duration of the travel. That only happens for a line somebody bent, whose bend is actually
+   * appearing or going away, which is why turning this on costs nothing for the lines that have no bend.
    */
   ignoreRoute?: boolean;
 }
