@@ -28,8 +28,9 @@ import type {
   StyleRules,
   StyleValue,
 } from '@we/graph-protocol';
+import { morphOutline } from '@we/graph-protocol';
 
-import { normaliseCurve } from './geometry';
+import { blendOutlines, matchedOutlines, normaliseCurve } from './geometry';
 
 /** Normalised metric output, by metric id then node id. Produced by the algorithms package. */
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
@@ -339,4 +340,50 @@ export function edgeVisual(edge: GraphEdge, style: EdgeStyle, metrics: MetricVal
   if (style.showLabel) visual.label = edge.label ?? edge.type;
   if (style.labelColor !== undefined) visual.labelColor = style.labelColor;
   return visual;
+}
+
+/**
+ * One node's geometry part-way between two resolutions of the style rules.
+ *
+ * This is the whole of shape morphing, and it is here rather than in the renderer for the reason
+ * {@link nodeVisual} exists at all: a card's silhouette is read by six things — the clip, the content
+ * inset, the two text-flow floats, the selection ring and the edge attach point — and three of those
+ * live on the picking side rather than the painting side. A blend done in CSS would move the drawing and
+ * leave the geometry behind, which is the drift this file's one-function rule was written to prevent.
+ *
+ * What is blended is what a reader can see changing continuously: the box, the silhouette, the content's
+ * scale, a mark's radius. What is not is everything discrete — the colour, the label, the content
+ * component, the stacking order — which takes the destination's answer immediately. A colour crossfade
+ * would be a second animation nobody asked for, and a half-resolved content component is not a thing.
+ *
+ * Shapes only morph within `card`. A card becoming a dot is a change of *kind* — a box against a radius,
+ * content against a caption — and there is no half-way house worth drawing, so it switches.
+ */
+export function blendVisual(from: NodeVisual, to: NodeVisual, t: number): NodeVisual {
+  const at = Math.min(1, Math.max(0, t));
+  if (at >= 1 || from.shape !== to.shape) return to;
+  const lerp = (a: number | undefined, b: number | undefined, fallback: number): number =>
+    (a ?? fallback) + ((b ?? fallback) - (a ?? fallback)) * at;
+
+  const blended: NodeVisual = { ...to, size: lerp(from.size, to.size, to.size) };
+  if (to.shape !== 'card') return blended;
+
+  blended.width = lerp(from.width, to.width, to.width ?? DEFAULT_CARD.width);
+  blended.height = lerp(from.height, to.height, to.height ?? DEFAULT_CARD.height);
+  blended.contentScale = lerp(from.contentScale, to.contentScale, 1);
+
+  /*
+    The silhouette, and only where the two shapes differ.
+
+    Same shape, different size is the ordinary case — every card on the workshop's canvas becomes a note
+    in the tree, and most of them already were one — and it must not pay for a polygon it does not need,
+    nor hand the renderer a `morph` that would switch a note off its own corner radius for no reason.
+  */
+  const fromShape = from.cardShape ?? 'note';
+  const toShape = to.cardShape ?? 'note';
+  if (fromShape === toShape) return blended;
+
+  const [a, b] = matchedOutlines(morphOutline(fromShape), morphOutline(toShape));
+  blended.morph = { outline: blendOutlines(a, b, at), from: fromShape, at };
+  return blended;
 }

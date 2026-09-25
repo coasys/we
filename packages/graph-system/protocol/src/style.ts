@@ -314,3 +314,68 @@ export const CARD_SILHOUETTES: Partial<Record<CardShape, readonly (readonly [num
 export function cardSilhouette(shape?: CardShape): readonly (readonly [number, number])[] | undefined {
   return shape ? CARD_SILHOUETTES[shape] : undefined;
 }
+
+/**
+ * How many points a circle is worth while it is turning into something else.
+ *
+ * Only ever seen mid-morph, which is what lets it be this low: at rest a round card is drawn by a
+ * border radius and attached to by formula, both exact.
+ *
+ * The number is set by the *first* frame rather than by the moving ones. A round card's own radius is
+ * still drawing it there, and the polygon is inscribed in that circle — so too few points and the clip
+ * shaves visible flats off a circle nothing has started morphing yet. Twenty-four holds the deepest cut
+ * under one percent of the card's half-extent, which is under a pixel on any card somebody would read,
+ * and matches the sampling the text floats already use for the same ellipse.
+ */
+const ROUND_STEPS = 24;
+
+/**
+ * Every shape as a polygon, for the one job a name cannot do: turning into another shape.
+ *
+ * `CARD_SILHOUETTES` above is deliberately partial — a box and an ellipse are *better* described by a
+ * radius than by points, and the table says so. That holds right up until two shapes have to be
+ * blended, because a name does not interpolate and a border radius cannot be lerped against a polygon.
+ *
+ * So this is the same shapes in the one representation that can be blended, and it is **transient by
+ * design**: nothing draws from it at rest. A note card keeps its real corner radius and its real
+ * `box-shadow`, and only borrows a four-point box for as long as it is between two shapes. That is the
+ * whole reason a fidelity compromise here is free — sixteen points for a circle, none for a note's
+ * rounded corners — where the same compromise applied at rest would be a regression to every card.
+ *
+ * Minimal point counts rather than a dense resampling of everything, which is the other decision worth
+ * stating: the outline is read per frame by four things (the clip, the two text-flow floats and the
+ * selection ring), and one of those does real geometry per point.
+ *
+ * Measured, at the widest pair here: blending and stringifying a 24-point outline for 200 cards costs
+ * 0.6 ms a frame, and a 4-point one 0.08 ms. So the JavaScript is free at any card count a canvas
+ * holds, and what is left to watch is the browser's own cost for that many changing `clip-path`s — the
+ * reason a dense resampling would be a different proposition rather than a slower version of this one.
+ */
+export const MORPH_OUTLINES: Record<CardShape, readonly (readonly [number, number])[]> = {
+  // A box, clockwise from the top-left. What a note borrows, radius and all, for the duration.
+  note: [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+  ],
+  square: [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+  ],
+  round: Array.from({ length: ROUND_STEPS }, (_, i) => {
+    const angle = -Math.PI / 2 + (i / ROUND_STEPS) * Math.PI * 2;
+    return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)] as const;
+  }),
+  triangle: CARD_SILHOUETTES.triangle!,
+  diamond: CARD_SILHOUETTES.diamond!,
+  pentagon: CARD_SILHOUETTES.pentagon!,
+  hexagon: CARD_SILHOUETTES.hexagon!,
+};
+
+/** The polygon a shape is blended as — see {@link MORPH_OUTLINES}. */
+export function morphOutline(shape?: CardShape): readonly (readonly [number, number])[] {
+  return MORPH_OUTLINES[shape ?? 'note'] ?? MORPH_OUTLINES.note;
+}

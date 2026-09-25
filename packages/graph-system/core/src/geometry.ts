@@ -960,3 +960,89 @@ export function edgeBounds(geometry: EdgeGeometry): { minX: number; minY: number
   }
   return { minX, minY, maxX, maxY };
 }
+
+/** A silhouette in the box's own 0..1 space, clockwise. */
+export type Outline = readonly (readonly [number, number])[];
+
+/**
+ * Two outlines of equal length, aligned so the blend between them travels as little as possible.
+ *
+ * Blending polygons needs two things a table of shapes does not give you: the same number of points,
+ * and a sensible idea of which point becomes which.
+ *
+ * **Equal length, by splitting edges.** The shorter outline gains points at the midpoints of its
+ * longest edges until the counts match, which leaves the shape it describes *identical* — a triangle
+ * with a point added halfway along its base is the same triangle. Splitting the longest edge each time
+ * spreads the new points where there is most room, so the correspondence stays even.
+ *
+ * **Alignment, by trying every rotation.** Both tables are clockwise, so the only freedom left is where
+ * each one starts, and the naive answer — index 0 to index 0 — is what makes a morph look like a shape
+ * being stirred rather than becoming another shape. A triangle's apex should travel to the nearest
+ * corner of a box, not to whichever the table happens to list first. Sixteen points is 256 comparisons,
+ * once per pair of shapes rather than per frame, so the good answer is affordable.
+ *
+ * Deliberately not reversal: a clockwise outline blended against an anticlockwise one turns inside out
+ * on the way, and every table here is clockwise by construction.
+ */
+export function matchedOutlines(from: Outline, to: Outline): [Outline, Outline] {
+  const grown = subdivideTo(from, to.length);
+  const shrunk = subdivideTo(to, from.length);
+  const a = grown.length >= shrunk.length ? grown : from;
+  const b = shrunk.length >= grown.length ? shrunk : to;
+  return [a, alignTo(a, b)];
+}
+
+/** Split the longest edge, repeatedly, until the outline has `count` points. Fewer is a no-op. */
+function subdivideTo(outline: Outline, count: number): Outline {
+  if (outline.length >= count || outline.length < 2) return outline;
+  const points = outline.map((p) => [p[0], p[1]] as [number, number]);
+  while (points.length < count) {
+    let longest = 0;
+    let best = -1;
+    for (let i = 0; i < points.length; i += 1) {
+      const next = points[(i + 1) % points.length];
+      const span = Math.hypot(next[0] - points[i][0], next[1] - points[i][1]);
+      // Ties break on the earlier edge, so the same pair of shapes always matches the same way.
+      if (span > longest + 1e-9) {
+        longest = span;
+        best = i;
+      }
+    }
+    if (best < 0) break;
+    const here = points[best];
+    const next = points[(best + 1) % points.length];
+    points.splice(best + 1, 0, [(here[0] + next[0]) / 2, (here[1] + next[1]) / 2]);
+  }
+  return points;
+}
+
+/** The rotation of `b` whose points sit closest to `a`'s, index for index. */
+function alignTo(a: Outline, b: Outline): Outline {
+  if (a.length !== b.length || b.length < 2) return b;
+  let bestOffset = 0;
+  let bestCost = Infinity;
+  for (let offset = 0; offset < b.length; offset += 1) {
+    let cost = 0;
+    for (let i = 0; i < a.length; i += 1) {
+      const p = b[(i + offset) % b.length];
+      cost += (p[0] - a[i][0]) ** 2 + (p[1] - a[i][1]) ** 2;
+    }
+    if (cost < bestCost - 1e-12) {
+      bestCost = cost;
+      bestOffset = offset;
+    }
+  }
+  return bestOffset === 0 ? b : b.map((_, i) => b[(i + bestOffset) % b.length]);
+}
+
+/**
+ * One outline part-way between two, which must already be matched — see {@link matchedOutlines}.
+ *
+ * Straight lerp per point. Nothing cleverer is warranted for these shapes: they are convex, they are
+ * all inscribed in the same box, and the blend is on screen for a few hundred milliseconds.
+ */
+export function blendOutlines(from: Outline, to: Outline, t: number): Outline {
+  if (from.length !== to.length) return to;
+  const at = Math.min(1, Math.max(0, t));
+  return to.map((p, i) => [from[i][0] + (p[0] - from[i][0]) * at, from[i][1] + (p[1] - from[i][1]) * at] as const);
+}

@@ -6,10 +6,10 @@
  * readable rules instead of one nested condition. Get the merge wrong and the last rule silently wins
  * everything.
  */
-import type { GraphNode, GraphValue } from '@we/graph-protocol';
+import type { GraphNode, GraphValue, NodeVisual } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
-import { edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
+import { blendVisual, edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
 
 const belief: GraphNode = {
   id: 'a',
@@ -273,5 +273,77 @@ describe('defaults', () => {
     expect(visual.height).toBe(150);
     // `size` becomes the half-extent, which is what hit-testing reads.
     expect(visual.size).toBe(100);
+  });
+});
+
+describe('blendVisual', () => {
+  const card = (over: Partial<NodeVisual> = {}): NodeVisual => ({
+    shape: 'card',
+    size: 90,
+    width: 180,
+    height: 135,
+    color: '#111',
+    cardShape: 'note',
+    ...over,
+  });
+
+  it('lerps the box and takes the destination for everything discrete', () => {
+    const from = card({ width: 100, height: 75, size: 50, color: '#aaa', contentScale: 0.5 });
+    const to = card({ width: 200, height: 150, size: 100, color: '#bbb', contentScale: 1.5 });
+
+    const half = blendVisual(from, to, 0.5);
+    expect(half.width).toBe(150);
+    expect(half.height).toBeCloseTo(112.5);
+    expect(half.size).toBe(75);
+    expect(half.contentScale).toBe(1);
+    // The colour is the destination's from the first frame: a colour fading through an intermediate
+    // hue nobody chose reads as a glitch, where a box easing to a new size reads as the move itself.
+    expect(half.color).toBe('#bbb');
+  });
+
+  it('is the destination at the end, and the start at the beginning', () => {
+    const from = card({ width: 100 });
+    const to = card({ width: 300 });
+    expect(blendVisual(from, to, 0).width).toBe(100);
+    expect(blendVisual(from, to, 1)).toBe(to);
+    // Out of range is clamped rather than extrapolated — a travel that overshoots by a frame must not
+    // draw a card wider than the layout asked for.
+    expect(blendVisual(from, to, 1.4)).toBe(to);
+    expect(blendVisual(from, to, -0.2).width).toBe(100);
+  });
+
+  it('only carries a silhouette when the two shapes actually differ', () => {
+    const same = blendVisual(card({ cardShape: 'note' }), card({ cardShape: 'note' }), 0.5);
+    expect(same.morph).toBeUndefined();
+
+    const changing = blendVisual(card({ cardShape: 'triangle' }), card({ cardShape: 'note' }), 0.5);
+    expect(changing.morph?.from).toBe('triangle');
+    expect(changing.morph?.at).toBe(0.5);
+    expect(changing.morph?.outline.length).toBeGreaterThan(2);
+    // Every point stays inside the unit box the renderer clips against.
+    for (const [x, y] of changing.morph!.outline) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(1);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('does not blend across a change of shape KIND', () => {
+    // A card becoming a circle is not one outline easing into another — the two are drawn by
+    // different code paths, so there is nothing to interpolate and the honest answer is the
+    // destination.
+    const from = card();
+    const to: NodeVisual = { shape: 'circle', size: 40, color: '#111' };
+    expect(blendVisual(from, to, 0.5)).toBe(to);
+  });
+
+  it("leaves a non-card's box alone", () => {
+    const from: NodeVisual = { shape: 'circle', size: 20, color: '#111' };
+    const to: NodeVisual = { shape: 'circle', size: 40, color: '#111' };
+    const half = blendVisual(from, to, 0.5);
+    expect(half.size).toBe(30);
+    expect(half.width).toBeUndefined();
+    expect(half.morph).toBeUndefined();
   });
 });

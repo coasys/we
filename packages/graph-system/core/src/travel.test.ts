@@ -497,3 +497,102 @@ describe('releasing a card', () => {
     expect(xOf(engine, 'b')).toBe(640);
   });
 });
+
+/**
+ * The shape half of the same movement.
+ *
+ * A mode that rearranges the cards usually restyles them too — a canvas of stretched rectangles,
+ * triangles and circles becomes a tree of uniform notes — and the two have to be one movement. The
+ * failures are all quiet: a box that snaps while its position eases, a card blended against a styling
+ * two modes ago, a hit area that follows the destination while the drawing is still on its way.
+ */
+describe('shape travel', () => {
+  const nodes = () => [{ id: 'a', kind: 'entity' as const, type: 'Thing', label: 'a' }];
+  const boxes = (width: number, cardShape: string) => [{ style: { shape: 'card', width, cardShape } }];
+
+  const spec = (layout: string, width: number, cardShape = 'note') => ({
+    seeds: { source: 'test' },
+    layout: { type: layout },
+    nodeStyle: boxes(width, cardShape) as never,
+  });
+
+  it('eases the box across, on the same clock as the positions', async () => {
+    const engine = await started(spec('left', 100));
+    expect(engine.visualOf(nodes()[0]).width).toBe(100);
+
+    engine.setSpec(spec('right', 300));
+    engine.relayout({ travel: 400 });
+
+    // The first frame is the old box, exactly as it is the old position.
+    expect(engine.visualOf(nodes()[0]).width).toBe(100);
+
+    await vi.advanceTimersByTimeAsync(200);
+    const midway = engine.visualOf(nodes()[0]).width!;
+    expect(midway).toBeGreaterThan(100);
+    expect(midway).toBeLessThan(300);
+
+    await vi.advanceTimersByTimeAsync(400);
+    expect(engine.visualOf(nodes()[0]).width).toBe(300);
+  });
+
+  it('carries the silhouette between two card shapes, and stops carrying it at the end', async () => {
+    const engine = await started(spec('left', 200, 'triangle'));
+
+    engine.setSpec(spec('right', 200, 'note'));
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+
+    const morph = engine.visualOf(nodes()[0]).morph;
+    expect(morph?.from).toBe('triangle');
+    expect(morph?.outline.length).toBeGreaterThan(2);
+
+    await vi.advanceTimersByTimeAsync(400);
+    // Arrived: the destination's own shape draws itself, so there is nothing left to hand over.
+    expect(engine.visualOf(nodes()[0]).morph).toBeUndefined();
+    expect(engine.visualOf(nodes()[0]).cardShape).toBe('note');
+  });
+
+  it('blends nothing when only the arrangement changed', async () => {
+    const engine = await started(spec('left', 200, 'triangle'));
+
+    engine.setSpec(spec('right', 200, 'triangle'));
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(engine.visualOf(nodes()[0]).morph).toBeUndefined();
+    expect(engine.visualOf(nodes()[0]).width).toBe(200);
+  });
+
+  it('does not hold a restyling nobody travelled away from', async () => {
+    const engine = await started(spec('left', 100));
+
+    // A restyling on its own — a card resized on a canvas. No travel follows it.
+    engine.setSpec(spec('left', 300));
+    engine.relayout({});
+    expect(engine.visualOf(nodes()[0]).width).toBe(300);
+
+    /*
+      A later rearrangement with no restyling behind it must not resurrect that one. Held, this is a
+      card easing out of a width it left two actions ago — correct-looking code producing a movement
+      nobody asked for.
+    */
+    engine.setSpec({ ...spec('right', 300), nodeStyle: spec('left', 300).nodeStyle });
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(engine.visualOf(nodes()[0]).width).toBe(300);
+  });
+
+  it('is pickable at the box it is drawn at, not the one it is heading for', async () => {
+    const engine = await started(spec('left', 100));
+
+    engine.setSpec(spec('right', 1000));
+    engine.relayout({ travel: 400 });
+
+    // 60px right of the card's centre: inside the 1000-wide destination box, outside the 100-wide one
+    // it is still drawn as. The hit area resolves through the same blended visual, so nothing is
+    // grabbable at a size it has not reached.
+    const at = engine.getPositions().get('a')!;
+    expect(engine.index.hitTest({ x: at.x + 60, y: at.y })).toEqual([]);
+    expect(engine.index.hitTest({ x: at.x, y: at.y })).toEqual(['a']);
+  });
+});

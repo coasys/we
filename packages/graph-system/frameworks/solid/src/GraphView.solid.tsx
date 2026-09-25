@@ -40,7 +40,6 @@ import {
   FOLD_BUNDLE,
   GraphEngine,
   matches,
-  nodeVisual,
   PluginRegistry,
   polyline,
   readField,
@@ -62,6 +61,7 @@ import type {
   EdgeSide,
   GraphNode,
   GraphValue,
+  NodeVisual,
   Point,
   PointerInput,
 } from '@we/graph-protocol';
@@ -1211,29 +1211,6 @@ export function GraphView(props: GraphViewProps) {
     return [...engine.getLayoutRegions()];
   });
 
-  /**
-   * Whether the arrangement is mid-travel — so a card's *box* can ease to its new size with it.
-   *
-   * Position is animated in the engine, because the spatial index and the edge routes are derived from
-   * it and all three have to agree every frame. A card's size is not: it is resolved from the style
-   * rules, and letting CSS ease it costs one declaration where doing it in the engine would mean
-   * threading a blend through `nodeVisual`, which is the one function both the drawing and the picking
-   * come from.
-   *
-   * The cost is honest and bounded: for the length of the travel a card is *picked* at the size it is
-   * arriving at rather than the size it is drawn. That is the drift `nodeVisual` exists to prevent, so it
-   * is worth being exact about why it is acceptable here — it lasts one travel, it self-heals, and it
-   * only ever makes the hit area agree with where the card is going, which is also where the pointer
-   * that started the switch is most likely headed.
-   *
-   * Only ever while travelling, so a resize drag stays immediate: a box easing behind the hand would
-   * read as lag.
-   */
-  const settling = createMemo(() => {
-    version();
-    return engine.isTravelling();
-  });
-
   const nodes = createMemo(() => {
     version();
     const placed = engine.getPositions();
@@ -1245,12 +1222,19 @@ export function GraphView(props: GraphViewProps) {
       // effect below. Hit-testing and edge routing resolve from the same values, so a card cannot be
       // drawn at one size and picked at another.
       const node = patched(rawNode, engine.overlayFor(rawNode.id));
-      const style = resolveStyle(node, props.nodeStyle);
       return [
         {
           node,
           at,
-          visual: nodeVisual(node, style, engine.getMetrics()),
+          /*
+            Asked of the engine rather than resolved here.
+
+            `nodeVisual` is the one function both the drawing and the picking come from, and a card's box
+            and silhouette are mid-change for the length of a rearrangement that restyles them — so the
+            blend has to happen where that invariant is kept. See `GraphEngine.visualOf`. It also means
+            the renderer is no longer the only thing that knows how to read a style rule.
+          */
+          visual: engine.visualOf(rawNode),
           selected: selected.has(node.id),
           expanded: engine.expansion.isExpanded(node.id),
           hasMore: engine.expansion.hasMore(node.id),
@@ -1677,13 +1661,34 @@ export function GraphView(props: GraphViewProps) {
    * keeps whatever width and height somebody gave it, and forcing it square would silently undo a
    * resize the moment the shape was changed.
    */
-  function nodeRadius(visual: { shape: string; cardShape?: string }): string {
-    if (visual.shape === 'circle') return '50%';
-    if (visual.shape !== 'card') return 'var(--we-radius-300)';
-    if (visual.cardShape === 'square') return '0';
-    if (visual.cardShape === 'round') return '50%';
+  function radiusOf(shape: string, cardShape?: string): string {
+    if (shape === 'circle') return '50%';
+    if (shape !== 'card') return 'var(--we-radius-300)';
+    // `0px` rather than `0`: identical at rest, and the one form `calc` will add to a length when
+    // `nodeRadius` blends it against another shape's radius.
+    if (cardShape === 'square') return '0px';
+    if (cardShape === 'round') return '50%';
     // The note: rounded enough that choosing it over a square is visible on the card itself.
     return 'var(--we-radius-500)';
+  }
+
+  /**
+   * The radius, eased across a shape change rather than switched.
+   *
+   * The polygon takes over the outlining during a morph, and a note's corners squaring on the first
+   * frame — while the outline is still exactly the box — is a visible pop at the one moment the
+   * transition exists to smooth. `calc` does the blending, which is why these stay CSS strings: a
+   * percentage and a token are both lengths there, so `50%` can ease to `0` without either being
+   * resolved here.
+   */
+  function nodeRadius(visual: Shaped): string {
+    const to = radiusOf(visual.shape, visual.cardShape);
+    const morph = visual.morph;
+    if (!morph) return to;
+    const from = radiusOf('card', morph.from);
+    if (from === to) return to;
+    const at = Math.round(morph.at * 1000) / 1000;
+    return `calc(${from} * ${1 - at} + ${to} * ${at})`;
   }
 
   /**
@@ -1698,9 +1703,15 @@ export function GraphView(props: GraphViewProps) {
    */
   /** Points in the box's own 0..1 space, as the shared table gives them. */
   type Outline = readonly (readonly [number, number])[];
-  type Shaped = { shape: string; cardShape?: string };
+  type Shaped = { shape: string; cardShape?: string; morph?: NodeVisual['morph'] };
+  /*
+    Mid-change, the blended outline is the shape — it is the whole point of `morph`, and every consumer
+    below reads it from here so none of them can disagree about which silhouette a frame is drawing.
+    A card whose shape is not changing has none, which is the ordinary case and pays nothing.
+  */
   const cutPoints = (visual: Shaped) =>
-    visual.shape === 'card' ? cardSilhouette(visual.cardShape as CardShape | undefined) : undefined;
+    visual.morph?.outline ??
+    (visual.shape === 'card' ? cardSilhouette(visual.cardShape as CardShape | undefined) : undefined);
   const pct = (value: number) => `${Math.round(value * 10000) / 100}%`;
 
   /** The polygon a card is cut to. A clip rather than a drawn outline, so the card stays a box. */
@@ -1711,6 +1722,7 @@ export function GraphView(props: GraphViewProps) {
 
   /** The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. */
   function flowPoints(visual: Shaped): Outline | undefined {
+    if (visual.morph) return visual.morph.outline;
     if (visual.shape !== 'card') return undefined;
     if (visual.cardShape === 'round') {
       const steps = 24;
@@ -1823,20 +1835,30 @@ export function GraphView(props: GraphViewProps) {
    * lands in the largest rectangle the shape holds. Text needs none of this: it wraps to the floats
    * the stylesheet lays along the outline.
    */
-  function nodeInset(visual: Shaped): string {
-    if (visual.shape !== 'card') return '0';
-    switch (visual.cardShape) {
+  function insetOf(cardShape?: string): number {
+    switch (cardShape) {
       case 'triangle':
       case 'diamond':
       case 'hexagon':
-        return '25%';
+        return 25;
       case 'pentagon':
-        return '18%';
+        return 18;
       case 'round':
-        return '15%';
+        return 15;
       default:
-        return '0';
+        return 0;
     }
+  }
+
+  function nodeInset(visual: Shaped): string {
+    if (visual.shape !== 'card') return '0';
+    const to = insetOf(visual.cardShape);
+    const morph = visual.morph;
+    // Eased with the outline, so a picture inside a card that is becoming a triangle walks inward as
+    // the sides close on it rather than jumping to where it will have to sit.
+    if (!morph) return `${to}%`;
+    const from = insetOf(morph.from);
+    return `${Math.round((from + (to - from) * morph.at) * 100) / 100}%`;
   }
 
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
@@ -3036,15 +3058,9 @@ export function GraphView(props: GraphViewProps) {
         classList={{
           'we-graph__layer': true,
           'we-graph__layer--stale': status().reloading,
-          // One class on the layer rather than one per card: the state is the graph's, and a class per
-          // node would be a reactive computation per node for an answer that is the same for all of them.
-          'we-graph__layer--settling': settling(),
         }}
         style={{
           transform: transform(),
-          // What the eased box takes, published so the stylesheet keeps the curve and this carries only
-          // the number — the same split `--we-decoration-ease` makes.
-          '--node-box-ease': `${layoutTravel()}ms`,
           /*
             Load-bearing, and inline so it cannot be lost to a stale stylesheet.
 
@@ -3579,7 +3595,20 @@ export function GraphView(props: GraphViewProps) {
                   <div
                     class="we-graph__card"
                     classList={{
-                      'we-graph__card--cut': nodeClip(entry.visual) !== 'none',
+                      /*
+                        Cut, but not while it is *becoming* cut.
+
+                        `--cut` strips the border, the radius and the box-shadow, because none of the
+                        three belongs on a polygon. Applied from the first frame of a morph it is a pop
+                        at the one moment the transition exists to smooth: a note's corners square and
+                        its border vanishes while the outline is still exactly its box. So a morphing
+                        card keeps all three and lets the clip take them away *geometrically* — the
+                        border shows wherever the polygon still meets the box edge, and is gone by the
+                        time it does not — and borrows only the drop-shadow, which is the one part that
+                        has to follow the silhouette rather than the box.
+                      */
+                      'we-graph__card--cut': nodeClip(entry.visual) !== 'none' && !entry.visual.morph,
+                      'we-graph__card--morphing': !!entry.visual.morph,
                       'we-graph__card--flow': nodeFlow(entry.visual).left !== 'none',
                     }}
                   >

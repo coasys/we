@@ -22,6 +22,8 @@ import type {
   GraphValue,
   Layout,
   LayoutRegion,
+  NodeStyleRules,
+  NodeVisual,
   Placement,
   Point,
   StyleRules,
@@ -48,7 +50,7 @@ import {
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
-import { flattenRules, nodeVisual, resolveStyle } from './style';
+import { blendVisual, flattenRules, nodeVisual, resolveStyle } from './style';
 import { boundsOf, Viewport } from './viewport';
 
 /**
@@ -350,6 +352,25 @@ export class GraphEngine {
   /** The duration the travel in flight was asked for. Zero means nothing is travelling. */
   private travelDuration = 0;
   /**
+   * How far through the travel everything is, on the cards' own eased clock — see {@link stepTravel}.
+   *
+   * One number for the whole arrangement rather than one per card, because the things that read it are
+   * about the *change* rather than about a position: the camera, and the shape a card is becoming.
+   * 1 means nothing is in flight.
+   */
+  private travelProgress = 1;
+  /**
+   * The styling the arrangement is travelling *from*, while a travel is in flight.
+   *
+   * A card's box and silhouette come from `nodeStyle`, so a mode that stretches a rectangle into a
+   * uniform note changes the rules rather than the card — which leaves nothing to interpolate unless
+   * the rules it is leaving are kept. Armed by a {@link setSpec} that changes the styling and consumed
+   * by the travel that follows it, so a rearrangement with no restyling behind it blends nothing.
+   */
+  private travelStyle?: NodeStyleRules;
+  /** The styling a travel would come from, set aside by `setSpec` until a travel claims it. */
+  private priorNodeStyle?: NodeStyleRules;
+  /**
    * The camera's own travel, alongside the cards'.
    *
    * Without it a switch that refits reads as the cards *vanishing and flying in from the edge*: the fit
@@ -525,8 +546,14 @@ export class GraphEngine {
    * Does not restart on its own — the caller decides whether the change warrants re-running the
    * queries. Changing a colour rule must not re-fetch a graph, and an adapter that could only swap the
    * whole spec would have no way to express that difference.
+   *
+   * The styling being replaced is set aside for {@link travelStyle}. This is the only moment it exists:
+   * a caller swapping the arrangement and the card styling together — a tree mode — replaces the spec
+   * and then asks for a travel, by which time the rules the cards are leaving would be gone. Set aside
+   * rather than acted on, because a restyling with no rearrangement behind it should morph nothing.
    */
   setSpec(spec: GraphSpec): void {
+    if (spec.nodeStyle !== this.spec.nodeStyle) this.priorNodeStyle = this.spec.nodeStyle;
     this.spec = spec;
   }
 
@@ -1632,12 +1659,19 @@ export class GraphEngine {
    */
   private beginTravel(before: ReadonlyMap<string, Placement>, travel?: number): void {
     const asked = Math.max(0, travel ?? 0);
+    // Claimed here whether or not a travel starts: a styling nobody travelled away from is not a
+    // styling anything should later be seen returning from.
+    const armed = this.priorNodeStyle;
+    this.priorNodeStyle = undefined;
     // Carried over, so a re-aim keeps the speed and the deadline the reader's action set rather than
     // restarting the clock on every frame a live query happens to land on.
     const started = new Map([...this.travelAnim].map(([id, anim]) => [id, anim.started]));
     this.travelAnim.clear();
     if (asked > 0) this.travelDuration = asked;
-    if (!this.travelDuration) return;
+    if (!this.travelDuration) {
+      this.settleShapes();
+      return;
+    }
 
     const now = Date.now();
     for (const [id, to] of this.positions) {
@@ -1656,7 +1690,29 @@ export class GraphEngine {
       this.travelAnim.set(id, { from: { x: from.x, y: from.y }, to, started: carried ?? now });
       this.positions.set(id, { ...to, x: from.x, y: from.y });
     }
-    if (!this.travelAnim.size) this.travelDuration = 0;
+    if (!this.travelAnim.size) {
+      this.travelDuration = 0;
+      this.settleShapes();
+      return;
+    }
+    // Only a travel the reader asked for carries a morph: a re-aim mid-flight must keep whatever the
+    // cards are already becoming rather than restarting it against the styling they have now.
+    if (asked > 0) {
+      this.travelStyle = armed;
+      this.travelProgress = 0;
+    }
+  }
+
+  /**
+   * Let go of the styling a travel was coming from, so cards are drawn as the rules now say.
+   *
+   * Called wherever a travel ends or fails to start. Without it a later rearrangement that changes no
+   * styling would still blend against whatever the last mode change left behind — a card easing out of
+   * a shape nobody is looking at any more.
+   */
+  private settleShapes(): void {
+    this.travelStyle = undefined;
+    this.travelProgress = 1;
   }
 
   /**
@@ -1749,11 +1805,22 @@ export class GraphEngine {
       this.notify('viewport');
     }
 
+    /*
+      The shape follows the same clock, and is read off it rather than animated separately.
+
+      Written before the reindex, because a card's hit area is resolved from the same blended visual the
+      renderer paints — so picking and drawing agree at every frame of the change rather than only at
+      its ends.
+    */
+    this.travelProgress = progress;
     this.reindex();
     this.routeEdges();
     this.notify('positions');
     if (running && !this.disposed) this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
-    else this.travelDuration = 0;
+    else {
+      this.travelDuration = 0;
+      this.settleShapes();
+    }
   }
 
   /**
@@ -1765,7 +1832,10 @@ export class GraphEngine {
    */
   private stopTravel(id: string): void {
     this.travelAnim.delete(id);
-    if (!this.travelAnim.size) this.travelDuration = 0;
+    if (!this.travelAnim.size) {
+      this.travelDuration = 0;
+      this.settleShapes();
+    }
   }
 
   /**
@@ -1915,6 +1985,39 @@ export class GraphEngine {
     return { ...node, data: { ...node.data, ...patch } };
   }
 
+  /**
+   * How a node is drawn — and, mid-rearrangement, how far between two answers it is.
+   *
+   * **Geometry comes from one function.** `nodeVisual` produces what is painted and what is picked, so
+   * anything that changes the one has to change the other or a card is clicked where it no longer is.
+   * The blend belongs here for the same reason: CSS cannot interpolate a polygon against a border
+   * radius, nor two polygons of different point counts, so a card becoming a note cannot be eased by
+   * the browser — and a renderer that eased it on its own would be easing the drawing away from the hit
+   * area.
+   *
+   * Two resolutions per node per frame while a travel with a restyling behind it is in flight, and one
+   * otherwise. Deliberately uncached: the rules are a handful of comparisons, the window is under half
+   * a second, and a cache keyed by node would have to be invalidated by every overlay, metric and
+   * marker that can change what a card looks like.
+   */
+  private resolvedVisual(rawNode: GraphNode, metrics: ReadonlyMap<string, ReadonlyMap<string, number>>) {
+    const node = this.overlaid(rawNode);
+    const to = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), metrics);
+    if (!this.travelStyle || this.travelProgress >= 1) return to;
+    const from = nodeVisual(node, resolveStyle(node, this.travelStyle), metrics);
+    return blendVisual(from, to, this.travelProgress);
+  }
+
+  /**
+   * How a node should be drawn right now, blended if the arrangement is mid-change.
+   *
+   * What a renderer paints from. It resolves nothing about styling itself — see {@link resolvedVisual}
+   * for why the engine owns this rather than the renderer.
+   */
+  visualOf(node: GraphNode): NodeVisual {
+    return this.resolvedVisual(node, this.metrics);
+  }
+
   private hitArea(rawNode: GraphNode): {
     radius: number;
     halfWidth?: number;
@@ -1922,7 +2025,6 @@ export class GraphEngine {
     shape?: CardShape;
     z?: number;
   } {
-    const node = this.overlaid(rawNode);
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
     // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
     // the middle of a 170px box: a card sets `width`, never `size`, so the rule-reading version fell
@@ -1930,7 +2032,7 @@ export class GraphEngine {
     //
     // Metrics are deliberately not resolved here: they change what a node *means*, not where it is,
     // and a hit area that moved when a metric finished computing would be worse than a stale one.
-    const visual = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), NO_METRICS);
+    const visual = this.resolvedVisual(rawNode, NO_METRICS);
     // Stacking travels with the hit area so picking agrees with what is drawn in front.
     const z = visual.z !== undefined ? { z: visual.z } : {};
     if (visual.shape === 'card' && visual.width && visual.height) {

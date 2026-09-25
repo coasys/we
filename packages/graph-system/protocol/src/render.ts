@@ -46,6 +46,22 @@ export interface NodeVisual {
   contentScale?: number;
   /** Stacking order among nodes, a whole number. Absent is 0. See `NodeStyle.z`. */
   z?: number;
+  /**
+   * A card caught between two shapes, while the arrangement is rearranging.
+   *
+   * `outline` is the silhouette to use for everything that reads one — the clip, the two text-flow
+   * floats, the selection ring, the edge attach point — in the box's own 0..1 space. Its presence is
+   * what says "clipped right now", which is a different question from `cardShape` naming a cut shape:
+   * a note card is a box at rest and a polygon for as long as it is turning into a triangle.
+   *
+   * `from` and `at` are the two shape names and how far along, for the one thing an outline cannot
+   * answer: how far inside its own edges a shape holds its content. That is a number per shape rather
+   * than a property of the points, so it is interpolated from the names.
+   *
+   * Absent whenever a card is at rest, which is the point — a note keeps its real corner radius and its
+   * real `box-shadow`, and borrows a polygon only while it needs one.
+   */
+  morph?: { outline: readonly (readonly [number, number])[]; from: CardShape; at: number };
 }
 
 /**

@@ -475,13 +475,6 @@
   width: var(--node-size);
   height: var(--node-size);
 
-  // The same easing as a card's box, for a graph whose nodes are marks — a metric-sized dot changing
-  // what it is sized by should read as the same movement the cards are making.
-  .we-graph__layer--settling & {
-    transition:
-      width var(--node-box-ease, 0ms) ease-out,
-      height var(--node-box-ease, 0ms) ease-out;
-  }
   border-radius: var(--node-radius);
   background: var(--node-color);
   border: var(--node-border-width) var(--node-border-style, solid) var(--node-border);
@@ -554,22 +547,13 @@
   height: var(--node-height);
 
   /*
-    The box eases while the arrangement is travelling — see `settling` in the Solid adapter.
+    No transition on the box, deliberately.
 
-    A card stretched into a rectangle on the canvas is given one uniform box in the tree, and snapping
-    between the two in the middle of a movement every other card is easing through reads as the card
-    being *replaced* rather than rearranged.
-
-    Width and height only, never `transform`: the position is animated in the engine, frame by frame,
-    because the spatial index and the edge routes are derived from it. A transition on top of that would
-    be two animations on one property, each correct and neither what you see.
+    A card stretched into a rectangle on the canvas is given one uniform box in the tree, and it does
+    ease between them — but in the engine, frame by frame, alongside the position and the silhouette.
+    See `GraphEngine.visualOf`. A CSS transition on top would be a second animation on the same
+    property: each correct, and what you see neither.
   */
-  .we-graph__layer--settling & {
-    transition:
-      width var(--node-box-ease, 0ms) ease-out,
-      height var(--node-box-ease, 0ms) ease-out;
-  }
-
   // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
   opacity: var(--node-opacity, 1);
 
@@ -692,7 +676,10 @@
   box-shadow: none;
 }
 
-.we-graph__card--cut {
+.we-graph__card--cut,
+// A card mid-morph is a polygon too, so its shadow has to follow the silhouette — but it keeps its
+// border and radius, which the clip removes as the outline pulls away from the box. See the markup.
+.we-graph__card--morphing {
   filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--we-role-shadow-color) 30%, transparent));
 }
 
@@ -837,7 +824,9 @@
   `outline` rather than a border: a border changes the box and nudges the content inside it, and on
   a surface where a card can be sized to the pixel a hover that moves the layout reads as a bug.
 */
-.we-graph__node--card.we-graph__node--hovered .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
+.we-graph__node--card.we-graph__node--hovered
+  .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing)
+  > .we-graph__card-shape {
   box-shadow: var(--we-shadow-md);
   outline: calc(2px / var(--graph-zoom)) solid color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
   outline-offset: calc(1px / var(--graph-zoom));
@@ -857,7 +846,9 @@
 */
 // The outline pushed out by a constant distance, from the renderer — see `ringClip` for why it
 // is an offset rather than a scaled copy, and why it is written in pixels.
-.we-graph__card--cut::before {
+.we-graph__card--cut::before,
+// A card mid-morph is drawn by the same polygon, so it wears the same ring — see the markup.
+.we-graph__card--morphing::before {
   content: '';
   position: absolute;
   inset: calc(-1 * var(--ring-pad, 0px));
@@ -866,11 +857,11 @@
   pointer-events: none;
 }
 
-.we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
+.we-graph__node--card.we-graph__node--hovered :is(.we-graph__card--cut, .we-graph__card--morphing) {
   --ring-color: color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
 }
 
-.we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
+.we-graph__node--card.we-graph__node--selected :is(.we-graph__card--cut, .we-graph__card--morphing) {
   --ring-color: var(--we-role-accent);
 }
 
@@ -883,7 +874,9 @@
   distance off the edge, were pushed into it and then under it. Reported as the dots drifting inwards
   as you zoom, which is the ring growing outwards past them.
 */
-.we-graph__node--card.we-graph__node--selected .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
+.we-graph__node--card.we-graph__node--selected
+  .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing)
+  > .we-graph__card-shape {
   box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-role-accent);
 }
 
@@ -913,7 +906,7 @@
   node can easily be both held and selected.
 */
 .we-graph__node--pinned .we-graph__dot,
-.we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
+.we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing) > .we-graph__card-shape {
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles
   // too, and this sits further out than the selection ring does. A cut shape goes without: a dashed
   // ring cannot be made from shadows, and on a canvas every card is placed so the mark means nothing.

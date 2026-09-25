@@ -5,17 +5,21 @@
  * emitted: an arrowhead buried under the node it points at, and two mutual edges rendered exactly on
  * top of each other so the graph understates its own connectivity.
  */
+import { morphOutline } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
 import {
   anchorsOf,
   bendPoints,
+  blendOutlines,
   bowOffsets,
   distanceToEdge,
   endOf,
   fractionAlong,
   groupByEndpoints,
+  matchedOutlines,
   normaliseCurve,
+  type Outline,
   pointAlong,
   routeEdge,
   routesAlike,
@@ -959,5 +963,94 @@ describe('anchorsOf — a rule behind an edge’s own', () => {
     // A stored value is whatever a peer wrote; a rule is whatever a template wrote. Both are input.
     expect(anchorsOf({ sourceAnchor: 'sideways' }, { source: 's' })).toEqual({ source: 's', target: undefined });
     expect(anchorsOf({}, { source: 'up' as never })).toEqual({ source: undefined, target: undefined });
+  });
+});
+
+describe('morphing one card shape into another', () => {
+  const box = morphOutline('note');
+  const triangle = morphOutline('triangle');
+  const hexagon = morphOutline('hexagon');
+  const circle = morphOutline('round');
+
+  /** Every point inside the unit box, which is the space a silhouette is declared in. */
+  const inTheBox = (outline: Outline) =>
+    outline.every(([x, y]) => x >= -1e-9 && x <= 1 + 1e-9 && y >= -1e-9 && y <= 1 + 1e-9);
+
+  it('gives two outlines the same number of points', () => {
+    const [a, b] = matchedOutlines(triangle, box);
+    expect(a).toHaveLength(b.length);
+    expect(a.length).toBeGreaterThanOrEqual(box.length);
+  });
+
+  it('leaves the shape it describes unchanged when it adds points', () => {
+    /*
+      A triangle with a point added halfway along its base is the same triangle. If that were not true
+      the card would jump at the start of a morph, which is exactly what the morph exists to avoid.
+    */
+    const [grown] = matchedOutlines(triangle, hexagon);
+    expect(grown).toHaveLength(hexagon.length);
+    // Every original vertex survives, and every added point lies on an original edge.
+    for (const vertex of triangle) {
+      expect(grown.some(([x, y]) => Math.hypot(x - vertex[0], y - vertex[1]) < 1e-9)).toBe(true);
+    }
+    for (const [x, y] of grown) {
+      const onAnEdge = triangle.some((from, i) => {
+        const to = triangle[(i + 1) % triangle.length];
+        const cross = (to[0] - from[0]) * (y - from[1]) - (to[1] - from[1]) * (x - from[0]);
+        const along = (x - from[0]) * (to[0] - from[0]) + (y - from[1]) * (to[1] - from[1]);
+        const span = (to[0] - from[0]) ** 2 + (to[1] - from[1]) ** 2;
+        return Math.abs(cross) < 1e-9 && along >= -1e-9 && along <= span + 1e-9;
+      });
+      expect(onAnEdge).toBe(true);
+    }
+  });
+
+  it('aligns the two so the blend travels as little as it can', () => {
+    /*
+      The naive index-0-to-index-0 pairing is what makes a morph look like a shape being stirred. A
+      triangle's apex belongs on the nearest corner of a box, not on whichever corner the table lists
+      first — so the aligned pairing must cost no more than any rotation of it.
+    */
+    const [a, b] = matchedOutlines(triangle, box);
+    const cost = (other: Outline) =>
+      a.reduce((sum, p, i) => sum + (other[i][0] - p[0]) ** 2 + (other[i][1] - p[1]) ** 2, 0);
+    const chosen = cost(b);
+    for (let offset = 1; offset < b.length; offset += 1) {
+      expect(chosen).toBeLessThanOrEqual(cost(b.map((_, i) => b[(i + offset) % b.length])) + 1e-9);
+    }
+  });
+
+  it('is the shape it started from at 0 and the one it is going to at 1', () => {
+    const [a, b] = matchedOutlines(triangle, hexagon);
+    expect(blendOutlines(a, b, 0)).toEqual(a.map(([x, y]) => [x, y]));
+    expect(blendOutlines(a, b, 1)).toEqual(b.map(([x, y]) => [x, y]));
+  });
+
+  it('stays inside the card at every step, for every pair of shapes', () => {
+    /*
+      A blend that left the box would draw a card clipped by its own container, and every consumer of an
+      outline — the clip, the two floats, the ring, the attach point — assumes 0..1.
+    */
+    const shapes = [box, triangle, hexagon, circle, morphOutline('diamond'), morphOutline('pentagon')];
+    for (const from of shapes) {
+      for (const to of shapes) {
+        const [a, b] = matchedOutlines(from, to);
+        for (const t of [0, 0.1, 0.5, 0.9, 1]) {
+          expect(inTheBox(blendOutlines(a, b, t))).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('matches the same pair the same way every time', () => {
+    // A morph that chose a different correspondence on each run would make the same switch look
+    // different each time, which reads as the graph being unstable.
+    const once = matchedOutlines(circle, triangle);
+    for (let run = 0; run < 3; run += 1) expect(matchedOutlines(circle, triangle)).toEqual(once);
+  });
+
+  it('answers with the destination rather than throwing on a mismatched blend', () => {
+    // Belt and braces: a caller that forgot to match cannot make the card vanish.
+    expect(blendOutlines(triangle, box, 0.5)).toEqual(box);
   });
 });
