@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, LinkQuery, Literal, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationActivity,
@@ -37,48 +37,7 @@ import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEnti
 
 import { recordMissingMethod } from './missingMethods';
 
-import { getForeignShacl } from './perspectiveHelpers';
-
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
-
-// ── predicateNames() cache ──────────────────────────────────────────────────
-//
-// SHACL shapes represent a perspective's schema — they change when a module
-// registers new entity types, not on every link mutation. Caching avoids
-// re-fetching the same shapes on every proposals() call during sync bursts.
-
-/** TTL for cached NameTables, in milliseconds. */
-const PREDICATE_NAMES_TTL_MS = 60_000;
-
-interface CachedNameTables {
-  tables: NameTables;
-  /** Monotonic timestamp (ms) when this entry was stored. */
-  cachedAt: number;
-}
-
-/** perspective UUID → cached result. */
-const predicateNamesCache = new Map<string, CachedNameTables>();
-
-function getCachedPredicateNames(perspectiveUuid: string): NameTables | undefined {
-  const entry = predicateNamesCache.get(perspectiveUuid);
-  if (!entry) return undefined;
-  if (Date.now() - entry.cachedAt > PREDICATE_NAMES_TTL_MS) {
-    predicateNamesCache.delete(perspectiveUuid);
-    return undefined;
-  }
-  return entry.tables;
-}
-
-function setCachedPredicateNames(perspectiveUuid: string, tables: NameTables): void {
-  predicateNamesCache.set(perspectiveUuid, { tables, cachedAt: Date.now() });
-}
-
-/** Invalidate the cache for a perspective — call when its SDNA changes. */
-// Exported for future callers (e.g. SDNA-change listeners); unused within this file.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function invalidatePredicateNamesCache(perspectiveUuid: string): void {
-  predicateNamesCache.delete(perspectiveUuid);
-}
 
 /** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
 const OVERLAY_KIND_PREDICATE = 'ad4m://interp/kind';
@@ -219,9 +178,6 @@ interface NameTables {
 }
 
 async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables> {
-  const cached = getCachedPredicateNames(perspective.uuid);
-  if (cached) return cached;
-
   const tables: NameTables = { byEntity: new Map(), flat: new Map() };
 
   const absorb = (entity: string, properties: { path?: string; name?: string }[]) => {
@@ -244,20 +200,26 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
   // Shapes only this perspective has — a module's entities, or a foreign app's. Best-effort: a
   // failure here costs a proposal its readable field names, which is worth degrading over rather
   // than failing the whole review list for.
-  //
-  // Uses `getAllShacl()` via `getForeignShacl()` — one RPC call instead of N+1 per-shape queries.
-  // A perspective with 4 foreign shapes previously generated ~60 queryLinks round trips per
-  // `proposals()` call; this settles in one.
   try {
-    for (const { name, shape } of await getForeignShacl(perspective)) {
-      absorb(name, (shape?.properties ?? []) as { path?: string; name?: string }[]);
-    }
+    for (const { name, shape } of await perspectiveOnlyShapes(perspective)) absorb(name, shape.properties);
   } catch {
     // Leave what we have.
   }
 
-  setCachedPredicateNames(perspective.uuid, tables);
   return tables;
+}
+
+/**
+ * The shapes this perspective holds beyond the compiled-in registry, in one round trip. Every read
+ * of `proposals()` and every per-field decision asks, so a round trip per shape added up.
+ *
+ * A shape with a native model's name is skipped whatever its target class, as the per-shape reads
+ * did: the compiled-in shape answers for that name. `getForeignShacl` keeps one whose target class
+ * differs, which would change what a proposal's fields are called.
+ */
+async function perspectiveOnlyShapes(perspective: PerspectiveProxy): Promise<{ name: string; shape: SHACLShape }[]> {
+  const native = new Set(getRegisteredEntityNames());
+  return (await perspective.getAllShacl()).filter(({ name }) => !native.has(name));
 }
 
 /**
@@ -1093,24 +1055,23 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       const perspective = proxy(dataset);
 
       /*
-        The overlay's `kind` link (`ad4m://interp/kind`) is what "staged" means. The engine writes
-        it when it stages a suggestion and removes it once nothing on that record remains to decide
-        — whoever decided, on whichever node. A link removal synced in from a peer publishes on
-        the same subscription as a local one, so a peer who was offline still hears about it.
+        The overlay's `kind` link, and nothing else, is what "staged" means here.
 
-        `subscribeQuery` evaluates a SPARQL query on the executor and pushes an update only when
-        the result set changes. The executor extracts the predicate from the query and skips
-        re-evaluation for link mutations on unrelated predicates — so peer-sync traffic, messages,
-        and presence signals never trigger a proposals() call.
+        The engine writes it when it stages a suggestion and removes it once nothing on that record
+        is left to decide — whoever decided, on whichever node. A removal synced in from a peer
+        changes the query's result exactly as a local one does, so a peer who was offline when the
+        decision was made still hears about it when the diff arrives.
+
+        Watched on the executor rather than through link listeners, which pushed every link of a
+        peer-sync burst through JS to find the few that mattered. The executor re-runs this query
+        only for a diff touching its predicate, and pushes only when the result differs. It has to
+        stay SPARQL naming the predicate outright: that is what the executor reads to decide which
+        diffs to re-run it for.
       */
       const sub = await perspective.subscribeQuery(
         `SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`,
       );
-      sub.onResult(() => {
-        // invalidateOverlaysCache() ships with coasys/ad4m#1017 — call when available.
-        (perspective as { invalidateOverlaysCache?: () => void }).invalidateOverlaysCache?.();
-        cb();
-      });
+      sub.onResult(() => cb());
       return () => sub.dispose();
     },
 
@@ -1404,9 +1365,9 @@ function targetClasses(perspective: PerspectiveProxy, names: readonly string[]):
 /**
  * Property name → predicate, for the per-property accept/reject path.
  *
- * The inverse of {@link predicateNames} and built from it, so the two cannot disagree about what a
- * name means. An unknown name throws: accepting the wrong property, or silently accepting nothing,
- * are both worse than a caller finding out its name was wrong.
+ * The inverse of {@link predicateNames}, read from the same shapes, so the two cannot disagree about
+ * what a name means. An unknown name throws: accepting the wrong property, or silently accepting
+ * nothing, are both worse than a caller finding out its name was wrong.
  */
 async function toPredicate(perspective: PerspectiveProxy, property: string): Promise<string> {
   /*
@@ -1433,11 +1394,8 @@ async function toPredicate(perspective: PerspectiveProxy, property: string): Pro
 
   // Then the perspective's own shapes — a module's entities, or a foreign app's.
   try {
-    const native = new Set(getRegisteredEntityNames());
-    for (const shapeName of await perspective.getShaclNames()) {
-      if (native.has(shapeName)) continue;
-      const shape = await perspective.getShacl(shapeName);
-      for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
+    for (const { shape } of await perspectiveOnlyShapes(perspective)) {
+      for (const p of shape.properties) {
         if (p.name === property && p.path) return p.path;
       }
     }

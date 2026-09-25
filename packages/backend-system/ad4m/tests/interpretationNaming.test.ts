@@ -38,27 +38,41 @@ const SHAPES: Record<string, { properties: { path: string; name: string }[] }> =
   },
 };
 
+type Overlay = { base: string; kind: 'create' | 'update'; inferred: [string, unknown][] };
+
 /**
  * Enough of a `PerspectiveProxy` for `proposals` to run.
  *
- * The shapes are served through `getShacl`, the perspective-only path, so this exercises the same
- * code a community's own model goes down rather than the compiled-in registry.
+ * The shapes are served through `getAllShacl`, the perspective-only path, so this exercises the same
+ * code a community's own model goes down rather than the compiled-in registry. There is no
+ * `getShacl`: reading the shapes one at a time is the round trip per shape this adapter stopped
+ * paying, and a mock that answered it would let that come back unnoticed.
  */
 function perspectiveWith(
-  overlays: { base: string; kind: 'create' | 'update'; inferred: [string, unknown][] }[],
+  overlays: Overlay[],
   classes: Record<string, string[]> | Error,
+  shapes: () => typeof SHAPES = () => SHAPES,
 ) {
-  return {
+  const reads = { shapes: 0 };
+  const decided: (string | undefined)[] = [];
+  const handle = {
     runInterpretation: () => undefined,
     interpretationOverlays: async () => overlays,
-    getShaclNames: async () => Object.keys(SHAPES),
-    getShacl: async (name: string) => SHAPES[name],
+    getAllShacl: async () => {
+      reads.shapes++;
+      return Object.entries(shapes()).map(([name, shape]) => ({ name, shape }));
+    },
     get: async () => [],
     subjectClassesOf: async () => {
       if (classes instanceof Error) throw classes;
       return classes;
     },
-  } as never;
+    rejectInterpretation: async (_base: string, predicate?: string) => {
+      decided.push(predicate);
+      return true;
+    },
+  };
+  return { handle: handle as never, reads, decided };
 }
 
 const literal = (value: string) => `literal:string:${value}`;
@@ -72,7 +86,7 @@ describe('naming a staged suggestion', () => {
       { 'we://task/1': ['TaskBlock'] },
     );
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBe('TaskBlock');
     // `title`, not `label` — the whole point. EmbedBlock also claims this predicate.
@@ -86,7 +100,7 @@ describe('naming a staged suggestion', () => {
       'we://embed/1': ['EmbedBlock'],
     });
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBe('EmbedBlock');
     expect(proposal.values).toEqual({ label: 'A link' });
@@ -103,7 +117,7 @@ describe('naming a staged suggestion', () => {
       'we://task/1': ['InterpretationOverlay', 'TaskBlock'],
     });
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBe('TaskBlock');
   });
@@ -119,7 +133,7 @@ describe('naming a staged suggestion', () => {
       Object.assign(new Error('Unknown type: subjectClassesOf'), { status: 404 }),
     );
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBeUndefined();
     expect(proposal.values).toEqual({ status: 'todo' });
@@ -130,8 +144,45 @@ describe('naming a staged suggestion', () => {
     // and "not a subject instance" are not distinguishable from there.
     const p = perspectiveWith([{ base: 'we://mystery/1', kind: 'update', inferred: [] }], {});
 
-    const [proposal] = await port.proposals(p);
+    const [proposal] = await port.proposals(p.handle);
 
     expect(proposal.entity).toBeUndefined();
+  });
+});
+
+describe("reading the dataset's own shapes", () => {
+  const port = createAd4mInterpretationPort();
+  const staged: Overlay[] = [{ base: 'we://task/1', kind: 'create', inferred: [[STATUS, literal('todo')]] }];
+
+  it('asks once per read, however many shapes there are', async () => {
+    // `proposals()` re-reads on every change to the staged set. At one round trip per shape, a peer
+    // syncing a burst of decisions cost a space with a few modules hundreds of them.
+    const p = perspectiveWith(staged, { 'we://task/1': ['TaskBlock'] });
+
+    await port.proposals(p.handle);
+
+    expect(p.reads.shapes).toBe(1);
+  });
+
+  it('names a value by a shape installed since the last read', async () => {
+    // Nothing is kept between reads. A model installed a moment ago names its fields on the very
+    // next read, rather than after however long a cache of the old shapes took to expire.
+    let shapes: typeof SHAPES = {};
+    const p = perspectiveWith(staged, { 'we://task/1': ['TaskBlock'] }, () => shapes);
+
+    expect((await port.proposals(p.handle))[0].values).toEqual({});
+    shapes = SHAPES;
+    expect((await port.proposals(p.handle))[0].values).toEqual({ status: 'todo' });
+  });
+
+  it('sends a per-field decision the predicate its name maps to', async () => {
+    // A reviewer decides on `label`, and the executor knows only `we://title`. EmbedBlock's shape
+    // says the one is the other, and here only the dataset holds it.
+    const p = perspectiveWith([], {});
+
+    await expect(port.reject(p.handle, 'we://embed/1', 'label')).resolves.toBe(true);
+
+    expect(p.decided).toEqual([TITLE]);
+    expect(p.reads.shapes).toBe(1);
   });
 });
