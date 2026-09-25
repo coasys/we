@@ -34,16 +34,16 @@ const rosterEntry: SchemaNode = {
     { type: 'we-icon', props: { name: { $: 'entry.icon' }, size: 'md' } },
     {
       type: 'Column',
-      props: { gap: '50', flex: '1', overflow: 'hidden' },
+      props: { gap: '100', flex: '1', overflow: 'hidden' },
       children: [
         {
           type: 'we-text',
-          props: { variant: 'body-sm', fontWeight: '500' },
+          props: { variant: 'footnote', fontWeight: '500' },
           children: [{ $: 'entry.label' }],
         },
         {
           type: 'we-text',
-          props: { variant: 'caption', color: 'text-muted' },
+          props: { variant: 'footnote', color: 'text-muted' },
           children: [{ $: 'entry.scopeSummary' }],
         },
       ],
@@ -65,19 +65,19 @@ const guardianEntry: SchemaNode = {
   type: 'Row',
   props: { bg: 'surface-raised', r: '300', p: '300', gap: '300', ay: 'center' },
   children: [
-    { type: 'we-avatar', props: { name: { $: 'guardian.name' }, size: 'sm' } },
+    { type: 'we-avatar', props: { hash: { $: 'guardian.name' }, size: 'sm' } },
     {
       type: 'Column',
-      props: { gap: '50', flex: '1', overflow: 'hidden' },
+      props: { gap: '100', flex: '1', overflow: 'hidden' },
       children: [
         {
           type: 'we-text',
-          props: { variant: 'body-sm', fontWeight: '500' },
+          props: { variant: 'footnote', fontWeight: '500' },
           children: [{ $: 'guardian.name' }],
         },
         {
           type: 'we-text',
-          props: { variant: 'caption', color: 'text-muted', truncate: true },
+          props: { variant: 'footnote', color: 'text-muted', truncate: true },
           children: [{ $: 'guardian.did' }],
         },
       ],
@@ -101,7 +101,7 @@ const kelEventRow: SchemaNode = {
     {
       type: 'we-text',
       props: {
-        variant: 'caption',
+        variant: 'footnote',
         color: 'text-dim',
         fontFamily: 'mono',
         width: '28px',
@@ -112,16 +112,16 @@ const kelEventRow: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { gap: '50', flex: '1' },
+      props: { gap: '100', flex: '1' },
       children: [
         {
           type: 'we-text',
-          props: { variant: 'caption', fontWeight: '600', color: 'accent' },
+          props: { variant: 'footnote', fontWeight: '600', color: 'accent' },
           children: [{ $: 'kelEvent.type' }],
         },
         {
           type: 'we-text',
-          props: { variant: 'caption', color: 'text-muted' },
+          props: { variant: 'footnote', color: 'text-muted' },
           children: [{ $: 'kelEvent.summary' }],
         },
       ],
@@ -138,7 +138,7 @@ function detailField(label: string, value: unknown, mono = false): SchemaNode {
       {
         type: 'we-text',
         props: {
-          variant: 'caption',
+          variant: 'footnote',
           color: 'text-muted',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -148,9 +148,11 @@ function detailField(label: string, value: unknown, mono = false): SchemaNode {
       {
         type: 'we-text',
         props: {
-          variant: 'body-sm',
-          ...(mono ? { fontFamily: 'mono', wordBreak: 'break-all' } : {}),
+          variant: 'footnote',
+          ...(mono ? { fontFamily: 'mono' } : {}),
         },
+        // Keys and hashes run long; let them break anywhere rather than overflow.
+        ...(mono ? { styles: { 'word-break': 'break-all' } } : {}),
         children: [value as string],
       },
     ],
@@ -163,8 +165,8 @@ function revokeConsequence(text: string): SchemaNode {
     type: 'Row',
     props: { gap: '200', pl: '200' },
     children: [
-      { type: 'we-text', props: { variant: 'caption', color: 'text-dim' }, children: ['•'] },
-      { type: 'we-text', props: { variant: 'caption', color: 'text-muted' }, children: [text] },
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-dim' }, children: ['•'] },
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [text] },
     ],
   };
 }
@@ -177,7 +179,7 @@ const sectionHeader = (title: string, countExpr?: string): SchemaNode => ({
     {
       type: 'we-text',
       props: {
-        variant: 'caption',
+        variant: 'footnote',
         fontWeight: '600',
         textTransform: 'uppercase',
         letterSpacing: '0.5px',
@@ -216,10 +218,10 @@ function recoveryMethod(icon: string, title: string, description: string, action
       { type: 'we-icon', props: { name: icon, size: 'md' } },
       {
         type: 'Column',
-        props: { gap: '50', flex: '1' },
+        props: { gap: '100', flex: '1' },
         children: [
-          { type: 'we-text', props: { variant: 'body-sm', fontWeight: '500' }, children: [title] },
-          { type: 'we-text', props: { variant: 'caption', color: 'text-muted' }, children: [description] },
+          { type: 'we-text', props: { variant: 'footnote', fontWeight: '500' }, children: [title] },
+          { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [description] },
         ],
       },
       { type: 'we-icon', props: { name: 'caret-right', size: 'sm', color: 'text-dim' } },
@@ -244,7 +246,7 @@ const deviceDetail: SchemaNode = {
       },
       children: [
         { type: 'we-icon', props: { name: 'arrow-left', size: 'sm', color: 'text-muted' } },
-        { type: 'we-text', props: { variant: 'body-sm', color: 'text-muted' }, children: ['Back'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Back'] },
       ],
     },
     // Detail card
@@ -263,7 +265,7 @@ const deviceDetail: SchemaNode = {
             {
               type: 'we-text',
               props: {
-                variant: 'caption',
+                variant: 'footnote',
                 color: 'text-muted',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
@@ -272,7 +274,7 @@ const deviceDetail: SchemaNode = {
             },
             {
               type: 'Row',
-              props: { gap: '200', flexWrap: 'wrap' },
+              props: { gap: '200', wrap: true },
               children: [
                 {
                   type: '$each',
@@ -309,7 +311,7 @@ const deviceDetail: SchemaNode = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'body-sm', fontWeight: '600', color: 'danger' },
+              props: { variant: 'footnote', fontWeight: '600', color: 'danger' },
               children: ['Revoke this key'],
             },
             revokeConsequence('Everything this key signed until now stays valid.'),
@@ -341,10 +343,10 @@ const enrolmentQrView: SchemaNode = {
   type: 'Column',
   props: { gap: '400', ay: 'center', py: '300' },
   children: [
-    { type: 'we-text', props: { variant: 'body-sm', fontWeight: '600' }, children: ['Scan to enroll'] },
+    { type: 'we-text', props: { variant: 'footnote', fontWeight: '600' }, children: ['Scan to enroll'] },
     {
       type: 'we-text',
-      props: { variant: 'caption', color: 'text-muted', textAlign: 'center' },
+      props: { variant: 'footnote', color: 'text-muted', textAlign: 'center' },
       children: ['Open your identity app on the new device and scan this code.'],
     },
     // QR code image — data URL from the qrcode library
@@ -376,12 +378,12 @@ const enrolmentQrView: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'caption', color: 'text-muted' },
+          props: { variant: 'footnote', color: 'text-muted' },
           children: [{ $: 'modules.identity.enrolmentOffer.label' }],
         },
         {
           type: 'we-text',
-          props: { variant: 'caption', color: 'text-dim', fontFamily: 'mono', fontSize: '10px' },
+          props: { variant: 'footnote', color: 'text-dim', fontFamily: 'mono', fontSize: '10px' },
           children: [{ $: 'modules.identity.enrolmentOffer.publicKey' }],
         },
       ],
@@ -494,23 +496,23 @@ const guardiansTab: SchemaNode = {
               children: [
                 {
                   type: 'we-text',
-                  props: { variant: 'body-sm', fontWeight: '700' },
+                  props: { variant: 'footnote', fontWeight: '700' },
                   children: [{ $: 'modules.identity.thresholdLabel' }],
                 },
               ],
             },
             {
               type: 'Column',
-              props: { gap: '50', flex: '1' },
+              props: { gap: '100', flex: '1' },
               children: [
                 {
                   type: 'we-text',
-                  props: { variant: 'body-sm', fontWeight: '500' },
+                  props: { variant: 'footnote', fontWeight: '500' },
                   children: ['Recovery threshold'],
                 },
                 {
                   type: 'we-text',
-                  props: { variant: 'caption', color: 'text-muted' },
+                  props: { variant: 'footnote', color: 'text-muted' },
                   children: [{ $: 'modules.identity.thresholdDescription' }],
                 },
               ],
@@ -552,7 +554,7 @@ const guardiansTab: SchemaNode = {
             { type: 'we-icon', props: { name: 'warning', size: 'sm', color: 'warning-text' } },
             {
               type: 'we-text',
-              props: { variant: 'caption', color: 'warning-text', flex: '1' },
+              props: { variant: 'footnote', color: 'warning-text', flex: '1' },
               children: [
                 'One or more guardians have not accepted yet. The roster cannot arm until all guardians consent.',
               ],
@@ -572,7 +574,7 @@ const guardiansTab: SchemaNode = {
             { type: 'we-icon', props: { name: 'shield', size: 'lg', color: 'text-dim' } },
             {
               type: 'we-text',
-              props: { variant: 'body-sm', color: 'text-muted', textAlign: 'center' },
+              props: { variant: 'footnote', color: 'text-muted', textAlign: 'center' },
               children: [
                 'No guardians set up yet. Add guardians who can help recover your identity if you lose all devices.',
               ],
@@ -595,12 +597,12 @@ const recoveryTab: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'body-sm', fontWeight: '600' },
+          props: { variant: 'footnote', fontWeight: '600' },
           children: ['Recovery methods'],
         },
         {
           type: 'we-text',
-          props: { variant: 'caption', color: 'text-muted' },
+          props: { variant: 'footnote', color: 'text-muted' },
           children: ['Lost all your devices? Use one of these methods to regain access.'],
         },
         recoveryMethod(
@@ -640,12 +642,12 @@ const recoveryTab: SchemaNode = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'body-sm', fontWeight: '600', color: 'accent' },
+              props: { variant: 'footnote', fontWeight: '600', color: 'accent' },
               children: ['Recovery in progress'],
             },
             {
               type: 'we-text',
-              props: { variant: 'caption', color: 'text-muted' },
+              props: { variant: 'footnote', color: 'text-muted' },
               children: [{ $: 'modules.identity.recoveryState.statusLabel' }],
             },
             {
@@ -681,7 +683,7 @@ const recoveryTab: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'body-sm', fontWeight: '600' },
+          props: { variant: 'footnote', fontWeight: '600' },
           children: ['As a guardian'],
         },
         {
@@ -699,15 +701,15 @@ const recoveryTab: SchemaNode = {
                   type: 'Row',
                   props: { gap: '300', ay: 'center', p: '200' },
                   children: [
-                    { type: 'we-avatar', props: { name: { $: 'request.requesterName' }, size: 'sm' } },
+                    { type: 'we-avatar', props: { hash: { $: 'request.requesterName' }, size: 'sm' } },
                     {
                       type: 'Column',
-                      props: { gap: '50', flex: '1' },
+                      props: { gap: '100', flex: '1' },
                       children: [
-                        { type: 'we-text', props: { variant: 'body-sm' }, children: [{ $: 'request.requesterName' }] },
+                        { type: 'we-text', props: { variant: 'footnote' }, children: [{ $: 'request.requesterName' }] },
                         {
                           type: 'we-text',
-                          props: { variant: 'caption', color: 'text-muted' },
+                          props: { variant: 'footnote', color: 'text-muted' },
                           children: ['Requesting recovery'],
                         },
                       ],
@@ -730,7 +732,7 @@ const recoveryTab: SchemaNode = {
             },
             else: {
               type: 'we-text',
-              props: { variant: 'caption', color: 'text-muted' },
+              props: { variant: 'footnote', color: 'text-muted' },
               children: ['No pending recovery requests from anyone you guard.'],
             },
           },
@@ -761,7 +763,7 @@ const logTab: SchemaNode = {
             { type: 'we-icon', props: { name: 'scroll', size: 'lg', color: 'text-dim' } },
             {
               type: 'we-text',
-              props: { variant: 'body-sm', color: 'text-muted', textAlign: 'center' },
+              props: { variant: 'footnote', color: 'text-muted', textAlign: 'center' },
               children: ['No events yet.'],
             },
           ],
@@ -838,7 +840,7 @@ export const identitySection: SchemaNode = {
                         { type: 'we-icon', props: { name: 'warning', color: 'warning-text' } },
                         {
                           type: 'we-text',
-                          props: { variant: 'caption', color: 'warning-text', flex: '1' },
+                          props: { variant: 'footnote', color: 'warning-text', flex: '1' },
                           children: [
                             'Back up your recovery phrase — without it, losing all devices means losing this identity.',
                           ],
@@ -947,7 +949,7 @@ export const identitySection: SchemaNode = {
                 { type: 'we-spinner', props: { size: 'md' } },
                 {
                   type: 'we-text',
-                  props: { variant: 'body-sm', color: 'text-muted' },
+                  props: { variant: 'footnote', color: 'text-muted' },
                   children: ['Loading identity…'],
                 },
               ],

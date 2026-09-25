@@ -8,7 +8,8 @@
     "build:steps": "tsup",
     "build": "we-build",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -28,9 +29,10 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "@we/schema-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   }
 }

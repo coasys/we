@@ -41,7 +41,7 @@ export const identityModule: ModuleDefinition = defineModule({
     scope: 'agent',
   },
 
-  createStore: ({ signal }: ModuleStoreDeps) => {
+  createStore: ({ signal, state, action }: ModuleStoreDeps) => {
     type R = Record<string, unknown>;
 
     // ── Identity data ──
@@ -68,109 +68,82 @@ export const identityModule: ModuleDefinition = defineModule({
     /** The currently selected device for the detail view, or null. */
     const [selectedDeviceId, setSelectedDeviceId] = signal<string | null>(null);
 
+    const threshold = () => (identity() as R | null)?.recoveryThreshold ?? '?';
+    /** A stub the host's identity wiring replaces after auth; until then a click does nothing. */
+    const wiredByHost = (doc: string) => action((..._args: unknown[]) => {}, doc);
+
     return {
-      // ── Identity data (read by schema fragments) ──
-      identity,
-      roster,
-      guardians,
-      kelEvents,
-      recoveryState,
-      backupConfirmed,
-      incomingRecoveryRequests,
-      enrolmentOffer,
+      // ── Identity data (read by the Settings template) ──
+      identity: state(identity, 'The resolved identity: DID, display name, agent type.'),
+      roster: state(roster, 'Every enrolled device, node and assistant.'),
+      guardians: state(guardians, 'Guardian entries with their consent status.'),
+      kelEvents: state(kelEvents, "The identity's key event log."),
+      recoveryState: state(recoveryState, 'The active recovery request, or null.'),
+      backupConfirmed: state(backupConfirmed, 'Whether the recovery phrase backup has been confirmed.'),
+      incomingRecoveryRequests: state(incomingRecoveryRequests, 'Recovery requests from people this identity guards.'),
+      enrolmentOffer: state(enrolmentOffer, 'The open enrolment offer: QR image, label, public key, challenge.'),
 
       // ── Derived values ──
-      /** Roster entries of type 'device' or 'executor'. */
-      devices: () => roster().filter((e: R) => e.type !== 'assistant'),
-      /** Roster entries of type 'assistant'. */
-      assistants: () => roster().filter((e: R) => e.type === 'assistant'),
-      /** Count labels for section headers. */
-      deviceCount: () => `${roster().filter((e: R) => e.type !== 'assistant').length}`,
-      assistantCount: () => `${roster().filter((e: R) => e.type === 'assistant').length}`,
-      guardianCount: () => `${guardians().length}`,
-
-      /** Whether any guardian has not yet consented. */
-      pendingGuardians: () => guardians().some((g: R) => !g.consented),
-
-      /** Threshold label like "2/3". */
-      thresholdLabel: () => {
-        const gs = guardians();
-        if (!gs.length) return '';
-        const threshold = (identity() as Record<string, unknown> | null)?.recoveryThreshold;
-        return `${threshold ?? '?'}/${gs.length}`;
-      },
-      /** Threshold description like "2 of 3 guardians needed to recover". */
-      thresholdDescription: () => {
-        const gs = guardians();
-        const threshold = (identity() as Record<string, unknown> | null)?.recoveryThreshold;
-        return `${threshold ?? '?'} of ${gs.length} guardians needed to recover`;
-      },
-      /** Guardian recovery button label. */
-      guardianRecoveryLabel: () => {
-        const gs = guardians();
-        const threshold = (identity() as Record<string, unknown> | null)?.recoveryThreshold;
-        return `Ask ${threshold ?? '?'} of your ${gs.length} guardians to approve recovery`;
-      },
-
-      /** The full detail of the currently selected device. */
-      selectedDevice: () => {
+      devices: state(() => roster().filter((e: R) => e.type !== 'assistant'), 'Roster entries for devices and nodes.'),
+      assistants: state(() => roster().filter((e: R) => e.type === 'assistant'), 'Roster entries for assistants.'),
+      deviceCount: state(
+        () => `${roster().filter((e: R) => e.type !== 'assistant').length}`,
+        'How many devices and nodes.',
+      ),
+      assistantCount: state(
+        () => `${roster().filter((e: R) => e.type === 'assistant').length}`,
+        'How many assistants.',
+      ),
+      guardianCount: state(() => `${guardians().length}`, 'How many guardians.'),
+      pendingGuardians: state(
+        () => guardians().some((g: R) => !g.consented),
+        'Whether any guardian has yet to consent.',
+      ),
+      thresholdLabel: state(
+        () => (guardians().length ? `${threshold()}/${guardians().length}` : ''),
+        'The recovery threshold, like "2/3".',
+      ),
+      thresholdDescription: state(
+        () => `${threshold()} of ${guardians().length} guardians needed to recover`,
+        'The recovery threshold in words.',
+      ),
+      guardianRecoveryLabel: state(
+        () => `Ask ${threshold()} of your ${guardians().length} guardians to approve recovery`,
+        'The label of the guardian recovery button.',
+      ),
+      selectedDevice: state(() => {
         const id = selectedDeviceId();
-        if (!id) return null;
-        return roster().find((e: R) => e.id === id) ?? null;
-      },
+        return id ? (roster().find((e: R) => e.id === id) ?? null) : null;
+      }, 'The full entry of the selected device, or null.'),
 
       // ── Device selection ──
-      selectedDeviceId,
-      selectDevice: (id: unknown) => setSelectedDeviceId(id as string),
-      clearSelection: () => setSelectedDeviceId(null),
+      selectedDeviceId: state(selectedDeviceId, 'The id of the selected device, or null.'),
+      selectDevice: action((id: unknown) => setSelectedDeviceId(id as string), 'Select a device for the detail view.'),
+      clearSelection: action(() => setSelectedDeviceId(null), 'Close the device detail view.'),
 
       // ── Actions ──
-      /** Copy the DID to clipboard. */
-      copyDid: () => {
-        const id = identity();
-        const did = id ? (id as Record<string, unknown>).did : null;
+      copyDid: action(() => {
+        const did = (identity() as R | null)?.did;
         if (did && typeof navigator !== 'undefined' && navigator.clipboard) {
           navigator.clipboard.writeText(did as string).catch(() => {
             /* clipboard unavailable — silent */
           });
         }
-      },
+      }, 'Copy the DID to the clipboard.'),
+      dismissEnrolment: action(() => setEnrolmentOffer(null), 'Close the enrolment offer.'),
 
-      // ── Actions — wired by the host's identity client integration ──
-      // The host replaces these stubs with real RPC-backed implementations after auth.
-      // Until then they degrade gracefully — a click does nothing visible.
-      revokeKey: (_keyId: unknown) => {
-        /* Wired by the host — revokes a key and refreshes the roster. */
-      },
-      exportKel: () => {
-        /* Wired by the host — downloads KEL as JSON file. */
-      },
-      startMnemonicRecovery: () => {
-        /* Wired by the host — opens the mnemonic recovery ceremony. */
-      },
-      startGuardianRecovery: () => {
-        /* Wired by the host — opens the guardian recovery ceremony. */
-      },
-      vetoRecovery: () => {
-        /* Wired by the host — vetoes the active recovery request. */
-      },
-      approveRecovery: (_requestId: unknown) => {
-        /* Wired by the host — approves an incoming recovery request. */
-      },
-      startBackup: () => {
-        /* Wired by the host — begins the mnemonic backup ceremony. */
-      },
-      startEnrolment: () => {
-        /* Wired by the host — creates an enrolment offer and generates a QR code. */
-      },
-      dismissEnrolment: () => {
-        setEnrolmentOffer(null);
-      },
-      addGuardian: () => {
-        /* Wired by the host — begins the guardian addition flow. */
-      },
+      // ── Actions the host's identity wiring replaces after auth (see wireIdentityModule) ──
+      revokeKey: wiredByHost('Revoke a key and refresh the roster.'),
+      exportKel: wiredByHost('Download the key event log as a JSON file.'),
+      startMnemonicRecovery: wiredByHost('Open the recovery-phrase ceremony.'),
+      startGuardianRecovery: wiredByHost('Open the guardian recovery ceremony.'),
+      vetoRecovery: wiredByHost('Veto the active recovery request.'),
+      approveRecovery: wiredByHost('Approve an incoming recovery request.'),
+      startBackup: wiredByHost('Begin the recovery-phrase backup ceremony.'),
+      startEnrolment: wiredByHost('Create an enrolment offer and its QR code.'),
+      addGuardian: wiredByHost('Begin adding a guardian.'),
 
-      // ── Data setters (called by the host's identity client wiring) ──
+      // ── Data setters: the host's wiring calls these; templates never see them ──
       setIdentity,
       setRoster,
       setGuardians,

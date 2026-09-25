@@ -3448,6 +3448,43 @@ A general-purpose graph engine — knowledge maps, schema maps, hierarchies and 
 - Parts: `graph.schemaMap`, `graph.contentTree`, `graph.staticDiagram`, `graph.knowledgeMapPosts`
 - Components: GraphView
 
+### Identity (`identity`) — the agent’s, not a space’s
+Your DID, enrolled devices, guardians, recovery, and event log.
+- State (read in an expression as `modules.identity.<name>`):
+  - assistantCount — How many assistants.
+  - assistants — Roster entries for assistants.
+  - backupConfirmed — Whether the recovery phrase backup has been confirmed.
+  - deviceCount — How many devices and nodes.
+  - devices — Roster entries for devices and nodes.
+  - enrolmentOffer — The open enrolment offer: QR image, label, public key, challenge.
+  - guardianCount — How many guardians.
+  - guardianRecoveryLabel — The label of the guardian recovery button.
+  - guardians — Guardian entries with their consent status.
+  - identity — The resolved identity: DID, display name, agent type.
+  - incomingRecoveryRequests — Recovery requests from people this identity guards.
+  - kelEvents — The identity's key event log.
+  - pendingGuardians — Whether any guardian has yet to consent.
+  - recoveryState — The active recovery request, or null.
+  - roster — Every enrolled device, node and assistant.
+  - selectedDevice — The full entry of the selected device, or null.
+  - selectedDeviceId — The id of the selected device, or null.
+  - thresholdDescription — The recovery threshold in words.
+  - thresholdLabel — The recovery threshold, like "2/3".
+- Actions (`{ "$action": "modules.identity.<name>" }`):
+  - addGuardian — Begin adding a guardian.
+  - approveRecovery — Approve an incoming recovery request.
+  - clearSelection — Close the device detail view.
+  - copyDid — Copy the DID to the clipboard.
+  - dismissEnrolment — Close the enrolment offer.
+  - exportKel — Download the key event log as a JSON file.
+  - revokeKey — Revoke a key and refresh the roster.
+  - selectDevice — Select a device for the detail view.
+  - startBackup — Begin the recovery-phrase backup ceremony.
+  - startEnrolment — Create an enrolment offer and its QR code.
+  - startGuardianRecovery — Open the guardian recovery ceremony.
+  - startMnemonicRecovery — Open the recovery-phrase ceremony.
+  - vetoRecovery — Veto the active recovery request.
+
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.
 Needs: kernels records.

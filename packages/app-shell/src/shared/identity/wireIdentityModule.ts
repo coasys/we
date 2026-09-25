@@ -9,6 +9,7 @@
  * The identity module's store already exists at that point — it was created synchronously during
  * module registration in PlatformProvider.
  */
+import { markAction } from '@we/module-shared';
 import QRCode from 'qrcode';
 
 import { moduleStores } from '../registries/moduleRegistry';
@@ -204,7 +205,7 @@ export async function wireIdentityModule(config: IdentityRpcConfig, agentDid: st
     }
   }
 
-  store.exportKel = async () => {
+  store.exportKel = markAction(async () => {
     try {
       const kel = await identityRpc<string>(config, 'identity.exportKel', { did: agentDid });
       const text = typeof kel === 'string' ? kel : JSON.stringify(kel, null, 2);
@@ -220,18 +221,18 @@ export async function wireIdentityModule(config: IdentityRpcConfig, agentDid: st
     } catch (err) {
       console.error('wireIdentityModule: exportKel failed', err);
     }
-  };
+  }, 'Download the key event log as a JSON file.');
 
-  store.revokeKey = async (keyId: unknown) => {
+  store.revokeKey = markAction(async (keyId: unknown) => {
     try {
       await identityRpc(config, 'identity.revokeKey', { did: agentDid, keyId: keyId as string });
       await refreshRoster();
     } catch (err) {
       console.error('wireIdentityModule: revokeKey failed', err);
     }
-  };
+  }, 'Revoke a key and refresh the roster.');
 
-  store.startBackup = async () => {
+  store.startBackup = markAction(async () => {
     try {
       const mnemonic = await identityRpc<string>(config, 'identity.generateMnemonic');
       // For now, show the mnemonic in an alert. A proper backup ceremony UI comes later.
@@ -243,9 +244,9 @@ export async function wireIdentityModule(config: IdentityRpcConfig, agentDid: st
     } catch (err) {
       console.error('wireIdentityModule: startBackup failed', err);
     }
-  };
+  }, 'Begin the recovery-phrase backup ceremony.');
 
-  store.startEnrolment = async () => {
+  store.startEnrolment = markAction(async () => {
     try {
       const offer = await identityRpc<{ publicKey: string; label: string; challenge: string }>(
         config,
@@ -276,24 +277,24 @@ export async function wireIdentityModule(config: IdentityRpcConfig, agentDid: st
     } catch (err) {
       console.error('wireIdentityModule: startEnrolment failed', err);
     }
-  };
+  }, 'Create an enrolment offer and its QR code.');
 
   // Actions that require wallet signing — not yet implemented in the executor.
-  store.startMnemonicRecovery = () => {
+  store.startMnemonicRecovery = markAction(() => {
     console.warn('Mnemonic recovery requires wallet signing — not yet available.');
-  };
-  store.startGuardianRecovery = () => {
+  }, 'Open the recovery-phrase ceremony.');
+  store.startGuardianRecovery = markAction(() => {
     console.warn('Guardian recovery requires wallet signing — not yet available.');
-  };
-  store.vetoRecovery = () => {
+  }, 'Open the guardian recovery ceremony.');
+  store.vetoRecovery = markAction(() => {
     console.warn('Veto recovery requires wallet signing — not yet available.');
-  };
-  store.approveRecovery = (_requestId: unknown) => {
+  }, 'Veto the active recovery request.');
+  store.approveRecovery = markAction((_requestId: unknown) => {
     console.warn('Approve recovery requires wallet signing — not yet available.');
-  };
-  store.addGuardian = () => {
+  }, 'Approve an incoming recovery request.');
+  store.addGuardian = markAction(() => {
     console.warn('Adding guardians requires wallet signing — not yet available.');
-  };
+  }, 'Begin adding a guardian.');
 
   // Expose the store for e2e tests — lets Playwright inject data via page.evaluate.
   // The setters are Solid signals closured inside createStore; without this, no external
