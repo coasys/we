@@ -549,13 +549,21 @@ export interface ArrangeNodesOptions {
   band?: number;
 }
 
-/** One parent's children as they stood when a drag began — what a drop along them is measured against. */
+/**
+ * One parent's children as they stood when a drag began — what a drop along them is measured against.
+ *
+ * A card in a tree with no children has a row too, empty, one level beneath it: the place its first
+ * child would go. Without it the level below a leaf is not a place at all, and the only way to put a card
+ * under one is to rest on the leaf itself — inside the leaf's own row, which is busy making room.
+ */
 interface Row {
   parent: string;
-  /** Left to right, without the card being dragged. */
+  /** Left to right, without the card being dragged. Empty for the level beneath a card with no children. */
   cards: { id: string; box: Bounds }[];
   /** The band the row occupies, with room past each end for a drop beyond the first or the last card. */
   area: Bounds;
+  /** Where a pointer is measured from sideways, for an empty row: the middle of the card it hangs from. */
+  centre?: number;
 }
 
 /** What a drop reports, in the terms the host writes it in. */
@@ -589,6 +597,7 @@ type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; befo
  *
  * - **Along a row** — the dragged card's own or any other parent's — it takes the place of the card whose
  *   midpoint the pointer has passed.
+ * - **Beneath a card with no children**, at the level its first child would sit on, it becomes that child.
  * - **Resting on a card** for {@link ArrangeNodesOptions.nestAfter}, it goes under that card, last.
  * - **In the unconnected zone**, it comes out of its tree.
  * - **Anywhere else**, it goes back where it was, and a drop there writes nothing.
@@ -631,6 +640,34 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     const parent = tree.parents.get(id) ?? null;
     home = { parent, index: parent ? (tree.children.get(parent) ?? []).indexOf(id) : 0 };
     rows = [];
+    /*
+      How far one level is below the last, read off any parent and its child — the layout's own spacing,
+      which this behaviour has no other way to know. Every level of a forest is the same distance down.
+    */
+    let step = 0;
+    for (const [parentId, kids] of tree.children) {
+      const [above, below] = [ctx.boundsOf(parentId), kids[0] ? ctx.boundsOf(kids[0]) : undefined];
+      if (above && below && below.minY > above.minY) {
+        step = below.minY - above.minY;
+        break;
+      }
+    }
+    // The level beneath each card in a tree that has no children once this one is lifted out.
+    const inTree = new Set([...tree.parents.keys(), ...tree.parents.values()]);
+    for (const card of inTree) {
+      if (!step || !card || subtree.has(card)) continue;
+      if ((tree.children.get(card) ?? []).some((kid) => kid !== id)) continue;
+      const box = ctx.boundsOf(card);
+      if (!box) continue;
+      // Half a card of room either side: enough to find it, and short of the next card's place.
+      const slack = (box.maxX - box.minX) / 2;
+      rows.push({
+        parent: card,
+        cards: [],
+        area: { minX: box.minX - slack, maxX: box.maxX + slack, minY: box.minY + step, maxY: box.maxY + step },
+        centre: (box.minX + box.maxX) / 2,
+      });
+    }
     for (const [parentId, kids] of tree.children) {
       if (subtree.has(parentId)) continue;
       const cards = kids
@@ -658,7 +695,9 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
 
   /** How far the pointer is from a row's nearest card, sideways — to pick between two rows that overlap. */
   const nearestGap = (row: Row, world: Point) =>
-    Math.min(...row.cards.map(({ box }) => Math.abs((box.minX + box.maxX) / 2 - world.x)));
+    row.centre !== undefined
+      ? Math.abs(row.centre - world.x)
+      : Math.min(...row.cards.map(({ box }) => Math.abs((box.minX + box.maxX) / 2 - world.x)));
 
   /** What a drop at this point would do. */
   const decide = (world: Point, ctx: BehaviourContext): { to: ArrangeState['to']; event?: ArrangeEvent } => {
@@ -685,6 +724,13 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     if (!options.reorder) {
       // No position to ask for: the card joins that parent wherever the order puts it, and is written last.
       return { to: { parent: row.parent }, event: { into: 'child', target: row.parent } };
+    }
+    if (!row.cards.length) {
+      // The first child of a card that has none.
+      return {
+        to: { parent: row.parent, index: 0 },
+        event: { into: 'child', target: row.parent, ...(dragging ? { order: [dragging] } : {}) },
+      };
     }
     const beside = row.cards[Math.min(index, row.cards.length - 1)];
     // The row as the reader sees it land: what the order is written from.
@@ -778,7 +824,7 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   return {
     id: 'arrange-nodes',
     description:
-      'Drag a card along a row to reorder it, under another parent to move it, rest on a card to nest under it, or into the unconnected zone to take it out of its tree — with the tree making room as you go. Reports the result; writes nothing.',
+      'Drag a card along a row to reorder it, under another parent to move it, beneath a card with no children to make it the first, rest on a card to nest under it, or into the unconnected zone to take it out of its tree — with the tree making room as you go. Reports the result; writes nothing.',
     onPointerDown(input, ctx) {
       // Refused at the start rather than by discarding the result, like every other gesture that moves
       // a card: a drag that follows the pointer and then snaps back has told you it worked.

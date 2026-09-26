@@ -189,6 +189,59 @@ describe('arranging a card in a tree', () => {
     expect(events[0]).toMatchObject({ into: 'child', target: { id: 'b' } });
   });
 
+  it('puts a card under one with no children by pointing at the level beneath it, with no resting', async () => {
+    // Reported as feeling random: a card with no children offered no place beneath it at all, so the only
+    // way under one was to rest on the card itself — inside its own row, which was busy making room.
+    const { engine, events, at, press, move, drop } = await started(world().seed);
+    const [b, x] = [at('b'), at('x')];
+    const below = { x: b.x, y: b.y + (b.y - at('p').y) };
+    press('c');
+    move(below);
+
+    const preview = engine.getArrangePreview()!;
+    expect(preview.at.y).toBeCloseTo(below.y, 0);
+    expect(preview.line?.from.x).toBeCloseTo(at('b').x, 0);
+    // Nothing else moved level: x is still on the rank it was on.
+    expect(at('x').y).toBe(x.y);
+
+    drop(below);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'nodeArrange',
+        into: 'child',
+        target: expect.objectContaining({ id: 'b' }),
+        order: ['c'],
+      }),
+    ]);
+  });
+
+  it('offers the level beneath the bottom of every tree, and not beneath the dragged card’s own subtree', async () => {
+    const { engine, events, at, press, move, drop } = await started(
+      world({
+        nodes: [{ id: 'd', kind: 'entity', type: 'Thing', label: 'd', data: { rank: 0 } }],
+        edges: [{ id: 'c-d', source: 'c', target: 'd', type: 'rel' }],
+      }).seed,
+    );
+    const d = at('d');
+    const step = at('x').y - at('q').y;
+
+    // Beneath d, which is under the card being dragged: no place.
+    press('c');
+    move({ x: d.x, y: d.y + step });
+    expect(engine.getArrangePreview()?.line?.from.x).not.toBeCloseTo(d.x, 0);
+    drop({ x: d.x, y: d.y + step });
+    expect(events).toEqual([]);
+    await vi.advanceTimersByTimeAsync(2000);
+
+    // Beneath x, the bottom of q's tree: its first child.
+    // One point, taken before the drag: lifting a out narrows p's tree, and q's slides left to close up.
+    const beneathX = { x: at('x').x, y: at('x').y + step };
+    press('a');
+    move(beneathX);
+    drop(beneathX);
+    expect(events[0]).toMatchObject({ into: 'child', target: { id: 'x' } });
+  });
+
   it('does not nest under a card the pointer only passes over', async () => {
     const { engine, at, press, move } = await started(world().seed);
     const b = at('b');
