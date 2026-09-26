@@ -46,7 +46,6 @@ import {
   resolveStyle,
   routesAlike,
   splineThrough,
-  TRAVEL_MS,
   trimCubicEnd,
   waypointFromWorld,
   waypointsOf,
@@ -305,15 +304,22 @@ function foldTravel(): number {
 }
 
 /**
- * The same question for a layout change, and the same answer under reduced motion.
+ * How long a switch between arrangements takes — the one number to change for how it feels, or to raise
+ * several-fold to watch a switch frame by frame.
  *
- * Separate from the fold's number because the two movements are not the same kind of thing — see
- * `TRAVEL_MS` in the engine — and asked here for the same reason: the engine has no business knowing
- * there is a browser, so it takes a duration and interpolates.
+ * Longer than a fold, deliberately. A fold is punctuation — one card going away — and the eye only has to
+ * catch the direction. A switch moves everything at once, and what the travel is for is letting a reader
+ * keep hold of a particular card while the arrangement reorganises around it. It eases out, so most of the
+ * distance is covered early and the rest reads as the arrangement settling.
+ *
+ * Asked here rather than in the engine for the fold's reason: only the renderer can ask the browser
+ * whether the reader wants less movement, and then the answer is zero.
  */
+const LAYOUT_TRAVEL_MS = 1260;
+
 function layoutTravel(): number {
-  if (typeof window === 'undefined' || !window.matchMedia) return TRAVEL_MS;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : TRAVEL_MS;
+  if (typeof window === 'undefined' || !window.matchMedia) return LAYOUT_TRAVEL_MS;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : LAYOUT_TRAVEL_MS;
 }
 
 /**

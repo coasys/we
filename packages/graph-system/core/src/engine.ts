@@ -88,20 +88,6 @@ const FOLD_MS = 200;
  */
 const ANIM_TICK = 16;
 
-/**
- * How long a card takes to walk from where one layout had it to where the next one puts it.
- *
- * A default rather than a constant the engine imposes: the caller passes a duration, because only
- * the caller knows whether the reader has asked for reduced motion. Zero is instant, which is both
- * that answer and the answer for a graph nobody is watching change.
- *
- * Longer than a fold, and deliberately. A fold is punctuation — one card going away — and the eye
- * only has to catch the direction. A layout change moves *everything at once*, and what the travel
- * is for is letting a reader keep hold of a particular card while the arrangement reorganises around
- * it. Too brief and the frames read as a jump with extra steps.
- */
-export const TRAVEL_MS = 420;
-
 /** Nothing folded: the shape {@link GraphEngine.setFolded} starts from and returns to. */
 const NO_FOLD: FoldResult = { hidden: new Set(), counts: new Map(), owners: new Map(), bundles: [] };
 
