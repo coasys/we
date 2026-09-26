@@ -72,8 +72,8 @@ const xOf = (engine: GraphEngine, id: string) => engine.getPositions().get(id)?.
 /**
  * What a renderer does on every frame: read every node's visual, and the edges' geometry.
  *
- * Which is what makes them *drawn*, and a travel starts from what was drawn — see `GraphEngine.drawnVisual`
- * and `GraphEngine.drawnRoute`. A test that never draws has nothing to travel from, exactly as a host that
+ * Which is what makes them *drawn*, and a travel starts from what was drawn — see `Travel`. A test that
+ * never draws has nothing to travel from, exactly as a host that
  * never draws has nothing on screen to move.
  */
 const drew = (engine: GraphEngine) => {
@@ -936,6 +936,36 @@ describe('a rearrangement and a restyling, in any order', () => {
     expect(between(engine)).toBe(true);
   });
 
+  it('blends a restyle that moves no card', async () => {
+    /*
+      A travel used to be abandoned when no card had anywhere to go, before its plans were installed — so a
+      switch that only restyled would snap every shape and every line. The clock now belongs to the travel
+      rather than to the cards, and a travel that is asked for runs its duration either way.
+    */
+    const engine = await started(spec('left', 100));
+    drew(engine);
+
+    engine.setSpec(spec('left', 300));
+    engine.relayout({ travel: 400 });
+
+    expect(engine.isTravelling()).toBe(true);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(between(engine)).toBe(true);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(engine.visualOf(nodes()[0]).width).toBe(300);
+    expect(engine.isTravelling()).toBe(false);
+  });
+
+  it('does not run a travel for a first arrangement, which has nothing drawn to travel from', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(['a'])], expanders: [], layouts });
+    const engine = new GraphEngine({ spec: spec('left', 100), registry, context });
+    engine.resize(800, 600);
+    await engine.start();
+
+    engine.relayout({ travel: 400 });
+    expect(engine.isTravelling()).toBe(false);
+  });
+
   it('goes on blending switch after switch', async () => {
     /*
       And the shape of the report: it worked for a few and then stopped. Nothing in the mechanism accumulates
@@ -1403,7 +1433,7 @@ describe('ignoring a stored route', () => {
       rules in several steps, and a routing that lands in between (a subscription, a reconcile, an
       optimistic write) routes every line to its destination before the travel begins. The travel planned
       from the engine's own last routing, found nothing to change, and the bend snapped. It now plans from
-      what was last READ — see `GraphEngine.drawnRoute` — which no routing in between can move.
+      what was last READ — see `Travel.drewRoutes` — which no routing in between can move.
     */
     const engine = await bowEngine(bentOnly, false, 'down');
     const style = { seeds: { source: 'test' }, nodeStyle: [{ style: { shape: 'card', width: 180 } }] as never };

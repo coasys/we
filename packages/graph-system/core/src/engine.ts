@@ -43,38 +43,18 @@ import {
   distanceToEdge,
   edgeBounds,
   endOf,
-  type Facing,
-  facingAt,
   groupByEndpoints,
   normaliseCurve,
   routeEdge,
-  turnBetween,
   waypointsOf,
   waypointToWorld,
 } from './geometry';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
-import { blendVisual, flattenRules, nodeVisual, resolveStyle } from './style';
+import { flattenRules, nodeVisual, resolveStyle } from './style';
+import { planRoute, type RoutePlan, Travel } from './travel';
 import { boundsOf, Viewport } from './viewport';
-
-/**
- * What one edge was routed WITH — the parameters a travel interpolates, rather than the line they produce.
- *
- * A line is a function of its two endpoints' positions, the direction each end faces, and how much of any
- * bend somebody stored for it is drawn. The positions travel with the cards. These are the rest: an angle
- * per end and a weight for the bend. Interpolating them and routing the line afresh every frame is the same
- * move the positions make — animate the inputs, derive the drawing — and it is why nothing here snapshots
- * or resamples a drawn path any more.
- *
- * An end that follows the pointer has no angle, since a point has no side to face out of.
- */
-interface RouteState {
-  source?: number;
-  target?: number;
-  /** How much of the stored bend was drawn: 1 all of it, 0 none, and between only while a switch runs. */
-  bend: number;
-}
 
 /**
  * The id the connect gesture's preview is routed under.
@@ -266,18 +246,6 @@ function watchKey(target: WatchTarget): string {
   ]);
 }
 
-/**
- * One end of one edge turning from the direction it was drawn at to the one it is going to.
- *
- * An angle and a signed turn, rather than two angles: the *way round* is a decision that has to be made
- * once, because re-deriving "the short way" against a destination that is itself drifting can reverse
- * mid-sweep — and a reversing arrowhead reads as a bug in a way a slightly longer swing does not.
- */
-interface Sweep {
-  from: number;
-  delta: number;
-}
-
 export class GraphEngine {
   readonly store = new GraphStore();
   readonly expansion = new ExpansionState();
@@ -375,95 +343,9 @@ export class GraphEngine {
   private foldAnim = new Map<string, { from: Point; to: Point; started: number; at: number; out: boolean }>();
   private foldTimer?: ReturnType<typeof setTimeout>;
   private foldDuration = FOLD_MS;
-  /**
-   * Cards walking from where the last layout had them to where this one puts them.
-   *
-   * `to` is the placement the layout actually returned, flags and all, so arriving is a matter of
-   * writing it rather than of reconstructing it — and so a card that is pinned stays pinned while it
-   * moves. See {@link stepTravel}.
-   */
-  private travelAnim = new Map<string, { from: Point; to: Placement; started: number }>();
+  /** How the graph moves from one arrangement to the next — see `Travel`. */
+  private readonly travel = new Travel();
   private travelTimer?: ReturnType<typeof setTimeout>;
-  /** The duration the travel in flight was asked for. Zero means nothing is travelling. */
-  private travelDuration = 0;
-  /**
-   * How far through the travel everything is, on the cards' own eased clock — see {@link stepTravel}.
-   *
-   * One number for the whole arrangement rather than one per card, because the things that read it are
-   * about the *change* rather than about a position: the camera, and the shape a card is becoming.
-   * 1 means nothing is in flight.
-   */
-  private travelProgress = 1;
-  /**
-   * How each node was last DRAWN, and how each was drawn when the travel in flight began.
-   *
-   * The start of a shape's travel, and knowable only from what was on screen — the same fact, and for the
-   * same reason, as the `before` positions {@link applyPositions} captures one line before replacing them.
-   *
-   * This replaced an arming protocol: `setSpec` set the outgoing styling aside and the travel that followed
-   * claimed it. Which is a correct mechanism and an order-sensitive one, and it broke twice. `setSpec` is
-   * called several times for one change — the seeds effect, the layout effect, the style effect — and only
-   * the FIRST sees the styling change, so only the first armed; anything that relayouted in between could
-   * eat the arm, and by the time the travelling relayout arrived there was nothing left to re-arm. The
-   * symptom was a morph that worked for a few switches and then stopped until the graph was remounted.
-   *
-   * Nothing here can go stale that way, because nothing is being *remembered about the rules*. A travel
-   * blends from what was on screen to whatever the rules now say, and where those agree the blend is a
-   * no-op. It is also what makes switching back MID-travel continuous: the snapshot is the half-morphed
-   * card, so it carries on from where it is rather than starting again from the shape it left.
-   */
-  private drawnVisual = new Map<string, NodeVisual>();
-  /**
-   * What every edge was routed with on the last routing — see {@link RouteState}. Rebuilt whole each time,
-   * so a map a reader has taken hold of is never written to again.
-   */
-  private routeState = new Map<string, RouteState>();
-  /**
-   * What every edge was routed with when a renderer last READ the geometry — the sibling of
-   * {@link drawnVisual}, taken for the same reason and at the same moment.
-   *
-   * A travel starts from what was on screen, and for a line that is this rather than {@link routeState}.
-   * The engine routes on its own schedule — every relayout, every subscription that lands, every
-   * reconcile — and a mode switch installs its rules in several steps, so a routing can land between the
-   * restyle and the travelling relayout and route every line to its destination before the travel has
-   * begun. Planned from that, the travel saw nothing to do and the bend snapped; and since whatever triggers
-   * the in-between routing tends to keep doing so, it snapped on every switch from then on. The shapes did
-   * exactly this and were fixed exactly this way. Reading the geometry is drawing it, so taking this when
-   * it is read cannot be overtaken by a routing nobody saw.
-   *
-   * Taken by reference, which is O(1): {@link routeEdges} builds a new map rather than writing into this one.
-   */
-  private drawnRoute = new Map<string, RouteState>();
-  private travelFrom = new Map<string, NodeVisual>();
-  /**
-   * The sweep each end of each edge is making, while a travel is in flight: a start angle and the signed
-   * turn to the end of it.
-   *
-   * An anchor is one of four sides, and a rearrangement that repins one has to cross the directions in
-   * between or the arrowhead teleports across the card. Held as a *rotation* rather than as two points
-   * because the point is not the thing that is continuous: a ray swept out of the node's centre traces
-   * the real outline — along the side, round the corner, along the next — where two points lerped
-   * cross the card's interior, which is precisely the arrowhead disappearing behind it.
-   *
-   * Planned once, in {@link beginTravel}, rather than resolved per frame: the final positions are
-   * already known there, so the plan lands exactly on what the ordinary path answers at the end and
-   * there is no jump at either edge of the movement.
-   *
-   * Carries how much of the edge's stored bend is being drawn, alongside the two ends, for an edge whose
-   * bend is appearing or going away — planned together and consumed on the same clock.
-   */
-  private travelFacing = new Map<string, { source?: Sweep; target?: Sweep; bend?: { from: number; to: number } }>();
-  /**
-   * The camera's own travel, alongside the cards'.
-   *
-   * Without it a switch that refits reads as the cards *vanishing and flying in from the edge*: the fit
-   * jumps the camera to frame where the new arrangement will be, while every card is still standing in
-   * the old one — which is now off screen. Both were behaving correctly and the result was neither.
-   *
-   * So the camera goes where the cards go, over the same duration and on the same curve, and the switch
-   * is one movement. Absent when nothing was refitted, which is most relayouts.
-   */
-  private travelCamera?: { from: { x: number; y: number; zoom: number }; to: { x: number; y: number; zoom: number } };
   /** Areas the current layout asked to have drawn behind the nodes — see {@link getLayoutRegions}. */
   private layoutRegions: LayoutRegion[] = [];
   /**
@@ -568,8 +450,8 @@ export class GraphEngine {
    * where drift means clicking an edge that is not the one under the cursor.
    */
   getEdgeGeometry(): ReadonlyMap<string, EdgeGeometry> {
-    // Reading it is drawing it — see `drawnRoute`.
-    this.drawnRoute = this.routeState;
+    // Reading it is drawing it, and a line's next travel starts from what was drawn.
+    this.travel.drewRoutes();
     return this.edgeGeometry;
   }
 
@@ -632,8 +514,8 @@ export class GraphEngine {
    * queries. Changing a colour rule must not re-fetch a graph, and an adapter that could only swap the
    * whole spec would have no way to express that difference.
    *
-   * Nothing about the styling being replaced is recorded here, deliberately — see {@link drawnVisual} for
-   * the mechanism that used to need it and the two ways it broke.
+   * Nothing about the styling being replaced is recorded here: a travel starts from what was drawn, so the
+   * outgoing rules are never needed and the order of calls around a switch cannot matter. See `Travel`.
    */
   setSpec(spec: GraphSpec): void {
     this.spec = spec;
@@ -989,7 +871,7 @@ export class GraphEngine {
     if (this.watchTimer) clearTimeout(this.watchTimer);
     if (this.foldTimer) clearTimeout(this.foldTimer);
     if (this.travelTimer) clearTimeout(this.travelTimer);
-    this.travelCamera = undefined;
+    this.travel.settle();
     // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
     // from a backend subscription, which is the shape of leak that only shows up as a slow app.
     for (const stop of this.watchers.values()) stop();
@@ -1665,9 +1547,8 @@ export class GraphEngine {
     */
     const before = this.positions;
     this.positions = positions;
-    // Nothing is drawn that is not placed, so a card that has gone — deleted, or folded away — takes its
-    // record of how it looked with it. Bounds `drawnVisual` to the graph on screen.
-    for (const id of this.drawnVisual.keys()) if (!this.positions.has(id)) this.drawnVisual.delete(id);
+    // A card that has gone — deleted, or folded away — takes its record of how it was drawn with it.
+    this.travel.keepVisuals(this.positions);
 
     /*
       The camera before the travel, and against where the layout actually put things.
@@ -1676,29 +1557,31 @@ export class GraphEngine {
       switch into a layout that needs more room would settle with half the graph off screen — and the
       reader would have watched it go there.
     */
-    /*
-      Where the camera was before the fit, so it can travel there too — see {@link travelCamera}.
-      Captured unconditionally and cheaply, because whether the fit happened is only known after it.
-    */
+    // Where the camera was before the fit, so it can travel with the cards. Captured whether or not a fit
+    // happens, since that is only known after it.
     const cameraFrom = { ...this.viewport.get() };
     const fitted = fit ? this.fitToContent() : false;
     if (fit && !fitted) this.pendingFit = true;
 
     /*
-      Then the travel, which walks the moving cards back to where they were standing. Everything below
-      is derived from what is *drawn*, so it has to come after: an index built from the destinations
-      would leave every card pickable at a place it has not reached yet.
+      Then the travel, which rewinds the moving cards to where they stood. Everything below derives from
+      what is drawn, so it comes after: an index built from the destinations would leave every card
+      pickable at a place it has not reached yet.
     */
-    this.beginTravel(before, travel);
-    /*
-      And the camera with them, but only where there is something to travel: a fit that did not happen
-      has nowhere to go, and a fit with no travel should land immediately, as it always did.
-    */
-    if (fitted && this.travelAnim.size) this.beginCameraTravel(cameraFrom);
+    this.travel.start({
+      before,
+      positions: this.positions,
+      asked: Math.max(0, travel ?? 0),
+      now: Date.now(),
+      skip: (id) => this.foldAnim.has(id),
+      plan: () => this.planRoutes(),
+    });
+    // The camera goes with the cards, and a fit with no travel lands at once.
+    if (fitted && this.travel.running) this.beginCameraTravel(cameraFrom);
     this.reindex();
     this.routeEdges();
     this.notify('positions');
-    if (this.travelAnim.size && !this.travelTimer && !this.disposed) {
+    if (this.travel.running && !this.travelTimer && !this.disposed) {
       this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
     }
   }
@@ -1729,182 +1612,47 @@ export class GraphEngine {
   }
 
   /**
-   * Set up, or re-aim, the walk from the previous arrangement to this one.
+   * How every line's route parameters travel across this rearrangement — see `planRoute`.
    *
-   * Two things are deliberately separate here. **Starting** a travel takes an explicit duration,
-   * because only a reader changing how the graph is arranged wants one — a first load has nowhere to
-   * come from, and an expansion is not a rearrangement. **Re-aiming** one in flight happens whatever
-   * brought us here, including a subscription landing mid-switch: snapping a card to its destination
-   * would abandon the movement halfway, and leaving it walking to a destination the layout has since
-   * revised would put it somewhere nothing is.
-   *
-   * A card in mid-fold is left alone. It is already travelling, on the other mechanism, and two of
-   * them writing one position is a card that flickers between two destinations — with each mechanism
-   * looking perfectly correct in isolation.
+   * The start is what each line was last drawn with. The destination is the line routed for real against
+   * where the layout has put the cards and the rules now in force, so the plan lands exactly on what the
+   * ordinary routing answers once the travel ends. A line never drawn — one that has only just appeared —
+   * belongs where it is put, and gets no plan.
    */
-  private beginTravel(before: ReadonlyMap<string, Placement>, travel?: number): void {
-    const asked = Math.max(0, travel ?? 0);
-    /*
-      Carried over for a RE-AIM, so a subscription landing mid-switch keeps the speed and the deadline the
-      reader's action set rather than restarting the clock on every frame one happens to arrive on.
-
-      Not for a travel the reader asked for. Carried there, a second switch made half-way through the first
-      inherited a start time a second and a half in the past — so its very first frame was computed as most
-      of the way through, and every card jumped to near its new place before easing the last of the way.
-      Reported as exactly that. A reader's own action is a new movement and gets a new clock, which is also
-      what makes switching back mid-switch read as the cards turning round.
-    */
-    const started =
-      asked > 0 ? new Map<string, number>() : new Map([...this.travelAnim].map(([id, anim]) => [id, anim.started]));
-    this.travelAnim.clear();
-    if (asked > 0) this.travelDuration = asked;
-    if (!this.travelDuration) {
-      this.settleShapes();
-      return;
-    }
-
-    /*
-      Planned before the rewind below, because it needs both arrangements: `this.positions` still holds
-      what the layout answered, and the loop is about to write the old coordinates back over it.
-    */
-    const planned = asked > 0 ? this.planFacings() : new Map<string, { source?: Sweep; target?: Sweep }>();
-
-    const now = Date.now();
-    for (const [id, to] of this.positions) {
-      if (this.foldAnim.has(id)) continue;
-      const from = before.get(id);
-      /*
-        Nothing to travel from. A card that has just arrived — from an expansion, a live query, a card
-        coming back out of a fold — belongs where it is put, rather than sliding in from a position it
-        never occupied.
-      */
-      if (!from) continue;
-      const carried = started.get(id);
-      if (carried === undefined && asked <= 0) continue;
-      // Sub-pixel moves are not worth a timer, and a row of them would hold one open for nothing.
-      if (Math.abs(from.x - to.x) < 0.5 && Math.abs(from.y - to.y) < 0.5) continue;
-      this.travelAnim.set(id, { from: { x: from.x, y: from.y }, to, started: carried ?? now });
-      this.positions.set(id, { ...to, x: from.x, y: from.y });
-    }
-    if (!this.travelAnim.size) {
-      this.travelDuration = 0;
-      this.settleShapes();
-      return;
-    }
-    // Only a travel the reader asked for carries a morph: a re-aim mid-flight must keep whatever the
-    // cards are already becoming rather than restarting it against the styling they have now.
-    if (asked > 0) {
-      // Where every card was drawn a moment ago — see `drawnVisual`. Copied rather than referenced, so the
-      // frames that follow can keep recording what they draw without moving the start of the travel.
-      this.travelFrom = new Map(this.drawnVisual);
-      this.travelProgress = 0;
-      this.travelFacing = planned;
-    }
-  }
-
-  /**
-   * Work out how each edge's route parameters travel across this rearrangement: the sweep each end makes,
-   * and — for an edge with a stored bend — how much of that bend is drawn.
-   *
-   * **The start is what was DRAWN**, read from {@link drawnRoute}: the angle each end was last seen facing
-   * and the bend weight last seen. The only fact that cannot be stale, for the same reason the shape travel
-   * starts from the visual last drawn and the position travel from the position last drawn, and it needs no
-   * knowledge of *why* anything is changing — a stored anchor, a style rule and the geometry simply deciding
-   * differently are all one case. The *end* comes from routing the edge for real against where the layout
-   * has put the cards and the rules now in force, so the plan lands on what the ordinary path answers.
-   *
-   * **A line is otherwise not animated at all, and should not be.** It is routed afresh every frame from its
-   * endpoints' positions and these parameters, and moves smoothly because they do. There are exactly three
-   * inputs that can change discontinuously across a switch, and this is all three: two facings and a bend.
-   *
-   * **Every end gets a sweep, including the ones that are not turning.** That looks like waste and is the
-   * point: an end with no plan falls back to the live derivation, and the live derivation reads a boolean
-   * — is this span mostly horizontal — that flips the moment a card travelling from beside its parent to
-   * below it crosses the diagonal. So an end whose start and finish agree could still jump to the side
-   * half-way and jump back, which is exactly what it was reported as. A plan holds it steady instead, and
-   * a zero turn lands where it started. It is also what gives the two routes a bend is blended between the
-   * same endpoints: with a facing given, an attach point depends only on its own card.
-   *
-   * Which is also why this runs for every travel rather than only for one that restyles. The flip has
-   * nothing to do with styling; it is the cards moving.
-   */
-  private planFacings(): Map<string, { source?: Sweep; target?: Sweep; bend?: { from: number; to: number } }> {
-    const planned = new Map<string, { source?: Sweep; target?: Sweep; bend?: { from: number; to: number } }>();
-
+  private planRoutes(): Map<string, RoutePlan> {
+    const plans = new Map<string, RoutePlan>();
     for (const edge of [...this.store.edges(), ...this.fold.bundles]) {
-      // Never drawn: an edge that has only just appeared, which belongs where it is drawn rather than
-      // swinging in from a direction it never left.
-      const drawn = this.drawnRoute.get(edge.id);
+      const drawn = this.travel.drawnRoute(edge.id);
       if (!drawn) continue;
       const patch = this.edgeOverlay.get(edge.id);
       const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
       const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
-      const now = { from: this.positions.get(sourceId), to: this.positions.get(targetId) };
-      if (!now.from || !now.to) continue;
-
+      const from = this.positions.get(sourceId);
+      const to = this.positions.get(targetId);
+      if (!from || !to) continue;
       const style = resolveStyle(edge, this.spec.edgeStyle);
       const route = this.routeOf(edge, patch, style);
-      /*
-        The line as it WILL be drawn, routed for real against the destination rather than re-derived.
-
-        The rule for which way an end faces is the router's, and it has more to it than a restatement would
-        capture: a route bent through waypoints faces its NEAREST WAYPOINT rather than the far node, which is
-        most of a right angle away. Asking the router removes the second copy of the rule rather than
-        correcting it, which is the same reason `anchorsOf` and `endOf` exist at all.
-      */
       const destination = routeEdge(
         edge.id,
-        now.from,
-        now.to,
+        from,
+        to,
         normaliseCurve(style.curve as string | undefined),
         0,
         looseTo ? 0 : this.clearanceFor(this.store.node(targetId)),
         looseFrom ? 0 : this.clearanceFor(this.store.node(sourceId), 0),
         route.anchors,
-        route.bend > 0 ? route.waypoints.map((point) => waypointToWorld(point, now.from!, now.to!)) : [],
+        route.bend > 0 ? route.waypoints.map((point) => waypointToWorld(point, from, to)) : [],
       );
-
-      const sweep = (end: 'source' | 'target'): Sweep | undefined => {
-        const a0 = drawn[end];
-        // A loose end follows the pointer and has no side to be on, so there is nothing to sweep.
-        if (a0 === undefined || (end === 'source' ? looseFrom : looseTo)) return undefined;
-        const centre = end === 'target' ? now.to! : now.from!;
-        const at = end === 'target' ? destination.to : destination.from;
-        const a1 = Math.atan2(at.y - centre.y, at.x - centre.x);
-        /*
-          Toward the near side at exactly half a turn — the direction the rest of the line already lies
-          in, so an ambiguous swing goes round the front of the card rather than behind it.
-        */
-        const near = end === 'target' ? now.from! : now.to!;
-        return { from: a0, delta: turnBetween(a0, a1, Math.atan2(near.y - centre.y, near.x - centre.x)) };
-      };
-
-      const source = sweep('source');
-      const target = sweep('target');
-      /*
-        And the bend, where there is one and its weight is changing. An edge nobody bent has no stored
-        points and is never given a plan, so it is routed exactly as it always was — and one whose weight
-        is not changing needs none either: a bend drawn in full on both sides travels with the cards on its
-        own, because it is held relative to the chord.
-      */
-      const bend =
-        route.waypoints.length && drawn.bend !== route.bend ? { from: drawn.bend, to: route.bend } : undefined;
-      if (source || target || bend) planned.set(edge.id, { source, target, bend });
+      const plan = planRoute({
+        drawn,
+        destination,
+        centres: { source: from, target: to },
+        loose: { source: !!looseFrom, target: !!looseTo },
+        bend: { stored: route.waypoints.length > 0, wanted: route.bend },
+      });
+      if (plan) plans.set(edge.id, plan);
     }
-    return planned;
-  }
-
-  /**
-   * Let go of the styling a travel was coming from, so cards are drawn as the rules now say.
-   *
-   * Called wherever a travel ends or fails to start. Without it a later rearrangement that changes no
-   * styling would still blend against whatever the last mode change left behind — a card easing out of
-   * a shape nobody is looking at any more.
-   */
-  private settleShapes(): void {
-    this.travelFrom.clear();
-    this.travelFacing.clear();
-    this.travelProgress = 1;
+    return plans;
   }
 
   /**
@@ -1919,10 +1667,8 @@ export class GraphEngine {
    */
   private beginCameraTravel(from: { x: number; y: number; zoom: number }): void {
     const now = this.viewport.get();
-    const to = { x: now.x, y: now.y, zoom: now.zoom };
-    if (from.x === to.x && from.y === to.y && from.zoom === to.zoom) return;
-    this.travelCamera = { from: { x: from.x, y: from.y, zoom: from.zoom }, to };
-    this.viewport.set(this.travelCamera.from);
+    if (!this.travel.startCamera(from, { x: now.x, y: now.y, zoom: now.zoom })) return;
+    this.viewport.set({ x: from.x, y: from.y, zoom: from.zoom });
     this.notify('viewport');
   }
 
@@ -1934,85 +1680,27 @@ export class GraphEngine {
    * a canvas that will not be moved rather than as two writers.
    */
   private stopCameraTravel(): void {
-    this.travelCamera = undefined;
+    this.travel.stopCamera();
   }
 
-  /** One frame of the walk: move what is moving, and land what has arrived. */
+  /** One frame of the travel: cards, camera, shapes and lines, all on its one clock. */
   private stepTravel(): void {
     if (this.travelTimer) {
       clearTimeout(this.travelTimer);
       this.travelTimer = undefined;
     }
-    const now = Date.now();
-    let running = false;
-    /*
-      One clock for the cards and the camera.
-
-      Read from whichever card is furthest along rather than kept separately, so the two cannot drift:
-      a camera on its own timer that finished a frame early would settle the view while the cards were
-      still arriving, which is the judder this exists to avoid.
-    */
-    let progress = 1;
-
-    for (const [id, anim] of this.travelAnim) {
-      const t = this.travelDuration > 0 ? Math.min(1, (now - anim.started) / this.travelDuration) : 1;
-      // Cubic ease-out, matching the fold: most of the distance early, so the eye catches which way a
-      // card went before it has to track where it stops.
-      const eased = 1 - (1 - t) ** 3;
-      progress = Math.min(progress, eased);
-      if (t >= 1) {
-        this.travelAnim.delete(id);
-        // The layout's own answer, flags included — a pinned card is still pinned once it gets there.
-        this.positions.set(id, anim.to);
-        continue;
-      }
-      running = true;
-      this.positions.set(id, {
-        ...anim.to,
-        x: anim.from.x + (anim.to.x - anim.from.x) * eased,
-        y: anim.from.y + (anim.to.y - anim.from.y) * eased,
-      });
-    }
-
-    /*
-      The camera, on the cards' own curve and clock — see {@link travelCamera}.
-
-      Zoom is interpolated **geometrically** rather than linearly, because zoom is a ratio: stepping it
-      by equal amounts makes the second half of a zoom-out crawl and the first half lurch, where equal
-      ratios read as one steady movement. The same reason `pan-zoom` multiplies rather than adds.
-    */
-    const camera = this.travelCamera;
+    const running = this.travel.step(Date.now(), this.positions);
+    const camera = this.travel.cameraNow();
     if (camera) {
-      const { from, to } = camera;
-      this.viewport.set({
-        x: from.x + (to.x - from.x) * progress,
-        y: from.y + (to.y - from.y) * progress,
-        zoom: from.zoom * (to.zoom / from.zoom) ** progress,
-      });
-      if (!running) {
-        // Landed exactly, rather than on whatever the last interpolation came to.
-        this.viewport.set(to);
-        this.travelCamera = undefined;
-      }
+      this.viewport.set(camera);
       this.notify('viewport');
     }
-
-    /*
-      The shape follows the same clock, and is read off it rather than animated separately.
-
-      Written before the reindex, because a card's hit area is resolved from the same blended visual the
-      renderer paints — so picking and drawing agree at every frame of the change rather than only at
-      its ends.
-    */
-    this.travelProgress = progress;
+    // Before the reindex, because a card's hit area resolves from the same blended visual that is painted.
     this.reindex();
     this.routeEdges();
     this.notify('positions');
     if (running && !this.disposed) this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
-    else {
-      this.travelDuration = 0;
-      this.settleShapes();
-    }
+    else this.travel.settle();
   }
 
   /**
@@ -2023,11 +1711,7 @@ export class GraphEngine {
    * which reads as a card that will not be picked up rather than as two writers.
    */
   private stopTravel(id: string): void {
-    this.travelAnim.delete(id);
-    if (!this.travelAnim.size) {
-      this.travelDuration = 0;
-      this.settleShapes();
-    }
+    this.travel.release(id);
   }
 
   /**
@@ -2040,9 +1724,9 @@ export class GraphEngine {
     this.selfTravel = Math.max(0, ms || 0);
   }
 
-  /** Whether any card is mid-travel — for a caller that should wait for the arrangement to settle. */
+  /** Whether a travel is running — for a caller that should wait for the arrangement to settle. */
   isTravelling(): boolean {
-    return this.travelAnim.size > 0;
+    return this.travel.running;
   }
 
   /**
@@ -2187,17 +1871,13 @@ export class GraphEngine {
    * the browser — and a renderer that eased it on its own would be easing the drawing away from the hit
    * area.
    *
-   * Two resolutions per node per frame while a travel with a restyling behind it is in flight, and one
-   * otherwise. Deliberately uncached: the rules are a handful of comparisons, the window is under half
-   * a second, and a cache keyed by node would have to be invalidated by every overlay, metric and
-   * marker that can change what a card looks like.
+   * One resolution per node per frame, blended mid-travel with how the card was drawn when the travel
+   * started. Deliberately uncached: the rules are a handful of comparisons, and a cache keyed by node would
+   * have to be invalidated by every overlay, metric and marker that can change what a card looks like.
    */
   private resolvedVisual(rawNode: GraphNode, metrics: ReadonlyMap<string, ReadonlyMap<string, number>>) {
     const node = this.overlaid(rawNode);
-    const to = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), metrics);
-    if (this.travelProgress >= 1) return to;
-    const from = this.travelFrom.get(node.id);
-    return from ? blendVisual(from, to, this.travelProgress) : to;
+    return this.travel.visual(node.id, nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), metrics));
   }
 
   /**
@@ -2208,10 +1888,9 @@ export class GraphEngine {
    */
   visualOf(node: GraphNode): NodeVisual {
     const visual = this.resolvedVisual(node, this.metrics);
-    // What was drawn, which is where the next travel's shapes start from — see `drawnVisual`. Recorded
-    // here rather than in `resolvedVisual` because this is the drawing path; the hit area resolves from the
-    // same blend and deliberately without metrics, and is not what anybody saw.
-    this.drawnVisual.set(node.id, visual);
+    // Recorded here rather than in `resolvedVisual`, because this is the drawing path: the hit area
+    // resolves from the same blend without metrics, and is not what anybody saw.
+    this.travel.drewVisual(node.id, visual);
     return visual;
   }
 
@@ -2299,8 +1978,7 @@ export class GraphEngine {
   private routeEdges(): void {
     this.edgeGeometry = new Map();
     this.edgeBoxes = new Map();
-    // A new map rather than cleared, so the one a reader took as `drawnRoute` keeps what it saw.
-    this.routeState = new Map();
+    this.travel.beginRouting();
 
     /*
       The real lines, plus the ones standing in for what a fold hid.
@@ -2380,26 +2058,16 @@ export class GraphEngine {
               target: looseTo ? undefined : route.anchors.target,
             },
             waypoints,
-            /*
-              Where each end is *part way to* facing — see `travelFacing`.
-
-              A direction rather than a side, so the attach point walks the card's own outline round to the
-              new side and the arrowhead keeps pointing at the centre the whole way. Shared by both routes
-              a bend is blended between, which is what gives them the same two endpoints.
-            */
-            this.sweptFacing(edge.id),
+            // Mid-travel, how far round each end has swept. A direction rather than a side, so the attach
+            // point walks the card's outline and the arrowhead keeps pointing at its centre.
+            this.travel.facing(edge.id),
           );
         /*
-          How much of the stored bend to draw, and the line that makes.
-
-          All of it or none is one route, which is every edge nobody bent and every bent edge at rest. Part
-          of it is the two routes this edge can have — through its points and without them — routed
-          against this frame's positions and facings, and blended control point by control point. Both are
-          real, current routes, so the blend tracks the cards and the sweep exactly and has nothing of its
-          own to keep in step; see `blendRoutes` for why a control point, and not a point on the line, is
-          what gets interpolated.
+          How much of the stored bend to draw. All or none is one route — every edge nobody bent, and every
+          bent one at rest. Part of it, mid-travel, blends the edge's two routes, with and without its
+          points, both routed against this frame's positions and facings — see `blendRoutes`.
         */
-        const bend = route.waypoints.length ? this.bendOf(edge.id, route.bend) : 0;
+        const bend = route.waypoints.length ? this.travel.bend(edge.id, route.bend) : 0;
         // Stored in the edge's own frame, so a bend keeps its proportions when either card moves — see
         // `EdgeWaypoint`. Converted here, where both centres are in hand.
         const bentThrough = () => route.waypoints.map((point) => waypointToWorld(point, from, to));
@@ -2410,8 +2078,8 @@ export class GraphEngine {
               ? routeThrough([])
               : blendRoutes(routeThrough([]), routeThrough(bentThrough()), bend);
         this.edgeGeometry.set(edge.id, drawn);
-        // What this line was routed with, for the next travel to start from once it has been seen.
-        this.routeState.set(edge.id, {
+        // What this line was routed with, which its next travel starts from once it has been drawn.
+        this.travel.routed(edge.id, {
           source: looseFrom ? undefined : Math.atan2(drawn.from.y - from.y, drawn.from.x - from.x),
           target: looseTo ? undefined : Math.atan2(drawn.to.y - to.y, drawn.to.x - to.x),
           bend,
@@ -2432,13 +2100,10 @@ export class GraphEngine {
   /**
    * What an edge carries about its own route, and how much of it the rules let through.
    *
-   * The anchors are the edge's own unless the rules say to ignore one canvas's tidying — `ignoreRoute`, which
-   * is what makes a tree's ranks uniform — and then the rules' instead. The stored bend is ALWAYS read, and
-   * what the rules decide is how much of it to draw: all of it, or none. Read rather than dropped, because a
-   * bend going away has to be drawn going away, and that needs to know what it was.
-   *
-   * One function, because the router draws the line and {@link planFacings} works out where it is heading,
-   * and a second copy of this rule is how the two would come to disagree about the destination.
+   * The anchors are the edge's own unless `ignoreRoute` says to use the rules' instead. The stored bend is
+   * always read, and the rules decide only how much of it to draw — all or none — because a bend going
+   * away has to be drawn going away. Shared by routing and {@link planRoutes}, so the two cannot disagree
+   * about a line's destination.
    */
   private routeOf(
     edge: GraphEdge,
@@ -2452,30 +2117,6 @@ export class GraphEngine {
       waypoints: waypointsOf(data),
       bend: ignore ? 0 : 1,
     };
-  }
-
-  /**
-   * How much of one edge's stored bend is drawn this frame: part way from where the travel found it to where
-   * the rules want it, or where the rules want it once nothing is travelling.
-   */
-  private bendOf(id: string, wanted: number): number {
-    const plan = this.travelFacing.get(id)?.bend;
-    if (!plan || this.travelProgress >= 1) return wanted;
-    return plan.from + (plan.to - plan.from) * this.travelProgress;
-  }
-
-  /**
-   * How far round each end of one edge has swept, as directions the router can attach along.
-   *
-   * Empty once the travel settles, which is what hands the ends back to the ordinary derivation: the
-   * plan was made against the final positions, so the last frame of the sweep and the first frame
-   * without it are the same direction.
-   */
-  private sweptFacing(id: string): { source?: Facing; target?: Facing } {
-    const sweep = this.travelFacing.get(id);
-    if (!sweep || this.travelProgress >= 1) return {};
-    const at = (one: Sweep | undefined) => (one ? facingAt(one.from + one.delta * this.travelProgress) : undefined);
-    return { source: at(sweep.source), target: at(sweep.target) };
   }
 
   /**
@@ -2554,9 +2195,7 @@ export class GraphEngine {
    * Public because the radius comes from `nodeStyle`, and a renderer may change styling without
    * anything moving — at which point the index is holding areas sized by the old rules.
    *
-   * Order-independent with respect to `relayout`, which it did not used to be: a travel blends from what was
-   * drawn rather than from a styling something had to set aside, so neither call can take the other's start
-   * away. See {@link drawnVisual}.
+   * Either order with `relayout` is fine: a travel starts from what was drawn, which neither call changes.
    */
   refreshHitAreas(): void {
     this.recomputeMetrics();
