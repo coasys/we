@@ -30,6 +30,7 @@ import {
   routesAlike,
   sampledBlend,
   splitCubic,
+  trimCubicEnd,
   trimToRadius,
   turnBetween,
   waypointFromWorld,
@@ -1483,5 +1484,46 @@ describe('morphing one route into another', () => {
     expect(lines.segments!.length).toBeGreaterThanOrEqual(2);
     expect(lines.from).toEqual(at(0, 0));
     expect(lines.to).toEqual(at(300, 400));
+  });
+});
+
+describe('trimCubicEnd', () => {
+  const at = (x: number, y: number) => ({ x, y });
+  const point = (c: Cubic, u: number) => {
+    const v = 1 - u;
+    const w = [v * v * v, 3 * v * v * u, 3 * v * u * u, u * u * u];
+    return { x: c.reduce((sum, p, i) => sum + p.x * w[i], 0), y: c.reduce((sum, p, i) => sum + p.y * w[i], 0) };
+  };
+  /** A cubic's length, measured finely. */
+  const lengthOf = (c: Cubic) => {
+    let total = 0;
+    let previous = c[0];
+    for (let i = 1; i <= 4096; i += 1) {
+      const p = point(c, i / 4096);
+      total += Math.hypot(p.x - previous.x, p.y - previous.y);
+      previous = p;
+    }
+    return total;
+  };
+  const curve: Cubic = [at(0, 0), at(150, 0), at(0, 300), at(200, 300)];
+
+  it('takes exactly the asked length off the end, and nothing else', () => {
+    const trimmed = trimCubicEnd(curve, 12);
+    expect(lengthOf(curve) - lengthOf(trimmed)).toBeCloseTo(12, 1);
+    // The same curve: it starts where it did, and its end is a point the original passes through.
+    expect(trimmed[0]).toEqual(curve[0]);
+    let nearest = Infinity;
+    for (let i = 0; i <= 4096; i += 1) {
+      const p = point(curve, i / 4096);
+      nearest = Math.min(nearest, Math.hypot(p.x - trimmed[3].x, p.y - trimmed[3].y));
+    }
+    expect(nearest).toBeLessThan(0.1);
+  });
+
+  it('leaves a cubic whole when the length would consume it', () => {
+    // Two cards dropped almost on top of each other still get a line, rather than one running backwards.
+    const short: Cubic = [at(0, 0), at(2, 0), at(4, 0), at(6, 0)];
+    expect(trimCubicEnd(short, 12)).toBe(short);
+    expect(trimCubicEnd(curve, 0)).toBe(curve);
   });
 });

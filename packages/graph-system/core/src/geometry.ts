@@ -1033,6 +1033,44 @@ export function splitCubic(cubic: Cubic, t: number): [Cubic, Cubic] {
   ];
 }
 
+/**
+ * A cubic with `length` taken off its end, exactly: the same curve, stopping short.
+ *
+ * What an arrowhead needs, since the stroke has to end where the head's base is. Cut rather than
+ * approximated by moving the end point back along its tangent: moving the end without its controls
+ * reshapes the curve, by an amount that depends on how long the piece is — so one line drawn as one
+ * piece and the same line drawn as two would be shortened into different shapes. A cut is the same
+ * curve however it was divided.
+ *
+ * A cubic no longer than `length` is left whole, so a line between two close cards is still drawn.
+ */
+export function trimCubicEnd(cubic: Cubic, length: number): Cubic {
+  if (length <= 0) return cubic;
+  // The length of the cubic from `t` to its end. The piece is short where the answer matters, so four
+  // chords measure it to far below a pixel.
+  const remaining = (t: number) => {
+    let total = 0;
+    let previous = cubicAt(cubic[0], cubic[1], cubic[2], cubic[3], t);
+    for (let step = 1; step <= 4; step += 1) {
+      const point = cubicAt(cubic[0], cubic[1], cubic[2], cubic[3], t + ((1 - t) * step) / 4);
+      total += Math.hypot(point.x - previous.x, point.y - previous.y);
+      previous = point;
+    }
+    return total;
+  };
+  if (remaining(0) <= length) return cubic;
+  // Bisect for the parameter where exactly `length` remains: the remainder shrinks as `t` grows. Eighteen
+  // halvings place the cut within about a hundredth of a unit on any curve a canvas draws.
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 18; step += 1) {
+    const mid = (low + high) / 2;
+    if (remaining(mid) > length) low = mid;
+    else high = mid;
+  }
+  return splitCubic(cubic, (low + high) / 2)[0];
+}
+
 /** How finely a cubic's length is measured, which bounds how exactly a chain is cut by length. */
 const LENGTH_STEPS = 32;
 

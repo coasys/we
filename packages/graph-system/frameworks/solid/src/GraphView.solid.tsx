@@ -47,6 +47,7 @@ import {
   routesAlike,
   splineThrough,
   TRAVEL_MS,
+  trimCubicEnd,
   waypointFromWorld,
   waypointsOf,
   waypointToWorld,
@@ -107,25 +108,36 @@ export function pathFrom(route: EdgeGeometry, endGap = 0): string {
   const { from, control, control2, elbows, segments } = route;
   const to = endGap > 0 ? backOff(route, endGap) : route.to;
   /*
+    A curve ending under an arrowhead is CUT short rather than having its end dragged back — see
+    `trimCubicEnd`. Dragging reshapes the last piece by an amount that depends on how long it is, so one
+    line drawn in two pieces and the same line drawn in one would be stroked into different shapes. A
+    straight ending needs no such care: moving along a straight leg is already a cut.
+  */
+  const cubic = (start: Point, c1: Point, c2: Point, end: Point, last: boolean) => {
+    const [, a, b, stop] = last && endGap > 0 ? trimCubicEnd([start, c1, c2, end], endGap) : [start, c1, c2, end];
+    return `C ${a.x} ${a.y} ${b.x} ${b.y} ${stop.x} ${stop.y}`;
+  };
+  /*
     A hand-shaped route: one command per segment, and the last one ends where the arrowhead does.
 
     First, because a route with segments carries none of the other three fields — they describe one
     span between two nodes and this is several.
   */
   if (segments) {
+    let at = from;
     const drawn = segments.map((segment, index) => {
-      const end = index === segments.length - 1 ? to : segment.to;
+      const start = at;
+      at = segment.to;
+      const last = index === segments.length - 1;
       return segment.control && segment.control2
-        ? `C ${segment.control.x} ${segment.control.y} ${segment.control2.x} ${segment.control2.y} ${end.x} ${end.y}`
-        : `L ${end.x} ${end.y}`;
+        ? cubic(start, segment.control, segment.control2, segment.to, last)
+        : `L ${last ? to.x : segment.to.x} ${last ? to.y : segment.to.y}`;
     });
     return `M ${from.x} ${from.y} ` + drawn.join(' ');
   }
   if (elbows) return `M ${from.x} ${from.y} ` + [...elbows, to].map((p) => `L ${p.x} ${p.y}`).join(' ');
   // The second control is what makes it cubic — a renderer needs no other signal to pick its command.
-  if (control && control2) {
-    return `M ${from.x} ${from.y} C ${control.x} ${control.y} ${control2.x} ${control2.y} ${to.x} ${to.y}`;
-  }
+  if (control && control2) return `M ${from.x} ${from.y} ` + cubic(from, control, control2, route.to, true);
   if (control) return `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`;
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
 }

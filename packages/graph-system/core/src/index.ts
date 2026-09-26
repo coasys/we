@@ -56,13 +56,14 @@ export {
   routeEdge,
   routesAlike,
   splineThrough,
+  trimCubicEnd,
   trimToRadius,
   turnBetween,
   waypointFromWorld,
   waypointsOf,
   waypointToWorld,
 } from './geometry';
-export type { EdgeClearance, EdgeWaypoint, Facing } from './geometry';
+export type { Cubic, EdgeClearance, EdgeWaypoint, Facing } from './geometry';
 export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
 export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';
