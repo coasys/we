@@ -60,7 +60,7 @@ export const CANVAS_CARD = CARD_SIZES.md;
 export const TREE_LOCALS = {
   treeMode: { type: 'boolean', initial: false, syncParam: { name: 'tree', push: true } },
   spine: { type: 'string', initial: '', syncParam: 'spine' },
-  order: { type: 'string', initial: 'date', syncParam: 'order' },
+  order: { type: 'string', initial: 'manual', syncParam: 'order' },
   signalType: { type: 'string', initial: '', syncParam: 'by' },
   cardSize: { type: 'string', initial: 'md', persist: 'workshop.treeCardSize' },
 } as const;
@@ -391,9 +391,9 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                   fit: true,
                   value: { $: 'local.order' },
                   options: [
+                    { label: 'As arranged', value: 'manual' },
                     { label: 'Oldest first', value: 'date' },
                     { label: 'By reaction', value: 'signal' },
-                    { label: 'As arranged', value: 'manual' },
                   ],
                   onChange: { $setLocal: 'order', value: { $: 'event.detail' } },
                 },

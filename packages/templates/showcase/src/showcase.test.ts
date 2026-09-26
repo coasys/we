@@ -2077,7 +2077,7 @@ describe('the workshop’s tree', () => {
     */
     expect(canvas).toContain('"treeMode":{"type":"boolean","initial":false,"syncParam":{"name":"tree","push":true}}');
     expect(canvas).toContain('"spine":{"type":"string","initial":"","syncParam":"spine"}');
-    expect(canvas).toContain('"order":{"type":"string","initial":"date","syncParam":"order"}');
+    expect(canvas).toContain('"order":{"type":"string","initial":"manual","syncParam":"order"}');
     expect(canvas).toContain('"cardSize":{"type":"string","initial":"md","persist":"workshop.treeCardSize"}');
   });
 
