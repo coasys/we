@@ -335,54 +335,19 @@ export function cardSilhouette(shape?: CardShape): readonly (readonly [number, n
 /**
  * How many points a circle is worth while it is turning into something else.
  *
- * Only ever seen mid-morph, which is what lets it be this low: at rest a round card is drawn by a
- * border radius and attached to by formula, both exact.
- *
- * The number is set by the *first* frame rather than by the moving ones. A round card's own radius is
- * still drawing it there, and the polygon is inscribed in that circle — so too few points and the clip
- * shaves visible flats off a circle nothing has started morphing yet. Twenty-four holds the deepest cut
- * under one percent of the card's half-extent, which is under a pixel on any card somebody would read,
- * and matches the sampling the text floats already use for the same ellipse.
+ * Only ever seen mid-morph: at rest a round card is drawn by a border radius and attached to by formula,
+ * both exact. Forty-eight because the polygon is visible from the first frame — the card is clipped to
+ * it — and at twenty-four a large card's facets could be picked out.
  */
 const ROUND_STEPS = 48;
 
 /**
- * Every shape as a polygon, for the one job a name cannot do: turning into another shape.
- *
- * `CARD_SILHOUETTES` above is deliberately partial — a box and an ellipse are *better* described by a
- * radius than by points, and the table says so. That holds right up until two shapes have to be
- * blended, because a name does not interpolate and a border radius cannot be lerped against a polygon.
- *
- * So this is the same shapes in the one representation that can be blended, and it is **transient by
- * design**: nothing draws from it at rest. A note card keeps its real corner radius and its real
- * `box-shadow`, and only borrows a four-point box for as long as it is between two shapes. That is the
- * whole reason a fidelity compromise here is free — sixteen points for a circle, none for a note's
- * rounded corners — where the same compromise applied at rest would be a regression to every card.
- *
- * Minimal point counts rather than a dense resampling of everything, which is the other decision worth
- * stating: the outline is read per frame by four things (the clip, the two text-flow floats and the
- * selection ring), and one of those does real geometry per point. `blendOutlines` sizes itself to the pair
- * accordingly — a diamond becoming a square is described in eight directions where a circle becoming a note
- * takes forty.
- *
- * Measured, blending and stringifying for 200 cards: 0.12 ms a frame for that eight, 0.36 for a
- * twenty-four, 0.84 for the forty. So the JavaScript is free at any card count a canvas holds, and what is
- * left to watch is the browser's own cost for that many changing `clip-path`s — which is the reason a dense
- * resampling of everything would be a different proposition rather than a slower version of this one.
- */
-/**
  * How much of a note's corner is rounded, as a fraction of its box, and in how many steps.
  *
- * A note's real corners come from a radius token in pixels, so a fraction is an approximation — of a
- * length that also varies with the card. It is the right approximation anyway, and for a reason worth
- * stating, because the alternative (four sharp corners) is not neutral: **a polygon has the corners it
- * is given for the whole of the blend**, and a card is *clipped* to it. A note drawn with four sharp
- * corners keeps its radius the whole way and cannot show it, because the polygon cuts the rounded region
- * off — so the radius appears in one step at the end, exactly when the clip stops cutting. Rounding the
- * polygon instead lets the corner be round throughout, which is what it looks like it should do.
- *
- * A twelfth of the box is close to the radius token at the card sizes this is seen at, and four steps is
- * enough that it reads as a curve rather than as a chamfer.
+ * A card is clipped to its polygon for the whole of a blend, so a note given four sharp corners could not
+ * show its radius until the clip stopped — it would appear in one step at the end. A rounded polygon keeps
+ * the corner round throughout. A twelfth is close to the radius token at the sizes a card is read at, and
+ * four steps reads as a curve rather than a chamfer.
  */
 const NOTE_CORNER = 1 / 12;
 const CORNER_STEPS = 4;
@@ -395,6 +360,16 @@ function noteCorner(cx: number, cy: number, fromAngle: number): (readonly [numbe
   });
 }
 
+/**
+ * Every shape as a polygon, for the one job a name cannot do: turning into another shape.
+ *
+ * `CARD_SILHOUETTES` is deliberately partial — a box and an ellipse are better described by a radius than
+ * by points — but a name does not interpolate, and a border radius cannot be lerped against a polygon. So
+ * these are the same shapes in the one representation that can be blended, and they are transient: nothing
+ * draws from them at rest, which is what makes their fidelity compromises free. Point counts are kept
+ * minimal because four things read an outline every frame; blending and stringifying 200 cards costs
+ * 0.12–0.84 ms a frame depending on the pair.
+ */
 export const MORPH_OUTLINES: Record<CardShape, readonly (readonly [number, number])[]> = {
   /*
     A rounded box, clockwise from the top-left corner's start — see `NOTE_CORNER` for why it is rounded

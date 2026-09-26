@@ -410,10 +410,8 @@ function shiftLane(point: Point, lane: number, horizontal: boolean): Point {
 /**
  * Which way the `to` end of this span faces, out of its own node.
  *
- * One answer where there were two. `attachPoint` derived a direction to measure the outline along and
- * `departure` derived the tangent the curve leaves or arrives on, and the two had to agree or the line
- * met the node somewhere it was never pointing — a bug the attachment comment records having had.
- * They are the same fact, so it is stated once and both read it.
+ * The one answer to two questions — which way to measure the outline along, and which way the curve leaves
+ * or arrives — because they must agree or a line meets its node somewhere it is not pointing.
  *
  * Roles as `attachPoint` takes them: `to` is the node being attached to and `from` is the other end, so
  * the source's facing is this asked with the two swapped. `horizontal` is NOT swapped with them — the
@@ -815,12 +813,9 @@ export function routeEdge(
       Half the span, on whichever axis it is longer on — measured between the points the curve actually
       runs between rather than chosen by the axis the *centres* mostly run along.
 
-      Those two agree everywhere except close to the diagonal, and near the diagonal the choice was a
-      discontinuity: `horizontal` is a boolean derived per frame, so a card travelling from beside its
-      parent to below it crosses the moment it flips, and the reach jumped from half one span to half the
-      other. On screen that is the whole curve changing shape in one frame, part way through a movement
-      that is otherwise smooth — which is exactly what it was reported as. A maximum of the two is
-      continuous, and equals what the axis choice gave wherever the two differ by anything worth seeing.
+      The two agree except near the diagonal, where choosing by axis is a discontinuity: `horizontal`
+      flips as a card crosses it mid-travel, and the whole curve would change shape in one frame. A maximum
+      is continuous, and equals the axis choice wherever the difference is worth seeing.
     */
     const reach = Math.max(Math.abs(finish.x - start.x), Math.abs(finish.y - start.y)) / 2;
     /*
@@ -1108,14 +1103,11 @@ function cutAt(chain: readonly Cubic[], measured: ReturnType<typeof measure>, cu
 /**
  * Two routes as one, `weight` of the way from `a` to `b`, control point by control point.
  *
- * The standard way to morph one path into another, and the reason it works where interpolating points
- * does not is that a control point carries a TANGENT. Two chains are first cut into the same number of
- * pieces at the same fractions of their lengths — each at the other's joints — so piece `i` of both covers
- * the same stretch of line; then all four points of each piece are interpolated. A point sampled off a
- * curve knows where the line is and nothing about which way it is going, so a morph built from samples
- * has to be told the direction at the ends separately, and an arrowhead drawn along the last few pixels
- * of one points wherever the sampling happened to leave it. Here the direction at every end is the
- * interpolation of two real directions, held by controls a sizeable fraction of the route away.
+ * The standard path morph. Both chains are cut into the same number of pieces at the same fractions of
+ * their lengths — each at the other's joints — so piece `i` of both covers the same stretch of line, and
+ * then all four points of each piece are interpolated. Interpolating control points rather than points on
+ * the line is what carries the TANGENTS through, so the direction a line leaves and arrives in — and the
+ * arrowhead drawn along it — is itself interpolated.
  *
  * Exact at both ends of the weight: 0 is `a` and 1 is `b`, drawn as themselves, so a morph hands over to
  * the ordinary route with nothing to jump. Two routes of zero length have no fractions to match, and
@@ -1250,11 +1242,9 @@ const TURN = Math.PI * 2;
  * diamond's top vertex becomes whatever the note has straight above its centre — by construction, with no
  * correspondence to find.
  *
- * It replaced exactly that: pad the shorter outline out to the longer one's length by splitting its longest
- * edges, then try every rotation for the cheapest total travel. A reasonable algorithm, and fine while both
- * shapes had four points; it fell apart the moment one of them had twenty. A rounded note's points cluster
- * at its corners, a diamond padded to match spreads its new points evenly along its straight edges, so
- * vertices mapped to edge midpoints and the card went through a lumpy many-sided thing on the way.
+ * Matching points instead fails as soon as the counts differ much: a rounded note's points cluster at its
+ * corners while a diamond padded to match spreads them along its edges, so vertices map to edge midpoints
+ * and the card passes through a lumpy many-sided shape.
  *
  * **It assumes the shapes are convex**, which every one in the table is: a ray out of the centre leaves a
  * convex outline exactly once, so one distance per direction describes it completely. A star would come out
@@ -1267,14 +1257,10 @@ export function blendOutlines(from: Outline, to: Outline, t: number): Outline {
 /**
  * How far a blend reaches along one of its own directions — what it has to carry to be blended AGAIN.
  *
- * A reversal half way through a morph starts from the outline that is on screen, and asking a *blended*
- * polygon how far it reaches is the one fragile step in all of this: its directions come from whatever pair
- * produced it, two can end up close enough together to leave an edge pointing almost at the centre, and a
- * ray between them misses both. The answer then fell back to the box, and the card grew a spike for a frame.
- * Reported as exactly that, at random, because which fractions a reader catches decides whether it happens.
- *
- * So a blend carries its own answers forward. Nothing ever ray-casts a blended outline — only the shape
- * table, which is written by hand and cannot produce that case.
+ * A reversal mid-morph starts from the outline on screen, and a *blended* polygon cannot safely be asked
+ * how far it reaches: two of its directions can lie close enough to leave an edge pointing almost at the
+ * centre, which a ray between them misses, and the card grows a spike. So a blend carries its own radii
+ * forward, and only the hand-written shape table is ever ray-cast.
  */
 export interface OutlineSample {
   ux: number;
@@ -1305,22 +1291,15 @@ export function resampleBlend(
 /**
  * The directions a pair of shapes is blended along: both of their corners, plus a coarse fill.
  *
- * Taking the corners from the shapes is what makes the ends of a blend **exact** rather than approximate.
- * Between two neighbouring directions neither outline turns — no vertex of either lies in the gap, by
- * construction — so the chord between two points on a straight edge *is* that edge, and at `t` of 0 or 1
- * the result is the original shape rather than a polygon that resembles it. Sampled at fixed angles instead,
- * a corner between two of them is a corner the chord crosses: measured at 1.6% of the card on a pentagon,
- * and doubling the sample count only took it to 0.8%, because the loss is at sharp vertices rather than
- * spread around the outline.
+ * Taking the corners from the shapes makes the ends of a blend **exact**: no vertex of either outline lies
+ * between two neighbouring directions, so each chord is an edge, and at `t` of 0 or 1 the result is the
+ * shape itself. Fixed angles would cut every corner that falls between two of them — 1.6% of a pentagon's
+ * size, and still 0.8% at twice the samples. Sized to the pair: eight directions for a diamond becoming a
+ * square, forty for a circle becoming a note.
  *
- * It also sizes itself to the pair. A diamond becoming a square is eight directions; a circle becoming a
- * note is forty.
- *
- * **Cached with the two distances along each of them**, which is the difference between this being free and
- * being the most expensive thing on the canvas: a ray cast against both outlines per direction per card per
- * frame measured 4 ms a frame for two hundred cards, where the pair's own answer never changes and a frame
- * only needs the lerp. The tables are module-level constants and there are at most forty-nine pairs of
- * them, so a weak map keyed by both is a cache with nothing to evict.
+ * **Cached with the two distances along each**, since a pair's answer never changes and a frame then needs
+ * only the lerp: casting both outlines per card per frame measured 4 ms for two hundred cards. The tables
+ * are module constants with at most forty-nine pairs, so the cache has nothing to evict.
  */
 interface Sampled {
   ux: number;
@@ -1371,15 +1350,8 @@ function radiusAt(outline: Outline, ux: number, uy: number): number {
   const reach = polygonReach(ux, uy, outline, 0.5, 0.5);
   if (Number.isFinite(reach)) return reach;
   /*
-    The box's own reach along this direction, which is the honest answer for an outline that failed to
-    answer — and the fix for a spike.
-    
-    It used to be a flat half, which is the box's edge on an axis and two-thirds of the way to it on a
-    diagonal. So a direction the outline could not answer along came back a long way inside the shape, or a
-    long way outside a narrow part of it, and the card grew a spike for a frame or two. Reachable at all
-    only because a *blended* outline can carry two directions close enough together to leave an edge
-    pointing almost at the centre, which both of its rays then miss — see `directionsFor`, which no longer
-    produces them.
+    The box's own reach along this direction — the honest answer for an outline that cannot answer. A flat
+    half would sit well inside the shape on a diagonal and outside a narrow part of it, and draw a spike.
   */
   return Math.min(
     Math.abs(ux) > 1e-9 ? Math.abs(0.5 / ux) : Infinity,
