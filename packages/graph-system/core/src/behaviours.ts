@@ -552,27 +552,19 @@ export interface ArrangeNodesOptions {
   band?: number;
 }
 
-/**
- * One parent's children as they stood when a drag began — what a drop along them is measured against.
- *
- * A card in a tree with no children has a row too, empty, one level beneath it: the place its first
- * child would go. Without it the level below a leaf is not a place at all.
- */
-interface Row {
-  parent: string;
-  /** Left to right, without the card being dragged. Empty for the level beneath a card with no children. */
-  cards: { id: string; box: Bounds }[];
-  /** The band the row occupies, with room past each end for a drop beyond the first or the last card. */
-  area: Bounds;
-  /** Where a pointer is measured from sideways, for an empty row: the middle of the card it hangs from. */
-  centre?: number;
-}
-
 /** What a drop reports, in the terms the host writes it in. */
 type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; before?: boolean; order?: string[] };
 
 /** What a drop at some point would do: where it puts the card, what it reports, and why not when it is refused. */
 type Decision = { to: ArrangeState['to']; event?: ArrangeEvent; refused?: string };
+
+/**
+ * One place a held card could go, and where its ghost would be drawn there — asked of the layout the first
+ * time the card reaches the place's level. `to` null is the card's own place.
+ */
+interface Place extends Decision {
+  at?: Point | null;
+}
 
 /**
  * Drag a card to another place in a hierarchy — along a row to reorder it, under another parent to move it,
@@ -593,27 +585,29 @@ type Decision = { to: ArrangeState['to']; event?: ArrangeEvent; refused?: string
  * see `ArrangeState`. So the reader sees the result before committing to it, and there is nothing to guess.
  * On release the card travels into that place and stays there while the write goes through.
  *
- * ## One rule: point at the place
+ * ## The place whose ghost is nearest the card
  *
- * Every place a card can go is a place in some row — a parent's children, or the empty level beneath a card
- * with none — and the pointer picks one by pointing at it. Nothing depends on resting or timing: a rule that
- * asked the pointer to stay on a card would be asking it to stay on something the preview is moving.
+ * Every place a card could go — each gap in each parent's row, the level beneath each card with no
+ * children, and its own place — is asked of the layout: where would the card be drawn if it went there?
+ * The place chosen is the one whose answer is nearest the middle of the card in the hand, on the level the
+ * card is on. So the ghost is always the drop spot closest to the card, by construction.
  *
- * - **Beneath a card with no children**, at the level its first child would sit on, it becomes that child.
- * - **On a level**, the whole width of the tree belongs to one row or another: the one the pointer is inside,
- *   or else the nearest, so moving along a level only ever moves the ghost along that level.
- * - **Along a row**, it takes the place of the card whose midpoint the pointer has passed.
+ * Measuring anything else drifts. A gap measured against the tree as it stood is a slot out once the
+ * card's own slot has closed and the trees beside it have slid over; measured against the tree without
+ * the card, the card's own place is claimed by whichever tree closed up into it; measured from the pointer,
+ * a card picked up by its edge opens gaps beside itself. The layout's own answers need no correcting,
+ * because making room is what the layout does.
+ *
+ * - **On a level**, the whole width belongs to one place or another, so moving along a level only ever
+ *   moves the ghost along that level.
  * - **Between levels**, nothing changes: the last place shown stays, so crossing the gap between two ranks
  *   does not send the tree back to where it started and out again.
  * - **In the unconnected zone**, it comes out of its tree — unless {@link ArrangeNodesOptions.keep} says its
  *   connection cannot go, in which case the preview says so.
- * - **Over its own place, or off the tree**, it goes back where it was, and a drop there writes nothing.
+ * - **Over its own place, or well off the tree**, it goes back where it was, and a drop there writes nothing.
  *
- * ## Measured against where things were
- *
- * Every decision is measured against the cards as they stood when the drag began, not as they are drawn
- * while they make room. Measured live, a card that has just slid aside moves its own midpoint under the
- * pointer and the row flickers between two answers.
+ * Each level is asked once, when the card first reaches it, and kept: the answers do not depend on the
+ * pointer, and a tree of a few hundred cards would pay a visible pause asking for every level at once.
  *
  * A card cannot go under itself or anything beneath it, so its own subtree offers no place at all.
  *
@@ -628,109 +622,113 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
 
   // ─── With a hierarchy: the preview ──────────────────────────────────────────
 
-  /** The rows a drop can land in, the dragged card's own subtree, and where it is now. */
-  let rows: Row[] = [];
-  let subtree = new Set<string>();
+  /** The places a drop can land, by the depth of the level they are on. */
+  let levels = new Map<number, Place[]>();
+  /** How far down each level's ghosts are drawn — asked once per level, for the band a card is in. */
+  let levelY = new Map<number, number>();
+  /** Half the height of the card in the hand: how far from a level's line it still counts as on it. */
+  let halfHeight = 0;
   let home: { parent: string | null; index: number } = { parent: null, index: 0 };
   /** The connection holding the dragged card under its parent, if it has one. */
   let homeEdge: string | undefined;
-  /** How far past the tree the pointer can go before a drop means "never mind". */
+  /** How far past the tree the card can go before a drop means "never mind". */
   let reach: Bounds | null = null;
-  /** The place last shown, which holds while the pointer is between levels. */
+  /** The place last shown, which holds while the card is between levels. */
   let current: Decision = { to: null };
 
   const inside = (box: Bounds, at: Point) =>
     at.x >= box.minX && at.x <= box.maxX && at.y >= box.minY && at.y <= box.maxY;
 
-  /** The rows as they stand now — taken when a drag begins, and never again during it. */
+  /** Every place the card could go, by level, with where each level lies — taken when a drag begins. */
   const snapshot = (ctx: BehaviourContext, id: string): boolean => {
     const tree = ctx.hierarchy();
     if (!tree) return false;
-    subtree = new Set([id]);
+    const subtree = new Set([id]);
     for (const member of subtree) for (const child of tree.children.get(member) ?? []) subtree.add(child);
     const parent = tree.parents.get(id) ?? null;
     home = { parent, index: parent ? (tree.children.get(parent) ?? []).indexOf(id) : 0 };
     homeEdge = tree.parentEdges.get(id);
     current = { to: null };
-    rows = [];
-    /*
-      How far one level is below the last, read off any parent and its child — the layout's own spacing,
-      which this behaviour has no other way to know. Every level of a forest is the same distance down.
-    */
-    let step = 0;
-    for (const [parentId, kids] of tree.children) {
-      const [above, below] = [ctx.boundsOf(parentId), kids[0] ? ctx.boundsOf(kids[0]) : undefined];
-      if (above && below && below.minY > above.minY) {
-        step = below.minY - above.minY;
-        break;
-      }
-    }
-    // The level beneath each card in a tree that has no children once this one is lifted out.
+    levels = new Map();
+    levelY = new Map();
+
+    const depthOf = (card: string) => {
+      let depth = 0;
+      for (let at = tree.parents.get(card); at && depth < 1000; at = tree.parents.get(at)) depth++;
+      return depth;
+    };
+    const add = (depth: number, place: Place) => (levels.get(depth) ?? levels.set(depth, []).get(depth)!).push(place);
+
+    // Its own place, where it is drawn now — the one place that needs no asking.
+    const own = ctx.boundsOf(id);
+    const ownAt = ctx.positionOf(id);
+    halfHeight = own ? (own.maxY - own.minY) / 2 : 0;
+    add(depthOf(id), { to: null, at: ownAt });
+
     const inTree = new Set([...tree.parents.keys(), ...tree.parents.values()]);
     for (const card of inTree) {
-      if (!step || !card || subtree.has(card)) continue;
-      if ((tree.children.get(card) ?? []).some((kid) => kid !== id)) continue;
-      const box = ctx.boundsOf(card);
-      if (!box) continue;
-      // Half a card of room either side: enough to find it, and short of the next card's place.
-      const slack = (box.maxX - box.minX) / 2;
-      rows.push({
-        parent: card,
-        cards: [],
-        area: { minX: box.minX - slack, maxX: box.maxX + slack, minY: box.minY + step, maxY: box.maxY + step },
-        centre: (box.minX + box.maxX) / 2,
-      });
-    }
-    for (const [parentId, kids] of tree.children) {
-      if (subtree.has(parentId)) continue;
-      const cards = kids
-        .filter((kid) => kid !== id)
-        .flatMap((kid) => {
-          const box = ctx.boundsOf(kid);
-          return box ? [{ id: kid, box }] : [];
+      if (!card || subtree.has(card)) continue;
+      const kids = (tree.children.get(card) ?? []).filter((kid) => kid !== id);
+      const depth = depthOf(card) + 1;
+      if (!options.reorder) {
+        // No position to ask for: the card joins that parent wherever the order puts it, and is written last.
+        if (card !== home.parent) add(depth, { to: { parent: card }, event: { into: 'child', target: card } });
+        continue;
+      }
+      for (let index = 0; index <= kids.length; index++) {
+        if (card === home.parent && index === home.index) continue;
+        const order = [...kids];
+        order.splice(index, 0, id);
+        add(depth, {
+          to: { parent: card, index },
+          event: kids.length
+            ? { into: 'sibling', target: kids[Math.min(index, kids.length - 1)], before: index < kids.length, order }
+            : { into: 'child', target: card, order },
         });
-      if (!cards.length) continue;
-      // A card's width of room past each end, so the first and the last place in a row can be reached.
-      const slack = Math.max(...cards.map(({ box }) => box.maxX - box.minX));
-      rows.push({
-        parent: parentId,
-        cards,
-        area: {
-          minX: cards[0].box.minX - slack,
-          maxX: cards[cards.length - 1].box.maxX + slack,
-          minY: Math.min(...cards.map(({ box }) => box.minY)),
-          maxY: Math.max(...cards.map(({ box }) => box.maxY)),
-        },
-      });
+      }
     }
+
+    // Where each level lies: one answer per level, from any place on it.
+    for (const [depth, places] of levels) {
+      const probe = places.find((place) => place.to);
+      const at = probe ? ctx.placesOf(id, [probe.to!])[0] : places[0].at;
+      if (probe) probe.at = at;
+      if (at) levelY.set(depth, at.y);
+    }
+
     /*
-      Off the tree is every row and every card in a tree, with a level's room above and below. Past that a
-      drop means "never mind" — which is how a reader takes a card back, and has to stay easy to reach.
+      Off the tree is past every card in a tree and every level a place is on, by a card's size — a drop
+      out there means "never mind", which is how a reader takes a card back and has to stay easy to reach.
     */
-    const boxes = [
-      ...rows.map((row) => row.area),
-      ...[...inTree].flatMap((card) => (card ? [ctx.boundsOf(card)] : [])).filter((box): box is Bounds => !!box),
-    ];
-    const pad = step || Math.max(0, ...boxes.map((box) => box.maxY - box.minY));
+    const boxes = [...inTree]
+      .flatMap((card) => (card ? [ctx.boundsOf(card)] : []))
+      .filter((box): box is Bounds => !!box);
+    const width = own ? own.maxX - own.minX : 0;
+    const ys = [...levelY.values()];
     reach = boxes.length
       ? {
-          minX: Math.min(...boxes.map((box) => box.minX)),
-          maxX: Math.max(...boxes.map((box) => box.maxX)),
-          minY: Math.min(...boxes.map((box) => box.minY)) - pad,
-          maxY: Math.max(...boxes.map((box) => box.maxY)) + pad,
+          minX: Math.min(...boxes.map((box) => box.minX)) - width,
+          maxX: Math.max(...boxes.map((box) => box.maxX)) + width,
+          minY: Math.min(...boxes.map((box) => box.minY), ...ys) - 2 * halfHeight,
+          maxY: Math.max(...boxes.map((box) => box.maxY), ...ys) + 2 * halfHeight,
         }
       : null;
     return true;
   };
 
-  /** How far the pointer is from a row's nearest card, sideways — to pick between two rows that overlap. */
-  const nearestGap = (row: Row, world: Point) =>
-    row.centre !== undefined
-      ? Math.abs(row.centre - world.x)
-      : Math.min(...row.cards.map(({ box }) => Math.abs((box.minX + box.maxX) / 2 - world.x)));
-
-  /** How far the pointer is outside a row's band, sideways; zero within it. */
-  const outside = (row: Row, world: Point) => Math.max(0, row.area.minX - world.x, world.x - row.area.maxX);
+  /** A level's places with where each would be drawn, asking the layout for any not yet known. */
+  const placesOn = (depth: number, ctx: BehaviourContext): Place[] => {
+    const places = levels.get(depth) ?? [];
+    const unknown = places.filter((place) => place.at === undefined && place.to);
+    if (unknown.length && dragging) {
+      const answers = ctx.placesOf(
+        dragging,
+        unknown.map((place) => place.to!),
+      );
+      unknown.forEach((place, i) => (place.at = answers[i]));
+    }
+    return places;
+  };
 
   /** Whether a connection holds anything {@link ArrangeNodesOptions.keep} says it must be kept for. */
   const kept = (ctx: BehaviourContext): boolean => {
@@ -742,50 +740,49 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     });
   };
 
-  /** What a drop at this point would do. */
-  const decide = (world: Point, ctx: BehaviourContext): Decision => {
-    if (ctx.regionAt(world)) {
+  /** What a drop with the card's middle here would do. */
+  const decide = (centre: Point, ctx: BehaviourContext): Decision => {
+    if (ctx.regionAt(centre)) {
       if (!home.parent) return { to: null };
       if (kept(ctx))
         return { to: null, refused: options.keepReason || 'This connection can’t be removed by dragging.' };
       return { to: { parent: null }, event: { into: 'loose' } };
     }
-    if (!reach || !inside(reach, world)) return { to: null };
-    // The rows on the level the pointer is on — the one it is inside, else the nearest along the level.
-    const row = rows
-      .filter(({ area }) => world.y >= area.minY && world.y <= area.maxY)
-      .sort((a, b) => outside(a, world) - outside(b, world) || nearestGap(a, world) - nearestGap(b, world))[0];
-    if (!row) return current;
-    const index = row.cards.filter(({ box }) => (box.minX + box.maxX) / 2 < world.x).length;
-    if (row.parent === home.parent && (!options.reorder || index === home.index)) return { to: null };
-    if (!options.reorder) {
-      // No position to ask for: the card joins that parent wherever the order puts it, and is written last.
-      return { to: { parent: row.parent }, event: { into: 'child', target: row.parent } };
+    if (!reach || !inside(reach, centre)) return { to: null };
+    // The level the card is on — within half a card of its line — or none, between two.
+    let depth: number | undefined;
+    let nearest = Infinity;
+    for (const [level, y] of levelY) {
+      const off = Math.abs(y - centre.y);
+      if (off <= halfHeight && off < nearest) [depth, nearest] = [level, off];
     }
-    if (!row.cards.length) {
-      // The first child of a card that has none.
-      return {
-        to: { parent: row.parent, index: 0 },
-        event: { into: 'child', target: row.parent, ...(dragging ? { order: [dragging] } : {}) },
-      };
+    if (depth === undefined) return current;
+    let best: Place | undefined;
+    let gap = Infinity;
+    for (const place of placesOn(depth, ctx)) {
+      if (!place.at) continue;
+      const off = Math.abs(place.at.x - centre.x);
+      if (off < gap) [best, gap] = [place, off];
     }
-    const beside = row.cards[Math.min(index, row.cards.length - 1)];
-    // The row as the reader sees it land: what the order is written from.
-    const order = row.cards.map((card) => card.id);
-    if (dragging) order.splice(index, 0, dragging);
-    return {
-      to: { parent: row.parent, index },
-      event: { into: 'sibling', target: beside.id, before: index < row.cards.length, order },
-    };
+    if (!best) return current;
+    return { to: best.to, ...(best.event ? { event: best.event } : {}) };
   };
+
+  /**
+   * The middle of the card in the hand, which is what a place is decided from.
+   *
+   * Not the pointer: a card picked up by its edge has most of itself off to one side, and a gap that opened
+   * where the pointer is rather than where the card visibly is would open beside the card, not under it.
+   */
+  const centreOf = (world: Point): Point => ({ x: world.x + grabOffset.x, y: world.y + grabOffset.y });
 
   /** Hold the card at the pointer, and tell the engine where the drop would put it. */
   const show = (world: Point, ctx: BehaviourContext) => {
     if (!dragging) return;
-    current = decide(world, ctx);
+    current = decide(centreOf(world), ctx);
     ctx.arrange({
       id: dragging,
-      at: { x: world.x + grabOffset.x, y: world.y + grabOffset.y },
+      at: centreOf(world),
       to: current.to,
       ...(current.refused ? { refused: current.refused } : {}),
     });
@@ -902,7 +899,7 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
 
       if (previewing) {
-        const { to, event } = wasMoved ? decide(world, ctx) : { to: null, event: undefined };
+        const { to, event } = wasMoved ? decide(centreOf(world), ctx) : { to: null, event: undefined };
         release();
         /*
           A press that went nowhere is a click, and must fall through: `select` is listed after this one

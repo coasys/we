@@ -183,6 +183,15 @@ export interface BehaviourContext {
   /** An edge as the graph holds it, data and all; null for one it does not. */
   edgeOf(id: string): GraphEdge | null;
   /**
+   * Where a card would be drawn if it were held at each of these places — see {@link ArrangeState} — laid out
+   * afresh and never drawn. Null for a place the layout could not put it.
+   *
+   * For a gesture that has to choose among the places a card could go: the one whose ghost would be nearest
+   * the card is the one the reader means, and nothing but the layout knows where each ghost would be, since
+   * making room at one place moves every card around it.
+   */
+  placesOf(id: string, places: readonly NonNullable<ArrangeState['to']>[]): (Point | null)[];
+  /**
    * Hold a card for a gesture that rearranges a hierarchy — see {@link ArrangeState}; null lets it go.
    *
    * The preview a rearranging drag needs belongs to the engine rather than the behaviour for the reason

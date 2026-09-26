@@ -71,7 +71,10 @@ async function started(seed: SeedSource, options: Record<string, unknown> = {}) 
     engine,
     events,
     at,
-    press: (id: string) => gesture.onPointerDown?.(input(at(id)), ctx),
+    press: (id: string, grab: Point = { x: 0, y: 0 }) =>
+      gesture.onPointerDown?.(input({ x: at(id).x + grab.x, y: at(id).y + grab.y }), ctx),
+    /** Where the card would be drawn at a place — what the gesture measures a card against. */
+    ghostAt: (id: string, place: { parent: string; index?: number }) => ctx.placesOf(id, [place])[0]!,
     move: (point: Point) => gesture.onPointerMove?.(input(point), ctx),
     drop: (point: Point) => gesture.onPointerUp?.(input(point, 0), ctx),
   };
@@ -81,21 +84,51 @@ const order = (engine: GraphEngine, ids: string[]) =>
   [...ids].sort((one, two) => engine.getPositions().get(one)!.x - engine.getPositions().get(two)!.x);
 
 describe('arranging a card in a tree', () => {
-  it('changes nothing until the pointer passes a neighbour’s midpoint, then makes room', async () => {
+  it('changes nothing until the card is nearer another place than its own, then makes room under it', async () => {
     const { engine, at, press, move } = await started(world().seed);
-    const [a, b] = [at('a'), at('b')];
+    const [a, b, c] = [at('a'), at('b'), at('c')];
     press('c');
 
-    // Over b, but not yet past its middle: nothing has moved, and the ghost sits where c was.
-    move({ x: b.x + 20, y: b.y });
+    // Nearer its own place than b's: nothing has moved, and the ghost sits where c was.
+    move({ x: (b.x + c.x) / 2 + 10, y: b.y });
     expect(at('b').x).toBe(b.x);
-    expect(engine.getArrangePreview()?.at.x).toBeGreaterThan(b.x);
+    expect(engine.getArrangePreview()?.at.x).toBe(c.x);
 
-    // Past it: b steps right into c's place, and the ghost takes b's.
-    move({ x: b.x - 20, y: b.y });
+    // Nearer b's: b steps right into c's place, and the ghost takes b's — under the card.
+    move({ x: (b.x + c.x) / 2 - 10, y: b.y });
     expect(at('b').x).toBeGreaterThan(b.x);
     expect(engine.getArrangePreview()?.at.x).toBe(b.x);
     expect(at('a').x).toBe(a.x);
+  });
+
+  it('keeps the gap under the card across a tree that has closed up behind it', async () => {
+    // Reported: moving right toward another tree, a gap opened only once the card was already past it, to
+    // its left. The card's own slot closes as soon as it heads elsewhere, and everything beyond slides over;
+    // a gap measured against the tree as it stood was a slot out.
+    const { engine, at, press, move } = await started(world().seed);
+    const [c, x] = [at('c'), at('x')];
+    press('c');
+    for (let px = c.x; px <= x.x + 60; px += 10) {
+      move({ x: px, y: c.y });
+      await vi.advanceTimersByTimeAsync(400);
+      const ghost = engine.getArrangePreview()!.at;
+      // Never more than half a slot (card 100 + gap 20) from the card in the hand.
+      expect(Math.abs(ghost.x - px)).toBeLessThanOrEqual(61);
+    }
+  });
+
+  it('decides from the card, not the pointer, when the card is picked up by its edge', async () => {
+    const { engine, at, press, move } = await started(world().seed);
+    const [b, c] = [at('b'), at('c')];
+    const middle = (b.x + c.x) / 2;
+    // Held 45 right of its middle: the card's body is left of the pointer.
+    press('c', { x: 45, y: 0 });
+    // The card's middle is nearer b's place, though the pointer is nowhere near b.
+    move({ x: middle + 35, y: b.y });
+    expect(engine.getArrangePreview()?.at.x).toBe(b.x);
+    // And back past the middle: its own place again.
+    move({ x: middle + 55, y: b.y });
+    expect(engine.getArrangePreview()?.change).toBe(false);
   });
 
   it('draws the card under the pointer, and its line to the ghost from the parent it would have', async () => {
@@ -159,16 +192,19 @@ describe('arranging a card in a tree', () => {
   });
 
   it('moves a card under another parent along that parent’s row', async () => {
-    const { engine, events, at, press, move, drop } = await started(world().seed);
+    const { engine, events, at, press, move, drop, ghostAt } = await started(world().seed);
     const x = at('x');
     press('c');
-    move({ x: x.x - 30, y: x.y });
+    // Where the gap before x opens — left of where x is drawn now, since c's own slot closes as it goes.
+    const before = ghostAt('c', { parent: 'q', index: 0 });
+    expect(before.x).toBeLessThan(x.x - 60);
+    move({ x: before.x + 10, y: x.y });
 
     // Laid out as q's first child, with the line from q.
     expect(order(engine, ['c', 'x'])).toEqual(['c', 'x']);
     expect(engine.getArrangePreview()?.line?.from.x).toBeCloseTo(at('q').x, 0);
 
-    drop({ x: x.x - 30, y: x.y });
+    drop({ x: before.x + 10, y: x.y });
     expect(events[0]).toMatchObject({ into: 'sibling', target: { id: 'x' }, before: true });
   });
 

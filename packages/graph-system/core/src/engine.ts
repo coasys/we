@@ -2549,6 +2549,7 @@ export class GraphEngine {
         return { minX: at.x - halfWidth, minY: at.y - halfHeight, maxX: at.x + halfWidth, maxY: at.y + halfHeight };
       },
       edgeOf: (id) => this.store.edge(id) ?? null,
+      placesOf: (id, places) => this.placesOf(id, places),
       arrange: (state) => this.arrange(state),
       /*
         Folded cards are not in the index, so a sweep cannot catch what a fold is hiding — which is
@@ -2673,6 +2674,36 @@ export class GraphEngine {
       change: held.to !== null,
       ...(held.refused ? { refused: held.refused } : {}),
     };
+  }
+
+  /**
+   * Where a card would land at each of these places — see `BehaviourContext.placesOf`.
+   *
+   * A fresh layout instance rather than the live one, so asking cannot disturb whatever the live one holds
+   * between runs — a simulation's velocities, a warm start. Nothing is applied or drawn.
+   */
+  private placesOf(id: string, places: readonly NonNullable<ArrangeState['to']>[]): (Point | null)[] {
+    const spec = this.spec.layout ?? { type: 'force' };
+    const layout = places.length ? this.registry.layout(spec.type, spec.options) : undefined;
+    if (!layout) return places.map(() => null);
+    const nodes = [...this.store.nodes()].map((node) => this.overlaid(node));
+    const edges = [...this.store.edges()];
+    const containment = this.containment();
+    const { width, height } = this.viewport.get();
+    const answers = places.map((place) => {
+      const at = layout
+        .init({
+          nodes,
+          edges,
+          containment,
+          viewport: { width: width || 800, height: height || 600 },
+          arranging: { id, parent: place.parent, ...(place.index === undefined ? {} : { index: place.index }) },
+        })
+        .positions.get(id);
+      return at ? { x: at.x, y: at.y } : null;
+    });
+    layout.stop?.();
+    return answers;
   }
 
   /** The card a rearranging drag is holding under the pointer, if any. */
