@@ -103,6 +103,37 @@ const DEFAULT_BEHAVIOURS = ['pan-zoom', 'select', 'expand-on-double-click'];
  * into one syntax. A canvas renderer would write the same three cases into `ctx.quadraticCurveTo`
  * without re-deriving anything.
  */
+/**
+ * How much of the morph the content spends fading on each side of its switch, as a fraction of the morph.
+ * A quarter each way puts the whole fade in the fast early part of an eased-out switch.
+ */
+const CONTENT_FADE = 0.25;
+
+/**
+ * How a card's content is laid out, and how visible it is, while the card changes shape.
+ *
+ * Text cannot be animated between two layouts that wrap differently: reflow is discrete, so a word can only
+ * jump between lines. So the content FADES THROUGH the change, which is the convention wherever a container
+ * morphs around content that has to re-wrap. It is laid out as the shape the card is leaving for the first
+ * half of the morph and as the shape it is becoming for the second, and it is invisible at the moment it
+ * switches. Each half is that shape's own resting layout, so nothing jumps at either end either: the morph
+ * starts with the content as it was and ends with it as it will stay.
+ *
+ * Images and embeds follow the same switch rather than easing their margins, since text reflows around them
+ * and a moving margin would bring back the jitter by another route.
+ */
+export function contentLayout(visual: { cardShape?: string; morph?: { from: string; at: number } }): {
+  cardShape?: string;
+  opacity: number;
+} {
+  const morph = visual.morph;
+  if (!morph) return { cardShape: visual.cardShape, opacity: 1 };
+  return {
+    cardShape: morph.at < 0.5 ? morph.from : visual.cardShape,
+    opacity: Math.min(1, Math.abs(morph.at - 0.5) / CONTENT_FADE),
+  };
+}
+
 export function pathFrom(route: EdgeGeometry, endGap = 0): string {
   const { from, control, control2, elbows, segments } = route;
   const to = endGap > 0 ? backOff(route, endGap) : route.to;
@@ -1765,18 +1796,22 @@ export function GraphView(props: GraphViewProps) {
     return points ? `polygon(${points.map(([x, y]) => `${pct(x)} ${pct(y)}`).join(', ')})` : 'none';
   }
 
-  /** The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. */
+  /**
+   * The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. Mid-morph,
+   * the resting outline of whichever shape the content is laid out as — see `contentLayout` — and never the
+   * moving silhouette, which text reflowed around would hop between lines on every frame.
+   */
   function flowPoints(visual: Shaped): Outline | undefined {
-    if (visual.morph) return visual.morph.outline;
     if (visual.shape !== 'card') return undefined;
-    if (visual.cardShape === 'round') {
+    const cardShape = contentLayout(visual).cardShape;
+    if (cardShape === 'round') {
       const steps = 24;
       return Array.from({ length: steps }, (_, i) => {
         const angle = -Math.PI / 2 + (i / steps) * Math.PI * 2;
         return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)] as const;
       });
     }
-    return cutPoints(visual);
+    return cardSilhouette(cardShape as CardShape | undefined);
   }
 
   /**
@@ -1897,13 +1932,8 @@ export function GraphView(props: GraphViewProps) {
 
   function nodeInset(visual: Shaped): string {
     if (visual.shape !== 'card') return '0';
-    const to = insetOf(visual.cardShape);
-    const morph = visual.morph;
-    // Eased with the outline, so a picture inside a card that is becoming a triangle walks inward as
-    // the sides close on it rather than jumping to where it will have to sit.
-    if (!morph) return `${to}%`;
-    const from = insetOf(morph.from);
-    return `${Math.round((from + (to - from) * morph.at) * 100) / 100}%`;
+    // Switched with the text rather than eased — see `contentLayout`.
+    return `${insetOf(contentLayout(visual).cardShape)}%`;
   }
 
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
@@ -3553,6 +3583,7 @@ export function GraphView(props: GraphViewProps) {
                   '--node-radius': nodeRadius(entry.visual),
                   '--node-clip': nodeClip(entry.visual),
                   '--node-inset': nodeInset(entry.visual),
+                  '--content-opacity': String(contentLayout(entry.visual).opacity),
                   '--flow-left': nodeFlow(entry.visual).left,
                   '--flow-right': nodeFlow(entry.visual).right,
                   /*

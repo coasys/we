@@ -788,6 +788,8 @@
 // whose size on the board has not changed. `top left` because the card is a page, and text that
 // grew from its centre would drift out of both margins at once.
 .we-graph__card-scale {
+  // Fades through a change of shape — see `contentLayout` in the renderer.
+  opacity: var(--content-opacity, 1);
   width: calc(100% / var(--content-scale, 1));
   height: calc(100% / var(--content-scale, 1));
   transform-origin: top left;
