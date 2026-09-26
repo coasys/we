@@ -924,6 +924,11 @@
   }
 }
 
+// Held where letting go would change nothing: the card says so as well as its place does.
+.we-graph__node--held-idle {
+  opacity: 0.6;
+}
+
 /*
   The place a held card would land — see `ghostOutline` in the renderer. Faint, dashed and in the accent, the
   same voice as the connect gesture's line: a proposal, not a card.
@@ -934,6 +939,13 @@
   stroke-width: 1.5px;
   stroke-dasharray: 6 4;
   vector-effect: non-scaling-stroke;
+}
+
+// The card's own place: a hole rather than a destination — neutral, solid and barely there.
+.we-graph__ghost--home .we-graph__ghost-outline {
+  fill: color-mix(in srgb, var(--we-role-text-faint) 6%, transparent);
+  stroke: var(--we-role-border);
+  stroke-dasharray: none;
 }
 
 .we-graph__node--pinned .we-graph__dot,

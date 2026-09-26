@@ -64,6 +64,8 @@ const SHAPES: EntityShape[] = [
     relations: [
       { name: 'source', target: '', cardinality: 'one' },
       { name: 'target', target: '', cardinality: 'one' },
+      { name: 'signals', target: 'Signal', cardinality: 'many' },
+      { name: 'comments', target: '', cardinality: 'many' },
     ],
   },
   {
@@ -199,6 +201,38 @@ describe('canvasSeed', () => {
     const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
 
     expect(nodes[0].data).toMatchObject({ signalsCount: 3, commentsCount: 2 });
+  });
+
+  it('counts what people made of a connection too, so a gesture can tell a discussed line from a bare one', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+      ],
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+      Relationship: [
+        {
+          id: 'r1',
+          source: 'c1',
+          sourceType: 'CollectionBlock',
+          target: 'c2',
+          targetType: 'CollectionBlock',
+          $commentsCount: 2,
+          $signalsCount: 0,
+        },
+      ],
+    });
+
+    const { edges } = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', counts: ['signals', 'comments'] },
+      ctx,
+    );
+
+    expect(edges[0].data).toMatchObject({ commentsCount: 2 });
+    expect(edges[0].data?.signalsCount).toBeUndefined();
   });
 
   it('leaves a zero out, so a card can ask whether the field is there', async () => {

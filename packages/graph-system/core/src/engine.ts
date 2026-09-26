@@ -369,6 +369,7 @@ export class GraphEngine {
     id: string;
     at: Point | null;
     to: ArrangeState['to'];
+    refused?: string;
     slot?: Point;
     ghostFrom?: Point;
   } | null = null;
@@ -2547,6 +2548,7 @@ export class GraphEngine {
         const halfHeight = area.halfHeight ?? area.radius;
         return { minX: at.x - halfWidth, minY: at.y - halfHeight, maxX: at.x + halfWidth, maxY: at.y + halfHeight };
       },
+      edgeOf: (id) => this.store.edge(id) ?? null,
       arrange: (state) => this.arrange(state),
       /*
         Folded cards are not in the index, so a sweep cannot catch what a fold is hiding — which is
@@ -2625,8 +2627,19 @@ export class GraphEngine {
    * to it from the parent the drop would give it, routed like a real edge against the ghost's own outline,
    * and drawn as a proposal the way the connect gesture's line is — see {@link getPendingConnection}. The
    * card's real line to its present parent is not drawn while it is held, so the two never disagree.
+   *
+   * `change` is false where the drop would change nothing — the card is over its own place, off the tree, or
+   * `refused` says why the move would be turned down. The renderer draws that as quietly as it can, because
+   * "nothing will happen" must not look like one more destination.
    */
-  getArrangePreview(): { id: string; at: Point; visual: NodeVisual; line: EdgeGeometry | null } | null {
+  getArrangePreview(): {
+    id: string;
+    at: Point;
+    visual: NodeVisual;
+    line: EdgeGeometry | null;
+    change: boolean;
+    refused?: string;
+  } | null {
     const held = this.arrangement;
     const at = this.ghostAt();
     const node = held ? this.store.node(held.id) : undefined;
@@ -2652,7 +2665,14 @@ export class GraphEngine {
         anchorsOf(undefined, { source: style.sourceAnchor, target: style.targetAnchor }),
       );
     }
-    return { id: held.id, at, visual: this.resolvedVisual(node, this.metrics), line };
+    return {
+      id: held.id,
+      at,
+      visual: this.resolvedVisual(node, this.metrics),
+      line,
+      change: held.to !== null,
+      ...(held.refused ? { refused: held.refused } : {}),
+    };
   }
 
   /** The card a rearranging drag is holding under the pointer, if any. */
@@ -2680,7 +2700,13 @@ export class GraphEngine {
     // Whoever holds a card owns its position — see `stopTravel`.
     if (previous?.id !== state.id) this.stopTravel(state.id);
     const same = previous?.id === state.id && sameArrangeTo(previous.to, state.to);
-    this.arrangement = { ...(previous?.id === state.id ? previous : {}), id: state.id, at: state.at, to: state.to };
+    this.arrangement = {
+      ...(previous?.id === state.id ? previous : {}),
+      id: state.id,
+      at: state.at,
+      to: state.to,
+      refused: state.refused,
+    };
     if (same && state.at && previous?.at) {
       const placed = this.positions.get(state.id);
       if (placed) this.positions.set(state.id, { ...placed, x: state.at.x, y: state.at.y });

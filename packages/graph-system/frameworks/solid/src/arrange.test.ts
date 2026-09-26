@@ -172,23 +172,6 @@ describe('arranging a card in a tree', () => {
     expect(events[0]).toMatchObject({ into: 'sibling', target: { id: 'x' }, before: true });
   });
 
-  it('nests under a card the pointer rests on', async () => {
-    const { engine, events, at, press, move, drop } = await started(world().seed);
-    const b = at('b');
-    press('c');
-    // On b's near half, where it has not moved: rest there and the drop means "under b".
-    move({ x: b.x + 25, y: b.y });
-    expect(engine.getArrangePreview()?.line?.from.x).toBeCloseTo(at('p').x, 0);
-    await vi.advanceTimersByTimeAsync(600);
-
-    const preview = engine.getArrangePreview()!;
-    expect(preview.at.y).toBeGreaterThan(b.y);
-    expect(preview.line?.from.x).toBeCloseTo(at('b').x, 0);
-
-    drop({ x: b.x + 25, y: b.y });
-    expect(events[0]).toMatchObject({ into: 'child', target: { id: 'b' } });
-  });
-
   it('puts a card under one with no children by pointing at the level beneath it, with no resting', async () => {
     // Reported as feeling random: a card with no children offered no place beneath it at all, so the only
     // way under one was to rest on the card itself — inside its own row, which was busy making room.
@@ -242,18 +225,6 @@ describe('arranging a card in a tree', () => {
     expect(events[0]).toMatchObject({ into: 'child', target: { id: 'x' } });
   });
 
-  it('does not nest under a card the pointer only passes over', async () => {
-    const { engine, at, press, move } = await started(world().seed);
-    const b = at('b');
-    press('c');
-    move({ x: b.x + 25, y: b.y });
-    await vi.advanceTimersByTimeAsync(200);
-    move({ x: b.x - 25, y: b.y });
-    await vi.advanceTimersByTimeAsync(600);
-    // Still a place in p's row.
-    expect(engine.getArrangePreview()?.line?.from.x).toBeCloseTo(at('p').x, 0);
-  });
-
   it('writes nothing for a drop back where the card started, or out in empty space', async () => {
     const { engine, events, at, press, move, drop } = await started(world().seed);
     const c = at('c');
@@ -270,7 +241,7 @@ describe('arranging a card in a tree', () => {
   });
 
   it('offers no place under the dragged card itself or anything beneath it', async () => {
-    const { engine, events, at, press, move, drop } = await started(
+    const { events, at, press, move, drop } = await started(
       world({
         nodes: [{ id: 'd', kind: 'entity', type: 'Thing', label: 'd', data: { rank: 0 } }],
         edges: [{ id: 'c-d', source: 'c', target: 'd', type: 'rel' }],
@@ -279,11 +250,79 @@ describe('arranging a card in a tree', () => {
     const d = at('d');
     press('c');
     move({ x: d.x, y: d.y });
-    await vi.advanceTimersByTimeAsync(600);
     drop({ x: d.x, y: d.y });
 
+    // Over its own child the level still belongs to the nearest place on it — but never one in c's subtree.
+    expect(events.map((event) => (event as { target?: { id: string } }).target?.id)).not.toContain('c');
+    expect(events.map((event) => (event as { target?: { id: string } }).target?.id)).not.toContain('d');
+  });
+
+  it('draws its own place as no change, and a new one as a change', async () => {
+    const { engine, at, press, move } = await started(world().seed);
+    const [b, c] = [at('b'), at('c')];
+    press('c');
+    move({ x: c.x + 5, y: c.y });
+    expect(engine.getArrangePreview()?.change).toBe(false);
+    move({ x: b.x - 20, y: b.y });
+    expect(engine.getArrangePreview()?.change).toBe(true);
+    // Well off the tree is "never mind", and says so the same way.
+    move({ x: c.x, y: c.y + 2000 });
+    expect(engine.getArrangePreview()?.change).toBe(false);
+  });
+
+  it('holds the last place while the pointer crosses the gap between two levels', async () => {
+    // Crossing between ranks used to send the card home and out again, which reopened the tree it came from.
+    const { engine, at, press, move } = await started(world().seed);
+    const [p, b] = [at('p'), at('b')];
+    const step = b.y - p.y;
+    press('c');
+    move({ x: b.x, y: b.y + step });
+    const under = engine.getArrangePreview()!;
+    expect(under.line?.from.x).toBeCloseTo(at('b').x, 0);
+
+    // Between b's level and the one beneath it: no row, and no reason to go anywhere else.
+    move({ x: b.x, y: b.y + step / 2 });
+    expect(engine.getArrangePreview()?.change).toBe(true);
+    expect(engine.getArrangePreview()?.at).toEqual(under.at);
+  });
+
+  it('never sends the card home while the pointer moves along a level', async () => {
+    // Reported: along the bottom of the tree, the gaps between places sent the card back to its old slot,
+    // so the whole tree split open and closed again as the pointer moved.
+    const { engine, at, press, move } = await started(world().seed);
+    const [p, b, x] = [at('p'), at('b'), at('x')];
+    const y = b.y + (b.y - p.y);
+    press('a');
+    for (let px = at('a').x - 40; px <= x.x + 60; px += 10) {
+      move({ x: px, y });
+      expect(engine.getArrangePreview()?.change).toBe(true);
+    }
+  });
+
+  it('refuses to take a card out of its tree when its connection is one the host keeps, and says why', async () => {
+    const setup = world({
+      nodes: [{ id: 'z', kind: 'entity', type: 'Thing', label: 'z', data: { rank: 0 } }],
+    });
+    const kept = setup.edges.find((edge) => edge.id === 'p-c')!;
+    kept.data = { commentsCount: 2 };
+    const { engine, events, at, press, move, drop } = await started(setup.seed, {
+      keep: ['commentsCount', 'signalsCount'],
+      keepReason: 'Discussed.',
+    });
+    const z = at('z');
+    press('c');
+    move(z);
+    expect(engine.getArrangePreview()).toMatchObject({ change: false, refused: 'Discussed.' });
+    drop(z);
     expect(events).toEqual([]);
-    expect(engine.heldCard()).toBeNull();
+
+    // A bare connection goes, as before.
+    await vi.advanceTimersByTimeAsync(2000);
+    press('b');
+    move(z);
+    expect(engine.getArrangePreview()?.change).toBe(true);
+    drop(z);
+    expect(events[0]).toMatchObject({ into: 'loose' });
   });
 
   it('never shows a sibling order a drag cannot keep, where siblings are ordered by something else', async () => {

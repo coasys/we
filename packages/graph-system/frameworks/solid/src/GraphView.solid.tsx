@@ -1349,6 +1349,8 @@ export function GraphView(props: GraphViewProps) {
     const placed = engine.getPositions();
     const selected = new Set(engine.getSelection());
     const held = engine.heldCard();
+    // Whether letting go of the held card would change anything — see `getArrangePreview`.
+    const heldIdle = held ? engine.getArrangePreview()?.change === false : false;
     return [...engine.store.nodes()].flatMap((rawNode) => {
       const at = placed.get(rawNode.id);
       if (!at) return [];
@@ -1372,6 +1374,7 @@ export function GraphView(props: GraphViewProps) {
           selected: selected.has(node.id),
           // In the hand during a rearranging drag — read onto the row like `selected`, so it repaints.
           held: held === node.id,
+          heldIdle: held === node.id && heldIdle,
           expanded: engine.expansion.isExpanded(node.id),
           hasMore: engine.expansion.hasMore(node.id),
           /*
@@ -3435,12 +3438,16 @@ export function GraphView(props: GraphViewProps) {
             An outline in the card's own shape rather than a second copy of the card: it reads as a place, not
             as another card, and it needs none of the card's content. Dashed like the connect gesture's line,
             because both say the same thing — a proposal, not yet written.
+
+            Where letting go would change nothing, the place is the card's own and is drawn as a hole: a faint
+            neutral outline with no line, since its real line is the one it already has. Two looks, so that
+            "nothing will happen" is never mistaken for one more destination.
           */}
           <Show when={arranging()}>
             {(preview) => (
-              <g class="we-graph__ghost">
+              <g class="we-graph__ghost" classList={{ 'we-graph__ghost--home': !preview().change }}>
                 <path class="we-graph__ghost-outline" d={ghostOutline(preview().visual, preview().at)} />
-                <Show when={preview().line}>
+                <Show when={preview().change && preview().line}>
                   {(line) => (
                     <path
                       d={pathFrom(line(), ARROW_LENGTH * PENDING_WIDTH)}
@@ -3661,6 +3668,7 @@ export function GraphView(props: GraphViewProps) {
                   'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
                   // In the hand during a rearranging drag, lifted above the tree making room under it.
                   'we-graph__node--held': entry.held,
+                  'we-graph__node--held-idle': entry.heldIdle,
                 }}
                 style={{
                   ...anchorStyle(entry, entry.foldScale),
@@ -4308,6 +4316,39 @@ export function GraphView(props: GraphViewProps) {
         which is what keeps the tooltip one size at every zoom without any counter-scaling: it is
         chrome, and chrome is not part of the drawing.
       */}
+      {/*
+        Why a drop would change nothing, when the reason is a refusal rather than the card being home — said
+        above the card in the hand, where the reader is looking, before it is let go rather than after.
+      */}
+      <Show when={arranging()?.refused ? arranging() : null}>
+        {(preview) => {
+          const top = () => {
+            const at = engine.getPositions().get(preview().id);
+            const half = (preview().visual.height ?? preview().visual.size * 2) / 2;
+            return at ? engine.viewport.toScreen({ x: at.x, y: at.y - half }) : null;
+          };
+          return (
+            <Show when={top()}>
+              {(point) => (
+                <we-tooltip
+                  open
+                  content={preview().refused}
+                  placement="top"
+                  style={{
+                    position: 'absolute',
+                    left: `${point().x}px`,
+                    top: `${point().y - TOOLTIP_LIFT}px`,
+                    'pointer-events': 'none',
+                  }}
+                >
+                  <div style={{ width: '0px', height: '0px' }} />
+                </we-tooltip>
+              )}
+            </Show>
+          );
+        }}
+      </Show>
+
       <Show when={!gesturing() && handleHint()}>
         {(hint) => (
           <we-tooltip

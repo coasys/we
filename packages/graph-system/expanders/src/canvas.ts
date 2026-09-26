@@ -124,7 +124,8 @@ export interface CanvasSeedOptions {
   hiddenTypes?: string[];
   /**
    * Relations to **count** on each card, read onto its data as `<name>Count` — `['signals',
-   * 'comments']` for "what have people made of this".
+   * 'comments']` for "what have people made of this". Connections are counted the same way, onto the
+   * edge's data, which is how a gesture can tell a line people have discussed from one nobody has.
    *
    * Counts rather than the rows, because a card is a preview: what it owes a reader is that there is
    * something to open. And counts rather than a query per card, because that is the difference
@@ -611,7 +612,7 @@ export function canvasSeed(): SeedSource {
        * Filtered against the type's own declared relations, so a model with no `comments` is asked
        * for none rather than refusing the read and vanishing off the canvas.
        */
-      const countsFor = (entity: string): Record<string, unknown> | undefined => {
+      const countsFor = (entity: string, weighed = true): Record<string, unknown> | undefined => {
         const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
         const asked = options.counts ?? [];
         const projections: Record<string, unknown> = Object.fromEntries(
@@ -629,7 +630,7 @@ export function canvasSeed(): SeedSource {
           asked for nothing, since a refused read would take that whole kind off the canvas rather than
           merely leaving its cards unweighed.
         */
-        if (options.weigh?.signalTypeId && relations.has('signals')) projections.signals = true;
+        if (weighed && options.weigh?.signalTypeId && relations.has('signals')) projections.signals = true;
         return Object.keys(projections).length ? projections : undefined;
       };
 
@@ -716,7 +717,12 @@ export function canvasSeed(): SeedSource {
       const connections = options.connections;
       if (connections && declared(connections) && placed.size) {
         const ends = [...placed];
-        for (const row of await read(connections, { source: ends })) {
+        /*
+          Counted like a card, so a line says what people have made of it too — and so a gesture that would
+          remove one can tell, before it is let go, that this one has been discussed. Not weighed: a weight
+          is what orders cards, and nothing orders lines.
+        */
+        for (const row of await read(connections, { source: ends }, countsFor(connections, false))) {
           const source = typeof row.source === 'string' ? row.source : undefined;
           const target = typeof row.target === 'string' ? row.target : undefined;
           if (!source || !target || !placed.has(source) || !placed.has(target)) continue;
@@ -732,7 +738,7 @@ export function canvasSeed(): SeedSource {
             // The connection's own scalars, then how this canvas draws it. Second, so a canvas's
             // routing wins over a like-named field on the connection — the same order a card's own
             // colour takes over its type's.
-            data: { ...scalarsOf(row), ...(routeFor.get(String(row.id)) ?? {}) },
+            data: { ...scalarsOf(row), ...countsOf(row), ...(routeFor.get(String(row.id)) ?? {}) },
             // Keeps the record reachable, exactly as the reified expander does: clicking the line
             // should be able to open the claim it stands for rather than dead-ending.
             reifiedAs: entityAddress(dataset, connections, String(row.id)),

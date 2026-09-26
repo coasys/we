@@ -467,7 +467,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'arrange-nodes',
       category: 'behaviour',
       description:
-        "Drag a card to another place in a hierarchy, with the tree showing the result as you go — emitting onNodeArrange when it is dropped. Along a row, the other cards make room once the pointer passes a neighbour's middle; at the level beneath a card with no children, it becomes that card's first child; rest on a card and the drop nests under it; in the unconnected zone it comes out of its tree; anywhere else it goes back where it was and nothing is emitted. The place it would land is drawn as a dashed ghost with the line it would have, and on release the card travels into it and is held there until the write comes back, so the drop is one movement. The preview needs a layout that reports its hierarchy (forest); on one that does not, the gesture reports CHILD, SIBLING or LOOSE from where it is dropped, with no preview. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — listing both has them fight for the same press.",
+        "Drag a card to another place in a hierarchy, with the tree showing the result as you go — emitting onNodeArrange when it is dropped. One rule — point at the place: along a row, the other cards make room once the pointer passes a neighbour's middle; at the level beneath a card with no children, it becomes that card's first child; on a level, the pointer always belongs to the nearest place along it, and between levels the last place shown holds; in the unconnected zone it comes out of its tree; over its own place or off the tree it goes back where it was and nothing is emitted. A place it would land is drawn as a dashed ghost with the line it would have, and its own place as a faint hole with no line, so ‘nothing will happen’ never looks like a destination; on release the card travels into it and is held there until the write comes back, so the drop is one movement. The preview needs a layout that reports its hierarchy (forest); on one that does not, the gesture reports CHILD, SIBLING or LOOSE from where it is dropped, with no preview. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — listing both has them fight for the same press.",
       options: [
         {
           name: 'reorder',
@@ -476,10 +476,15 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
             'Whether a drag may change the order of siblings. Default true. Set it false while siblings are ordered by something a drag cannot change — a date, a tally — so a card can still move under another parent, and lands where that order puts it, but is never shown sliding into a place it would not keep.',
         },
         {
-          name: 'nestAfter',
-          type: 'number',
+          name: 'keep',
+          type: 'string[]',
           description:
-            'How long the pointer rests on a card, in milliseconds, before a drop there nests under it. Default 500. Resting rather than crossing, so moving along a row to reorder never nests a card by accident.',
+            "Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['commentsCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.",
+        },
+        {
+          name: 'keepReason',
+          type: 'string',
+          description: 'What the preview says when `keep` refuses a drop.',
         },
         {
           name: 'reach',

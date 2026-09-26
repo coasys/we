@@ -177,11 +177,18 @@ export const TREE_LAYOUT: SchemaProp = {
  * A drag reorders siblings only while they are shown **as arranged**. Ordered by date or by reaction, a
  * card dragged along its row would slide into a place the order then takes back — so there it can still
  * move under another parent, and lands wherever that order puts it.
+ *
+ * `keep` mirrors the one refusal `arrangeOnTree` makes that the gesture cannot work out for itself: a card
+ * whose connection to its parent has been commented on or reacted to is not taken out of its tree by a drag,
+ * because that would delete the connection and everything said about it. The counts are on each line
+ * already — the seed reads them for the cards — so the preview says so before the card is let go.
  */
 export const TREE_BEHAVIOURS: SchemaProp = {
   $:
     `${TREE_ON} ? ['node-double-click', 'canvas-double-click', 'select',` +
-    ` { type: 'arrange-nodes', options: { reorder: local.order == 'manual' } }, 'pan-zoom']` +
+    ` { type: 'arrange-nodes', options: { reorder: local.order == 'manual',` +
+    ` keep: ['commentsCount', 'signalsCount'],` +
+    ` keepReason: 'People have discussed this connection. Select the line itself to remove it.' } }, 'pan-zoom']` +
     ` : ['node-double-click', 'canvas-double-click', 'marquee-select', 'select',` +
     ` { type: 'drag-node', options: { pin: true } }, 'pan-zoom']`,
 };

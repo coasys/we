@@ -180,6 +180,8 @@ export interface BehaviourContext {
   hierarchy(): LayoutHierarchy | null;
   /** A node's box in world units, as it is drawn and picked; null for one that is not placed. */
   boundsOf(id: string): Bounds | null;
+  /** An edge as the graph holds it, data and all; null for one it does not. */
+  edgeOf(id: string): GraphEdge | null;
   /**
    * Hold a card for a gesture that rearranges a hierarchy — see {@link ArrangeState}; null lets it go.
    *
@@ -203,11 +205,15 @@ export interface BehaviourContext {
  * room and the empty place it would land in is drawn as a ghost with its line. Let go with a `to`, the card
  * travels into that place and the layout keeps it there until the data agrees, so the drop and the write
  * landing read as one movement.
+ *
+ * `refused` says why a drop here would change nothing when the reason is not simply that the card is home —
+ * a move the host would turn down, which the preview should say rather than show happening.
  */
 export interface ArrangeState {
   id: string;
   at: Point | null;
   to: { parent: string | null; index?: number } | null;
+  refused?: string;
 }
 
 /** Events a template may bind handlers to. Payloads are plain data, addressable from `$event.detail`. */

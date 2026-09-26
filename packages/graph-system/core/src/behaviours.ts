@@ -535,11 +535,14 @@ export interface ArrangeNodesOptions {
    */
   reorder?: boolean;
   /**
-   * How long the pointer has to rest on a card, in milliseconds, before a drop there means "under it".
-   * Default 500. Resting rather than merely crossing, so moving along a row to reorder never nests a card by
-   * accident — the convention file browsers and outliners share.
+   * Fields of a connection that keep a card in its tree. A drag into the unconnected zone is refused for a card
+   * whose connection to its parent holds a value in any of them — and shown refused, rather than shown
+   * happening and then turned down. Which connections are worth keeping is the host's to say: WE passes
+   * `['commentsCount', 'signalsCount']`, because it will not delete a connection people have discussed.
    */
-  nestAfter?: number;
+  keep?: string[];
+  /** What the preview says when it refuses for that reason. */
+  keepReason?: string;
   /**
    * For a layout that reports no hierarchy: how far from a card, in world units, a drop still counts as
    * beside it. Beyond it the drop is loose.
@@ -553,8 +556,7 @@ export interface ArrangeNodesOptions {
  * One parent's children as they stood when a drag began — what a drop along them is measured against.
  *
  * A card in a tree with no children has a row too, empty, one level beneath it: the place its first
- * child would go. Without it the level below a leaf is not a place at all, and the only way to put a card
- * under one is to rest on the leaf itself — inside the leaf's own row, which is busy making room.
+ * child would go. Without it the level below a leaf is not a place at all.
  */
 interface Row {
   parent: string;
@@ -569,9 +571,12 @@ interface Row {
 /** What a drop reports, in the terms the host writes it in. */
 type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; before?: boolean; order?: string[] };
 
+/** What a drop at some point would do: where it puts the card, what it reports, and why not when it is refused. */
+type Decision = { to: ArrangeState['to']; event?: ArrangeEvent; refused?: string };
+
 /**
  * Drag a card to another place in a hierarchy — along a row to reorder it, under another parent to move it,
- * rest on a card to nest under it, into the unconnected zone to take it out of its tree.
+ * beneath a card with no children to make it the first, into the unconnected zone to take it out of its tree.
  *
  * ## Why this is not `drag-node` with a flag
  *
@@ -588,19 +593,27 @@ type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; befo
  * see `ArrangeState`. So the reader sees the result before committing to it, and there is nothing to guess.
  * On release the card travels into that place and stays there while the write goes through.
  *
+ * ## One rule: point at the place
+ *
+ * Every place a card can go is a place in some row — a parent's children, or the empty level beneath a card
+ * with none — and the pointer picks one by pointing at it. Nothing depends on resting or timing: a rule that
+ * asked the pointer to stay on a card would be asking it to stay on something the preview is moving.
+ *
+ * - **Beneath a card with no children**, at the level its first child would sit on, it becomes that child.
+ * - **On a level**, the whole width of the tree belongs to one row or another: the one the pointer is inside,
+ *   or else the nearest, so moving along a level only ever moves the ghost along that level.
+ * - **Along a row**, it takes the place of the card whose midpoint the pointer has passed.
+ * - **Between levels**, nothing changes: the last place shown stays, so crossing the gap between two ranks
+ *   does not send the tree back to where it started and out again.
+ * - **In the unconnected zone**, it comes out of its tree — unless {@link ArrangeNodesOptions.keep} says its
+ *   connection cannot go, in which case the preview says so.
+ * - **Over its own place, or off the tree**, it goes back where it was, and a drop there writes nothing.
+ *
  * ## Measured against where things were
  *
- * Every decision about a row is measured against the cards as they stood when the drag began, not as they
- * are drawn while they make room. Measured live, a card that has just slid aside moves its own midpoint
- * under the pointer and the row flickers between two answers. Against where things were, the gap opens
- * under the pointer and stays there — the way every sortable list behaves.
- *
- * - **Along a row** — the dragged card's own or any other parent's — it takes the place of the card whose
- *   midpoint the pointer has passed.
- * - **Beneath a card with no children**, at the level its first child would sit on, it becomes that child.
- * - **Resting on a card** for {@link ArrangeNodesOptions.nestAfter}, it goes under that card, last.
- * - **In the unconnected zone**, it comes out of its tree.
- * - **Anywhere else**, it goes back where it was, and a drop there writes nothing.
+ * Every decision is measured against the cards as they stood when the drag began, not as they are drawn
+ * while they make room. Measured live, a card that has just slid aside moves its own midpoint under the
+ * pointer and the row flickers between two answers.
  *
  * A card cannot go under itself or anything beneath it, so its own subtree offers no place at all.
  *
@@ -608,7 +621,7 @@ type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; befo
  * reporting what a drop beside, onto or away from a card means — see `intentAt` below.
  */
 export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
-  const options = { reach: 240, band: 0, reorder: true, nestAfter: 500, ...(rawOptions as ArrangeNodesOptions) };
+  const options = { reach: 240, band: 0, reorder: true, ...(rawOptions as ArrangeNodesOptions) };
   let dragging: string | null = null;
   let moved = false;
   let grabOffset = { x: 0, y: 0 };
@@ -619,13 +632,12 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   let rows: Row[] = [];
   let subtree = new Set<string>();
   let home: { parent: string | null; index: number } = { parent: null, index: 0 };
-  let childrenOf: ReadonlyMap<string, readonly string[]> = new Map();
-  /** The card being rested on, and the one a drop would nest under once it has been rested on long enough. */
-  let resting: string | null = null;
-  let nestTimer: ReturnType<typeof setTimeout> | undefined;
-  let nested: { id: string; box: Bounds } | null = null;
-  /** The last place the pointer was, for the nesting timer to answer from. */
-  let last: { world: Point; ctx: BehaviourContext } | null = null;
+  /** The connection holding the dragged card under its parent, if it has one. */
+  let homeEdge: string | undefined;
+  /** How far past the tree the pointer can go before a drop means "never mind". */
+  let reach: Bounds | null = null;
+  /** The place last shown, which holds while the pointer is between levels. */
+  let current: Decision = { to: null };
 
   const inside = (box: Bounds, at: Point) =>
     at.x >= box.minX && at.x <= box.maxX && at.y >= box.minY && at.y <= box.maxY;
@@ -634,11 +646,12 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   const snapshot = (ctx: BehaviourContext, id: string): boolean => {
     const tree = ctx.hierarchy();
     if (!tree) return false;
-    childrenOf = tree.children;
     subtree = new Set([id]);
     for (const member of subtree) for (const child of tree.children.get(member) ?? []) subtree.add(child);
     const parent = tree.parents.get(id) ?? null;
     home = { parent, index: parent ? (tree.children.get(parent) ?? []).indexOf(id) : 0 };
+    homeEdge = tree.parentEdges.get(id);
+    current = { to: null };
     rows = [];
     /*
       How far one level is below the last, read off any parent and its child — the layout's own spacing,
@@ -690,6 +703,23 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
         },
       });
     }
+    /*
+      Off the tree is every row and every card in a tree, with a level's room above and below. Past that a
+      drop means "never mind" — which is how a reader takes a card back, and has to stay easy to reach.
+    */
+    const boxes = [
+      ...rows.map((row) => row.area),
+      ...[...inTree].flatMap((card) => (card ? [ctx.boundsOf(card)] : [])).filter((box): box is Bounds => !!box),
+    ];
+    const pad = step || Math.max(0, ...boxes.map((box) => box.maxY - box.minY));
+    reach = boxes.length
+      ? {
+          minX: Math.min(...boxes.map((box) => box.minX)),
+          maxX: Math.max(...boxes.map((box) => box.maxX)),
+          minY: Math.min(...boxes.map((box) => box.minY)) - pad,
+          maxY: Math.max(...boxes.map((box) => box.maxY)) + pad,
+        }
+      : null;
     return true;
   };
 
@@ -699,26 +729,33 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       ? Math.abs(row.centre - world.x)
       : Math.min(...row.cards.map(({ box }) => Math.abs((box.minX + box.maxX) / 2 - world.x)));
 
+  /** How far the pointer is outside a row's band, sideways; zero within it. */
+  const outside = (row: Row, world: Point) => Math.max(0, row.area.minX - world.x, world.x - row.area.maxX);
+
+  /** Whether a connection holds anything {@link ArrangeNodesOptions.keep} says it must be kept for. */
+  const kept = (ctx: BehaviourContext): boolean => {
+    const edge = homeEdge ? ctx.edgeOf(homeEdge) : null;
+    const data = (edge?.data ?? {}) as Record<string, unknown>;
+    return (options.keep ?? []).some((field) => {
+      const value = data[field];
+      return value !== undefined && value !== null && value !== '' && value !== 0 && value !== false;
+    });
+  };
+
   /** What a drop at this point would do. */
-  const decide = (world: Point, ctx: BehaviourContext): { to: ArrangeState['to']; event?: ArrangeEvent } => {
-    if (nested && inside(nested.box, world)) {
-      const others = (childrenOf.get(nested.id) ?? []).filter((kid) => kid !== dragging);
-      return {
-        to: { parent: nested.id, ...(options.reorder ? { index: others.length } : {}) },
-        event: {
-          into: 'child',
-          target: nested.id,
-          ...(options.reorder && dragging ? { order: [...others, dragging] } : {}),
-        },
-      };
-    }
+  const decide = (world: Point, ctx: BehaviourContext): Decision => {
     if (ctx.regionAt(world)) {
-      return home.parent ? { to: { parent: null }, event: { into: 'loose' } } : { to: null };
+      if (!home.parent) return { to: null };
+      if (kept(ctx))
+        return { to: null, refused: options.keepReason || 'This connection can’t be removed by dragging.' };
+      return { to: { parent: null }, event: { into: 'loose' } };
     }
+    if (!reach || !inside(reach, world)) return { to: null };
+    // The rows on the level the pointer is on — the one it is inside, else the nearest along the level.
     const row = rows
-      .filter(({ area }) => inside(area, world))
-      .sort((a, b) => nearestGap(a, world) - nearestGap(b, world))[0];
-    if (!row) return { to: null };
+      .filter(({ area }) => world.y >= area.minY && world.y <= area.maxY)
+      .sort((a, b) => outside(a, world) - outside(b, world) || nearestGap(a, world) - nearestGap(b, world))[0];
+    if (!row) return current;
     const index = row.cards.filter(({ box }) => (box.minX + box.maxX) / 2 < world.x).length;
     if (row.parent === home.parent && (!options.reorder || index === home.index)) return { to: null };
     if (!options.reorder) {
@@ -745,26 +782,13 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   /** Hold the card at the pointer, and tell the engine where the drop would put it. */
   const show = (world: Point, ctx: BehaviourContext) => {
     if (!dragging) return;
-    const { to } = decide(world, ctx);
-    ctx.arrange({ id: dragging, at: { x: world.x + grabOffset.x, y: world.y + grabOffset.y }, to });
-  };
-
-  /** Rest on a card long enough and a drop there nests under it — see {@link ArrangeNodesOptions.nestAfter}. */
-  const trackResting = (world: Point, ctx: BehaviourContext) => {
-    if (nested && !inside(nested.box, world)) nested = null;
-    const over = ctx.hitTest(world).find((id) => !subtree.has(id)) ?? null;
-    if (over === resting) return;
-    resting = over;
-    if (nestTimer) clearTimeout(nestTimer);
-    nestTimer = undefined;
-    if (!over || nested?.id === over) return;
-    nestTimer = setTimeout(() => {
-      nestTimer = undefined;
-      const box = ctx.boundsOf(over);
-      if (!dragging || resting !== over || !box || !last) return;
-      nested = { id: over, box };
-      show(last.world, last.ctx);
-    }, options.nestAfter);
+    current = decide(world, ctx);
+    ctx.arrange({
+      id: dragging,
+      at: { x: world.x + grabOffset.x, y: world.y + grabOffset.y },
+      to: current.to,
+      ...(current.refused ? { refused: current.refused } : {}),
+    });
   };
 
   // ─── Without one: reporting the intent ──────────────────────────────────────
@@ -814,17 +838,13 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   const release = () => {
     dragging = null;
     moved = false;
-    resting = null;
-    nested = null;
-    last = null;
-    if (nestTimer) clearTimeout(nestTimer);
-    nestTimer = undefined;
+    current = { to: null };
   };
 
   return {
     id: 'arrange-nodes',
     description:
-      'Drag a card along a row to reorder it, under another parent to move it, beneath a card with no children to make it the first, rest on a card to nest under it, or into the unconnected zone to take it out of its tree — with the tree making room as you go. Reports the result; writes nothing.',
+      'Drag a card along a row to reorder it, under another parent to move it, beneath a card with no children to make it the first, or into the unconnected zone to take it out of its tree — with the tree making room as you go. Reports the result; writes nothing.',
     onPointerDown(input, ctx) {
       // Refused at the start rather than by discarding the result, like every other gesture that moves
       // a card: a drag that follows the pointer and then snaps back has told you it worked.
@@ -853,8 +873,6 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       moved = true;
       const world = ctx.toWorld(input.at);
       if (previewing) {
-        last = { world, ctx };
-        trackResting(world, ctx);
         show(world, ctx);
         return true;
       }
