@@ -524,6 +524,28 @@ export function GraphView(props: GraphViewProps) {
    */
   const [handleHint, setHandleHint] = createSignal<{ at: Point; text: string } | null>(null);
   /**
+   * The pointer handlers that raise one handle's hint, and withdraw it with the handle.
+   *
+   * Leaving is not enough to withdraw it. A browser fires no `pointerleave` for an element taken out
+   * from under the pointer, and handles are taken out all the time — the hovered line changes, a card
+   * is deselected, the canvas switches to a tree that offers no anchors — so a hint raised by a handle
+   * that has gone stayed on screen with nothing left to leave, and no way to close it. Withdrawn on the
+   * handle's own cleanup instead, and only if it is still that handle's: the pointer may already have
+   * raised the next one.
+   */
+  const hintFor = (hint: () => { at: Point; text: string }) => {
+    let raised: { at: Point; text: string } | null = null;
+    const withdraw = () => {
+      if (raised && handleHint() === raised) setHandleHint(null);
+      raised = null;
+    };
+    onCleanup(withdraw);
+    return {
+      onPointerEnter: () => setHandleHint((raised = hint())),
+      onPointerLeave: withdraw,
+    };
+  };
+  /**
    * The connection a handle gesture is under way on — its edge id, or `connect` for a new line.
    *
    * Two jobs, both of which need the gesture to outlive the pointer's whereabouts. The hint is
@@ -3308,15 +3330,10 @@ export function GraphView(props: GraphViewProps) {
                           event.stopPropagation();
                           removeWaypoint(entry.edge.id, handle.index);
                         }}
-                        onPointerEnter={() =>
-                          setHandleHint({
-                            at: handle.at,
-                            text: handle.insert
-                              ? 'Drag to bend the line here'
-                              : 'Drag to move · double-click to remove',
-                          })
-                        }
-                        onPointerLeave={() => setHandleHint(null)}
+                        {...hintFor(() => ({
+                          at: handle.at,
+                          text: handle.insert ? 'Drag to bend the line here' : 'Drag to move · double-click to remove',
+                        }))}
                       >
                         <circle
                           class="we-graph__handle-hit"
@@ -3351,13 +3368,10 @@ export function GraphView(props: GraphViewProps) {
                       <g
                         class="we-graph__handle we-graph__handle--anchor"
                         onPointerDown={(event) => beginAnchor(event, entry.edge.id, end)}
-                        onPointerEnter={() =>
-                          setHandleHint({
-                            at: end === 'source' ? entry.route.from : entry.route.to,
-                            text: 'Drag around the card to pin a side · onto another card to reconnect',
-                          })
-                        }
-                        onPointerLeave={() => setHandleHint(null)}
+                        {...hintFor(() => ({
+                          at: end === 'source' ? entry.route.from : entry.route.to,
+                          text: 'Drag around the card to pin a side · onto another card to reconnect',
+                        }))}
                       >
                         {/*
                           The target, and then the dot. Two circles because they answer different
@@ -3910,10 +3924,7 @@ export function GraphView(props: GraphViewProps) {
                         outright — a blue plate with a white outline over a canvas that is neither —
                         and there is no way to style one.
                       */
-                      onPointerEnter={() =>
-                        setHandleHint({ at: connectDotAt(entry, handle.edge), text: 'Drag to connect' })
-                      }
-                      onPointerLeave={() => setHandleHint(null)}
+                      {...hintFor(() => ({ at: connectDotAt(entry, handle.edge), text: 'Drag to connect' }))}
                     >
                       {/*
                         A plain screen-pixel length: the handle is laid out at its real size and
