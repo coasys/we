@@ -1490,16 +1490,16 @@ export function RecordStoreProvider(props: ParentProps) {
   /**
    * Take a card out of its tree, unless that would throw away something somebody said.
    *
-   * There is no reversible spelling of this. A `Relationship` is the parental claim, so removing the
-   * claim means deleting the record — and a deleted record's links go with it, while re-creating one
-   * earns a new id that nothing pointing at the old one can follow. The canvas's undo stack cannot
-   * help: it replays a write, and a re-created connection is a different record.
+   * Removing the claim means deleting the record, and a deleted record's links go with it: re-creating
+   * one earns a new id that nothing pointing at the old one can follow. So the line is drawn at whether
+   * anything would be lost — and where nothing would, an undo re-creating the connection loses nothing
+   * either, which is why a tree drop that detached a card can still be taken back.
    *
-   * So the line is drawn at whether anything would be lost. A connection is a `WeNode`, so it carries
-   * comments and reactions — an argument about the very claim being rearranged — and one that carries
-   * either is refused, with a toast naming the reason and the way to do it deliberately. A connection
-   * nobody has said anything about is deleted, which is the overwhelmingly common case and exactly
-   * what the gesture means.
+   * A connection is a `WeNode`, so it carries comments and reactions — an argument about the very claim
+   * being rearranged — and one that carries either is refused, with a toast naming the reason and the way
+   * to do it deliberately. A connection nobody has said anything about is deleted, which is the
+   * overwhelmingly common case and exactly what the gesture means. The workshop's tree tells its gesture
+   * the same rule, so the preview refuses before the drop rather than this after it.
    */
   async function detachSpine(handle: unknown, linkId: string): Promise<boolean> {
     const Model = getEntity(RELATIONSHIP);
@@ -1518,6 +1518,97 @@ export function RecordStoreProvider(props: ParentProps) {
     }
     await Model.delete(handle as never, linkId);
     return true;
+  }
+
+  /**
+   * A new connection of the spine kind, from `parent` to `card` — answering with its id.
+   *
+   * Written here rather than through `connectNodesNow`, which mints a connection carrying no kind at all —
+   * right for a line somebody draws and then labels, and wrong for this: a connection that is not of the
+   * spine kind is invisible to the tree it was just dragged into, so the card would snap straight back to
+   * the unconnected zone.
+   */
+  async function createSpine(
+    handle: unknown,
+    relationshipTypeId: string,
+    parent: { id: string; type: string },
+    card: { id: string; type: string },
+  ): Promise<string> {
+    const created = (await getEntity(RELATIONSHIP).create(
+      handle as never,
+      { relationshipTypeId, sourceType: parent.type, targetType: card.type } as never,
+    )) as { id?: string; setSource?: (v: string) => Promise<unknown>; setTarget?: (v: string) => Promise<unknown> };
+    await created.setSource?.(parent.id);
+    await created.setTarget?.(card.id);
+    return String(created.id ?? '');
+  }
+
+  /**
+   * What a tree drop did to the spine, for an undo to put back.
+   *
+   * `link` is the connection concerned, and changes on a replay that re-creates it — a re-created
+   * connection is a new record, so the entry keeps up with it rather than holding an id nothing answers to.
+   */
+  type TreeStep =
+    | { kind: 'moved'; link: string; from: { id: string; type: string }; to: { id: string; type: string } }
+    | { kind: 'created'; link: string; parent: { id: string; type: string } }
+    | { kind: 'detached'; link: string; parent: { id: string; type: string } }
+    | { kind: 'none' };
+
+  /**
+   * Record a tree drop as one undoable act: the change to the spine, and the ranks it wrote.
+   *
+   * Each replay reads the spine first and applies its half only if the card's connection is still where
+   * this entry left it. `HistoryEntry.stale` cannot ask — it is synchronous, and the spine is a query — so
+   * the check is made inside, and a card a peer has moved since is left where they put it rather than
+   * pulled back. The ranks go through `stylePlacement` with what they are expected to hold, which makes the
+   * same check for each card.
+   */
+  function rememberTreeDrop(
+    canvas: string,
+    handle: unknown,
+    relationshipTypeId: string,
+    card: { id: string; type: string },
+    step: TreeStep,
+    ranks: StyleChange[],
+  ): void {
+    if (!canvas || (step.kind === 'none' && !ranks.length)) return;
+    const connection = async () =>
+      (await spineLinks(handle, relationshipTypeId)).find((link) => link.target === card.id);
+    const retarget = (link: string, to: { id: string; type: string }) =>
+      retargetOnCanvas(canvas, {
+        recordId: link,
+        recordType: RELATIONSHIP,
+        end: 'source',
+        nodeId: to.id,
+        nodeType: to.type,
+      });
+    history.push({
+      scope: canvas,
+      label: step.kind === 'detached' ? 'take card out of tree' : 'move card in tree',
+      undo: async () => {
+        const now = await connection();
+        if (step.kind === 'moved' && now?.id === step.link && now.source === step.to.id)
+          await retarget(step.link, step.from);
+        if (step.kind === 'created' && now?.id === step.link && now.source === step.parent.id) {
+          await detachSpine(handle, step.link);
+        }
+        if (step.kind === 'detached' && !now)
+          step.link = await createSpine(handle, relationshipTypeId, step.parent, card);
+        for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.before, change.after);
+      },
+      redo: async () => {
+        const now = await connection();
+        if (step.kind === 'moved' && now?.id === step.link && now.source === step.from.id)
+          await retarget(step.link, step.to);
+        if (step.kind === 'created' && !now)
+          step.link = await createSpine(handle, relationshipTypeId, step.parent, card);
+        if (step.kind === 'detached' && now?.id === step.link && now.source === step.parent.id) {
+          await detachSpine(handle, step.link);
+        }
+        for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.after, change.before);
+      },
+    });
   }
 
   /**
@@ -1582,10 +1673,14 @@ export function RecordStoreProvider(props: ParentProps) {
         (childrenOf.get(link.source) ?? childrenOf.set(link.source, []).get(link.source)!).push(link.target);
       }
 
+      const card = { id: cardId, type: event.recordType };
       if (event.into === 'loose') {
         const held = parentOf.get(cardId);
         // A card dragged around the zone it is already in has nothing to write.
-        if (held) await detachSpine(handle, held.id);
+        if (held?.source && (await detachSpine(handle, held.id))) {
+          const parent = { id: held.source, type: held.sourceType ?? '' };
+          rememberTreeDrop(canvas, handle, relationshipTypeId, card, { kind: 'detached', link: held.id, parent }, []);
+        }
         return;
       }
 
@@ -1605,8 +1700,12 @@ export function RecordStoreProvider(props: ParentProps) {
       const parentType = event.into === 'child' ? (event.targetType ?? '') : (parentOf.get(targetId)?.sourceType ?? '');
 
       const held = parentOf.get(cardId);
+      const parent = { id: parentId, type: parentType };
+      let step: TreeStep = { kind: 'none' };
       if (held) {
         if (held.source !== parentId) {
+          // Where it was, read before the write that moves it.
+          const from = { id: held.source ?? '', type: held.sourceType ?? '' };
           await retargetOnCanvas(canvas, {
             recordId: held.id,
             recordType: RELATIONSHIP,
@@ -1614,24 +1713,10 @@ export function RecordStoreProvider(props: ParentProps) {
             nodeId: parentId,
             nodeType: parentType,
           });
+          step = { kind: 'moved', link: held.id, from, to: parent };
         }
       } else {
-        /*
-          Written here rather than through `connectNodesNow`, which mints a connection carrying no kind
-          at all — right for a line somebody draws and then labels, and wrong for this: a connection
-          that is not of the spine kind is invisible to the tree it was just dragged into, so the card
-          would snap straight back to the unconnected zone.
-        */
-        const created = (await getEntity(RELATIONSHIP).create(
-          handle as never,
-          {
-            relationshipTypeId,
-            sourceType: parentType,
-            targetType: event.recordType,
-          } as never,
-        )) as { setSource?: (v: string) => Promise<unknown>; setTarget?: (v: string) => Promise<unknown> };
-        await created.setSource?.(parentId);
-        await created.setTarget?.(cardId);
+        step = { kind: 'created', link: await createSpine(handle, relationshipTypeId, parent, card), parent };
       }
 
       const placements = (await Placement.findAll(handle, {
@@ -1685,6 +1770,14 @@ export function RecordStoreProvider(props: ParentProps) {
       */
       for (const [id, rank] of writes) hold(id, { rank });
       for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
+      rememberTreeDrop(
+        canvas,
+        handle,
+        relationshipTypeId,
+        card,
+        step,
+        [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: rankOf.get(nodeId) ?? 0 }, after: { rank } })),
+      );
     } catch (error) {
       console.error('RecordStore: arranging a card in a tree failed', error);
       toastService.error('Could not move that card.');
