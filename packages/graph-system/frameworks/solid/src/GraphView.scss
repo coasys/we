@@ -948,6 +948,11 @@
   stroke-dasharray: none;
 }
 
+// Its line, the connection it already has — faded with the hole rather than taken away.
+.we-graph__ghost--home .we-graph__ghost-line {
+  opacity: 0.45;
+}
+
 .we-graph__node--pinned .we-graph__dot,
 .we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing) > .we-graph__card-shape {
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles

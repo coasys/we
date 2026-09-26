@@ -3440,23 +3440,26 @@ export function GraphView(props: GraphViewProps) {
             because both say the same thing — a proposal, not yet written.
 
             Where letting go would change nothing, the place is the card's own and is drawn as a hole: a faint
-            neutral outline with no line, since its real line is the one it already has. Two looks, so that
-            "nothing will happen" is never mistaken for one more destination.
+            neutral outline, and its line drawn solid in the ordinary line colour and faded to match — the
+            connection it already has, still there. Without the line the hole read as a card about to be cut
+            loose from its parent. Two looks, so that "nothing will happen" is never mistaken for one more
+            destination.
           */}
           <Show when={arranging()}>
             {(preview) => (
               <g class="we-graph__ghost" classList={{ 'we-graph__ghost--home': !preview().change }}>
                 <path class="we-graph__ghost-outline" d={ghostOutline(preview().visual, preview().at)} />
-                <Show when={preview().change && preview().line}>
+                <Show when={preview().line}>
                   {(line) => (
                     <path
+                      class="we-graph__ghost-line"
                       d={pathFrom(line(), ARROW_LENGTH * PENDING_WIDTH)}
                       fill="none"
-                      stroke="var(--we-role-accent)"
+                      stroke={preview().change ? 'var(--we-role-accent)' : 'var(--we-role-border-strong)'}
                       stroke-width={PENDING_WIDTH}
-                      stroke-dasharray="6 4"
+                      stroke-dasharray={preview().change ? '6 4' : undefined}
                       vector-effect="non-scaling-stroke"
-                      marker-end="url(#we-graph-arrow-pending)"
+                      marker-end={preview().change ? 'url(#we-graph-arrow-pending)' : 'url(#we-graph-arrow)'}
                     />
                   )}
                 </Show>
