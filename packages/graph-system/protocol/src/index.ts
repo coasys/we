@@ -49,7 +49,9 @@ export type {
   EdgeGeometry,
   EdgeSide,
   Layout,
+  LayoutArranging,
   LayoutFactory,
+  LayoutHierarchy,
   LayoutInput,
   LayoutRegion,
   LayoutResult,
@@ -58,6 +60,7 @@ export type {
 } from './layout';
 export type {
   Behaviour,
+  ArrangeState,
   BehaviourContext,
   BehaviourFactory,
   ControlContext,

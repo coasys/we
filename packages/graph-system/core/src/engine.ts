@@ -8,6 +8,7 @@
  * they go wrong.
  */
 import type {
+  ArrangeState,
   BehaviourContext,
   Bounds,
   CardShape,
@@ -23,6 +24,7 @@ import type {
   GraphSpec,
   GraphValue,
   Layout,
+  LayoutHierarchy,
   LayoutRegion,
   NodeVisual,
   Placement,
@@ -87,6 +89,29 @@ const FOLD_MS = 200;
  * running, so there would be no frames to ride on.
  */
 const ANIM_TICK = 16;
+
+/**
+ * How long the tree takes to make room while a card is dragged through it, and to take the card in when it is
+ * let go. Short, because it answers the pointer: a reshuffle that lagged the hand would read as the tree
+ * arguing with it. Never longer than the switch between arrangements, so reduced motion makes it instant too.
+ */
+const ARRANGE_TRAVEL_MS = 180;
+
+/**
+ * How long a dropped card is held where the drop put it, waiting for the write to come back. The data
+ * agreeing ends the hold at once; this is only for a write that failed or was refused, after which the tree
+ * travels back to what the data says.
+ */
+const ARRANGE_SETTLE_MS = 5000;
+
+/** The id the line to a held card's ghost is routed under — see {@link PENDING_EDGE_ID}. */
+const ARRANGE_EDGE_ID = '__arranging__';
+
+/** Whether two answers to "where would this drop put the card" are the same answer. */
+function sameArrangeTo(a: ArrangeState['to'], b: ArrangeState['to']): boolean {
+  if (!a || !b) return a === b;
+  return a.parent === b.parent && a.index === b.index;
+}
 
 /** Nothing folded: the shape {@link GraphEngine.setFolded} starts from and returns to. */
 const NO_FOLD: FoldResult = { hidden: new Set(), counts: new Map(), owners: new Map(), bundles: [] };
@@ -332,6 +357,24 @@ export class GraphEngine {
   /** How the graph moves from one arrangement to the next — see `Travel`. */
   private readonly travel = new Travel();
   private travelTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * A card held by a rearranging gesture — see `ArrangeState`.
+   *
+   * While `at` is set the card is drawn under the pointer and the layout places it at `to`; `slot` is where
+   * that put it, which is the ghost, and `ghostFrom` is where the ghost was drawn when the slot last moved, so
+   * it travels with the cards making room rather than jumping ahead of them. Once let go, `at` is null and the
+   * layout goes on placing it at `to` until the data agrees — see {@link arrangementSettled}.
+   */
+  private arrangement: {
+    id: string;
+    at: Point | null;
+    to: ArrangeState['to'];
+    slot?: Point;
+    ghostFrom?: Point;
+  } | null = null;
+  private arrangeTimer?: ReturnType<typeof setTimeout>;
+  /** The tree the layout last read out of the graph — see `LayoutHierarchy`. */
+  private hierarchy: LayoutHierarchy | null = null;
   /** Areas the current layout asked to have drawn behind the nodes — see {@link getLayoutRegions}. */
   private layoutRegions: LayoutRegion[] = [];
   /**
@@ -857,6 +900,7 @@ export class GraphEngine {
     if (this.watchTimer) clearTimeout(this.watchTimer);
     if (this.foldTimer) clearTimeout(this.foldTimer);
     if (this.travelTimer) clearTimeout(this.travelTimer);
+    if (this.arrangeTimer) clearTimeout(this.arrangeTimer);
     this.travel.settle();
     // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
     // from a backend subscription, which is the shape of leak that only shows up as a slow app.
@@ -1427,14 +1471,27 @@ export class GraphEngine {
       containment: this.containment(),
       viewport: { width: width || 800, height: height || 600 },
       ...(width && height ? { visible: this.visibleWorldRect() } : {}),
+      // Where a card being dragged through a hierarchy would go — see `LayoutArranging`.
+      ...(this.arrangement?.to
+        ? {
+            arranging: {
+              id: this.arrangement.id,
+              parent: this.arrangement.to.parent,
+              ...(this.arrangement.to.index === undefined ? {} : { index: this.arrangement.to.index }),
+            },
+          }
+        : {}),
     });
     this.setLayoutWarnings(result.warnings ?? []);
+    this.hierarchy = result.hierarchy ?? null;
     // Areas the layout named — see `LayoutRegion`. Replaced wholesale rather than merged: a region is
     // a fact about *this* arrangement, so one kept from the previous run would be drawn around cards
     // that have since moved out of it.
     this.layoutRegions = result.regions ?? [];
     this.fitUntilSettled = !!options?.fit && !!result.running;
     this.applyPositions(result.positions, options?.fit, options?.travel);
+    // A dropped card whose write has come back needs holding no longer: the data now says what the hold did.
+    if (this.arrangement && !this.arrangement.at && this.arrangementSettled()) this.endArrangement();
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
@@ -1535,6 +1592,18 @@ export class GraphEngine {
     this.positions = positions;
     // A card that has gone — deleted, or folded away — takes its record of how it was drawn with it.
     this.travel.keepVisuals(this.positions);
+    /*
+      A card held by a rearranging drag is drawn under the pointer, and the place the layout just gave it is
+      its ghost. Where the ghost is drawn right now is taken first, while the previous travel's clock still
+      answers for it, so a ghost whose slot has moved travels there with the cards making room.
+    */
+    const held = this.arrangement?.at ? this.arrangement : null;
+    const slot = held ? this.positions.get(held.id) : undefined;
+    if (held && slot) {
+      held.ghostFrom = this.ghostAt() ?? { x: slot.x, y: slot.y };
+      held.slot = { x: slot.x, y: slot.y };
+      this.positions.set(held.id, { ...slot, x: held.at!.x, y: held.at!.y });
+    }
 
     /*
       The camera before the travel, and against where the layout actually put things.
@@ -1559,7 +1628,8 @@ export class GraphEngine {
       positions: this.positions,
       asked: Math.max(0, travel ?? 0),
       now: Date.now(),
-      skip: (id) => this.foldAnim.has(id),
+      // A folding card is moving on the fold's own clock, and a held one is where the pointer holds it.
+      skip: (id) => this.foldAnim.has(id) || (id === this.arrangement?.id && !!this.arrangement.at),
       plan: () => this.planRoutes(),
     });
     // The camera goes with the cards, and a fit with no travel lands at once.
@@ -1613,6 +1683,9 @@ export class GraphEngine {
       const patch = this.edgeOverlay.get(edge.id);
       const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
       const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
+      // A held card's lines run from its ghost, which travels on its own — see `ghostAt` — and need no plan.
+      const held = this.arrangement?.at ? this.arrangement.id : null;
+      if (held && (sourceId === held || targetId === held)) continue;
       const from = this.positions.get(sourceId);
       const to = this.positions.get(targetId);
       if (!from || !to) continue;
@@ -1996,8 +2069,17 @@ export class GraphEngine {
         */
         const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
         const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
-        const from = looseFrom ?? this.positions.get(sourceId);
-        const to = looseTo ?? this.positions.get(targetId);
+        /*
+          A card held by a rearranging drag is in two places: under the pointer, and in the gap the tree has
+          made for it. Its lines belong to the second — they are what the drop will draw — so they run from the
+          ghost, and its line to its present parent is not drawn at all: the ghost carries the line it would
+          have instead, from whichever parent the drop would give it. See `getArrangePreview`.
+        */
+        const held = this.arrangement?.at ? this.arrangement.id : null;
+        if (held && edge.id === this.hierarchy?.parentEdges.get(held)) return;
+        const placed = (id: string) => (id === held ? (this.ghostAt() ?? undefined) : this.positions.get(id));
+        const from = looseFrom ?? placed(sourceId);
+        const to = looseTo ?? placed(targetId);
         if (!from || !to) return;
         const style = resolveStyle(edge, this.spec.edgeStyle);
         // Where a connection leaves and arrives, and what it is bent through, when somebody has said. Off
@@ -2455,6 +2537,17 @@ export class GraphEngine {
       toScreen: (at) => this.viewport.toScreen(at),
       drawConnection: (from, to) => this.drawConnection(from, to),
       drawMarquee: (bounds) => this.drawMarquee(bounds),
+      hierarchy: () => this.hierarchy,
+      boundsOf: (id) => {
+        const node = this.store.node(id);
+        const at = this.positions.get(id);
+        if (!node || !at) return null;
+        const area = this.hitArea(node);
+        const halfWidth = area.halfWidth ?? area.radius;
+        const halfHeight = area.halfHeight ?? area.radius;
+        return { minX: at.x - halfWidth, minY: at.y - halfHeight, maxX: at.x + halfWidth, maxY: at.y + halfHeight };
+      },
+      arrange: (state) => this.arrange(state),
       /*
         Folded cards are not in the index, so a sweep cannot catch what a fold is hiding — which is
         the right answer and worth saying out loud: a card nobody can see must not end up in a
@@ -2522,6 +2615,118 @@ export class GraphEngine {
       // The gesture's line leaves its card the way a finished edge does — touching it.
       this.clearanceFor(source, 0),
     );
+  }
+
+  /**
+   * A card held by a rearranging drag, for the renderer: where its ghost is and what it looks like, and the
+   * line the drop would give it — or null when nothing is held.
+   *
+   * The ghost is the empty place the tree has made, drawn where the layout put the held card. The line runs
+   * to it from the parent the drop would give it, routed like a real edge against the ghost's own outline,
+   * and drawn as a proposal the way the connect gesture's line is — see {@link getPendingConnection}. The
+   * card's real line to its present parent is not drawn while it is held, so the two never disagree.
+   */
+  getArrangePreview(): { id: string; at: Point; visual: NodeVisual; line: EdgeGeometry | null } | null {
+    const held = this.arrangement;
+    const at = this.ghostAt();
+    const node = held ? this.store.node(held.id) : undefined;
+    if (!held || !at || !node) return null;
+    const parent = held.to ? held.to.parent : (this.hierarchy?.parents.get(held.id) ?? null);
+    const parentAt = parent ? this.positions.get(parent) : undefined;
+    const parentNode = parent ? this.store.node(parent) : undefined;
+    let line: EdgeGeometry | null = null;
+    if (parent && parentAt && parentNode) {
+      // What a connection with nothing said about it would be drawn as — the tree's own rule, for one.
+      const style = resolveStyle(
+        { id: ARRANGE_EDGE_ID, source: parent, target: held.id, type: '' },
+        this.spec.edgeStyle,
+      );
+      line = routeEdge(
+        ARRANGE_EDGE_ID,
+        { x: parentAt.x, y: parentAt.y },
+        at,
+        normaliseCurve(style.curve),
+        0,
+        this.clearanceFor(node),
+        this.clearanceFor(parentNode, 0),
+        anchorsOf(undefined, { source: style.sourceAnchor, target: style.targetAnchor }),
+      );
+    }
+    return { id: held.id, at, visual: this.resolvedVisual(node, this.metrics), line };
+  }
+
+  /** The card a rearranging drag is holding under the pointer, if any. */
+  heldCard(): string | null {
+    return this.arrangement?.at ? this.arrangement.id : null;
+  }
+
+  /**
+   * Hold, move or let go of a card for a rearranging gesture — see `ArrangeState`.
+   *
+   * Laid out again only when where the drop would put it changes. Between those, only the pointer is moving,
+   * and the card follows it without anything else being asked. Let go with somewhere to go, the card travels
+   * into its place and is held there until the data agrees; let go with nowhere, it travels home.
+   */
+  private arrange(state: ArrangeState | null): void {
+    if (this.arrangeTimer) clearTimeout(this.arrangeTimer);
+    this.arrangeTimer = undefined;
+    const previous = this.arrangement;
+    if (!state) {
+      if (!previous) return;
+      this.arrangement = null;
+      this.relayout({ travel: this.arrangeTravel() });
+      return;
+    }
+    // Whoever holds a card owns its position — see `stopTravel`.
+    if (previous?.id !== state.id) this.stopTravel(state.id);
+    const same = previous?.id === state.id && sameArrangeTo(previous.to, state.to);
+    this.arrangement = { ...(previous?.id === state.id ? previous : {}), id: state.id, at: state.at, to: state.to };
+    if (same && state.at && previous?.at) {
+      const placed = this.positions.get(state.id);
+      if (placed) this.positions.set(state.id, { ...placed, x: state.at.x, y: state.at.y });
+      this.positionsChanged();
+      return;
+    }
+    this.relayout({ travel: this.arrangeTravel() });
+    if (!state.at && this.arrangement) {
+      this.arrangeTimer = setTimeout(() => {
+        this.arrangeTimer = undefined;
+        if (!this.arrangement || this.arrangement.at) return;
+        this.arrangement = null;
+        this.relayout({ travel: this.arrangeTravel() });
+      }, ARRANGE_SETTLE_MS);
+    }
+  }
+
+  /** Whether the data now says what a dropped card is being held at — see {@link arrangement}. */
+  private arrangementSettled(): boolean {
+    const held = this.arrangement;
+    const tree = this.hierarchy;
+    if (!held?.to || !tree) return true;
+    const parent = tree.parents.get(held.id) ?? null;
+    if (parent !== held.to.parent) return false;
+    if (!parent || held.to.index === undefined) return true;
+    return (tree.children.get(parent) ?? []).indexOf(held.id) === held.to.index;
+  }
+
+  private endArrangement(): void {
+    this.arrangement = null;
+    if (this.arrangeTimer) clearTimeout(this.arrangeTimer);
+    this.arrangeTimer = undefined;
+  }
+
+  /** Where a held card's ghost is drawn this frame: travelling to its slot with the cards making room for it. */
+  private ghostAt(): Point | null {
+    const held = this.arrangement;
+    if (!held?.at || !held.slot) return null;
+    const from = held.ghostFrom ?? held.slot;
+    const t = this.travel.running ? this.travel.progress : 1;
+    return { x: from.x + (held.slot.x - from.x) * t, y: from.y + (held.slot.y - from.y) * t };
+  }
+
+  /** A rearranging gesture's travel — see {@link ARRANGE_TRAVEL_MS}. */
+  private arrangeTravel(): number {
+    return Math.min(this.selfTravel, ARRANGE_TRAVEL_MS);
   }
 
   private drawConnection(from: string | null, to?: Point): void {

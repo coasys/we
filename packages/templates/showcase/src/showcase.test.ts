@@ -2165,10 +2165,15 @@ describe('the workshop’s tree', () => {
   it('swaps the gesture rather than listing both', () => {
     // Both claim a press on a card, so listing the two would have whichever came first win — and the
     // winner would be the wrong one in one of the two modes.
-    expect(canvas).toContain("'arrange-nodes'");
+    expect(canvas).toContain("type: 'arrange-nodes'");
     expect(canvas).toContain("{ type: 'drag-node', options: { pin: true } }");
     // `select` stays ahead of both: it does not claim the press, and it needs to see it.
-    expect(canvas).toContain("'select', 'arrange-nodes'");
+    expect(canvas).toContain("'select', { type: 'arrange-nodes'");
+  });
+
+  it('reorders siblings by dragging only while they are shown as arranged', () => {
+    // Ordered by date or reaction, a card slid along its row would land somewhere the order takes back.
+    expect(canvas).toContain("{ type: 'arrange-nodes', options: { reorder: local.order == 'manual' } }");
   });
 
   it('gives every card one box in the tree, and its own on the canvas', () => {

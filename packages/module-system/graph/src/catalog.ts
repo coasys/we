@@ -467,22 +467,34 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'arrange-nodes',
       category: 'behaviour',
       description:
-        'Drag a card onto another to make it a CHILD of it, into the gap BESIDE one to reorder, or out of the trees to DETACH it — emitting onNodeArrange with which of the three it was. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — list this one where the layout derives positions (forest, tree) and drag-node where they come from the data (manual). Listing both has them fight for the same press. No drop indicator is drawn, deliberately: the card follows the pointer, so the reader sees IT between the two cards it will sit between, and a line is drawn only for the reparent, which is the one intent the geometry cannot show.',
+        "Drag a card to another place in a hierarchy, with the tree showing the result as you go — emitting onNodeArrange when it is dropped. Along a row, the other cards make room once the pointer passes a neighbour's middle; rest on a card and the drop nests under it; in the unconnected zone it comes out of its tree; anywhere else it goes back where it was and nothing is emitted. The place it would land is drawn as a dashed ghost with the line it would have, and on release the card travels into it and is held there until the write comes back, so the drop is one movement. The preview needs a layout that reports its hierarchy (forest); on one that does not, the gesture reports CHILD, SIBLING or LOOSE from where it is dropped, with no preview. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — listing both has them fight for the same press.",
       options: [
+        {
+          name: 'reorder',
+          type: 'boolean',
+          description:
+            'Whether a drag may change the order of siblings. Default true. Set it false while siblings are ordered by something a drag cannot change — a date, a tally — so a card can still move under another parent, and lands where that order puts it, but is never shown sliding into a place it would not keep.',
+        },
+        {
+          name: 'nestAfter',
+          type: 'number',
+          description:
+            'How long the pointer rests on a card, in milliseconds, before a drop there nests under it. Default 500. Resting rather than crossing, so moving along a row to reorder never nests a card by accident.',
+        },
         {
           name: 'reach',
           type: 'number',
           description:
-            'How far from a card, in world units, a drop still counts as beside it. Default 240. Beyond it the drop is loose, because a pointer a long way down an empty rank is not saying "between these two" about a card two screens away.',
+            'Without a hierarchy to preview against: how far from a card, in world units, a drop still counts as beside it. Default 240.',
         },
         {
           name: 'band',
           type: 'number',
           description:
-            "How tall the band searched for siblings is. Defaults to the dragged card's own height, which is right whenever ranks are a card apart.",
+            "Without a hierarchy to preview against: how tall the band searched for siblings is. Defaults to the dragged card's own height.",
         },
       ],
-      example: `"behaviours": ["arrange-nodes", "select", "pan-zoom"]`,
+      example: `"behaviours": ["select", { "type": "arrange-nodes", "options": { "reorder": true } }, "pan-zoom"]`,
     },
     {
       id: 'connect-nodes',

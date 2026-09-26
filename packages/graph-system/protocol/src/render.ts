@@ -7,7 +7,7 @@
  * the same graph run as a hundred rich cards or as ten thousand dots without the plugins knowing.
  */
 import type { GraphEdge, GraphNode } from './graph';
-import type { Bounds, Point } from './layout';
+import type { Bounds, LayoutHierarchy, Point } from './layout';
 import type { CardShape, NodeStyle } from './style';
 
 /**
@@ -173,8 +173,41 @@ export interface BehaviourContext {
    * press, a move across an inert canvas, and a set of rings appearing on release.
    */
   drawMarquee(bounds: Bounds | null): void;
+  /**
+   * The tree the layout read out of the graph, or null where the layout has no parents — see
+   * `LayoutHierarchy`. From the data, not from what a drag in progress is previewing.
+   */
+  hierarchy(): LayoutHierarchy | null;
+  /** A node's box in world units, as it is drawn and picked; null for one that is not placed. */
+  boundsOf(id: string): Bounds | null;
+  /**
+   * Hold a card for a gesture that rearranges a hierarchy — see {@link ArrangeState}; null lets it go.
+   *
+   * The preview a rearranging drag needs belongs to the engine rather than the behaviour for the reason
+   * {@link drawConnection} does: the renderer has to draw it. And more than that, the layout has to place it,
+   * because a preview is only honest if it is the arrangement the drop will produce.
+   */
+  arrange(state: ArrangeState | null): void;
   /** Emit a graph event to the host — what a template binds `onNodeClick` and friends to. */
   emit(event: GraphEvent): void;
+}
+
+/**
+ * A card held by a rearranging gesture.
+ *
+ * `at` is where the pointer holds it, and null once it has been let go. `to` is where the drop would put it
+ * — a parent (null for out of every tree) and a position among that parent's other children — or null for
+ * the place it already has.
+ *
+ * While it is held the card is drawn at `at` and the layout places it at `to`, so the rest of the tree makes
+ * room and the empty place it would land in is drawn as a ghost with its line. Let go with a `to`, the card
+ * travels into that place and the layout keeps it there until the data agrees, so the drop and the write
+ * landing read as one movement.
+ */
+export interface ArrangeState {
+  id: string;
+  at: Point | null;
+  to: { parent: string | null; index?: number } | null;
 }
 
 /** Events a template may bind handlers to. Payloads are plain data, addressable from `$event.detail`. */

@@ -196,77 +196,41 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
         for an empty value everywhere else in WE and the only reading of it that is any use.
       */
       const spine = options.spine?.field && options.spine.value !== '' ? options.spine : undefined;
-      /** Parent → children and child → parents, from the matching edges only. */
-      const childrenOf = new Map<string, string[]>();
-      const parentsOf = new Map<string, string[]>();
-      let spineEdges = 0;
-
+      /** The connections that make a parent a parent. */
+      const links: SpineLink[] = [];
       for (const edge of input.edges) {
         // A line to something that is not on the graph cannot make a parent of anything. Filtered
         // here rather than trusted, because a seed drops hidden cards and keeps the edges they were on.
         if (!present.has(edge.source) || !present.has(edge.target) || edge.source === edge.target) continue;
         if (spine && edgeField(edge, spine.field) !== spine.value) continue;
-        spineEdges += 1;
-        (childrenOf.get(edge.source) ?? childrenOf.set(edge.source, []).get(edge.source)!).push(edge.target);
-        (parentsOf.get(edge.target) ?? parentsOf.set(edge.target, []).get(edge.target)!).push(edge.source);
+        links.push({ id: edge.id, source: edge.source, target: edge.target });
       }
 
-      // ─── Roots, depth and the one parent each card is placed under ──────────
-
-      /** Cards the spine touches at all. Everything else is unattached by definition. */
-      const onSpine = new Set<string>([...childrenOf.keys(), ...parentsOf.keys()]);
-
       /*
-        Breadth-first from the roots, so a card reachable at two depths sits at the shallower one and
-        the traversal order cannot decide the drawing. Roots and children are walked in id order for
-        the same reason: the same data has to lay out the same way every time, and a `Map`'s insertion
-        order is whatever the query happened to return.
+        The tree as the data has it, and — while a card is being dragged to a new place — as it would be
+        once the drop is written. The first is what `hierarchy` reports, since it is what a drop changes;
+        the second is what is drawn, so the preview is the arrangement the drop will produce.
       */
-      const sortedRoots = [...onSpine].filter((id) => !parentsOf.has(id)).sort();
-      const depthOf = new Map<string, number>();
-      const primaryParent = new Map<string, string>();
-      /** Which root's tree each card belongs to — what groups the forest into components. */
-      const treeOf = new Map<string, string>();
-      let brokeLoop = false;
+      const data = shapeOf(links);
+      const arranging =
+        input.arranging &&
+        present.has(input.arranging.id) &&
+        (input.arranging.parent === null || present.has(input.arranging.parent))
+          ? input.arranging
+          : undefined;
+      const drawn = arranging
+        ? shapeOf([
+            ...links.filter((link) => link.target !== arranging.id),
+            ...(arranging.parent ? [{ id: '', source: arranging.parent, target: arranging.id }] : []),
+          ])
+        : data;
 
-      const walk = (roots: string[]) => {
-        const queue = [...roots];
-        for (const root of roots) {
-          depthOf.set(root, 0);
-          treeOf.set(root, root);
-        }
-        for (let head = 0; head < queue.length; head += 1) {
-          const id = queue[head];
-          const depth = (depthOf.get(id) ?? 0) + 1;
-          for (const child of [...(childrenOf.get(id) ?? [])].sort()) {
-            if (depthOf.has(child)) continue;
-            depthOf.set(child, depth);
-            primaryParent.set(child, id);
-            treeOf.set(child, treeOf.get(id)!);
-            queue.push(child);
-          }
-        }
-      };
-
-      walk(sortedRoots);
-
-      /*
-        A loop along the spine has no root, so a component made entirely of one would be walked by
-        nothing and every card in it would land in the unconnected zone — which is a lie: they are
-        connected, just circularly. Opening the loop at its lowest id is arbitrary and deterministic,
-        which is the best available answer, and it is reported rather than done quietly.
-      */
-      for (const id of [...onSpine].sort()) {
-        if (depthOf.has(id)) continue;
-        brokeLoop = true;
-        walk([id]);
-      }
-      if (brokeLoop) {
+      if (data.brokeLoop) {
         warnings.push(
           'forest layout: some cards are connected in a loop along the spine, so no card in that group is above the others. The loop was opened at one of them to draw it as a tree.',
         );
       }
-      if (!spineEdges && input.nodes.length) {
+      if (!links.length && input.nodes.length) {
         warnings.push(
           spine
             ? `forest layout: no connection matched the spine (${spine.field} = ${String(spine.value)}), so every card is in the unconnected zone. Pick a different kind of connection, or draw some.`
@@ -297,8 +261,17 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
         );
 
       /** A card's children, in reading order, and only the ones it is the primary parent of. */
-      const orderedChildren = (id: string): string[] =>
-        inOrder((childrenOf.get(id) ?? []).filter((child) => primaryParent.get(child) === id));
+      const childrenIn = (shape: Shape, id: string): string[] =>
+        inOrder((shape.childrenOf.get(id) ?? []).filter((child) => shape.primaryParent.get(child) === id));
+
+      /** What is drawn: the data's order, with a card being arranged spliced in where the drag would put it. */
+      const orderedChildren = (id: string): string[] => {
+        const kids = childrenIn(drawn, id);
+        if (!arranging || id !== arranging.parent || arranging.index === undefined) return kids;
+        const others = kids.filter((kid) => kid !== arranging.id);
+        others.splice(Math.max(0, Math.min(arranging.index, others.length)), 0, arranging.id);
+        return others;
+      };
 
       // ─── One tidy tree ──────────────────────────────────────────────────────
 
@@ -352,7 +325,7 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
 
       // Trees read left to right in the same order siblings do, by their own root — so "the strongest
       // proposal" is the top-left card whether it is a sibling or a tree of its own.
-      const roots = inOrder([...treeOf.entries()].filter(([id, root]) => id === root).map(([id]) => id));
+      const roots = inOrder([...drawn.treeOf.entries()].filter(([id, root]) => id === root).map(([id]) => id));
       const positions = new Map<string, Placement>();
       let cursorX = 0;
 
@@ -364,7 +337,7 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
       // One trailing gap was added by the last tree; take it back so the zone beside it is not doubly far.
       const forestRight = roots.length ? cursorX - treeGap : 0;
 
-      for (const [id, depth] of depthOf) {
+      for (const [id, depth] of drawn.depthOf) {
         const x = centreX.get(id);
         if (x === undefined) continue;
         positions.set(id, { x, y: depth * rankPitch });
@@ -372,13 +345,13 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
 
       // ─── Whatever is on no tree ─────────────────────────────────────────────
 
-      const loose = inOrder(input.nodes.map((node) => node.id).filter((id) => !depthOf.has(id)));
+      const loose = inOrder(input.nodes.map((node) => node.id).filter((id) => !drawn.depthOf.has(id)));
       const regions: LayoutRegion[] = [];
 
       if (loose.length) {
         const columns = Math.max(1, Math.floor(options.unattachedColumns ?? DEFAULTS.unattachedColumns));
         const pitchX = card.width + siblingGap;
-        const forestBottom = depthOf.size ? (Math.max(...depthOf.values()) + 1) * rankPitch - levelGap : 0;
+        const forestBottom = drawn.depthOf.size ? (Math.max(...drawn.depthOf.values()) + 1) * rankPitch - levelGap : 0;
 
         // A clear run between the trees and the zone, so the divider is read as a boundary rather than
         // as one more gap between siblings.
@@ -413,13 +386,105 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
         });
       }
 
+      // The tree the data describes, for a gesture that rearranges it — from `data`, never from `drawn`.
+      const children = new Map<string, string[]>();
+      for (const id of data.depthOf.keys()) {
+        const kids = childrenIn(data, id);
+        if (kids.length) children.set(id, kids);
+      }
+
       return {
         positions: keepFixed(positions, input),
         ...(regions.length ? { regions } : {}),
         ...(warnings.length ? { warnings } : {}),
+        hierarchy: { parents: data.primaryParent, children, parentEdges: data.parentEdge },
       };
     },
   };
+}
+
+/** One connection along the spine: which edge, and the parent and child it joins. */
+interface SpineLink {
+  id: string;
+  source: string;
+  target: string;
+}
+
+/** The tree a set of spine links describes. */
+interface Shape {
+  childrenOf: Map<string, string[]>;
+  depthOf: Map<string, number>;
+  /** The one parent each card is placed under. */
+  primaryParent: Map<string, string>;
+  /** The link that made each card's primary parent its parent. */
+  parentEdge: Map<string, string>;
+  /** Which root's tree each card belongs to — what groups the forest into components. */
+  treeOf: Map<string, string>;
+  brokeLoop: boolean;
+}
+
+/**
+ * Roots, depths and the one parent each card is placed under, from the spine's links.
+ *
+ * Breadth-first from the roots, so a card reachable at two depths sits at the shallower one and the
+ * traversal order cannot decide the drawing. Roots and children are walked in id order for the same
+ * reason: the same data has to lay out the same way every time, and a `Map`'s insertion order is
+ * whatever the query happened to return.
+ */
+function shapeOf(links: readonly SpineLink[]): Shape {
+  const childrenOf = new Map<string, string[]>();
+  const parentsOf = new Map<string, string[]>();
+  const linkOf = new Map<string, string>();
+  for (const { id, source, target } of links) {
+    (childrenOf.get(source) ?? childrenOf.set(source, []).get(source)!).push(target);
+    (parentsOf.get(target) ?? parentsOf.set(target, []).get(target)!).push(source);
+    const key = `${source}\u0000${target}`;
+    if (!linkOf.has(key)) linkOf.set(key, id);
+  }
+
+  /** Cards the spine touches at all. Everything else is unattached by definition. */
+  const onSpine = new Set<string>([...childrenOf.keys(), ...parentsOf.keys()]);
+  const depthOf = new Map<string, number>();
+  const primaryParent = new Map<string, string>();
+  const parentEdge = new Map<string, string>();
+  const treeOf = new Map<string, string>();
+
+  const walk = (roots: string[]) => {
+    const queue = [...roots];
+    for (const root of roots) {
+      depthOf.set(root, 0);
+      treeOf.set(root, root);
+    }
+    for (let head = 0; head < queue.length; head += 1) {
+      const id = queue[head];
+      const depth = (depthOf.get(id) ?? 0) + 1;
+      for (const child of [...(childrenOf.get(id) ?? [])].sort()) {
+        if (depthOf.has(child)) continue;
+        depthOf.set(child, depth);
+        primaryParent.set(child, id);
+        const link = linkOf.get(`${id}\u0000${child}`);
+        if (link) parentEdge.set(child, link);
+        treeOf.set(child, treeOf.get(id)!);
+        queue.push(child);
+      }
+    }
+  };
+
+  walk([...onSpine].filter((id) => !parentsOf.has(id)).sort());
+
+  /*
+    A loop along the spine has no root, so a component made entirely of one would be walked by nothing
+    and every card in it would land in the unconnected zone — which is a lie: they are connected, just
+    circularly. Opening the loop at its lowest id is arbitrary and deterministic, which is the best
+    available answer, and it is reported rather than done quietly.
+  */
+  let brokeLoop = false;
+  for (const id of [...onSpine].sort()) {
+    if (depthOf.has(id)) continue;
+    brokeLoop = true;
+    walk([id]);
+  }
+  return { childrenOf, depthOf, primaryParent, parentEdge, treeOf, brokeLoop };
 }
 
 /**

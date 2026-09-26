@@ -134,6 +134,35 @@ export function contentLayout(visual: { cardShape?: string; morph?: { from: stri
   };
 }
 
+/**
+ * A held card's ghost as an SVG path in world units: its own silhouette, centred on where it would land.
+ *
+ * A rounded box for a note, with the corner the morph outlines use; an ellipse for a round card; the cut
+ * shapes' own points; a circle for a card that is not a card at all.
+ */
+export function ghostOutline(visual: NodeVisual, at: Point): string {
+  if (visual.shape !== 'card') {
+    const r = visual.size;
+    return `M ${at.x - r} ${at.y} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0 Z`;
+  }
+  const width = visual.width ?? 160;
+  const height = visual.height ?? 120;
+  const left = at.x - width / 2;
+  const top = at.y - height / 2;
+  if (visual.cardShape === 'round') {
+    const [rx, ry] = [width / 2, height / 2];
+    return `M ${left} ${at.y} a ${rx} ${ry} 0 1 0 ${width} 0 a ${rx} ${ry} 0 1 0 ${-width} 0 Z`;
+  }
+  const cut = cardSilhouette(visual.cardShape as CardShape | undefined);
+  if (cut) return `M ${cut.map(([x, y]) => `${left + x * width} ${top + y * height}`).join(' L ')} Z`;
+  const r = Math.min(width, height) / 12;
+  return (
+    `M ${left + r} ${top} H ${left + width - r} Q ${left + width} ${top} ${left + width} ${top + r} ` +
+    `V ${top + height - r} Q ${left + width} ${top + height} ${left + width - r} ${top + height} ` +
+    `H ${left + r} Q ${left} ${top + height} ${left} ${top + height - r} V ${top + r} Q ${left} ${top} ${left + r} ${top} Z`
+  );
+}
+
 export function pathFrom(route: EdgeGeometry, endGap = 0): string {
   const { from, control, control2, elbows, segments } = route;
   const to = endGap > 0 ? backOff(route, endGap) : route.to;
@@ -1291,6 +1320,7 @@ export function GraphView(props: GraphViewProps) {
     version();
     const placed = engine.getPositions();
     const selected = new Set(engine.getSelection());
+    const held = engine.heldCard();
     return [...engine.store.nodes()].flatMap((rawNode) => {
       const at = placed.get(rawNode.id);
       if (!at) return [];
@@ -1312,6 +1342,8 @@ export function GraphView(props: GraphViewProps) {
           */
           visual: engine.visualOf(rawNode),
           selected: selected.has(node.id),
+          // In the hand during a rearranging drag — read onto the row like `selected`, so it repaints.
+          held: held === node.id,
           expanded: engine.expansion.isExpanded(node.id),
           hasMore: engine.expansion.hasMore(node.id),
           /*
@@ -1646,6 +1678,16 @@ export function GraphView(props: GraphViewProps) {
   const pending = createMemo(() => {
     connectionVersion();
     return engine.getPendingConnection();
+  });
+
+  /*
+    A card held by a rearranging drag: the ghost where the drop would put it, and its line — see
+    `getArrangePreview`. On the general channel, since the ghost moves when the tree makes room for it rather
+    than with the pointer, and that is a relayout like any other.
+  */
+  const arranging = createMemo(() => {
+    version();
+    return engine.getArrangePreview();
   });
 
   /**
@@ -3368,6 +3410,33 @@ export function GraphView(props: GraphViewProps) {
             )}
           </Show>
           {/*
+            The place a held card would land, and the line it would have there.
+
+            An outline in the card's own shape rather than a second copy of the card: it reads as a place, not
+            as another card, and it needs none of the card's content. Dashed like the connect gesture's line,
+            because both say the same thing — a proposal, not yet written.
+          */}
+          <Show when={arranging()}>
+            {(preview) => (
+              <g class="we-graph__ghost">
+                <path class="we-graph__ghost-outline" d={ghostOutline(preview().visual, preview().at)} />
+                <Show when={preview().line}>
+                  {(line) => (
+                    <path
+                      d={pathFrom(line(), ARROW_LENGTH * PENDING_WIDTH)}
+                      fill="none"
+                      stroke="var(--we-role-accent)"
+                      stroke-width={PENDING_WIDTH}
+                      stroke-dasharray="6 4"
+                      vector-effect="non-scaling-stroke"
+                      marker-end="url(#we-graph-arrow-pending)"
+                    />
+                  )}
+                </Show>
+              </g>
+            )}
+          </Show>
+          {/*
             The rectangle a selection sweep is drawing.
 
             In the transformed group with everything else, so it is anchored to the canvas rather than
@@ -3570,6 +3639,8 @@ export function GraphView(props: GraphViewProps) {
                   // though: under a layout that reads positions from the data every node is placed, so
                   // the same mark lands on all of them and says nothing.
                   'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
+                  // In the hand during a rearranging drag, lifted above the tree making room under it.
+                  'we-graph__node--held': entry.held,
                 }}
                 style={{
                   ...anchorStyle(entry, entry.foldScale),

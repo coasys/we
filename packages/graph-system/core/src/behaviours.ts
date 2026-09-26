@@ -10,7 +10,7 @@
  * it. That is how dragging a node takes precedence over panning the canvas without either behaviour
  * knowing the other exists.
  */
-import type { Behaviour, BehaviourContext, Point, PointerInput } from '@we/graph-protocol';
+import type { ArrangeState, Behaviour, BehaviourContext, Bounds, Point, PointerInput } from '@we/graph-protocol';
 
 import { boundsFromPoints } from './viewport';
 
@@ -527,65 +527,201 @@ export function expandOnClickBehaviour(rawOptions?: Record<string, unknown>): Be
   };
 }
 
-/** The default set, keyed by the id a template names in `behaviours`. */
 export interface ArrangeNodesOptions {
   /**
-   * How far from a card, in world units, a drop still counts as *beside* it.
-   *
-   * Beyond it the drop is loose. A reorder means "between these two", so a pointer a long way down an
-   * empty rank is not saying that about the nearest card two screens away — it is saying nothing, and
-   * guessing there is how a card ends up somewhere the reader did not put it.
+   * Whether a drag may change the order of siblings. Default true. False where siblings are ordered by
+   * something a drag cannot change — a date, a tally — so a card can still be moved under another parent,
+   * and lands where that order puts it, but is never shown sliding into a place it would not keep.
+   */
+  reorder?: boolean;
+  /**
+   * How long the pointer has to rest on a card, in milliseconds, before a drop there means "under it".
+   * Default 500. Resting rather than merely crossing, so moving along a row to reorder never nests a card by
+   * accident — the convention file browsers and outliners share.
+   */
+  nestAfter?: number;
+  /**
+   * For a layout that reports no hierarchy: how far from a card, in world units, a drop still counts as
+   * beside it. Beyond it the drop is loose.
    */
   reach?: number;
-  /**
-   * How tall the band searched for siblings is, in world units. Defaults to a card's height, which is
-   * the right answer whenever ranks are a card apart — which is what a hierarchy layout produces.
-   */
+  /** For a layout that reports no hierarchy: how tall the band searched for siblings is, in world units. */
   band?: number;
 }
 
+/** One parent's children as they stood when a drag began — what a drop along them is measured against. */
+interface Row {
+  parent: string;
+  /** Left to right, without the card being dragged. */
+  cards: { id: string; box: Bounds }[];
+  /** The band the row occupies, with room past each end for a drop beyond the first or the last card. */
+  area: Bounds;
+}
+
+/** What a drop reports, in the terms the host writes it in. */
+type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; before?: boolean };
+
 /**
- * Drag a card to another place in a hierarchy — onto a card to make it a child, into the gap beside one
- * to reorder, out of the trees to detach.
+ * Drag a card to another place in a hierarchy — along a row to reorder it, under another parent to move it,
+ * rest on a card to nest under it, into the unconnected zone to take it out of its tree.
  *
  * ## Why this is not `drag-node` with a flag
  *
  * `drag-node` moves a card and reports where it ended up, because on a canvas the position **is** the
  * data. Here the position is derived: the layout decides it, and what the drag means is a change to the
  * *structure* the layout reads. Dropping a card two pixels to the left of where it started must write
- * nothing at all, where on a canvas it writes a coordinate.
+ * nothing at all, where on a canvas it writes a coordinate. List this one where the layout derives
+ * positions and `drag-node` where they come from the data — listing both has them fight for the press.
  *
- * So the two are alternatives rather than a mode. List this one where the layout derives positions, and
- * `drag-node` where they come from the data. Listing both would have them fight for the same press, and
- * the first would win at random depending on the order.
+ * ## The preview is the drop
  *
- * ## Why the card follows the pointer
+ * While a card is held, the engine lays the tree out as if the drop were already written: the other cards
+ * make room, and the empty place the card would land in is drawn as a ghost with the line it would have —
+ * see `ArrangeState`. So the reader sees the result before committing to it, and there is nothing to guess.
+ * On release the card travels into that place and stays there while the write goes through.
  *
- * There is no drop indicator, and that is deliberate rather than an omission. The card itself is pinned
- * to the pointer, so the reader sees *it* sitting between the two cards it is about to sit between —
- * which is the thing an insertion caret is a symbol for. A line is drawn only for the one intent the
- * geometry cannot show, `child`: "this will be under that" is a claim about a relationship, and a
- * relationship is what a line means everywhere else on the graph.
+ * ## Measured against where things were
  *
- * On release nothing is written and nothing is unpinned by this behaviour: the consumer writes, the
- * data comes back, and the layout puts the card where it now belongs — travelling there, so the drop
- * and the settling read as one movement. A card whose drop is refused travels back, which is the honest
- * answer and needs no special case.
+ * Every decision about a row is measured against the cards as they stood when the drag began, not as they
+ * are drawn while they make room. Measured live, a card that has just slid aside moves its own midpoint
+ * under the pointer and the row flickers between two answers. Against where things were, the gap opens
+ * under the pointer and stays there — the way every sortable list behaves.
+ *
+ * - **Along a row** — the dragged card's own or any other parent's — it takes the place of the card whose
+ *   midpoint the pointer has passed.
+ * - **Resting on a card** for {@link ArrangeNodesOptions.nestAfter}, it goes under that card, last.
+ * - **In the unconnected zone**, it comes out of its tree.
+ * - **Anywhere else**, it goes back where it was, and a drop there writes nothing.
+ *
+ * A card cannot go under itself or anything beneath it, so its own subtree offers no place at all.
+ *
+ * On a layout that reports no hierarchy there is nothing to preview against, and the gesture falls back to
+ * reporting what a drop beside, onto or away from a card means — see `intentAt` below.
  */
 export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
-  const options = { reach: 240, band: 0, ...(rawOptions as ArrangeNodesOptions) };
+  const options = { reach: 240, band: 0, reorder: true, nestAfter: 500, ...(rawOptions as ArrangeNodesOptions) };
   let dragging: string | null = null;
   let moved = false;
   let grabOffset = { x: 0, y: 0 };
+
+  // ─── With a hierarchy: the preview ──────────────────────────────────────────
+
+  /** The rows a drop can land in, the dragged card's own subtree, and where it is now. */
+  let rows: Row[] = [];
+  let subtree = new Set<string>();
+  let home: { parent: string | null; index: number } = { parent: null, index: 0 };
+  let childrenOf: ReadonlyMap<string, readonly string[]> = new Map();
+  /** The card being rested on, and the one a drop would nest under once it has been rested on long enough. */
+  let resting: string | null = null;
+  let nestTimer: ReturnType<typeof setTimeout> | undefined;
+  let nested: { id: string; box: Bounds } | null = null;
+  /** The last place the pointer was, for the nesting timer to answer from. */
+  let last: { world: Point; ctx: BehaviourContext } | null = null;
+
+  const inside = (box: Bounds, at: Point) =>
+    at.x >= box.minX && at.x <= box.maxX && at.y >= box.minY && at.y <= box.maxY;
+
+  /** The rows as they stand now — taken when a drag begins, and never again during it. */
+  const snapshot = (ctx: BehaviourContext, id: string): boolean => {
+    const tree = ctx.hierarchy();
+    if (!tree) return false;
+    childrenOf = tree.children;
+    subtree = new Set([id]);
+    for (const member of subtree) for (const child of tree.children.get(member) ?? []) subtree.add(child);
+    const parent = tree.parents.get(id) ?? null;
+    home = { parent, index: parent ? (tree.children.get(parent) ?? []).indexOf(id) : 0 };
+    rows = [];
+    for (const [parentId, kids] of tree.children) {
+      if (subtree.has(parentId)) continue;
+      const cards = kids
+        .filter((kid) => kid !== id)
+        .flatMap((kid) => {
+          const box = ctx.boundsOf(kid);
+          return box ? [{ id: kid, box }] : [];
+        });
+      if (!cards.length) continue;
+      // A card's width of room past each end, so the first and the last place in a row can be reached.
+      const slack = Math.max(...cards.map(({ box }) => box.maxX - box.minX));
+      rows.push({
+        parent: parentId,
+        cards,
+        area: {
+          minX: cards[0].box.minX - slack,
+          maxX: cards[cards.length - 1].box.maxX + slack,
+          minY: Math.min(...cards.map(({ box }) => box.minY)),
+          maxY: Math.max(...cards.map(({ box }) => box.maxY)),
+        },
+      });
+    }
+    return true;
+  };
+
+  /** How far the pointer is from a row's nearest card, sideways — to pick between two rows that overlap. */
+  const nearestGap = (row: Row, world: Point) =>
+    Math.min(...row.cards.map(({ box }) => Math.abs((box.minX + box.maxX) / 2 - world.x)));
+
+  /** What a drop at this point would do. */
+  const decide = (world: Point, ctx: BehaviourContext): { to: ArrangeState['to']; event?: ArrangeEvent } => {
+    if (nested && inside(nested.box, world)) {
+      const others = (childrenOf.get(nested.id) ?? []).filter((kid) => kid !== dragging).length;
+      return {
+        to: { parent: nested.id, ...(options.reorder ? { index: others } : {}) },
+        event: { into: 'child', target: nested.id },
+      };
+    }
+    if (ctx.regionAt(world)) {
+      return home.parent ? { to: { parent: null }, event: { into: 'loose' } } : { to: null };
+    }
+    const row = rows
+      .filter(({ area }) => inside(area, world))
+      .sort((a, b) => nearestGap(a, world) - nearestGap(b, world))[0];
+    if (!row) return { to: null };
+    const index = row.cards.filter(({ box }) => (box.minX + box.maxX) / 2 < world.x).length;
+    if (row.parent === home.parent && (!options.reorder || index === home.index)) return { to: null };
+    if (!options.reorder) {
+      // No position to ask for: the card joins that parent wherever the order puts it, and is written last.
+      return { to: { parent: row.parent }, event: { into: 'child', target: row.parent } };
+    }
+    const beside = row.cards[Math.min(index, row.cards.length - 1)];
+    return {
+      to: { parent: row.parent, index },
+      event: { into: 'sibling', target: beside.id, before: index < row.cards.length },
+    };
+  };
+
+  /** Hold the card at the pointer, and tell the engine where the drop would put it. */
+  const show = (world: Point, ctx: BehaviourContext) => {
+    if (!dragging) return;
+    const { to } = decide(world, ctx);
+    ctx.arrange({ id: dragging, at: { x: world.x + grabOffset.x, y: world.y + grabOffset.y }, to });
+  };
+
+  /** Rest on a card long enough and a drop there nests under it — see {@link ArrangeNodesOptions.nestAfter}. */
+  const trackResting = (world: Point, ctx: BehaviourContext) => {
+    if (nested && !inside(nested.box, world)) nested = null;
+    const over = ctx.hitTest(world).find((id) => !subtree.has(id)) ?? null;
+    if (over === resting) return;
+    resting = over;
+    if (nestTimer) clearTimeout(nestTimer);
+    nestTimer = undefined;
+    if (!over || nested?.id === over) return;
+    nestTimer = setTimeout(() => {
+      nestTimer = undefined;
+      const box = ctx.boundsOf(over);
+      if (!dragging || resting !== over || !box || !last) return;
+      nested = { id: over, box };
+      show(last.world, last.ctx);
+    }, options.nestAfter);
+  };
+
+  // ─── Without one: reporting the intent ──────────────────────────────────────
+
   /** The height of the card being dragged, for the band searched for siblings. */
   let bandHeight = 0;
+  let previewing = false;
 
-  /** What a drop at this point means, and what it is about. */
-  const intentAt = (
-    world: Point,
-    ctx: BehaviourContext,
-    id: string,
-  ): { into: 'child' | 'sibling' | 'loose'; target?: string; before?: boolean } => {
+  /** What a drop at this point means, and what it is about — for a layout that reports no hierarchy. */
+  const intentAt = (world: Point, ctx: BehaviourContext, id: string): ArrangeEvent => {
     // A named zone first: the `forest`'s unconnected cards are cards at similar heights, so without
     // this a drop into it reads as a reorder — the opposite of what dragging out of a tree means.
     if (ctx.regionAt(world)) return { into: 'loose' };
@@ -625,12 +761,17 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   const release = () => {
     dragging = null;
     moved = false;
+    resting = null;
+    nested = null;
+    last = null;
+    if (nestTimer) clearTimeout(nestTimer);
+    nestTimer = undefined;
   };
 
   return {
     id: 'arrange-nodes',
     description:
-      'Drag a card onto another to make it a child, into the gap beside one to reorder, or out of the trees to detach. Reports the intent; writes nothing.',
+      'Drag a card along a row to reorder it, under another parent to move it, rest on a card to nest under it, or into the unconnected zone to take it out of its tree — with the tree making room as you go. Reports the result; writes nothing.',
     onPointerDown(input, ctx) {
       // Refused at the start rather than by discarding the result, like every other gesture that moves
       // a card: a drag that follows the pointer and then snaps back has told you it worked.
@@ -643,6 +784,7 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       const at = ctx.positionOf(hit);
       grabOffset = at ? { x: at.x - world.x, y: at.y - world.y } : { x: 0, y: 0 };
       bandHeight = 0;
+      previewing = snapshot(ctx, hit);
       return true;
     },
     onPointerMove(input, ctx) {
@@ -650,14 +792,20 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       // No button held means no drag, whatever this behaviour thinks — the pointer left the window, or
       // something upstream swallowed the release.
       if (input.buttons === 0) {
-        ctx.drawConnection(null);
+        if (previewing && moved) ctx.arrange(null);
+        else ctx.drawConnection(null);
         release();
         return;
       }
       moved = true;
       const world = ctx.toWorld(input.at);
-      const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
-      ctx.pin(dragging, at);
+      if (previewing) {
+        last = { world, ctx };
+        trackResting(world, ctx);
+        show(world, ctx);
+        return true;
+      }
+      ctx.pin(dragging, { x: world.x + grabOffset.x, y: world.y + grabOffset.y });
       /*
         Measured from where the card is, not from a constant: the band searched for siblings should be
         one rank tall, and a rank is as tall as the cards on it. Taken from the grab offset, which is
@@ -665,12 +813,13 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
         errs toward "loose" and therefore toward writing nothing.
       */
       if (!options.band) bandHeight = Math.max(bandHeight, Math.abs(grabOffset.y) * 2, 1);
-      const intent = intentAt(world, ctx, dragging);
-      // A line only for `child`, which is the one intent the geometry cannot show — see the note above.
-      ctx.drawConnection(intent.into === 'child' && intent.target ? intent.target : null, world);
+      const fallback = intentAt(world, ctx, dragging);
+      // A line only for `child`, which is the one intent the geometry cannot show.
+      ctx.drawConnection(fallback.into === 'child' && fallback.target ? fallback.target : null, world);
       return true;
     },
     onPointerCancel(_input, ctx) {
+      if (previewing && moved) ctx.arrange(null);
       ctx.drawConnection(null);
       release();
     },
@@ -678,41 +827,63 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       if (!dragging) return;
       const id = dragging;
       const wasMoved = moved;
+      const world = ctx.toWorld(input.at);
+      const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
+
+      if (previewing) {
+        const { to, event } = wasMoved ? decide(world, ctx) : { to: null, event: undefined };
+        release();
+        /*
+          A press that went nowhere is a click, and must fall through: `select` is listed after this one
+          and would otherwise never see a press on a card at all, so nothing on the tree could be
+          selected or opened.
+        */
+        if (!wasMoved) return;
+        // Back where it was: the card travels home and nothing is written.
+        if (!to || !event) {
+          ctx.arrange(null);
+          return true;
+        }
+        // Into the place the preview showed, held there until the write comes back.
+        ctx.arrange({ id, at: null, to });
+        ctx.emit({
+          type: 'nodeArrange',
+          node: { id, kind: 'entity', type: '' },
+          into: event.into,
+          ...(event.target ? { target: { id: event.target, kind: 'entity' as const, type: '' } } : {}),
+          ...(event.before === undefined ? {} : { before: event.before }),
+          at,
+        });
+        return true;
+      }
+
       release();
       ctx.drawConnection(null);
-      /*
-        A press that went nowhere is a click, and must fall through: `select` is listed after this one
-        and would otherwise never see a press on a card at all, so nothing on the tree could be
-        selected or opened.
-      */
       if (!wasMoved) {
         ctx.pin(id, null);
         return;
       }
-      const world = ctx.toWorld(input.at);
-      const intent = intentAt(world, ctx, id);
+      const fallback = intentAt(world, ctx, id);
       /*
-        Released back to the layout, whatever the consumer decides.
-
-        The drop wrote nothing here, so the card has to be governed by the arrangement again — and the
-        arrangement is about to change under it. Left pinned, a card whose reparent the consumer refused
-        would sit in the gap it was dropped in for the life of the page, looking as though the refusal
-        had worked.
+        Released back to the layout, whatever the consumer decides. The drop wrote nothing here, so the card
+        has to be governed by the arrangement again — left pinned, a card whose move the consumer refused
+        would sit in the gap it was dropped in, looking as though the refusal had worked.
       */
       ctx.pin(id, null);
       ctx.emit({
         type: 'nodeArrange',
         node: { id, kind: 'entity', type: '' },
-        into: intent.into,
-        ...(intent.target ? { target: { id: intent.target, kind: 'entity' as const, type: '' } } : {}),
-        ...(intent.before === undefined ? {} : { before: intent.before }),
-        at: { x: world.x + grabOffset.x, y: world.y + grabOffset.y },
+        into: fallback.into,
+        ...(fallback.target ? { target: { id: fallback.target, kind: 'entity' as const, type: '' } } : {}),
+        ...(fallback.before === undefined ? {} : { before: fallback.before }),
+        at,
       });
       return true;
     },
   };
 }
 
+/** The default set, keyed by the id a template names in `behaviours`. */
 export function defaultBehaviours() {
   return {
     'pan-zoom': panZoomBehaviour,

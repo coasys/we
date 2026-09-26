@@ -313,3 +313,62 @@ describe('forest layout — degenerate shapes', () => {
     expect(result.positions.get('kid')).toMatchObject({ x: 999, y: 999 });
   });
 });
+
+describe('forest layout — a card being arranged', () => {
+  /*
+    What a drag in the tree previews. The layout places the held card where the drop would put it, and
+    everything around it makes room — the arrangement the drop will produce, before it is written.
+  */
+  const family = () => ({
+    nodes: ['p', 'q', 'a', 'b', 'c', 'x'].map((id, index) => node(id, { rank: index })),
+    edges: [edge('p', 'a'), edge('p', 'b'), edge('p', 'c'), edge('q', 'x')],
+  });
+  const arrange = (arranging: LayoutInput['arranging'], options: Record<string, unknown> = { sortBy: 'rank' }) => {
+    const { nodes, edges } = family();
+    return forestLayout({ ...OPTIONS, ...options }).init({
+      nodes,
+      edges,
+      viewport: { width: 1000, height: 800 },
+      ...(arranging ? { arranging } : {}),
+    });
+  };
+
+  it('moves a card to another place among its siblings, and the others make room', () => {
+    expect(leftToRight(arrange(undefined), ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+    expect(leftToRight(arrange({ id: 'c', parent: 'p', index: 0 }), ['a', 'b', 'c'])).toEqual(['c', 'a', 'b']);
+    expect(leftToRight(arrange({ id: 'a', parent: 'p', index: 1 }), ['a', 'b', 'c'])).toEqual(['b', 'a', 'c']);
+  });
+
+  it('puts a card under another parent, at the place asked for', () => {
+    const result = arrange({ id: 'b', parent: 'q', index: 0 });
+    // One rank under q, left of x — and gone from p's row, which closes up.
+    expect(yOf(result, 'b')).toBe(yOf(result, 'x'));
+    expect(leftToRight(result, ['b', 'x'])).toEqual(['b', 'x']);
+    expect(Math.abs(xOf(result, 'b')! - xOf(result, 'x')!)).toBe(120);
+    expect(leftToRight(result, ['a', 'c'])).toEqual(['a', 'c']);
+  });
+
+  it('takes a card out of every tree when it has no parent to be under', () => {
+    const result = arrange({ id: 'c', parent: null });
+    expect(result.regions?.[0]?.label).toContain('1');
+  });
+
+  it('places a card by its own order where no position is asked for — the honest preview for a date order', () => {
+    // Ordered by rank, c belongs after a and b whatever the drag says, so that is where it is drawn.
+    expect(leftToRight(arrange({ id: 'c', parent: 'p' }), ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('reports the tree as the data has it, not as the drag is previewing it', () => {
+    // What a drop would change, so what a gesture has to read — whatever is on screen mid-drag.
+    const { hierarchy } = arrange({ id: 'b', parent: 'q', index: 0 });
+    expect(hierarchy?.parents.get('b')).toBe('p');
+    expect(hierarchy?.children.get('p')).toEqual(['a', 'b', 'c']);
+    expect(hierarchy?.children.get('q')).toEqual(['x']);
+    expect(hierarchy?.parentEdges.get('b')).toBe('p->b');
+  });
+
+  it('ignores a card or a parent that is not on the graph', () => {
+    expect(leftToRight(arrange({ id: 'gone', parent: 'p', index: 0 }), ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+    expect(leftToRight(arrange({ id: 'a', parent: 'gone', index: 0 }), ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+});

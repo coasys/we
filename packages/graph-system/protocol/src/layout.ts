@@ -68,6 +68,46 @@ export interface LayoutInput {
    * why it is optional and why a layout falls back to the origin rather than requiring it.
    */
   visible?: { x: number; y: number; width: number; height: number };
+  /**
+   * A card somebody is dragging to a new place in a hierarchy, and where it would go — see
+   * {@link LayoutArranging}. A layout with no notion of parents ignores it.
+   */
+  arranging?: LayoutArranging;
+}
+
+/**
+ * A card being rearranged by hand: lay it out as if it were already where the drag would put it.
+ *
+ * What makes a drag in a tree a *preview* rather than a guess. While a card is held, the layout places it
+ * — and everything around it makes room — exactly as it would once the drop is written, so the reader sees
+ * the result before committing to it. The same answer again after the drop, until the write comes back and
+ * the data says the same thing, is what makes the drop one movement rather than two.
+ */
+export interface LayoutArranging {
+  id: string;
+  /** The parent it would have; null for out of every tree. */
+  parent: string | null;
+  /**
+   * Its position among that parent's other children, in the order the layout draws them. Absent for
+   * wherever the layout's own order would put it — which is the honest preview when siblings are ordered by
+   * something a drag cannot change, like a date.
+   */
+  index?: number;
+}
+
+/**
+ * The tree a layout read out of the graph, for a gesture that rearranges it.
+ *
+ * From the DATA, whatever {@link LayoutArranging} asked for: it is what a drop would change, not what is on
+ * screen mid-drag. Only a layout that has parents reports one.
+ */
+export interface LayoutHierarchy {
+  /** Each card's parent — the one it is drawn under, where the graph gives it several. */
+  parents: ReadonlyMap<string, string>;
+  /** Each parent's children, in the order the layout draws them. */
+  children: ReadonlyMap<string, readonly string[]>;
+  /** The edge that makes each card's parent its parent. */
+  parentEdges: ReadonlyMap<string, string>;
 }
 
 /**
@@ -117,6 +157,8 @@ export interface LayoutResult {
    * and decided nothing needed moving.
    */
   warnings?: string[];
+  /** The tree this arrangement was read from, where it is one — see {@link LayoutHierarchy}. */
+  hierarchy?: LayoutHierarchy;
 }
 
 /**

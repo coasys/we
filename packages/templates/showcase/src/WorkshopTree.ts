@@ -173,10 +173,15 @@ export const TREE_LAYOUT: SchemaProp = {
  * `marquee-select` is dropped in tree mode. A rectangle over an arrangement nobody chose selects
  * whatever the layout happened to put in it, which is a set with no meaning; and the thing a reader
  * wants a selection *for* on a canvas is moving cards together, which a tree does not do.
+ *
+ * A drag reorders siblings only while they are shown **as arranged**. Ordered by date or by reaction, a
+ * card dragged along its row would slide into a place the order then takes back — so there it can still
+ * move under another parent, and lands wherever that order puts it.
  */
 export const TREE_BEHAVIOURS: SchemaProp = {
   $:
-    `${TREE_ON} ? ['node-double-click', 'canvas-double-click', 'select', 'arrange-nodes', 'pan-zoom']` +
+    `${TREE_ON} ? ['node-double-click', 'canvas-double-click', 'select',` +
+    ` { type: 'arrange-nodes', options: { reorder: local.order == 'manual' } }, 'pan-zoom']` +
     ` : ['node-double-click', 'canvas-double-click', 'marquee-select', 'select',` +
     ` { type: 'drag-node', options: { pin: true } }, 'pan-zoom']`,
 };

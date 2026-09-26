@@ -48,6 +48,13 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
     toScreen: (p) => p,
     drawConnection: vi.fn(),
     drawMarquee: vi.fn(),
+    // No hierarchy by default, which is a layout with no parents — the rearranging gesture's fallback.
+    hierarchy: () => null,
+    boundsOf: (id) => {
+      const p = positions.get(id);
+      return p ? { minX: p.x - 20, minY: p.y - 20, maxX: p.x + 20, maxY: p.y + 20 } : null;
+    },
+    arrange: vi.fn(),
     // The nodes are marks of radius 20, so "overlaps the rectangle" is the box around each centre.
     within: (bounds) =>
       [...positions]

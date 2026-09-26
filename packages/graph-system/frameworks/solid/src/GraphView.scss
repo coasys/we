@@ -907,6 +907,35 @@
   `outline` rather than `box-shadow`: the selected and hovered rings already use the shadow, and a
   node can easily be both held and selected.
 */
+/*
+  A card in the hand during a rearranging drag, lifted above the tree making room under it.
+
+  A drop shadow rather than a box shadow, because a cut card is clipped to its outline and a box shadow would
+  be clipped with it. Over every other card, since it is the one being moved, and never taking the pointer
+  from the cards the tree is rearranging underneath.
+*/
+.we-graph__node--held {
+  z-index: 100000 !important;
+  pointer-events: none;
+
+  .we-graph__card,
+  .we-graph__dot {
+    filter: drop-shadow(0 10px 18px color-mix(in srgb, var(--we-role-shadow-color) 35%, transparent));
+  }
+}
+
+/*
+  The place a held card would land — see `ghostOutline` in the renderer. Faint, dashed and in the accent, the
+  same voice as the connect gesture's line: a proposal, not a card.
+*/
+.we-graph__ghost-outline {
+  fill: color-mix(in srgb, var(--we-role-accent) 7%, transparent);
+  stroke: var(--we-role-accent);
+  stroke-width: 1.5px;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+
 .we-graph__node--pinned .we-graph__dot,
 .we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing) > .we-graph__card-shape {
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles
