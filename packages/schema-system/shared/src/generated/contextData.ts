@@ -1227,7 +1227,7 @@ export const contextData: ContextData = {
         },
         {
           name: 'onNodeArrange',
-          type: '((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; x: number; y: number; }) => void)',
+          type: '((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)',
           optional: true,
         },
         {

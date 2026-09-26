@@ -559,7 +559,7 @@ interface Row {
 }
 
 /** What a drop reports, in the terms the host writes it in. */
-type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; before?: boolean };
+type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; before?: boolean; order?: string[] };
 
 /**
  * Drag a card to another place in a hierarchy — along a row to reorder it, under another parent to move it,
@@ -663,10 +663,14 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   /** What a drop at this point would do. */
   const decide = (world: Point, ctx: BehaviourContext): { to: ArrangeState['to']; event?: ArrangeEvent } => {
     if (nested && inside(nested.box, world)) {
-      const others = (childrenOf.get(nested.id) ?? []).filter((kid) => kid !== dragging).length;
+      const others = (childrenOf.get(nested.id) ?? []).filter((kid) => kid !== dragging);
       return {
-        to: { parent: nested.id, ...(options.reorder ? { index: others } : {}) },
-        event: { into: 'child', target: nested.id },
+        to: { parent: nested.id, ...(options.reorder ? { index: others.length } : {}) },
+        event: {
+          into: 'child',
+          target: nested.id,
+          ...(options.reorder && dragging ? { order: [...others, dragging] } : {}),
+        },
       };
     }
     if (ctx.regionAt(world)) {
@@ -683,9 +687,12 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       return { to: { parent: row.parent }, event: { into: 'child', target: row.parent } };
     }
     const beside = row.cards[Math.min(index, row.cards.length - 1)];
+    // The row as the reader sees it land: what the order is written from.
+    const order = row.cards.map((card) => card.id);
+    if (dragging) order.splice(index, 0, dragging);
     return {
       to: { parent: row.parent, index },
-      event: { into: 'sibling', target: beside.id, before: index < row.cards.length },
+      event: { into: 'sibling', target: beside.id, before: index < row.cards.length, order },
     };
   };
 
@@ -852,6 +859,7 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
           into: event.into,
           ...(event.target ? { target: { id: event.target, kind: 'entity' as const, type: '' } } : {}),
           ...(event.before === undefined ? {} : { before: event.before }),
+          ...(event.order ? { order: event.order } : {}),
           at,
         });
         return true;

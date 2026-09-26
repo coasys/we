@@ -295,6 +295,15 @@ export type GraphEvent =
       before?: boolean;
       /** Where the pointer let go, in world units — for a consumer that also stores a position. */
       at: Point;
+      /**
+       * The new parent's children, left to right, as the reader saw them land — the card included.
+       *
+       * What an order is written from. A consumer that worked the order out again from its own data would
+       * be ordering by its own rules, and wherever those differ from the layout's — cards nobody has ranked
+       * yet, say — the order it wrote would not be the one the reader chose. Absent where the drop sets no
+       * order: out of every tree, or where siblings are ordered by something a drag does not change.
+       */
+      order?: string[];
     }
   | { type: 'expanded'; id: string; added: number; total?: number }
   | { type: 'budgetReached'; limit: number };

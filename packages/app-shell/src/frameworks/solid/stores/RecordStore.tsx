@@ -76,6 +76,7 @@ import {
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
+import { isRank, seatInRow } from '../../../shared/treeOrder';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
 import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
@@ -1441,15 +1442,6 @@ export function RecordStoreProvider(props: ParentProps) {
     rememberMoves(canvas, moves);
   }
 
-  /**
-   * How far apart neighbouring ranks are left when a row has to be renumbered — see `Placement.rank`.
-   *
-   * Wide enough that seating a card between two of them is arithmetic rather than a renumbering, for
-   * more insertions into one gap than anybody will make. When it does run out the row is renumbered,
-   * which is correct and merely slower.
-   */
-  const RANK_STEP = 1024;
-
   /** A connection of the spine kind, as this file reads one back. */
   interface SpineLink {
     id: string;
@@ -1529,58 +1521,6 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Seat a card among its siblings: one write where there is room, a renumbering where there is not.
-   *
-   * `ordered` is the siblings this card is joining, already without it and already in the order they
-   * are read in — by the ranks they hold, with anything unranked after them. That last part is what
-   * makes the first drag on a canvas that has never been arranged behave sensibly: the row is
-   * renumbered once in the order it was already being read in, and every later drop is a single write.
-   */
-  async function seatAmong(
-    canvas: string,
-    card: string,
-    ordered: { recordId: string; rank: number }[],
-    index: number,
-  ): Promise<void> {
-    const at = Math.max(0, Math.min(index, ordered.length));
-    const before = ordered[at - 1]?.rank;
-    const after = ordered[at]?.rank;
-
-    /*
-      A gap between two ranks takes its midpoint; either end steps outward by a whole step, so a row
-      can be prepended to and appended to indefinitely. An empty row starts at one step in, leaving
-      room in front of the first card.
-
-      The fourth case is a gap that has closed: two ranks a floating-point hair apart, after enough
-      drops into the same place that there is no midpoint left. Then the row is renumbered, which is
-      the slow path and has to exist — without it the arithmetic silently stops moving the card, which
-      reads as the drag having failed.
-    */
-    const midpoint =
-      before !== undefined && after !== undefined
-        ? (before + after) / 2
-        : before !== undefined
-          ? before + RANK_STEP
-          : after !== undefined
-            ? after - RANK_STEP
-            : RANK_STEP;
-
-    if (!(before !== undefined && after !== undefined && (midpoint === before || midpoint === after))) {
-      await stylePlacement(canvas, card, { rank: midpoint });
-      return;
-    }
-
-    const renumbered = [
-      ...ordered.slice(0, at).map((row) => row.recordId),
-      card,
-      ...ordered.slice(at).map((row) => row.recordId),
-    ];
-    for (const [position, recordId] of renumbered.entries()) {
-      await stylePlacement(canvas, recordId, { rank: (position + 1) * RANK_STEP });
-    }
-  }
-
-  /**
    * Drag a card to another place in a tree, and write what that meant.
    *
    * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy. There the position *is*
@@ -1614,6 +1554,7 @@ export function RecordStoreProvider(props: ParentProps) {
       targetId?: string;
       targetType?: string;
       before?: boolean;
+      order?: string[];
     };
     const dataset = datasetStore.currentDataset();
     /*
@@ -1693,29 +1634,57 @@ export function RecordStoreProvider(props: ParentProps) {
         await created.setTarget?.(cardId);
       }
 
-      /*
-        The siblings, as the tree reads them: the parent's children without this card, ordered by the
-        ranks their placements hold. A card with no rank yet sorts after the ranked ones, by id, which
-        is stable and is what the renumbering path below then imprints.
-      */
       const placements = (await Placement.findAll(handle, {
         parent: { id: canvas, predicate: PREDICATES.CHILDREN },
       } as Record<string, unknown>)) as unknown as { node?: string; rank?: number }[];
       const rankOf = new Map<string, number>();
-      for (const row of placements) if (typeof row.node === 'string') rankOf.set(row.node, Number(row.rank) || 0);
-
-      const ordered = (childrenOf.get(parentId) ?? [])
-        .filter((id) => id !== cardId)
-        .map((id) => ({ recordId: id, rank: rankOf.get(id) ?? 0 }))
-        .sort((a, b) => (a.rank || Infinity) - (b.rank || Infinity) || a.recordId.localeCompare(b.recordId));
+      for (const row of placements) {
+        const rank = Number(row.rank);
+        if (typeof row.node === 'string' && isRank(rank)) rankOf.set(row.node, rank);
+      }
+      const siblings = (childrenOf.get(parentId) ?? []).filter((id) => id !== cardId);
 
       /*
-        Where among them. A drop ON a parent says nothing about order, so the card goes last — which is
-        also where a newly connected card belongs. A drop BESIDE a sibling says exactly where.
+        The row as the reader saw the card land in it, when the drop says — see `order` on the event.
+
+        Taken from the drop rather than worked out again here, because the two orders are made by different
+        rules wherever the data leaves a choice: the tree puts cards nobody has ranked after the ranked ones
+        and in the order they were made, and nothing in this store knows when that was. Ordered here instead,
+        a row nobody had arranged was written in some other order than the one on screen — which the tree
+        then showed, a moment after showing the drop. Only the parent's real children are kept, and any the
+        drop did not mention follow, so a stale or partial order cannot write a rank onto a stranger.
       */
-      const beside = ordered.findIndex((row) => row.recordId === targetId);
-      const index = event.into === 'child' || beside < 0 ? ordered.length : beside + (event.before ? 0 : 1);
-      await seatAmong(canvas, cardId, ordered, index);
+      const byRank = (a: string, b: string) => {
+        const [one, two] = [rankOf.get(a), rankOf.get(b)];
+        if (one !== undefined && two !== undefined) return one - two || a.localeCompare(b);
+        return one !== undefined ? -1 : two !== undefined ? 1 : a.localeCompare(b);
+      };
+      const shown = event.order?.filter((id) => id === cardId || siblings.includes(id));
+      let row: string[];
+      let index: number;
+      if (shown?.includes(cardId)) {
+        const seen = shown.filter((id) => id !== cardId);
+        row = [...seen, ...siblings.filter((id) => !seen.includes(id)).sort(byRank)];
+        index = shown.indexOf(cardId);
+      } else {
+        // No order said: a drop ON a parent goes last, one BESIDE a sibling goes on the side it named.
+        row = [...siblings].sort(byRank);
+        const beside = row.indexOf(targetId);
+        index = event.into === 'child' || beside < 0 ? row.length : beside + (event.before ? 0 : 1);
+      }
+
+      const writes = seatInRow(
+        row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
+        cardId,
+        index,
+      );
+      /*
+        Every rank held before any is written, so the tree reads the whole new order at once. Written one by
+        one, a row being renumbered would pass through each half-written order on its way, and would take a
+        round trip per card to get there.
+      */
+      for (const [id, rank] of writes) hold(id, { rank });
+      for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
     } catch (error) {
       console.error('RecordStore: arranging a card in a tree failed', error);
       toastService.error('Could not move that card.');

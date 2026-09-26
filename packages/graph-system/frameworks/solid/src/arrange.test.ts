@@ -123,13 +123,15 @@ describe('arranging a card in a tree', () => {
     move({ x: b.x - 20, y: b.y });
     drop({ x: b.x - 20, y: b.y });
 
-    // Reported as the store understands it: beside b, before it.
+    // Reported as the store understands it: beside b, before it — and the whole row as it was shown, so
+    // the ranks written describe that order rather than one the store worked out again.
     expect(events).toEqual([
       expect.objectContaining({
         type: 'nodeArrange',
         into: 'sibling',
         target: expect.objectContaining({ id: 'b' }),
         before: true,
+        order: ['a', 'c', 'b'],
       }),
     ]);
     // Already where it is going — not back in its old place waiting for the write.

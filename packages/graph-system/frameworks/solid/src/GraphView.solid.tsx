@@ -720,6 +720,11 @@ export function GraphView(props: GraphViewProps) {
           // A target that is not a record is the same case one step along: "under that" means nothing
           // if "that" cannot be named. Treated as a loose drop, which is the safe reading.
           const named = target?.kind === 'entity' && target.id ? target : undefined;
+          // The order as records, for the same reason; a card in it that is not a record has no rank to write.
+          const order = event.order?.flatMap((id) => {
+            const card = parseAddress(id);
+            return card?.kind === 'entity' && card.id ? [card.id] : [];
+          });
           props.onNodeArrange?.({
             id: event.node.id,
             into: named || event.into === 'loose' ? event.into : 'loose',
@@ -727,6 +732,7 @@ export function GraphView(props: GraphViewProps) {
             recordType: at.type ?? '',
             ...(named ? { targetId: named.id, targetType: named.type ?? '' } : {}),
             ...(event.before === undefined ? {} : { before: event.before }),
+            ...(order ? { order } : {}),
             x: event.at.x,
             y: event.at.y,
           });

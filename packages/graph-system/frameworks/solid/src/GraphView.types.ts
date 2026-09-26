@@ -336,6 +336,13 @@ export interface GraphViewProps {
     targetId?: string;
     targetType?: string;
     before?: boolean;
+    /**
+     * The new parent's children as record ids, left to right, as the reader saw them land — the card
+     * included. Write the order from this rather than working it out again: rules that differ from the
+     * layout's, for cards nobody has ranked yet say, would write an order the reader did not choose.
+     * Absent where the drop sets no order.
+     */
+    order?: string[];
     /** Where the pointer let go, for a consumer that also wants to keep a position. */
     x: number;
     y: number;
