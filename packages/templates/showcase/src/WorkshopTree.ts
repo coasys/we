@@ -66,6 +66,14 @@ export const TREE_LOCALS = {
   order: { type: 'string', initial: 'manual', syncParam: 'order' },
   signalType: { type: 'string', initial: '', syncParam: 'by' },
   cardSize: { type: 'string', initial: 'md', persist: 'workshop.treeCardSize' },
+  /*
+    How much each person's voice counts in a reaction's score — `did=50,did=0`, anyone not named in
+    full. View state like the order it re-weighs: a link carries the weighting, so somebody sent it sees
+    the tree ordered the way the sender was reading it.
+  */
+  voices: { type: 'string', initial: '', syncParam: 'voices' },
+  // Who those voices are — what the canvas seed last reported. See `TREE_VOICE_SUMMARY`.
+  voiceSummary: { type: 'object', initial: null },
 } as const;
 
 /**
@@ -195,6 +203,204 @@ export const TREE_HEAT_RULES: SchemaProp = {
     `${BY_ORDER} && local.order != 'manual' && (local.order != 'signal' || ${SIGNAL_IN_FORCE})` +
     ` ? [{ style: { color: ${HEAT_NONE_FILL} } }, { style: { color: { metric: 'field', options: ${HEAT_FIELD},` +
     ` scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} } } } }] : []`,
+};
+
+/**
+ * How much each person's voice counts, for the canvas seed — see `voices` in `TREE_LOCALS`. Applied to
+ * answers already on the cards, so a slider dragged across it re-weighs the tree with no query.
+ */
+export const TREE_WEIGHTS: SchemaProp = { $: 'local.voices' };
+
+/**
+ * Who answered, from the canvas seed — held so the strip can list them beside the canvas. The graph
+ * reports it only when it changes.
+ */
+export const TREE_VOICE_SUMMARY: SchemaProp = { $setLocal: 'voiceSummary', value: { $: 'event' } };
+
+/** The voices as the list draws them — see the `voices` host function. */
+const VOICES =
+  'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })';
+
+/** One of them, by the DID a row of the list is keyed on. */
+const VOICE = `(find(${VOICES}, { did: voiceDid }))`;
+
+/**
+ * Whose voice counts, and how much — a list of everybody who answered with the reaction the tree is
+ * ordered by, each with a slider.
+ *
+ * Every voice starts in full, and weights only matter against each other, so each row also says the
+ * person's share of the whole say, which is the number that reads. "Only" is the quickest way to one
+ * person's view — everybody else to nothing — and "Equal" puts everything back and leaves the address
+ * clean. A voice at nothing is left out, exactly as a muted one is; a card only they answered has no
+ * score.
+ *
+ * Only while ordering by a reaction: under any other order there is nothing a voice changes.
+ */
+const voicesControl: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "local.order == 'signal'" },
+    then: {
+      type: 'we-popover',
+      props: { placement: 'bottom-start' },
+      children: [
+        {
+          type: 'we-button',
+          slot: 'trigger',
+          props: {
+            size: 'sm',
+            // Marked while anybody's voice is not in full, so a weighted order is never mistaken for a plain one.
+            variant: { $: "local.voices ? 'secondary' : 'ghost'" },
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'users-three' } },
+            { $: "local.voices ? 'Voices · weighted' : 'Voices'" },
+          ],
+        },
+        {
+          type: 'div',
+          slot: 'content',
+          children: [
+            {
+              type: 'Column',
+              props: { bg: 'surface-raised', r: 'surface', p: '400', gap: '300', width: '340px', shadow: 'lg' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { ay: 'center', gap: '200', width: '100%' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'label', flex: '1' },
+                      children: ['Whose voice counts'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'xs',
+                        variant: 'ghost',
+                        disabled: { $: '!local.voices' },
+                        onClick: { $setLocal: 'voices', value: '' },
+                      },
+                      children: ['Equal'],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: `count(${VOICES})` },
+                    else: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: ['Nobody has answered with this reaction on this canvas yet.'],
+                    },
+                    then: {
+                      type: 'Column',
+                      props: { gap: '300', width: '100%', maxHeight: '60vh', overflowY: 'auto' },
+                      children: [
+                        {
+                          type: '$each',
+                          /*
+                            Over the DIDs, not the rows. \`$each\` keys a row by the item itself, and the rows are
+                            rebuilt on every movement of a slider — so iterating them remounted the row, and the
+                            slider under the pointer, mid-drag. A string keys by its value, so a person's row
+                            stays mounted and reads its numbers by DID.
+                          */
+                          props: { items: { $: `${VOICES}.map(v, v.did)` }, as: 'voiceDid' },
+                          children: [
+                            {
+                              type: 'Column',
+                              props: { gap: '100', width: '100%' },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: { ay: 'center', gap: '200', width: '100%' },
+                                  children: [
+                                    {
+                                      type: 'we-avatar',
+                                      props: {
+                                        size: 'xs',
+                                        image: { $: `(find(${VOICES}, { did: voiceDid })).avatar` },
+                                        hash: { $: 'voiceDid' },
+                                        initials: { $: `(find(${VOICES}, { did: voiceDid })).name` },
+                                        icon: { $: `(find(${VOICES}, { did: voiceDid })).pretend ? 'robot' : ''` },
+                                      },
+                                    },
+                                    {
+                                      type: 'Column',
+                                      props: { flex: '1', minWidth: '0' },
+                                      children: [
+                                        {
+                                          type: 'we-text',
+                                          props: { truncate: true },
+                                          children: [{ $: `${VOICE}.mine ? ${VOICE}.name + ' (you)' : ${VOICE}.name` }],
+                                        },
+                                        {
+                                          type: 'we-text',
+                                          props: { variant: 'footnote', color: 'text-muted' },
+                                          children: [
+                                            {
+                                              $: `${VOICE}.cards + ' ' + plural(${VOICE}.cards, 'card', 'cards') + ' · average ' + ${VOICE}.mean`,
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'label', color: 'text-muted' },
+                                      children: [{ $: `${VOICE}.share + '%'` }],
+                                    },
+                                    {
+                                      type: 'we-button',
+                                      props: {
+                                        size: 'xs',
+                                        variant: 'ghost',
+                                        onClick: {
+                                          $setLocal: 'voices',
+                                          value: {
+                                            $: `voicesParam({ param: local.voices, only: voiceDid, voices: ${VOICES} })`,
+                                          },
+                                        },
+                                      },
+                                      children: ['Only'],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-slider',
+                                  props: {
+                                    size: 'sm',
+                                    width: '100%',
+                                    min: 0,
+                                    max: 100,
+                                    step: 5,
+                                    value: { $: `${VOICE}.weight` },
+                                    // As it moves: the tree re-weighs from what is already read, so there is nothing to wait for.
+                                    onInput: {
+                                      $setLocal: 'voices',
+                                      value: {
+                                        $: 'voicesParam({ param: local.voices, did: voiceDid, weight: event.detail })',
+                                      },
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
 };
 
 /**
@@ -504,6 +710,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                   },
                 },
               },
+              voicesControl,
               { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
               {
                 type: 'we-select',

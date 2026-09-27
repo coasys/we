@@ -3076,6 +3076,19 @@ export const contextData: ContextData = {
         'signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })',
     },
     {
+      name: 'voices',
+      params: ['options'],
+      doc: "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).",
+      example:
+        'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })',
+    },
+    {
+      name: 'voicesParam',
+      params: ['options'],
+      doc: 'The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.',
+      example: 'voicesParam({ param: local.voices, did: voice.did, weight: event.detail })',
+    },
+    {
       name: 'formatJson',
       params: ['options'],
       doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.',

@@ -123,7 +123,9 @@ import {
   TREE_LOCALS,
   TREE_QUERIES,
   TREE_REFRAME,
+  TREE_VOICE_SUMMARY,
   TREE_WEIGH,
+  TREE_WEIGHTS,
   treeStrip,
 } from './WorkshopTree.ts';
 
@@ -3369,6 +3371,8 @@ const canvas: SchemaNode = {
           than reloading the graph, since `weigh` is one of the canvas seed's `refreshOptions`.
         */
         weigh: TREE_WEIGH,
+        // How much each person's voice counts in that weight — re-applied without a read. See `TREE_WEIGHTS`.
+        weights: TREE_WEIGHTS,
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
@@ -3641,6 +3645,8 @@ const canvas: SchemaNode = {
       vocabulary and this reader's current choice, neither of which a store can know.
     */
     onNodeArrange: { $action: 'recordStore.arrangeOnTree', args: [CALL, { $: 'local.spine' }, { $: 'event' }] },
+    // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
+    onSeedSummary: TREE_VOICE_SUMMARY,
     onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CALL, { $: 'event' }] },
     /*
       Routing a line by hand, written back — and binding these is what puts the handles on one.
