@@ -872,6 +872,13 @@ export interface GraphHostBindings {
    */
   decorations?(): GraphDecoration[];
   /**
+   * Furniture of the host's own, stacked above the controls in the graph's lower right corner and clear of whatever
+   * `obscured` says is covering it — for a control about how this graph is being read that belongs
+   * to no template, such as a development tool. Screen-anchored, unlike a decoration, and inert to
+   * the canvas's gestures, which it sits outside.
+   */
+  overlay?(): JSX.Element;
+  /**
    * Fields to lay over a node's own data, keyed by the record id the node stands for.
    *
    * The seam for **optimistic edits**, and it is here rather than in the engine because it is not

@@ -4381,8 +4381,10 @@ export function GraphView(props: GraphViewProps) {
         canvas renderer that has no elements at all. So they stay raw, and the SCSS that remains is
         exactly that: the canvas, plus where these overlays sit.
       */}
-      <Show when={controls().length > 0}>
-        <Column position="absolute" right={past('right')} bottom={past('bottom')} gap="100">
+      <Show when={controls().length > 0 || props.host?.overlay}>
+        <Column position="absolute" right={past('right')} bottom={past('bottom')} gap="100" ax="end">
+          {/* The host's own furniture, stacked over the controls so the two never share a corner. */}
+          {props.host?.overlay?.()}
           <For each={controls()}>
             {(control) => {
               /*

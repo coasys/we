@@ -21,6 +21,8 @@ export interface Weighed {
   /** What the reader gave, absent when they gave nothing. */
   mine?: number;
   aggregate: ReactionAggregate;
+  /** Somebody who answered counts for less than a whole voice — the reader has turned them down. */
+  adjusted?: boolean;
 }
 
 /** The weighing a card carries for this reaction type, or null when it carries none for it. */
@@ -33,6 +35,7 @@ export function readWeighed(data: Record<string, unknown> | undefined, type: str
     count: number(data.weightCount) ?? 0,
     ...(number(data.weightMine) === undefined ? {} : { mine: number(data.weightMine) }),
     aggregate: aggregate === 'sum' || aggregate === 'mean' || aggregate === 'median' ? aggregate : 'count',
+    ...(data.weightAdjusted === true ? { adjusted: true } : {}),
   };
 }
 

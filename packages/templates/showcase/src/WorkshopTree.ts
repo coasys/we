@@ -171,6 +171,9 @@ export const TREE_WEIGH: SchemaProp = {
     `(${TREE_ON} || local.order == 'signal') && ${SIGNAL_IN_FORCE} ? { signalTypeId: ${SIGNAL_IN_FORCE},` +
     ` aggregate: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).aggregate,` +
     ` mode: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).mode,` +
+    ` rangeMin: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).rangeMin,` +
+    ` rangeMax: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).rangeMax,` +
+    ` step: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).step,` +
     ` excludeAuthors: spaceStore.mutedDids, me: me.did } : null`,
 };
 

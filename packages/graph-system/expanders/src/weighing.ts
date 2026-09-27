@@ -107,7 +107,7 @@ export interface WeighSettings {
 
 /**
  * One card's answers as its weight, with how many people's voices went into it, what the reader gave,
- * and how it was read.
+ * how it was read, and — as `weightAdjusted` — whether anybody who answered it is turned down.
  *
  * With every voice in full this is the plain aggregate: a count of people, a net vote, an average, a
  * median. A voice turned down counts for its share of a person — half a like, half a vote, half a say in
@@ -128,10 +128,12 @@ export function weighVotes(votes: readonly Vote[], settings: WeighSettings): Rec
   const mine = settings.me ? votes.find(([author]) => author === settings.me) : undefined;
   if (mine) about.weightMine = mine[1];
 
-  const counted = votes
+  const heard = votes
     .filter(([author]) => !muted.has(author))
-    .map(([author, value]) => ({ value, weight: weights.get(author) ?? 1 }))
-    .filter((vote) => vote.weight > 0);
+    .map(([author, value]) => ({ value, weight: weights.get(author) ?? 1 }));
+  // Somebody who answered this card counts for less than a whole voice — what a badge says as "weighted".
+  if (heard.some((vote) => vote.weight < 1)) about.weightAdjusted = true;
+  const counted = heard.filter((vote) => vote.weight > 0);
   if (!counted.length) return aggregate === 'count' ? { ...about, weight: 0, weightCount: 0 } : about;
 
   const say = counted.reduce((total, vote) => total + vote.weight, 0);

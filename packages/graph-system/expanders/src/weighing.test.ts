@@ -36,6 +36,12 @@ describe('weighVotes', () => {
     expect(quieted).toMatchObject({ weight: 2, weightCount: 2 });
   });
 
+  it('says a card is weighted only where somebody who answered it is turned down', () => {
+    expect(weighVotes(votes, as('rating', 'did:a=50')).weightAdjusted).toBe(true);
+    expect(weighVotes(votes, as('rating', 'did:z=0')).weightAdjusted).toBeUndefined();
+    expect(weighVotes(votes, as('rating')).weightAdjusted).toBeUndefined();
+  });
+
   it('is only the one person heard when every other voice is at nothing', () => {
     expect(weighVotes(votes, as('rating', 'did:a=0,did:b=100,did:c=0')).weight).toBe(1);
   });

@@ -103,9 +103,9 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         },
         {
           name: 'weigh',
-          type: '{ signalTypeId: string; aggregate?: string; mode?: string; excludeAuthors?: string[]; me?: string }',
+          type: '{ signalTypeId: string; aggregate?: string; mode?: string; rangeMin?: number; rangeMax?: number; step?: number; excludeAuthors?: string[]; me?: string }',
           description:
-            "Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read.",
+            "Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read. Pass the type's `rangeMin`, `rangeMax` and `step` too, so the pretend people a development build can add answer within its range.",
         },
         {
           name: 'weights',

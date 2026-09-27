@@ -19,12 +19,19 @@
  * same hold every other reaction surface uses. Nothing is fetched to draw it, which is what lets a tree of
  * a hundred cards carry a hundred of them. The popover reads the card's reactions when it is opened,
  * because the control shows every answer and the card carries only the total.
+ *
+ * ## Answering as somebody else
+ *
+ * In a development build a reader can act as one of the pretend people (see `pretendPeople`). A press
+ * then records that person's answer on this device instead of writing a reaction — nothing can be
+ * written as another agent — and the canvas seed, which is handed the same answers, re-weighs with it.
  */
 import { Column, CountMark, Row, SignalControl, type SignalTypeData } from '@we/components/solid';
 import { Signal, SignalType } from '@we/entities';
 import type { GraphNode } from '@we/graph-protocol';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
+import { actingAs, answerAs } from '../../../shared/pretendPeople';
 import { readWeighed, roundScore, withHeld } from '../../../shared/reactionScore';
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { reactions } from '../../../shared/sources/signalTally';
@@ -82,12 +89,15 @@ export function ReactionBadge(props: {
   });
 
   const weighed = createMemo(() => readWeighed(props.node.data as Record<string, unknown> | undefined, typeId()));
-  const held = () => (record() && typeId() ? signalOptimism.held(record(), typeId()) : undefined);
+  // The pretend person answered as, or empty — in which case every answer here is the reader's own.
+  const pretend = () => actingAs();
+  const held = () => (record() && typeId() && !pretend() ? signalOptimism.held(record(), typeId()) : undefined);
 
   // What the card says the reader gave is the evidence a held answer waits for — see `@we/optimism`.
   createEffect(() => {
     const read = weighed();
-    if (read && record()) signalOptimism.settleObserved(record(), typeId(), read.mine ?? null);
+    // Not while acting: the card then reports the pretend person's answer, which is no evidence about ours.
+    if (read && record() && !pretend()) signalOptimism.settleObserved(record(), typeId(), read.mine ?? null);
   });
 
   const shown = createMemo(() => {
@@ -103,6 +113,7 @@ export function ReactionBadge(props: {
 
   const give = (value: number | null) => {
     if (!record() || !typeId()) return;
+    if (pretend()) return answerAs(pretend(), record(), value);
     void spaceStore.upsertSignal(record(), typeId(), value);
   };
 
@@ -127,14 +138,22 @@ export function ReactionBadge(props: {
         .map((row) => ({ signalTypeId: row.signalTypeId, value: Number(row.value), author: row.author })),
     );
   };
-  const answers = () =>
-    reactions({
-      signals: rows(),
-      record: record(),
-      type: typeId(),
-      me: sessionStore.me()?.did,
-      pending: signalOptimism.overlay(),
-    }) as ReactionRow[];
+  const answers = () => {
+    const acting = pretend();
+    if (!acting) {
+      return reactions({
+        signals: rows(),
+        record: record(),
+        type: typeId(),
+        me: sessionStore.me()?.did,
+        pending: signalOptimism.overlay(),
+      }) as ReactionRow[];
+    }
+    // The pretend person's answer is the one the card reports — made up, or given while acting as them.
+    const mine = weighed()?.mine;
+    return mine === undefined ? rows() : [...rows(), { signalTypeId: typeId(), value: mine, author: acting }];
+  };
+  const answeringAs = () => pretend() || sessionStore.me()?.did;
 
   /*
     The card stays put while its popover is open. Somebody choosing a rating has left the badge for the
@@ -153,7 +172,9 @@ export function ReactionBadge(props: {
 
   const label = () => {
     const name = type()?.name || 'Reactions';
-    return score() === undefined ? `${name}: none yet` : `${name}: ${score()}`;
+    if (score() === undefined) return `${name}: none yet`;
+    // Said, so a score that moved when a voice was turned down is not read as people changing their minds.
+    return weighed()?.adjusted ? `${name}: ${score()}, weighted` : `${name}: ${score()}`;
   };
 
   return (
@@ -192,7 +213,7 @@ export function ReactionBadge(props: {
                     <SignalControl
                       signalType={signalType()}
                       signals={answers()}
-                      myDid={sessionStore.me()?.did}
+                      myDid={answeringAs()}
                       onSignal={give}
                     />
                   </Column>
