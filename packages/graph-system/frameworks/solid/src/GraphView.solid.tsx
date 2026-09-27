@@ -1734,7 +1734,7 @@ export function GraphView(props: GraphViewProps) {
     return [...engine.store.edges(), ...engine.foldBundles()].flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
-      const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), metrics);
+      const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle, metrics), metrics);
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;

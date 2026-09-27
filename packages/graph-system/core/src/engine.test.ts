@@ -2228,6 +2228,8 @@ describe('a heat rule', () => {
         seeds: { source: 'weighed' },
         layout: { type: 'grid' },
         nodeStyle: [
+          // What an unscored card is, before the heat rule — which has nothing to say about one.
+          { style: { color: 'plain' } },
           {
             style: {
               color: { metric: 'field', options: { from: 'weight' }, scale: 'heat' },
@@ -2245,7 +2247,9 @@ describe('a heat rule', () => {
     expect(visual('low').color).not.toBe(visual('high').color);
     // By comments, which run the other way: the low-weight card is the big one.
     expect(visual('low').size).toBeGreaterThan(visual('high').size);
-    // A card with no value falls through to the plain colour rather than claiming the coldest.
-    expect(visual('none').color).not.toBe(visual('low').color);
+    // A card with no value falls through to the rule before, rather than claiming the coldest colour —
+    // or the built-in default, which is what an unanswered metric used to overwrite it with.
+    expect(visual('none').color).toBe('plain');
+    expect(visual('low').color).not.toBe('plain');
   });
 });

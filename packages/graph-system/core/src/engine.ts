@@ -2005,7 +2005,7 @@ export class GraphEngine {
    */
   private resolvedVisual(rawNode: GraphNode, metrics: ReadonlyMap<string, ReadonlyMap<string, number>>) {
     const node = this.overlaid(rawNode);
-    return this.travel.visual(node.id, nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), metrics));
+    return this.travel.visual(node.id, nodeVisual(node, resolveStyle(node, this.spec.nodeStyle, metrics), metrics));
   }
 
   /**

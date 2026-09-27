@@ -102,10 +102,11 @@ export function flattenRules<TStyle>(rules: StyleRules<TStyle> | undefined): Sty
 export function resolveStyle<TStyle extends object>(
   subject: GraphNode | GraphEdge,
   rules: StyleRule<TStyle>[] | StyleRules<TStyle> | undefined,
+  metrics?: MetricValues,
 ): TStyle {
   let result = {} as TStyle;
   for (const rule of flattenRules(rules)) {
-    if (matches(subject, rule.when)) result = { ...result, ...contributed(subject, rule.style) };
+    if (matches(subject, rule.when)) result = { ...result, ...contributed(subject, rule.style, metrics) };
   }
   return result;
 }
@@ -119,11 +120,23 @@ export function resolveStyle<TStyle extends object>(
  * `undefined` for the cards that carry none, it would overwrite the type colour with the built-in
  * default and the first rule would be pointless. Deferring instead means "read this off the record,
  * and if it is not there, leave whatever was decided above".
+ *
+ * A {@link MetricRef} the metrics have no value for is dropped the same way, when the metrics are given.
+ * A heat rule over a field some cards do not carry — a rating nobody has given — is the case: without
+ * this the rule overwrote the colour an earlier rule chose with nothing, and those cards came out in
+ * the built-in default rather than in whatever the rules before it said an unscored card is.
  */
-function contributed<TStyle extends object>(subject: GraphNode | GraphEdge, style: TStyle): Partial<TStyle> {
+function contributed<TStyle extends object>(
+  subject: GraphNode | GraphEdge,
+  style: TStyle,
+  metrics?: MetricValues,
+): Partial<TStyle> {
   let out: Partial<TStyle> | undefined;
   for (const [key, value] of Object.entries(style)) {
-    if (!isFieldRef(value) || readField(subject, value.from) !== undefined) continue;
+    const unanswered = isFieldRef(value)
+      ? readField(subject, value.from) === undefined
+      : !!metrics && isMetricRef(value) && metrics.get(metricKey(value))?.get(subject.id) === undefined;
+    if (!unanswered) continue;
     // Copied once, on the first property that defers — the common rule has no field refs at all and
     // must not pay for a clone.
     out = out ?? { ...style };
