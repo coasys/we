@@ -38,6 +38,8 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { BY_ORDER, HEAT_HIGH_FILL, HEAT_LOW_FILL } from './WorkshopKey.ts';
+
 /** The box a card is given in each reading size, in world units. Post-it proportions throughout. */
 const CARD_SIZES: Record<string, { width: number; height: number }> = {
   sm: { width: 120, height: 90 },
@@ -162,6 +164,37 @@ export const TREE_WEIGH: SchemaProp = {
     ` aggregate: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).aggregate,` +
     ` mode: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).mode,` +
     ` excludeAuthors: spaceStore.mutedDids, me: me.did } : null`,
+};
+
+/**
+ * The heat map: every card shaded by what the tree is ordered by, while the key's order lens is on.
+ *
+ * The same number the order reads — a reaction's score, or when the card was made — normalised across
+ * the cards on the canvas and blended between the key's two colours, so a card's shade says where in
+ * the range it sits, which its place in a row cannot: three cards in a row say which is first, not
+ * whether the middle one is nearer the top or the bottom.
+ *
+ * A rating or a slider is scaled against its own range rather than the canvas's: the ends of a five-star
+ * scale mean something absolutely, and one card at two stars among worse ones must not look like the
+ * best there is. A card with no score is left out of the scale and keeps the plain colour under it — the
+ * graph falls through to an earlier rule where a metric has nothing to say, which is exactly the claim
+ * "nobody has answered" should make.
+ *
+ * Applies on the freeform canvas as well as the tree: the order is in the address either way, and a
+ * heat map across cards somebody placed by hand is as useful as one along a row. Nothing while the
+ * order is as arranged, where a card's place is its order already.
+ */
+const HEAT_TYPE = `find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} })`;
+const HEAT_FIELD =
+  `(local.order == 'signal' ? ((${HEAT_TYPE}.mode == 'rating' || ${HEAT_TYPE}.mode == 'slider')` +
+  ` ? { from: 'weight', min: ${HEAT_TYPE}.rangeMin, max: ${HEAT_TYPE}.rangeMax } : { from: 'weight' })` +
+  ` : { from: 'createdAt' })`;
+
+export const TREE_HEAT_RULES: SchemaProp = {
+  $:
+    `${BY_ORDER} && local.order != 'manual' && (local.order != 'signal' || ${SIGNAL_IN_FORCE})` +
+    ` ? [{ style: { color: { metric: 'field', options: ${HEAT_FIELD},` +
+    ` scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} } } } }] : []`,
 };
 
 /**

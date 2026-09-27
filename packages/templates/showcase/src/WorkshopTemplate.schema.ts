@@ -118,6 +118,7 @@ import {
   TREE_BEHAVIOURS,
   TREE_CARD_STYLE,
   TREE_EDGE_RULES,
+  TREE_HEAT_RULES,
   TREE_LAYOUT,
   TREE_LOCALS,
   TREE_QUERIES,
@@ -3418,6 +3419,8 @@ const canvas: SchemaNode = {
         cascade is unchanged: what is on contributes, what is off contributes nothing.
       */
       ...lensNodeRules(),
+      // The heat map, when the key's order lens is on — see `TREE_HEAT_RULES`.
+      TREE_HEAT_RULES,
       // The card's own size, always — a box somebody dragged out is a fact about the card whatever
       // lens is on. Its colour is above, where the lenses decide whether it shows.
       /*

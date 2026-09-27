@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import * as showcase from './index.ts';
 import {
   BY_KIND,
+  BY_ORDER,
   BY_STATE,
   CANVAS_FILL,
   CANVAS_KEY,
@@ -33,6 +34,10 @@ import {
   FOLD_FROM_GRAPH,
   FOLD_QUERY,
   FOLDED_CARDS,
+  HEAT_HIGH_FILL,
+  HEAT_HIGH_KEY,
+  HEAT_LOW_FILL,
+  HEAT_LOW_KEY,
   HIDDEN_KINDS,
   KIND_DEFAULTS,
   kindFill,
@@ -1184,6 +1189,8 @@ describe('the workshop’s key', () => {
     // A result equal to the default is written as nothing, so an ordinary link stays clean.
     expect(JSON.stringify(toggleLens('state'))).toContain("? '' : 'none'");
     expect(JSON.stringify(toggleLens('kind'))).toContain("? 'kind,state' : ''");
+    // The heat map is on alone, and off goes back to the default.
+    expect(JSON.stringify(toggleLens('order'))).toContain("? '' : 'order'");
   });
 
   it('builds the canvas’s colours from the space’s key, not from the seed', () => {
@@ -1268,9 +1275,9 @@ describe('the workshop’s key', () => {
     // Naming a state is Settings' business; the key only ever changes one that exists.
     expect(key).not.toContain('createTaskState');
     // The same picker the vocabulary uses, tokens first, on every row of the key: the three canvas
-    // rows, a kind's, and a state's.
+    // rows, a kind's, a state's, and the heat map's two ends.
     const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
-    expect(pickers).toBe(5);
+    expect(pickers).toBe(7);
   });
 
   it('turns each lens on from the heading of the section it governs, and hides the rest', () => {
@@ -1312,7 +1319,34 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain(`[{ style: { color: ${CARD_FILL} } }]`);
     expect(canvas).toContain(`"bg":{"$":"${CANVAS_FILL}"}`);
     expect(canvas).toContain(`"showLabel":true,"color":{"$":"${LINK_FILL}"}`);
-    expect(canvas).toContain(`filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']))`);
+    expect(canvas).toContain(
+      `filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}']))`,
+    );
+  });
+
+  it('shades every card by the order while the order lens is on, between the key’s two colours', () => {
+    /*
+      A heat map of whatever the tree is ordered by: three cards in a row say which is first, not
+      whether the middle one is nearer the top or the bottom, and a shade does. Continuous between two
+      colours the community picks, and exclusive — it colours every card, so kinds and states step aside.
+    */
+    const key = panel('key');
+    const canvas = route('/canvas');
+
+    for (const reserved of [HEAT_LOW_KEY, HEAT_HIGH_KEY]) expect(key).toContain(`"${reserved}"`);
+    // The legend is the scale as the cards are shaded by it, blended the same way.
+    expect(key).toContain("'linear-gradient(to right in oklch, '");
+    // A card nobody has answered is outside the scale, in the plain colour, and the legend says so.
+    expect(key).toContain('"No answers yet"');
+    // The rule: the order's own field, blended between the two ends, and nothing while as arranged.
+    expect(canvas).toContain("metric: 'field'");
+    expect(canvas).toContain(`scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} }`);
+    expect(canvas).toContain("local.order != 'manual'");
+    expect(canvas).toContain("{ from: 'createdAt' }");
+    // A rating is scaled against its own range, so one middling card cannot look like the best there is.
+    expect(canvas).toContain('min: find(local.treeSignalTypes');
+    // Exclusive: the heat lens is `order` alone, and "no lens" counts it as a lens.
+    expect(NO_LENS).toContain(BY_ORDER);
   });
 
   it('never offers a fill for a connection among the kinds', () => {
