@@ -42,6 +42,30 @@ export type MatchClause = Record<string, GraphValue | MatchOperators>;
  * computational becomes a plugin with a name and parameters, so the data surface never has to grow
  * conditionals, arithmetic or scales.
  */
+/**
+ * What a computed metric is filed under: its id, and its options when it has any.
+ *
+ * By id alone, two rules reading `field` from different fields — a colour by weight and a size by
+ * comment count — would be one metric computed once, and the options would have nowhere to go. That was
+ * the bug this exists for: options were dropped on the way to `compute`, so `field` never knew which
+ * field to read and every heat rule fell through to its fallback. Keys are sorted, so the same options
+ * written in a different order are the same metric.
+ */
+export function metricKey(ref: { metric: string; options?: Record<string, unknown> }): string {
+  if (!ref.options || !Object.keys(ref.options).length) return ref.metric;
+  const sorted = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(sorted)
+      : value && typeof value === 'object'
+        ? Object.fromEntries(
+            Object.keys(value as object)
+              .sort()
+              .map((key) => [key, sorted((value as Record<string, unknown>)[key])]),
+          )
+        : value;
+  return `${ref.metric} ${JSON.stringify(sorted(ref.options))}`;
+}
+
 export interface MetricRef {
   /** Registered metric id — `degree`, `betweenness`, `community`, … */
   metric: string;

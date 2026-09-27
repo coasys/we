@@ -154,11 +154,19 @@ export const communityMetric: Metric = {
  *
  * Options:
  * - `from` — the data field to read. A numeric string is accepted, since that is what a backend with
- *   no numeric column hands back.
+ *   no numeric column hands back, and so is a date — an ISO timestamp reads as its time, which is what
+ *   lets a card be shaded by when it was made.
  * - `min` / `max` — map against a **fixed** domain instead of the data's own. For a value whose scale
  *   means something absolutely (a 0..1 share, a 1..5 rating), where normalising to the visible graph
  *   would make one card at 2 stars look like the best there is. Values outside are clamped.
  */
+/** A string as a number: numeric if it is one, else a date's time, else nothing. */
+function numberOrTime(text: string): number {
+  if (!text.trim()) return NaN;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : Date.parse(text);
+}
+
 export const fieldMetric: Metric = {
   id: 'field',
   description:
@@ -171,7 +179,7 @@ export const fieldMetric: Metric = {
     const raw = new Map<string, number>();
     for (const node of graph.nodes) {
       const read = node.data?.[from];
-      const value = typeof read === 'string' ? Number(read) : read;
+      const value = typeof read === 'string' ? numberOrTime(read) : read;
       if (typeof value !== 'number' || !Number.isFinite(value)) continue;
       raw.set(node.id, value);
     }

@@ -32,7 +32,7 @@ import type {
   StyleRules,
   WatchQuery,
 } from '@we/graph-protocol';
-import { addressKind } from '@we/graph-protocol';
+import { addressKind, metricKey } from '@we/graph-protocol';
 
 import { connectionTarget } from './connect';
 import { ExpansionState, SEED_OPENER } from './expansion';
@@ -194,18 +194,23 @@ const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
  * Computed metrics are cheap but not free, and a graph whose rules mention none should pay nothing —
  * so the engine runs exactly the metrics the style asks for and no others.
  */
-function referencedMetrics(rules: StyleRules<Record<string, unknown>> | undefined): string[] {
-  const found = new Set<string>();
+function referencedMetrics(
+  rules: StyleRules<Record<string, unknown>> | undefined,
+): { metric: string; options?: Record<string, unknown> }[] {
+  const found: { metric: string; options?: Record<string, unknown> }[] = [];
   // Through the nesting, so a metric named by a rule a `$map` produced is still computed. Missing it
   // would leave that rule resolving to its fallback — a graph that draws, plainly, for no visible reason.
   for (const rule of flattenRules(rules)) {
     for (const value of Object.values(rule.style ?? {})) {
       if (value && typeof value === 'object' && 'metric' in value) {
-        found.add(String((value as { metric: unknown }).metric));
+        const ref = value as { metric: unknown; options?: unknown };
+        const options =
+          ref.options && typeof ref.options === 'object' ? (ref.options as Record<string, unknown>) : undefined;
+        found.push({ metric: String(ref.metric), ...(options ? { options } : {}) });
       }
     }
   }
-  return [...found];
+  return found;
 }
 
 const DEFAULT_MAX_NODES = 2000;
@@ -523,19 +528,22 @@ export class GraphEngine {
       edges: [...this.store.edges()].map((edge) => ({ source: edge.source, target: edge.target })),
     };
 
+    // Filed by id and options together — see `metricKey` — and computed with the options it was asked with.
     const next = new Map<string, ReadonlyMap<string, number>>();
-    for (const id of new Set(wanted)) {
-      const metric = this.registry.metric(id);
+    for (const ref of wanted) {
+      const key = metricKey(ref);
+      if (next.has(key)) continue;
+      const metric = this.registry.metric(ref.metric);
       if (!metric) {
-        this.warn(`no metric registered as "${id}"`);
+        this.warn(`no metric registered as "${ref.metric}"`);
         continue;
       }
       try {
-        next.set(id, metric.compute(snapshot));
+        next.set(key, metric.compute(snapshot, ref.options));
       } catch (error) {
         // A metric that throws must not take the graph down with it — the map still draws, just
         // without that dimension.
-        this.warn(`metric "${id}" failed: ${describe(error)}`);
+        this.warn(`metric "${ref.metric}" failed: ${describe(error)}`);
       }
     }
     this.metrics = next;

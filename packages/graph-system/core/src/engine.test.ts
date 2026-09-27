@@ -9,6 +9,7 @@ import type { Expander, ExpanderContext, GraphValue, SeedSource } from '@we/grap
 import { describe, expect, it, vi } from 'vitest';
 
 import { GraphEngine } from './engine';
+import { defaultMetrics } from './metrics';
 import { PluginRegistry } from './registry';
 
 const context: ExpanderContext = {
@@ -2197,5 +2198,54 @@ describe('a superseded load', () => {
 
     expect(engine.viewport.get().x).toBe(panned.x);
     expect(engine.viewport.get().y).toBe(panned.y);
+  });
+});
+
+describe('a heat rule', () => {
+  /** Three cards carrying a weight and one carrying none. */
+  const weighed: SeedSource = {
+    id: 'weighed',
+    async seed() {
+      const weights: Record<string, number | undefined> = { low: 1, middle: 5, high: 9, none: undefined };
+      return {
+        nodes: Object.entries(weights).map(([id, weight]) => ({
+          id,
+          kind: 'entity' as const,
+          type: 'Thing',
+          label: id,
+          data: (weight === undefined ? {} : { weight, comments: 10 - weight }) as Record<string, GraphValue>,
+        })),
+        edges: [],
+      };
+    },
+  };
+
+  it('reads the field it names, and two rules reading different fields read their own', async () => {
+    // The options never reached `compute`, so `field` did not know what to read and every heat rule
+    // fell through to its fallback — the catalogue's own heat-map recipe drew plain cards.
+    const engine = new GraphEngine({
+      spec: {
+        seeds: { source: 'weighed' },
+        layout: { type: 'grid' },
+        nodeStyle: [
+          {
+            style: {
+              color: { metric: 'field', options: { from: 'weight' }, scale: 'heat' },
+              size: { metric: 'field', options: { from: 'comments' }, range: [10, 20] },
+            },
+          },
+        ] as never,
+      },
+      registry: new PluginRegistry({ seeds: [weighed], expanders: [], metrics: defaultMetrics() }),
+      context,
+    });
+    await engine.start();
+    const visual = (id: string) => engine.visualOf(engine.store.node(id)!);
+
+    expect(visual('low').color).not.toBe(visual('high').color);
+    // By comments, which run the other way: the low-weight card is the big one.
+    expect(visual('low').size).toBeGreaterThan(visual('high').size);
+    // A card with no value falls through to the plain colour rather than claiming the coldest.
+    expect(visual('none').color).not.toBe(visual('low').color);
   });
 });

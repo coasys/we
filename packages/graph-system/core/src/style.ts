@@ -28,7 +28,7 @@ import type {
   StyleRules,
   StyleValue,
 } from '@we/graph-protocol';
-import { morphOutline } from '@we/graph-protocol';
+import { metricKey, morphOutline } from '@we/graph-protocol';
 
 import { normaliseCurve, resampleBlend, sampledBlend } from './geometry';
 
@@ -164,7 +164,7 @@ export function resolveNumber(
     return value.fallback ?? fallback;
   }
   if (!isMetricRef(value)) return fallback;
-  const normalised = metrics.get(value.metric)?.get(subject.id);
+  const normalised = metrics.get(metricKey(value))?.get(subject.id);
   if (normalised === undefined) return fallback;
   const [min, max] = value.range ?? [fallback, fallback * 2];
   return min + normalised * (max - min);
@@ -220,7 +220,7 @@ export function resolveColor(
     return value.fallback ?? fallback;
   }
   if (!isMetricRef(value)) return fallback;
-  const normalised = metrics.get(value.metric)?.get(subject.id);
+  const normalised = metrics.get(metricKey(value))?.get(subject.id);
   if (normalised === undefined) return fallback;
   const scale = SCALES[value.scale ?? 'heat'] ?? SCALES.heat;
   const index = Math.min(scale.length - 1, Math.floor(normalised * scale.length));

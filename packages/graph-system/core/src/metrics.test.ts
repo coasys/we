@@ -156,3 +156,23 @@ describe('field', () => {
     expect([...values.values()].every((v) => v === 0)).toBe(true);
   });
 });
+
+describe('field, over dates', () => {
+  it('reads a timestamp as its time, so cards can be shaded by when they were made', () => {
+    const at = (id: string, createdAt: string) => ({ id, kind: 'entity' as const, type: 'Thing', data: { createdAt } });
+    const values = fieldMetric.compute(
+      {
+        nodes: [
+          at('first', '2026-09-01T10:00:00Z'),
+          at('middle', '2026-09-11T10:00:00Z'),
+          at('last', '2026-09-21T10:00:00Z'),
+        ],
+        edges: [],
+      },
+      { from: 'createdAt' },
+    );
+    expect(values.get('first')).toBe(0);
+    expect(values.get('middle')).toBeCloseTo(0.5);
+    expect(values.get('last')).toBe(1);
+  });
+});
