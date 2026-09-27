@@ -108,6 +108,12 @@ const ARRANGE_SETTLE_MS = 5000;
 const ARRANGE_EDGE_ID = '__arranging__';
 
 /** Whether two answers to "where would this drop put the card" are the same answer. */
+/**
+ * How a relayout moves the camera: not at all, framing the graph (`true`), or keeping it in view
+ * without zooming in (`'contain'`) — see `Viewport.contain`.
+ */
+export type Fit = boolean | 'contain';
+
 function sameArrangeTo(a: ArrangeState['to'], b: ArrangeState['to']): boolean {
   if (!a || !b) return a === b;
   return a.parent === b.parent && a.index === b.index;
@@ -315,7 +321,7 @@ export class GraphEngine {
    * off into a corner. Following it until it settles costs nothing for a layout that computes in one
    * pass, since those never report themselves as running.
    */
-  private fitUntilSettled = false;
+  private fitUntilSettled: Fit = false;
   /** Computed metric values, by metric id then node id. Recomputed when the graph changes. */
   private metrics: Map<string, ReadonlyMap<string, number>> = new Map();
   /** Where every edge runs, recomputed with positions. Read by the renderer and by edge picking. */
@@ -1424,7 +1430,7 @@ export class GraphEngine {
    * {@link beginTravel}. Omitted means instant, which is right for every path that is not a reader
    * changing how the graph is arranged — an expansion, a subscription, a first load.
    */
-  relayout(options?: { fit?: boolean; travel?: number }): void {
+  relayout(options?: { fit?: Fit; travel?: number }): void {
     const spec = this.spec.layout ?? { type: 'force' };
     /*
       Keyed on the options as well as the type.
@@ -1496,7 +1502,7 @@ export class GraphEngine {
     // a fact about *this* arrangement, so one kept from the previous run would be drawn around cards
     // that have since moved out of it.
     this.layoutRegions = result.regions ?? [];
-    this.fitUntilSettled = !!options?.fit && !!result.running;
+    this.fitUntilSettled = result.running ? (options?.fit ?? false) : false;
     this.applyPositions(result.positions, options?.fit, options?.travel);
     // A dropped card whose write has come back needs holding no longer: the data now says what the hold did.
     if (this.arrangement && !this.arrangement.at && this.arrangementSettled()) this.endArrangement();
@@ -1556,7 +1562,7 @@ export class GraphEngine {
     }, 16);
   }
 
-  private applyPositions(positions: Map<string, Placement>, fit?: boolean, travel?: number): void {
+  private applyPositions(positions: Map<string, Placement>, fit?: Fit, travel?: number): void {
     // Re-asserted over whatever the layout returned — see `pinnedIds`.
     for (const id of this.pinnedIds) {
       const at = positions.get(id);
@@ -1623,7 +1629,7 @@ export class GraphEngine {
     // Where the camera was before the fit, so it can travel with the cards. Captured whether or not a fit
     // happens, since that is only known after it.
     const cameraFrom = { ...this.viewport.get() };
-    const fitted = fit ? this.fitToContent() : false;
+    const fitted = fit ? this.fitToContent(fit) : false;
     if (fit && !fitted) this.pendingFit = true;
 
     /*
@@ -2228,13 +2234,17 @@ export class GraphEngine {
     return nearestId;
   }
 
-  /** Frame everything currently placed. Nothing to frame is not a failure — it is an empty graph. */
-  private fitToContent(): boolean {
+  /**
+   * Frame everything currently placed — or, with `'contain'`, centre it without zooming in. Nothing to
+   * frame is not a failure — it is an empty graph.
+   */
+  private fitToContent(mode: Fit = true): boolean {
     const bounds = boundsOf([...this.positions.values()].map((p) => ({ ...p, radius: 30 })));
     if (!bounds) return false;
     const { width, height } = this.viewport.get();
     if (!width || !height) return false;
-    this.viewport.fit(bounds);
+    if (mode === 'contain') this.viewport.contain(bounds);
+    else this.viewport.fit(bounds);
     return true;
   }
 

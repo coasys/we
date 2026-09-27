@@ -3506,6 +3506,11 @@
           "optional": true
         },
         {
+          "name": "reframeOn",
+          "type": "string | number | boolean | null",
+          "optional": true
+        },
+        {
           "name": "host",
           "type": "GraphHostBindings",
           "optional": true

@@ -1270,6 +1270,7 @@ export const contextData: ContextData = {
         { name: 'onPointerAt', type: '((at: { x: number; y: number; } | null) => void)', optional: true },
         { name: 'onViewport', type: '((region: GraphRegion) => void)', optional: true },
         { name: 'region', type: 'GraphRegion | null', optional: true },
+        { name: 'reframeOn', type: 'string | number | boolean | null', optional: true },
         { name: 'host', type: 'GraphHostBindings', optional: true },
       ],
       source: 'widgets',

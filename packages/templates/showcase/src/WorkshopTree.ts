@@ -174,6 +174,17 @@ export const TREE_LAYOUT: SchemaProp = {
 };
 
 /**
+ * When the tree is brought back into view: whenever its cards change size.
+ *
+ * Re-ordering a row keeps the camera where it is — a vote landing must not lurch the view — but bigger
+ * cards make a bigger tree, and switching to large ones left cards off the screen. The graph centres
+ * it again and zooms out only if it no longer fits, never in, so the size somebody picked is the size
+ * they see. Only in the tree: on the freeform canvas every card has its own size and this picker is
+ * not what sets it.
+ */
+export const TREE_REFRAME: SchemaProp = { $: `${TREE_ON} ? local.cardSize : ''` };
+
+/**
  * The gestures, either way.
  *
  * `arrange-nodes` replaces `drag-node` rather than joining it: both claim a press on a card, so listing

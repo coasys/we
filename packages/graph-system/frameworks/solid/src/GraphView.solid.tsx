@@ -1272,13 +1272,20 @@ export function GraphView(props: GraphViewProps) {
     different spine — is the same arrangement answering a different question, and refitting on one
     lurches the view every time a vote lands and re-orders a row. A different layout genuinely needs
     the camera to go and find the graph, which may now occupy a quite different region.
+
+    The one exception is the host's to name: `reframeOn` changing with the arrangement brings the graph
+    back into view without zooming in — see its doc. Read in the same effect so the camera travels with
+    the cards that are moving, rather than a frame later after they have landed off screen.
   */
   createEffect((previous: string | undefined) => {
-    const next = JSON.stringify(props.layout ?? {});
+    const layout = props.layout ?? {};
+    const reframe = props.reframeOn ?? null;
+    const next = JSON.stringify({ layout, reframe });
     if (previous !== undefined && previous !== next) {
-      const wasType = (JSON.parse(previous) as { type?: string })?.type;
+      const was = JSON.parse(previous) as { layout: { type?: string }; reframe: unknown };
       engine.setSpec(currentSpec());
-      engine.relayout({ fit: props.layout?.type !== wasType, travel: layoutTravel() });
+      const fit = props.layout?.type !== was.layout?.type ? true : reframe !== was.reframe ? 'contain' : false;
+      engine.relayout({ fit, travel: layoutTravel() });
     }
     return next;
   });

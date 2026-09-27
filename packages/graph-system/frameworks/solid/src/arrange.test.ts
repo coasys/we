@@ -195,6 +195,30 @@ describe('arranging a card in a tree', () => {
     expect(at('c').x).toBeCloseTo(a.x, 0);
   });
 
+  it('brings a tree back into view when its cards grow, without zooming in', async () => {
+    // Reported: switching to large cards pushed some off the screen. A re-tune keeps the camera where it
+    // is on purpose; a reframe is the host saying this one changed how big everything is.
+    const { engine } = await started(world().seed);
+    engine.viewport.zoomAt({ x: 0, y: 0 }, 2);
+    const zoom = engine.viewport.get().zoom;
+    const big = { card: { width: 400, height: 300 }, siblingGap: 40, levelGap: 100, treeGap: 120, sortBy: 'rank' };
+    engine.setSpec({
+      seeds: { source: 'test' },
+      layout: { type: 'forest', options: big },
+      nodeStyle: [{ style: { shape: 'card', width: 400, height: 300 } }] as never,
+    });
+    engine.relayout({ fit: 'contain' });
+
+    const seen = engine.viewport.visibleBounds();
+    for (const at of engine.getPositions().values()) {
+      expect(at.x).toBeGreaterThan(seen.minX);
+      expect(at.x).toBeLessThan(seen.maxX);
+      expect(at.y).toBeGreaterThan(seen.minY);
+      expect(at.y).toBeLessThan(seen.maxY);
+    }
+    expect(engine.viewport.get().zoom).toBeLessThanOrEqual(zoom);
+  });
+
   it('goes back to what the data says when a dropped card’s write never lands', async () => {
     const { engine, at, press, move, drop } = await started(world().seed);
     const b = at('b');

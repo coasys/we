@@ -677,6 +677,19 @@ export interface GraphViewProps {
    */
   region?: GraphRegion | null;
   /**
+   * A value that, when it changes, has the graph brought back into view with its next arrangement —
+   * centred, and zoomed out only as far as it takes to show all of it, never in.
+   *
+   * For a change the reader made to how big everything is, such as a tree's card size. A layout being
+   * re-tuned keeps the camera where it is on purpose — re-ordering a row must not lurch the view — but
+   * bigger cards make a bigger tree, and one left where it was pushes cards off the screen. Framing it
+   * fully would undo the choice instead: a small tree would be zoomed into and a big one zoomed out to
+   * the size it was. So it is centred, and the zoom only ever goes down.
+   *
+   * Compared by value; the first value is recorded, not acted on.
+   */
+  reframeOn?: string | number | boolean | null;
+  /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */

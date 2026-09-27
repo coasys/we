@@ -121,6 +121,7 @@ import {
   TREE_LAYOUT,
   TREE_LOCALS,
   TREE_QUERIES,
+  TREE_REFRAME,
   TREE_WEIGH,
   treeStrip,
 } from './WorkshopTree.ts';
@@ -3377,6 +3378,8 @@ const canvas: SchemaNode = {
       already on the canvas, including one somebody resized.
     */
     layout: TREE_LAYOUT,
+    // Back into view when the tree's cards change size — see `TREE_REFRAME`.
+    reframeOn: TREE_REFRAME,
     nodeStyle: [
       {
         /*

@@ -2125,6 +2125,11 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain("|| local.order == 'newest') ? 'desc' : 'asc'");
   });
 
+  it('brings the tree back into view when its cards change size', () => {
+    // Large cards make a larger tree, and one left where it was pushed cards off the screen.
+    expect(canvas).toContain('"reframeOn":{"$":"local.treeMode ? local.cardSize : \'\'"}');
+  });
+
   it('offers the date order both ways', () => {
     expect(canvas).toContain('"value":"date"');
     expect(canvas).toContain('"value":"newest"');
