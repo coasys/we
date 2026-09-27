@@ -38,6 +38,8 @@ import {
   HEAT_HIGH_KEY,
   HEAT_LOW_FILL,
   HEAT_LOW_KEY,
+  HEAT_NONE_FILL,
+  HEAT_NONE_KEY,
   HIDDEN_KINDS,
   KIND_DEFAULTS,
   kindFill,
@@ -1275,9 +1277,9 @@ describe('the workshop’s key', () => {
     // Naming a state is Settings' business; the key only ever changes one that exists.
     expect(key).not.toContain('createTaskState');
     // The same picker the vocabulary uses, tokens first, on every row of the key: the three canvas
-    // rows, a kind's, a state's, and the heat map's two ends.
+    // rows, a kind's, a state's, and the heat map's two ends and its "no answers yet".
     const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
-    expect(pickers).toBe(7);
+    expect(pickers).toBe(8);
   });
 
   it('turns each lens on from the heading of the section it governs, and hides the rest', () => {
@@ -1320,7 +1322,7 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain(`"bg":{"$":"${CANVAS_FILL}"}`);
     expect(canvas).toContain(`"showLabel":true,"color":{"$":"${LINK_FILL}"}`);
     expect(canvas).toContain(
-      `filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}']))`,
+      `filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}', '${HEAT_NONE_KEY}']))`,
     );
   });
 
@@ -1333,11 +1335,12 @@ describe('the workshop’s key', () => {
     const key = panel('key');
     const canvas = route('/canvas');
 
-    for (const reserved of [HEAT_LOW_KEY, HEAT_HIGH_KEY]) expect(key).toContain(`"${reserved}"`);
+    for (const reserved of [HEAT_LOW_KEY, HEAT_HIGH_KEY, HEAT_NONE_KEY]) expect(key).toContain(`"${reserved}"`);
     // The legend is the scale as the cards are shaded by it, blended the same way.
     expect(key).toContain("'linear-gradient(to right in oklch, '");
-    // A card nobody has answered is outside the scale, in the plain colour, and the legend says so.
+    // A card nobody has answered is outside the scale, in a colour of its own the community can set.
     expect(key).toContain('"No answers yet"');
+    expect(canvas).toContain(`[{ style: { color: ${HEAT_NONE_FILL} } }, { style: { color: { metric: 'field'`);
     // The rule: the order's own field, blended between the two ends, and nothing while as arranged.
     expect(canvas).toContain("metric: 'field'");
     expect(canvas).toContain(`scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} }`);

@@ -19,7 +19,7 @@
  * - **By order.** A heat map of whatever the tree is ordered by — a reaction's score, or when the card
  *   was made — shaded continuously between two colours the community picks. It colours every card, so
  *   it is exclusive: turning it on turns kind and state off, and either of those turns it off. A card
- *   with no score keeps the plain colour, outside the scale, which the section's legend says.
+ *   with no score takes a colour of its own, outside the scale, which the section lets a community set.
  *
  * Underneath all three, and not a lens at all: **the canvas itself** — what a card with no other
  * colour is drawn in, and the ground behind them. Both were constants in the template, which made
@@ -316,6 +316,8 @@ export const LINK_KEY = '@link';
 /** The two ends of the heat map's scale — see `BY_ORDER`. Stored like the three above. */
 export const HEAT_LOW_KEY = '@heatLow';
 export const HEAT_HIGH_KEY = '@heatHigh';
+/** And what a card nobody has answered is drawn in under it — outside the scale, and the community's to set. */
+export const HEAT_NONE_KEY = '@heatNone';
 
 /**
  * The heat map's ends before the community picks its own: a pale tint of the theme's hue to the accent
@@ -344,6 +346,7 @@ export const canvasColorChosen = spaceColor(CANVAS_KEY);
 export const linkColorChosen = spaceColor(LINK_KEY);
 export const heatLowChosen = spaceColor(HEAT_LOW_KEY);
 export const heatHighChosen = spaceColor(HEAT_HIGH_KEY);
+export const heatNoneChosen = spaceColor(HEAT_NONE_KEY);
 
 /**
  * What a card with no other colour is drawn in: the community's choice, else the template's.
@@ -362,9 +365,15 @@ export const LINK_FILL = `(${linkColorChosen} ? ${linkColorChosen} : '${LINK_DEF
 /** The heat map's two ends: the community's, else the template's. */
 export const HEAT_LOW_FILL = `(${heatLowChosen} ? ${heatLowChosen} : '${HEAT_LOW_DEFAULT}')`;
 export const HEAT_HIGH_FILL = `(${heatHighChosen} ? ${heatHighChosen} : '${HEAT_HIGH_DEFAULT}')`;
+/**
+ * A card with no score under the heat map: the community's choice, else the plain card colour — which is
+ * what it means by default, a card nothing has been said about yet. Kept apart from the scale's two ends
+ * either way, so an unanswered card never reads as the lowest answer.
+ */
+export const HEAT_NONE_FILL = `(${heatNoneChosen} ? ${heatNoneChosen} : ${CARD_FILL})`;
 
 /** The key's rows that are not kinds, for the per-kind rules to skip. */
-const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}']`;
+const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}', '${HEAT_NONE_KEY}']`;
 
 /**
  * `KIND_DEFAULTS` as an object literal the expression grammar can index.
@@ -802,17 +811,10 @@ const heatBody: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: `${TREE_ORDER} == 'signal'` },
-                then: keyRow({
-                  mark: {
-                    type: 'Column',
-                    props: {
-                      width: MARK,
-                      height: MARK,
-                      r: 'full',
-                      border: '1px solid border',
-                      bg: { $: CARD_FILL },
-                    },
-                  },
+                then: canvasRow({
+                  key: HEAT_NONE_KEY,
+                  chosen: heatNoneChosen,
+                  fill: HEAT_NONE_FILL,
                   icon: 'minus-circle',
                   label: 'No answers yet',
                 }),
@@ -1273,7 +1275,7 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                   lensSection({
                     lens: 'order',
                     label: 'Order',
-                    help: 'Shade every card by what the tree is ordered by — its score for the reaction, or when it was made — between two colours kept on the space. A card with no score keeps the plain card colour. Colours every card, so it takes over from kinds and states while it is on.',
+                    help: 'Shade every card by what the tree is ordered by — its score for the reaction, or when it was made — between two colours kept on the space. A card nobody has answered yet takes a colour of its own, outside the scale — the plain card colour until you pick one. Colours every card, so it takes over from kinds and states while it is on.',
                     body: heatBody,
                   }),
                 ],

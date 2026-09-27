@@ -38,7 +38,7 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
-import { BY_ORDER, HEAT_HIGH_FILL, HEAT_LOW_FILL } from './WorkshopKey.ts';
+import { BY_ORDER, HEAT_HIGH_FILL, HEAT_LOW_FILL, HEAT_NONE_FILL } from './WorkshopKey.ts';
 
 /** The box a card is given in each reading size, in world units. Post-it proportions throughout. */
 const CARD_SIZES: Record<string, { width: number; height: number }> = {
@@ -176,9 +176,9 @@ export const TREE_WEIGH: SchemaProp = {
  *
  * A rating or a slider is scaled against its own range rather than the canvas's: the ends of a five-star
  * scale mean something absolutely, and one card at two stars among worse ones must not look like the
- * best there is. A card with no score is left out of the scale and keeps the plain colour under it — the
- * graph falls through to an earlier rule where a metric has nothing to say, which is exactly the claim
- * "nobody has answered" should make.
+ * best there is. A card with no score is left out of the scale and drawn in the key's colour for "no
+ * answers yet" — the rule before the scale, which the graph falls through to where a metric has nothing
+ * to say about a card. That is exactly the claim "nobody has answered" should make.
  *
  * Applies on the freeform canvas as well as the tree: the order is in the address either way, and a
  * heat map across cards somebody placed by hand is as useful as one along a row. Nothing while the
@@ -193,7 +193,7 @@ const HEAT_FIELD =
 export const TREE_HEAT_RULES: SchemaProp = {
   $:
     `${BY_ORDER} && local.order != 'manual' && (local.order != 'signal' || ${SIGNAL_IN_FORCE})` +
-    ` ? [{ style: { color: { metric: 'field', options: ${HEAT_FIELD},` +
+    ` ? [{ style: { color: ${HEAT_NONE_FILL} } }, { style: { color: { metric: 'field', options: ${HEAT_FIELD},` +
     ` scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} } } } }] : []`,
 };
 
