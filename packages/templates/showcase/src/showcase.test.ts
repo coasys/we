@@ -2139,10 +2139,12 @@ describe('the workshop’s tree', () => {
     /*
       Only while ordering by a reaction, the weights were asked for at the moment the order changed —
       which changed the seed, and choosing "by reaction" dimmed the canvas and redrew it. Read whenever
-      the tree is shown, they are already there. The freeform canvas still reads none: `null` is what
-      the seed reads as "weigh nothing", and nothing there is ordered.
+      the tree is shown, they are already there. And kept on the freeform canvas while the order is a
+      reaction: a refresh replaces a card's data, so dropping them there took them off the cards, and
+      coming back to the tree sorted by date first and by the reaction a moment later. Under any other
+      order the canvas reads none — `null` is what the seed reads as "weigh nothing".
     */
-    expect(canvas).toContain('"weigh":{"$":"local.treeMode && (');
+    expect(canvas).toContain('"weigh":{"$":"(local.treeMode || local.order == \'signal\') && (');
     /*
       And it weighs the type the picker is SHOWING, not only one somebody has explicitly chosen.
 
