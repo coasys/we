@@ -40,6 +40,8 @@ export interface NodeVisual {
   content?: string;
   /** Zoom below which the content is hidden and the label stands in for it. */
   contentMinZoom?: number;
+  /** Registered badge pinned to the card's lower edge — see `NodeStyle.badge`. */
+  badge?: string;
   /** The card's outline. See `NodeStyle.cardShape`. */
   cardShape?: CardShape;
   /** Multiplier on the size the card's content is drawn at. See `NodeStyle.contentScale`. */

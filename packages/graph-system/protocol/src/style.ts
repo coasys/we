@@ -193,6 +193,18 @@ export interface NodeStyle {
    */
   contentMinZoom?: number;
   /**
+   * Name of a registered badge to pin to the card's lower edge — a small mark a reader can press.
+   *
+   * Not content, on purpose. A card's content is inert: it takes no pointer events, so a press anywhere
+   * on the card picks it up, and it is clipped to the card's shape and box, so the end of a long note is
+   * cut off. A mark somebody is meant to press cannot live there. A badge sits on the card's edge,
+   * outside the clip, takes its own presses and never starts a drag — a reaction on a card, pressed
+   * without opening anything.
+   *
+   * Named, and supplied through the host bindings, for the reason `content` is. Only on a card.
+   */
+  badge?: string;
+  /**
    * Whether the label grows and shrinks with the camera. Default `true`.
    *
    * `false` pins it to a constant on-screen size, which keeps text readable at any zoom — right for a

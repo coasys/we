@@ -341,6 +341,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`,
     },
     {
+      id: 'badge',
+      category: 'style',
+      description:
+        "Node style, cards only. Names a host-supplied mark to pin to the card's lower edge — one a reader can press without picking the card up. WE registers `reaction`, which shows a card's score for the reaction a tree is ordered by and lets a reader give, change or take back their own. Not content: a card's content is inert, so a press anywhere on it starts a drag, and it is clipped to the card's shape; a badge sits on the edge, outside the clip, and takes its own presses. Nothing is drawn when the host supplies no badge by that name.",
+      example: `"nodeStyle": [{ "style": { "shape": "card", "badge": "reaction" } }]`,
+    },
+    {
       id: 'scaleLabelWithZoom',
       category: 'style',
       description:

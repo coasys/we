@@ -801,6 +801,13 @@ export interface NodeAction {
 export type NodeContent = (props: { node: GraphNode }) => JSX.Element;
 
 /**
+ * A mark pinned to a card's lower edge — see `NodeStyle.badge`. Handed the node, and the record it
+ * stands for where the node is one, so a press can write to it. Draws its own box; the graph places it
+ * and keeps its presses from reaching the canvas.
+ */
+export type NodeBadge = (props: { node: GraphNode; recordId?: string; recordType?: string }) => JSX.Element;
+
+/**
  * A control the host lends a node's action header — see {@link NodeAction.control}.
  *
  * Handed the node, the value the action's `value` names on it (undefined where the node carries
@@ -829,6 +836,8 @@ export interface GraphHostBindings {
    * such component simply has a card that falls back to its label.
    */
   nodeContent?: Record<string, NodeContent>;
+  /** Badges a node style may name with `badge`, keyed by that name — see {@link NodeBadge}. */
+  nodeBadges?: Record<string, NodeBadge>;
   /**
    * Controls a node action may name with `control`, keyed by name — a colour picker, a shape menu,
    * a scale slider. Lent by the host for the reason `nodeContent` is: the primitives are the

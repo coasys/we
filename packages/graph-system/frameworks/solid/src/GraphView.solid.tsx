@@ -81,7 +81,7 @@ import {
 import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
-import type { GraphViewProps, NodeContent } from './GraphView.types';
+import type { GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
 import { type Grip, HANDLES, resizeBox } from './resize';
 
@@ -2053,6 +2053,10 @@ export function GraphView(props: GraphViewProps) {
     return `${insetOf(contentLayout(visual).cardShape)}%`;
   }
 
+  /** The badge a card's style names, when the host supplies one — see `NodeStyle.badge`. */
+  const cardBadge = (visual: { badge?: string }): NodeBadge | undefined =>
+    visual.badge ? props.host?.nodeBadges?.[visual.badge] : undefined;
+
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
     if (!visual.content) return undefined;
     if (visual.contentMinZoom !== undefined && zoom() < visual.contentMinZoom) return undefined;
@@ -3876,6 +3880,29 @@ export function GraphView(props: GraphViewProps) {
                         <span class="we-graph__more we-graph__more--card">+</span>
                       </Show>
                     </div>
+                    {/*
+                      A mark on the card's lower edge that takes its own presses — see `NodeStyle.badge`.
+                      A sibling of the shape rather than inside it, so no silhouette's clip and no long
+                      note's overflow can cut it off.
+
+                      Its presses are its own without anything being stopped: the canvas takes presses on
+                      the surface beneath the drawn layers, which are inert, so a badge that takes the
+                      pointer is the only thing a press on it reaches.
+                    */}
+                    <Show when={cardBadge(entry.visual)}>
+                      {(Badge) => {
+                        const at = parseAddress(entry.node.id);
+                        return (
+                          <div class="we-graph__badge">
+                            <Dynamic
+                              component={Badge()}
+                              node={entry.node}
+                              {...(at?.kind === 'entity' && at.id ? { recordId: at.id, recordType: at.type } : {})}
+                            />
+                          </div>
+                        );
+                      }}
+                    </Show>
                   </div>
                 </Show>
               </div>

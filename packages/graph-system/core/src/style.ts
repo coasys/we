@@ -301,6 +301,7 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     // have a renderer looking up a component it has no room to draw.
     if (style.content !== undefined) visual.content = style.content;
     if (style.contentMinZoom !== undefined) visual.contentMinZoom = style.contentMinZoom;
+    if (style.badge) visual.badge = style.badge;
   }
   if (style.z !== undefined) {
     // Only when it says something: an absent `z` and a zero are the same order, and leaving the field

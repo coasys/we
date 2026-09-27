@@ -819,6 +819,23 @@
 }
 
 /*
+  A card's badge — see `NodeStyle.badge`. On the lower edge, straddling it, so it belongs to the card
+  without covering what the card says; toward the right, because a tree's lines leave a parent from the
+  middle of that edge and a mark there would sit on them.
+
+  The one part of a card that takes the pointer. The rest is inert so that a press anywhere falls through
+  to the canvas beneath and picks the card up; a press on the badge stops at the badge.
+*/
+.we-graph__badge {
+  position: absolute;
+  right: var(--we-space-300);
+  bottom: 0;
+  z-index: 2;
+  transform: translateY(50%);
+  pointer-events: auto;
+}
+
+/*
   Hovering says "this one, and it is clickable".
 
   A ring rather than a colour change, because a board lets people choose a card's colour and
