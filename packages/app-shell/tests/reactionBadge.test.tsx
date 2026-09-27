@@ -15,7 +15,10 @@ vi.mock('@we/entities', async () => {
   return {
     ...actual,
     SignalType: {
-      findOne: async () => ({ id: 'like', name: 'Like', icon: 'heart', mode: 'toggle', rangeMin: 0, rangeMax: 1 }),
+      findOne: async (_p: unknown, query: { where: { id: string } }) =>
+        query.where.id === 'rating'
+          ? { id: 'rating', name: 'Confidence', icon: 'gauge', mode: 'slider', rangeMin: 0, rangeMax: 100 }
+          : { id: 'like', name: 'Like', icon: 'heart', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
     },
     Signal: { findAll: async () => [] },
   };
@@ -79,5 +82,20 @@ describe('a card’s reaction mark', () => {
 
     expect(writes).toEqual([['n1', 'like', null]]);
     await vi.waitFor(() => expect(scoreIn(container)).toBe(1));
+  });
+
+  it('opens the reaction’s own control for a slider, in the popover’s content', async () => {
+    // A press on a slider's mark opened an empty panel: the control was in a slot the popover never draws.
+    const slider = {
+      ...node,
+      data: { weightType: 'rating', weight: 40, weightCount: 2, weightAggregate: 'mean' },
+    };
+    const { container } = render(() => <ReactionBadge node={slider} recordId="n1" recordType="Note" />);
+    await vi.waitFor(() => expect(container.querySelector('we-popover')).not.toBeNull());
+
+    const content = container.querySelector('we-popover > [slot="content"]');
+    expect(content).not.toBeNull();
+    expect(content?.textContent).toContain('Confidence');
+    expect(container.querySelector('we-popover > [slot="trigger"]')).not.toBeNull();
   });
 });

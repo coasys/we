@@ -20,7 +20,7 @@
  * a hundred cards carry a hundred of them. The popover reads the card's reactions when it is opened,
  * because the control shows every answer and the card carries only the total.
  */
-import { CountMark, Row, SignalControl, type SignalTypeData } from '@we/components/solid';
+import { Column, CountMark, Row, SignalControl, type SignalTypeData } from '@we/components/solid';
 import { Signal, SignalType } from '@we/entities';
 import type { GraphNode } from '@we/graph-protocol';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
@@ -181,14 +181,22 @@ export function ReactionBadge(props: {
                 <span slot="trigger" onPointerDown={() => void readRows()}>
                   <CountMark icon={signalType().icon} count={score()} mine={mine()} size="sm" label={label()} />
                 </span>
-                <Row p="200" gap="200" ay="center">
-                  <SignalControl
-                    signalType={signalType()}
-                    signals={answers()}
-                    myDid={sessionStore.me()?.did}
-                    onSignal={give}
-                  />
-                </Row>
+                {/*
+                  In the popover's `content` slot — it shows nothing else, and the control in its
+                  default slot was never drawn, so a press on a slider's mark opened an empty panel.
+                  Laid out as the kit's own reaction popover is: the reaction's name over its control.
+                */}
+                <div slot="content">
+                  <Column bg="surface-raised" r="surface" p="400" gap="200" shadow="lg">
+                    <we-text variant="label">{signalType().name}</we-text>
+                    <SignalControl
+                      signalType={signalType()}
+                      signals={answers()}
+                      myDid={sessionStore.me()?.did}
+                      onSignal={give}
+                    />
+                  </Column>
+                </div>
               </we-popover>
             }
           >
