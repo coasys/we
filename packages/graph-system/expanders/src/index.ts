@@ -30,15 +30,20 @@ export {
   type ReifiedEdgeSpec,
   reifiedEdgeFrom,
 } from './reified';
+export { canvasSeed, type CanvasSeedOptions, PLACEMENT_UNSET, placementPosition, placementStyle } from './canvas';
 export {
-  canvasSeed,
-  type CanvasSeedOptions,
-  PLACEMENT_UNSET,
-  placementPosition,
-  placementStyle,
+  type Aggregate,
   effectiveAggregate,
+  parseWeights,
+  type Pretend,
+  pretendVotes,
+  readVotes,
+  type Voice,
+  voicesOf,
+  type Vote,
   weighSignals,
-} from './canvas';
+  weighVotes,
+} from './weighing';
 /*
   Exported because the canvas is not the only surface that will ask a set of placements where a node
   sits — a freeform canvas asks the same question of the same records, and "which of these applies"

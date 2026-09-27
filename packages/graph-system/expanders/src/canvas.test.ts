@@ -10,7 +10,8 @@
 import type { EntityShape, ExpanderContext, ExpanderQuery } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
-import { canvasSeed, PLACEMENT_UNSET, weighSignals } from './canvas';
+import { canvasSeed, PLACEMENT_UNSET } from './canvas';
+import { weighSignals } from './weighing';
 
 const SHAPES: EntityShape[] = [
   {
@@ -1057,10 +1058,10 @@ describe('canvas seed — weighing', () => {
       return query(request);
     };
 
-    const { nodes } = await canvasSeed().seed(
-      { canvas: 'b1', weigh: { signalTypeId: 'sig-like', aggregate: 'count' } },
-      ctx,
-    );
+    const seed = canvasSeed();
+    const options = { canvas: 'b1', weigh: { signalTypeId: 'sig-like', aggregate: 'count' } };
+    // Read at fetch, weighed in `derive` — the engine runs the two in that order on every load.
+    const { nodes } = seed.derive!(await seed.seed(options, ctx), options);
 
     /*
       A projection on the reads the seed already makes — not a query per card. Two of them for this type
@@ -1072,6 +1073,46 @@ describe('canvas seed — weighing', () => {
     expect(reads).toHaveLength(2);
     expect(reads.every((q) => (q.include as Record<string, unknown> | undefined)?.signals === true)).toBe(true);
     expect(nodes[0].data).toMatchObject({ weight: 2, weightCount: 2 });
+  });
+
+  it('re-weighs voices from the answers already read, asking nothing more', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [
+        {
+          id: 'c1',
+          title: 'Idea',
+          signals: [
+            { signalTypeId: 'rate', value: 5, author: 'did:a', createdAt: '2026-01-01' },
+            { signalTypeId: 'rate', value: 1, author: 'did:b', createdAt: '2026-01-01' },
+          ],
+        },
+      ],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+    const seed = canvasSeed();
+    const weigh = { signalTypeId: 'rate', mode: 'rating' };
+    const fetched = await seed.seed({ canvas: 'b1', weigh }, ctx);
+    const reads = asked.length;
+
+    expect(seed.derive!(fetched, { canvas: 'b1', weigh }).nodes[0].data).toMatchObject({ weight: 3 });
+    // Only did:a heard: the average is theirs, and nothing was read to find it out.
+    const onlyA = seed.derive!(fetched, { canvas: 'b1', weigh, weights: 'did:b=0' });
+    expect(onlyA.nodes[0].data).toMatchObject({ weight: 5, weightCount: 1 });
+    expect(asked.length).toBe(reads);
+    // And the voices it was made from, for a list beside the canvas.
+    expect(onlyA.summary).toMatchObject({
+      type: 'rate',
+      voices: [
+        { author: 'did:a', cards: 1, mean: 5 },
+        { author: 'did:b', cards: 1, mean: 1 },
+      ],
+    });
   });
 
   it('asks a type that declares no reactions for none, rather than losing it to a refused read', async () => {

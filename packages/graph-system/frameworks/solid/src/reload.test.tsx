@@ -47,9 +47,14 @@ describe('what makes the canvas reload', () => {
    */
   function fakeHost() {
     let hang = false;
+    const asked = { count: 0 };
     return {
+      asked,
       host: {
-        query: () => (hang ? new Promise<never[]>(() => {}) : Promise.resolve([])),
+        query: () => {
+          asked.count += 1;
+          return hang ? new Promise<never[]>(() => {}) : Promise.resolve([]);
+        },
         /*
           The seed asks the dataset what it holds and reads nothing it has not been told about, so a
           host with no models issues no queries at all — and a load with no queries settles inside a
@@ -68,8 +73,9 @@ describe('what makes the canvas reload', () => {
   it('reloads for a change to what the canvas is, and not for a change to how it is marked', async () => {
     const [pending, setPending] = createSignal<string[]>([]);
     const [weigh, setWeigh] = createSignal<{ signalTypeId: string } | null>(null);
+    const [weights, setWeights] = createSignal('');
     const [canvas, setCanvas] = createSignal('canvas-1');
-    const { host: graphHost, hangNext } = fakeHost();
+    const { host: graphHost, hangNext, asked } = fakeHost();
 
     const el = document.createElement('div');
     document.body.append(el);
@@ -77,7 +83,10 @@ describe('what makes the canvas reload', () => {
       () => (
         <GraphView
           host={graphHost as never}
-          seeds={{ source: 'canvas', options: { canvas: canvas(), pending: pending(), weigh: weigh() } }}
+          seeds={{
+            source: 'canvas',
+            options: { canvas: canvas(), pending: pending(), weigh: weigh(), weights: weights() },
+          }}
         />
       ),
       el,
@@ -102,6 +111,16 @@ describe('what makes the canvas reload', () => {
     setWeigh({ signalTypeId: 'like' });
     await settle();
     expect(reloading(el), 'reading the reactions of the cards on screen reloaded the whole canvas').toBe(false);
+
+    /*
+      Re-weighing whose voices count. Applied to the answers already on the cards, so a slider dragged
+      across it asks the backend nothing at all — not a reload, and not a refresh either.
+    */
+    const before = asked.count;
+    setWeights('did:a=0');
+    await settle();
+    expect(reloading(el), 're-weighing voices reloaded the canvas').toBe(false);
+    expect(asked.count, 're-weighing voices went back to the backend').toBe(before);
 
     /*
       And the control: a different canvas genuinely is a different graph, so the old one going stale

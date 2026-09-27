@@ -101,6 +101,18 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
         },
+        {
+          name: 'weigh',
+          type: '{ signalTypeId: string; aggregate?: string; mode?: string; excludeAuthors?: string[]; me?: string }',
+          description:
+            "Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read.",
+        },
+        {
+          name: 'weights',
+          type: 'string',
+          description:
+            "How much each person's voice counts in `weigh` — `did=50,did=0` in whole percent, anyone not named in full; 0 leaves them out. Applied to the answers already read, so changing it re-weighs the canvas with no query — a slider can drive it. The seed reports who answered as `onSeedSummary`'s `voices`: `{ author, cards, mean }`, the busiest first.",
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
       example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,

@@ -40,10 +40,11 @@
  * which is native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
  */
 import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
-import { entityAddress } from '@we/graph-protocol';
+import { entityAddress, parseAddress } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 import { placementsFor, resolvePlacement } from './placements';
+import { type Pretend, pretendVotes, readVotes, voicesOf, type Vote, weighVotes } from './weighing';
 
 export interface CanvasSeedOptions {
   /** Record id of the canvas. Nothing loads until this is set. */
@@ -184,7 +185,7 @@ export interface CanvasSeedOptions {
     aggregate?: 'count' | 'sum' | 'mean' | 'median';
     /**
      * The type's `mode`, which decides what a stored `aggregate` that cannot express it is read as — see
-     * {@link effectiveAggregate}. Without it a rating whose type still carries the manifest's default
+     * `effectiveAggregate` in `weighing.ts`. Without it a rating whose type still carries the manifest's default
      * `count` was weighed by how many people rated it rather than by what they gave.
      */
     mode?: string;
@@ -192,7 +193,22 @@ export interface CanvasSeedOptions {
     excludeAuthors?: string[];
     /** The reader's DID, so each card also carries what they themselves gave — `weightMine`. */
     me?: string;
+    /** The type's range, which a pretend person's made-up answers are drawn from — see `simulate`. */
+    rangeMin?: number;
+    rangeMax?: number;
+    step?: number;
   };
+  /**
+   * How much each person's voice counts in the weight — `did=50,did=0` in whole percent, as an address
+   * holds it, or an object of fractions; anyone not named counts in full. Applied by `derive` to answers
+   * already read, so a reader dragging a slider re-weighs the canvas with no query.
+   */
+  weights?: unknown;
+  /**
+   * People who are not there, answering on every card — a development tool for trying out weighting
+   * without several real agents. See `Pretend` in `weighing.ts`. A production build never passes it.
+   */
+  simulate?: Pretend;
   limit?: number;
 }
 
@@ -306,105 +322,13 @@ export function placementPosition(row: Record<string, unknown>): Record<string, 
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {};
 }
 
-/** The aggregate a mode falls back to — `aggregateFor` in `@we/components`, which this must agree with. */
-const AGGREGATE_FOR_MODE: Record<string, 'count' | 'sum' | 'mean'> = {
-  toggle: 'count',
-  vote: 'sum',
-  rating: 'mean',
-  slider: 'mean',
-};
-
 /**
- * How a reaction type's values are read as one number: its own `aggregate`, unless that cannot express
- * what its mode draws.
- *
- * The rule is `aggregateFor` in `@we/components`, restated because the graph packages do not depend on
- * the design system; a test in the app shell holds the two to the same answer for every pair. Its
- * reason, in short: `aggregate` defaults to `count` in the manifest and nothing has ever asked for it,
- * so every type a community has made carries `count` whatever its mode — and a rating read as a count
- * orders cards by how many people rated them.
+ * What each person answered on one card, for `derive` to weigh — see `weighing.ts`. Stamped as JSON because
+ * a node's data holds only scalars; nothing but the seed's own `derive` reads it.
  */
-export function effectiveAggregate(aggregate?: string, mode?: string): 'count' | 'sum' | 'mean' | 'median' {
-  const fallback = (mode && AGGREGATE_FOR_MODE[mode]) || 'count';
-  if (!aggregate) return fallback;
-  if (aggregate === 'count' && mode && mode !== 'toggle') return fallback;
-  return aggregate === 'sum' || aggregate === 'mean' || aggregate === 'median' ? aggregate : 'count';
-}
-
-/**
- * The reactions on one record, as one number — see {@link CanvasSeedOptions.weigh}.
- *
- * Two rules here are the whole of what makes a weight trustworthy.
- *
- * **One voice per person.** A shared perspective is last-write-wins and writable by every member, so
- * the same agent can end up holding two reactions of one kind on one record — two devices, or a write
- * that landed either side of a partition. Counting both would let a card gain weight from somebody
- * having been offline. The newest of each author's wins, which is the same answer `upsertSignal` means
- * to produce.
- *
- * **No reactions is absent, not zero — except for a count.** A card nobody has voted on or rated and
- * the lowest-scoring card are different facts: absent sorts last whichever way the order runs, and
- * leaves a heat rule falling through to whatever an earlier one set, where a zero would claim the
- * coldest colour. A count is the exception because there the two facts are one: no likes *is* a score,
- * zero, and the card belongs at the cold end with the others nobody liked. A value that genuinely is
- * zero — a vote that netted out — is written like any other.
- *
- * Alongside the weight: `weightType` and `weightAggregate`, saying what produced it, and `weightMine`,
- * what the reader gave, when they gave anything — what a card's own reaction mark draws from.
- */
-export function weighSignals(
-  rows: unknown,
-  settings: { signalTypeId: string; aggregate?: string; mode?: string; excludeAuthors?: string[]; me?: string },
-): Record<string, GraphValue> {
-  if (!settings.signalTypeId || !Array.isArray(rows)) return {};
-  const aggregate = effectiveAggregate(settings.aggregate, settings.mode);
-  const about: Record<string, GraphValue> = { weightType: settings.signalTypeId, weightAggregate: aggregate };
-  const muted = new Set(settings.excludeAuthors ?? []);
-
-  /** Author → their newest reaction of this type. */
-  const latest = new Map<string, { value: number; at: string }>();
-  for (const row of rows) {
-    if (!row || typeof row !== 'object') continue;
-    const signal = row as Record<string, unknown>;
-    if (signal.signalTypeId !== settings.signalTypeId) continue;
-    // An unattributed reaction is one nothing can be said about — not whose it is, not whether the
-    // reader has muted them, not whether it is a duplicate. Left out rather than counted as a stranger's.
-    const author = typeof signal.author === 'string' ? signal.author : '';
-    if (!author || muted.has(author)) continue;
-    const value = Number(signal.value);
-    const at = typeof signal.createdAt === 'string' ? signal.createdAt : '';
-    const held = latest.get(author);
-    // `>=` so a pair with no timestamps at all still settles on one of them rather than on neither.
-    if (held && held.at >= at) continue;
-    latest.set(author, { value: Number.isFinite(value) ? value : 0, at });
-  }
-
-  const mine = settings.me ? latest.get(settings.me) : undefined;
-  if (mine) about.weightMine = mine.value;
-
-  const values = [...latest.values()].map((entry) => entry.value);
-  if (!values.length) return aggregate === 'count' ? { ...about, weight: 0, weightCount: 0 } : about;
-
-  const total = values.reduce((sum, value) => sum + value, 0);
-  let weight: number;
-  switch (aggregate) {
-    case 'sum':
-      weight = total;
-      break;
-    case 'mean':
-      weight = total / values.length;
-      break;
-    case 'median': {
-      const sorted = [...values].sort((a, b) => a - b);
-      const middle = Math.floor(sorted.length / 2);
-      weight = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-      break;
-    }
-    default:
-      // `count` — how many people answered, which is what a toggle means and the field's own default.
-      weight = values.length;
-  }
-  return { ...about, weight, weightCount: values.length };
+function answersOn(rows: unknown, type: string): Record<string, GraphValue> {
+  const votes = readVotes(rows, type);
+  return votes ? { weightType: type, weightVotes: JSON.stringify(votes) } : {};
 }
 
 /** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
@@ -435,6 +359,38 @@ export function canvasSeed(): SeedSource {
       canvas is made of.
     */
     refreshOptions: ['pending', 'changed', 'hidden', 'weigh'],
+    /*
+      Applied to answers already on the cards — see `derive` below. A reader re-weighing voices with a
+      slider changes these many times a second, and none of it needs a read.
+    */
+    deriveOptions: ['weights', 'simulate'],
+    /*
+      Each card's weight from the answers read onto it: every voice weighed as the reader asked, muted
+      ones left out, and any pretend people's answers mixed in first. Also says who answered, and how
+      often, for a list of voices beside the canvas.
+    */
+    derive(fragment, rawOptions) {
+      const options = (rawOptions ?? {}) as CanvasSeedOptions;
+      const weigh = options.weigh;
+      if (!weigh?.signalTypeId) return fragment;
+      const pretend = options.simulate?.people?.length ? options.simulate : undefined;
+      const settings = { ...weigh, weights: options.weights, me: pretend?.actingAs || weigh.me };
+      const everyone: Vote[][] = [];
+      const nodes = fragment.nodes.map((node) => {
+        const read = node.data?.weightVotes;
+        if (typeof read !== 'string') return node;
+        const record = parseAddress(node.id)?.id ?? '';
+        const votes = [...(JSON.parse(read) as Vote[]), ...pretendVotes(record, pretend, weigh)];
+        everyone.push(votes);
+        const { weightVotes: _answers, ...data } = node.data ?? {};
+        return { ...node, data: { ...data, ...weighVotes(votes, settings) } };
+      });
+      return {
+        nodes,
+        edges: fragment.edges,
+        summary: { type: weigh.signalTypeId, voices: voicesOf(everyone, weigh.excludeAuthors ?? [], pretend) },
+      };
+    },
     async seed(rawOptions, context, signal) {
       const options = (rawOptions ?? {}) as CanvasSeedOptions;
       // No canvas chosen yet — a picker whose `$local` is still empty. Loading the types wholesale
@@ -731,7 +687,8 @@ export function canvasSeed(): SeedSource {
             ...countsOf(row),
             // Beside the counts, and for the same reason they are before the canvas's own fields: a
             // weight is a fact about the record rather than about this canvas's arrangement of it.
-            ...(options.weigh?.signalTypeId ? weighSignals(row.signals, options.weigh) : {}),
+            // What each person answered, weighed by `derive` — see `answersOn`.
+            ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
             ...(typeColor ? { canvasTypeColor: typeColor } : {}),
             // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
             // are the two states — an explicit `false` on every other card would make "not pending"

@@ -2253,3 +2253,52 @@ describe('a heat rule', () => {
     expect(visual('low').color).not.toBe('plain');
   });
 });
+
+describe('a seed finishing what it read', () => {
+  it('re-applies derive to the rows it has, with no read, and announces a summary only when it changes', async () => {
+    let reads = 0;
+    const seed: SeedSource = {
+      id: 'scored',
+      async seed() {
+        reads += 1;
+        return {
+          nodes: ['a', 'b'].map((id, i) => ({ id, kind: 'entity' as const, type: 'Thing', data: { raw: i + 1 } })),
+          edges: [],
+        };
+      },
+      deriveOptions: ['factor'],
+      derive(fragment, options) {
+        const factor = Number((options as { factor?: number }).factor ?? 1);
+        return {
+          nodes: fragment.nodes.map((node) => ({
+            ...node,
+            data: { ...node.data, score: Number(node.data?.raw) * factor },
+          })),
+          edges: fragment.edges,
+          summary: { factor },
+        };
+      },
+    };
+    const summaries: unknown[] = [];
+    const spec = { seeds: { source: 'scored', options: { factor: 1 } }, layout: { type: 'grid' } };
+    const engine = new GraphEngine({
+      spec,
+      registry: new PluginRegistry({ seeds: [seed], expanders: [] }),
+      context,
+      onEvent: (event) => event.type === 'seedSummary' && summaries.push(event.summary),
+    });
+    await engine.start();
+    expect(engine.store.node('b')?.data?.score).toBe(2);
+
+    engine.setSpec({ ...spec, seeds: { source: 'scored', options: { factor: 10 } } });
+    await engine.rederive();
+
+    expect(engine.store.node('b')?.data?.score).toBe(20);
+    expect(reads).toBe(1);
+    expect(summaries).toEqual([{ factor: 1 }, { factor: 10 }]);
+
+    // The same summary again is not news.
+    await engine.rederive();
+    expect(summaries).toHaveLength(2);
+  });
+});

@@ -328,6 +328,12 @@ export interface GraphViewProps {
    * there, and say so — the card has already been handed back to the layout, so a refusal that writes
    * nothing puts it back where it was with no special case.
    */
+  /**
+   * What a seed said about everything it loaded — see `SeedSource.derive`. The canvas seed reports the
+   * people whose reactions a weighted score was made from (`{ type, voices }`), which a template lists
+   * beside the canvas for a reader to turn up or down. Called when it changes, with the seed's id.
+   */
+  onSeedSummary?: (payload: { source: string } & Record<string, unknown>) => void;
   onNodeArrange?: (payload: {
     id: string;
     into: 'child' | 'sibling' | 'loose';

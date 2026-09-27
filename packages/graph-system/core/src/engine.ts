@@ -305,6 +305,13 @@ export class GraphEngine {
   private watchTimer?: ReturnType<typeof setTimeout>;
   /** What the last seed load read, so watches can be re-synced without re-running the queries. */
   private lastSeedReads: ReadonlyMap<string, WatchTarget> = new Map();
+  /**
+   * What each seed last fetched, before `derive` — by its place in the spec, so a derive-only change can
+   * be applied again with no read. See {@link rederive}.
+   */
+  private fetchedSeeds: ({ source: string; fragment: GraphFragment } | null)[] = [];
+  /** The last summary each seed's `derive` reported, as JSON — so an unchanged one is not re-announced. */
+  private seedSummaries = new Map<string, string>();
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
   /** Whether the user may move nodes. See `isLocked`. */
@@ -837,6 +844,7 @@ export class GraphEngine {
       },
     };
 
+    const fetched: ({ source: string; fragment: GraphFragment } | null)[] = [];
     this.beginLoading('partial');
     try {
       for (const seed of specs) {
@@ -857,10 +865,14 @@ export class GraphEngine {
           if (!('literal' in seed) && !this.registry.seed(seed.source)) {
             this.warn(`no seed source registered as "${seed.source}"`);
           }
+          fetched.push(null);
           continue;
         }
-        nodes.push(...fragment.nodes);
-        edges.push(...fragment.edges);
+        const source = 'literal' in seed ? '' : seed.source;
+        fetched.push(source ? { source, fragment } : null);
+        const finished = 'literal' in seed ? fragment : this.derived(seed.source, fragment, seed.options);
+        nodes.push(...finished.nodes);
+        edges.push(...finished.edges);
       }
     } finally {
       this.endLoading('partial');
@@ -873,9 +885,61 @@ export class GraphEngine {
       back the old graph's — `syncWatchers` reconciles against exactly the set it is handed.
     */
     if (superseded()) return null;
+    this.fetchedSeeds = fetched;
     this.lastSeedReads = read;
     this.syncWatchers(read);
     return { nodes, edges };
+  }
+
+  /**
+   * A fetched fragment finished by its seed's `derive`, with the summary it gave announced if it changed.
+   * A seed with no `derive` is its fragment as fetched.
+   */
+  private derived(source: string, fragment: GraphFragment, options: unknown): GraphFragment {
+    const derive = this.registry.seed(source)?.derive;
+    if (!derive) return fragment;
+    try {
+      const { summary, ...finished } = derive(fragment, options ?? {});
+      if (summary) {
+        const said = JSON.stringify(summary);
+        if (this.seedSummaries.get(source) !== said) {
+          this.seedSummaries.set(source, said);
+          this.emit({ type: 'seedSummary', source, summary });
+        }
+      }
+      return finished;
+    } catch (error) {
+      // A derive that throws leaves the rows as fetched rather than taking the graph down with it.
+      this.warn(`seed "${source}" could not finish what it read: ${describe(error)}`);
+      return fragment;
+    }
+  }
+
+  /**
+   * Apply the seeds' `derive` again to what they last fetched, with the options as they are now — for a
+   * change to a {@link SeedSource.deriveOptions} option, which needs no read. Merged into the graph the way
+   * a refresh is, so a card whose place changes travels there, and nothing re-arranges while something
+   * is keeping the cards still.
+   */
+  async rederive(): Promise<void> {
+    if (this.disposed || !this.fetchedSeeds.length) return;
+    const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    specs.forEach((seed, index) => {
+      if ('literal' in seed) {
+        nodes.push(...seed.nodes);
+        edges.push(...seed.edges);
+        return;
+      }
+      const held = this.fetchedSeeds[index];
+      // A seed the spec now names differently was not what was fetched; its rows wait for the next read.
+      if (!held || held.source !== seed.source) return;
+      const finished = this.derived(held.source, held.fragment, seed.options);
+      nodes.push(...finished.nodes);
+      edges.push(...finished.edges);
+    });
+    await this.reconcile({ nodes, edges });
   }
 
   // ─── Following the data ──────────────────────────────────────────────────────

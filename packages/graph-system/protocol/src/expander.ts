@@ -228,5 +228,24 @@ export interface SeedSource {
    * A seed that names nothing behaves exactly as before.
    */
   refreshOptions?: string[];
+  /**
+   * Options applied to rows this seed has already fetched — see {@link derive}. A change to one of these
+   * re-runs `derive` over the rows in hand and asks the backend nothing.
+   *
+   * The third kind of option, beside the ones that decide which records the graph is and the ones that
+   * read them again (`refreshOptions`). A slider re-weighing whose reactions count moves many times a
+   * second; a round trip per movement would have the tree trailing the hand by a second or more, where
+   * recomputing a score from values already on the cards costs a few microseconds a card.
+   */
+  deriveOptions?: string[];
+  /**
+   * Finish what {@link seed} fetched, from nothing but the fetched rows and the options — pure, and
+   * cheap enough to run on every movement of a control. Run after every fetch, and again on its own
+   * whenever only a {@link deriveOptions} option changes.
+   *
+   * May also answer a `summary`: facts about the whole fragment a host shows beside the graph — the
+   * people whose reactions a score was made from, say — reported as a `seedSummary` event.
+   */
+  derive?(fragment: GraphFragment, options: unknown): GraphFragment & { summary?: Record<string, unknown> };
   seed(options: unknown, context: ExpanderContext, signal?: AbortSignal): Promise<ExpandResult>;
 }

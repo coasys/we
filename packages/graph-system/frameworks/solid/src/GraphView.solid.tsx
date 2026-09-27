@@ -645,6 +645,9 @@ export function GraphView(props: GraphViewProps) {
     },
     onEvent: (event) => {
       switch (event.type) {
+        case 'seedSummary':
+          props.onSeedSummary?.({ ...event.summary, source: event.source });
+          break;
         case 'nodeClick': {
           // The behaviour only knows an address; the template wants the node, so it is resolved
           // here where the store is in reach.
@@ -934,28 +937,33 @@ export function GraphView(props: GraphViewProps) {
    * A spec naming a source nothing has registered, or a literal one, has nothing to refresh and lands
    * entirely in the structural key, which is the behaviour every seed had before this.
    */
-  const splitSeed = (spec: unknown): [structural: unknown, refresh: unknown] => {
+  const splitSeed = (spec: unknown): [structural: unknown, refresh: unknown, derive: unknown] => {
     const source = (spec as { source?: unknown } | null)?.source;
     const options = (spec as { options?: Record<string, unknown> } | null)?.options;
-    const keys = typeof source === 'string' ? registry.seed(source)?.refreshOptions : undefined;
-    if (!keys?.length || !options) return [spec, null];
+    const seed = typeof source === 'string' ? registry.seed(source) : undefined;
+    const refreshing = seed?.refreshOptions ?? [];
+    const deriving = seed?.deriveOptions ?? [];
+    if ((!refreshing.length && !deriving.length) || !options) return [spec, null, null];
 
     const structural: Record<string, unknown> = {};
     const refresh: Record<string, unknown> = {};
+    const derive: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(options)) {
-      if (keys.includes(key)) refresh[key] = value;
+      if (deriving.includes(key)) derive[key] = value;
+      else if (refreshing.includes(key)) refresh[key] = value;
       else structural[key] = value;
     }
-    return [{ ...(spec as object), options: structural }, refresh];
+    return [{ ...(spec as object), options: structural }, refresh, derive];
   };
 
-  /** Both halves of every seed, as two comparable strings. */
+  /** The three parts of every seed, as comparable strings. */
   const seedKeys = () => {
     const specs = Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : [];
     const split = specs.map(splitSeed);
     return {
       structural: JSON.stringify([split.map(([s]) => s), props.expansion ?? null]),
       refresh: JSON.stringify(split.map(([, r]) => r)),
+      derive: JSON.stringify(split.map(([, , d]) => d)),
     };
   };
 
@@ -1004,6 +1012,23 @@ export function GraphView(props: GraphViewProps) {
     untrack(() => {
       engine.setSpec(currentSpec());
       void engine.refresh();
+    });
+    return next;
+  });
+
+  /*
+    The same rows finished differently: an option the seed applies to what it already fetched — see
+    `SeedSource.deriveOptions`. Nothing is read, so a slider re-weighing whose reactions count can move
+    the cards on every step of the drag rather than a round trip behind it.
+
+    The first run only records the value, for the reason the refresh effect's does.
+  */
+  createEffect((previous: string | undefined) => {
+    const next = seedKeys().derive;
+    if (previous === undefined || previous === next) return next;
+    untrack(() => {
+      engine.setSpec(currentSpec());
+      void engine.rederive();
     });
     return next;
   });

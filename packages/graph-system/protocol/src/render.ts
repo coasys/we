@@ -230,6 +230,11 @@ export interface ArrangeState {
 /** Events a template may bind handlers to. Payloads are plain data, addressable from `$event.detail`. */
 export type GraphEvent =
   | { type: 'nodeClick'; node: GraphNode }
+  /**
+   * What a seed's `derive` said about the whole of what it loaded — see `SeedSource.derive`. Emitted
+   * when it changes, not on every load, so a host holding it in state does not churn.
+   */
+  | { type: 'seedSummary'; source: string; summary: Record<string, unknown> }
   | { type: 'nodeDoubleClick'; node: GraphNode }
   | { type: 'nodeHover'; node: GraphNode | null }
   | { type: 'edgeClick'; edge: GraphEdge }
