@@ -327,6 +327,10 @@ export class GraphEngine {
    * pass, since those never report themselves as running.
    */
   private fitUntilSettled: Fit = false;
+  /** What is keeping the cards still, by reason — see {@link keepStill}. */
+  private readonly stillBy = new Set<string>();
+  /** A re-arrangement a refresh wanted while the cards were being kept still. */
+  private relayoutHeld = false;
   /** Computed metric values, by metric id then node id. Recomputed when the graph changes. */
   private metrics: Map<string, ReadonlyMap<string, number>> = new Map();
   /** Where every edge runs, recomputed with positions. Read by the renderer and by edge picking. */
@@ -750,6 +754,23 @@ export class GraphEngine {
     }
 
     this.recomputeMetrics();
+    /*
+      Held back while something is keeping the graph still — see {@link keepStill} — when all this read
+      changed is what the cards say rather than which cards there are. The cards redraw with their new
+      data where they stand, and the re-arrangement runs when the hold is let go.
+    */
+    const structural =
+      change.addedNodes.length ||
+      change.removedNodes.length ||
+      change.addedEdges.length ||
+      change.removedEdges.length ||
+      released.nodes.length ||
+      released.edges.length;
+    if (this.stillBy.size && !wasEmpty && !structural && this.layout?.derivesPositions !== false) {
+      this.relayoutHeld = true;
+      this.notify('graph');
+      return;
+    }
     /*
       Travelled where the layout derives the positions. There a refresh can reorder things by itself —
       a vote landing, a card's reactions read for the first time, a peer's drop — and that is the engine
@@ -1438,7 +1459,33 @@ export class GraphEngine {
    * {@link beginTravel}. Omitted means instant, which is right for every path that is not a reader
    * changing how the graph is arranged — an expansion, a subscription, a first load.
    */
+  /**
+   * Keep the cards where they are while something needs them there — or let them go.
+   *
+   * A reader pressing a card's reaction mark changes the card's score, and in a tree ordered by that
+   * reaction the card's place along with it. The re-sort arrives when the write comes back, a second
+   * later, and would slide the card out from under the pointer that just pressed it — or from under the
+   * popover somebody is still choosing a rating in. So while a hold is on, a refresh that changes only
+   * what the cards say redraws them where they stand, and the re-arrangement it would have made waits
+   * until every hold is released; then the cards travel to their new places, while the reader is
+   * watching rather than under their hand.
+   *
+   * Keyed by reason, so a pointer over the mark and a popover opened from it are two holds, released
+   * separately. Anything that re-arranges the graph for another reason — a new layout, cards arriving —
+   * runs as it would, and takes the held re-arrangement with it.
+   */
+  keepStill(reason: string, on: boolean): void {
+    if (on) {
+      this.stillBy.add(reason);
+      return;
+    }
+    if (!this.stillBy.delete(reason) || this.stillBy.size || !this.relayoutHeld) return;
+    this.relayoutHeld = false;
+    this.relayout({ travel: this.selfTravel });
+  }
+
   relayout(options?: { fit?: Fit; travel?: number }): void {
+    this.relayoutHeld = false;
     const spec = this.spec.layout ?? { type: 'force' };
     /*
       Keyed on the options as well as the type.

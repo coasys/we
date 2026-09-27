@@ -802,10 +802,19 @@ export type NodeContent = (props: { node: GraphNode }) => JSX.Element;
 
 /**
  * A mark pinned to a card's lower edge — see `NodeStyle.badge`. Handed the node, and the record it
- * stands for where the node is one, so a press can write to it. Draws its own box; the graph places it
- * and keeps its presses from reaching the canvas.
+ * stands for where the node is one, so a press can write to it. Draws its own box; the graph places it,
+ * and a press on it goes nowhere else.
+ *
+ * `keepStill` holds the cards where they are while the badge needs them there — a popover it opened,
+ * which the pointer leaves the badge to use. The graph already holds them while the pointer is over the
+ * badge itself. See `GraphEngine.keepStill`.
  */
-export type NodeBadge = (props: { node: GraphNode; recordId?: string; recordType?: string }) => JSX.Element;
+export type NodeBadge = (props: {
+  node: GraphNode;
+  recordId?: string;
+  recordType?: string;
+  keepStill: (on: boolean) => void;
+}) => JSX.Element;
 
 /**
  * A control the host lends a node's action header — see {@link NodeAction.control}.

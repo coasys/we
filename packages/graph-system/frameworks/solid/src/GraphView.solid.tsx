@@ -3892,11 +3892,28 @@ export function GraphView(props: GraphViewProps) {
                     <Show when={cardBadge(entry.visual)}>
                       {(Badge) => {
                         const at = parseAddress(entry.node.id);
+                        /*
+                          The card stays where it is while the pointer is on its badge, so a press that
+                          changes its place does not slide it out from under the hand — see
+                          `GraphEngine.keepStill`. Released on the way out, and if the badge goes away
+                          with the pointer still on it, which fires no leave.
+                        */
+                        const pointer = `badge-pointer:${entry.node.id}`;
+                        const opened = `badge-open:${entry.node.id}`;
+                        onCleanup(() => {
+                          engine.keepStill(pointer, false);
+                          engine.keepStill(opened, false);
+                        });
                         return (
-                          <div class="we-graph__badge">
+                          <div
+                            class="we-graph__badge"
+                            onPointerEnter={() => engine.keepStill(pointer, true)}
+                            onPointerLeave={() => engine.keepStill(pointer, false)}
+                          >
                             <Dynamic
                               component={Badge()}
                               node={entry.node}
+                              keepStill={(on: boolean) => engine.keepStill(opened, on)}
                               {...(at?.kind === 'entity' && at.id ? { recordId: at.id, recordType: at.type } : {})}
                             />
                           </div>

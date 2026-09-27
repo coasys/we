@@ -219,6 +219,30 @@ describe('arranging a card in a tree', () => {
     expect(engine.viewport.get().zoom).toBeLessThanOrEqual(zoom);
   });
 
+  it('keeps the cards where they are while held still, and moves them when let go', async () => {
+    // A reader presses a card's reaction mark; the write comes back and re-sorts the row. The card
+    // must not slide out from under the pointer that pressed it.
+    const setup = world();
+    const { engine, at } = await started(setup.seed);
+    engine.setSelfTravel(300);
+    const [a, c] = [at('a'), at('c')];
+    engine.keepStill('pointer', true);
+    setup.ranks.c = -1;
+    await engine.refresh();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(at('c').x).toBe(c.x);
+
+    // Two holds are two: letting one go is not letting the cards go.
+    engine.keepStill('popover', true);
+    engine.keepStill('pointer', false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(at('c').x).toBe(c.x);
+
+    engine.keepStill('popover', false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(at('c').x).toBeCloseTo(a.x, 0);
+  });
+
   it('goes back to what the data says when a dropped card’s write never lands', async () => {
     const { engine, at, press, move, drop } = await started(world().seed);
     const b = at('b');

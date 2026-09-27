@@ -23,7 +23,7 @@
 import { CountMark, Row, SignalControl, type SignalTypeData } from '@we/components/solid';
 import { Signal, SignalType } from '@we/entities';
 import type { GraphNode } from '@we/graph-protocol';
-import { createEffect, createMemo, createSignal, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
 import { readWeighed, roundScore, withHeld } from '../../../shared/reactionScore';
 import { signalOptimism } from '../../../shared/signalOptimism';
@@ -55,7 +55,12 @@ function readType(handle: unknown, datasetId: string, id: string): Promise<TypeR
   return read;
 }
 
-export function ReactionBadge(props: { node: GraphNode; recordId?: string; recordType?: string }) {
+export function ReactionBadge(props: {
+  node: GraphNode;
+  recordId?: string;
+  recordType?: string;
+  keepStill?: (on: boolean) => void;
+}) {
   const datasetStore = useDatasetStore();
   const sessionStore = useSessionStore();
   const spaceStore = useSpaceStore();
@@ -131,6 +136,21 @@ export function ReactionBadge(props: { node: GraphNode; recordId?: string; recor
       pending: signalOptimism.overlay(),
     }) as ReactionRow[];
 
+  /*
+    The card stays put while its popover is open. Somebody choosing a rating has left the badge for the
+    popover, which ends the graph's own hold on the pointer — and a card that re-sorted to a new place
+    mid-choice would carry the popover off with it. Watched on the element's own `open`, which it
+    reflects, since the browser's toggle event does not leave its shadow root.
+  */
+  const watchOpen = (popover: HTMLElement) => {
+    const observer = new MutationObserver(() => props.keepStill?.(popover.hasAttribute('open')));
+    observer.observe(popover, { attributes: true, attributeFilter: ['open'] });
+    onCleanup(() => {
+      observer.disconnect();
+      props.keepStill?.(false);
+    });
+  };
+
   const label = () => {
     const name = type()?.name || 'Reactions';
     return score() === undefined ? `${name}: none yet` : `${name}: ${score()}`;
@@ -152,7 +172,12 @@ export function ReactionBadge(props: { node: GraphNode; recordId?: string; recor
           <Show
             when={signalType().mode === 'toggle'}
             fallback={
-              <we-popover placement="top">
+              <we-popover
+                placement="top"
+                // A callback ref, which Solid supports on any element; the generated declaration for this
+                // one only admits the variable form.
+                ref={watchOpen as unknown as HTMLElement}
+              >
                 <span slot="trigger" onPointerDown={() => void readRows()}>
                   <CountMark icon={signalType().icon} count={score()} mine={mine()} size="sm" label={label()} />
                 </span>
