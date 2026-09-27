@@ -73,8 +73,17 @@ export interface MetricRef {
   options?: Record<string, unknown>;
   /** Map the metric's normalised 0..1 output onto an output range. */
   range?: [number, number];
-  /** Map onto a named colour scale instead of a numeric range. */
-  scale?: string;
+  /**
+   * Map onto a colour scale instead of a numeric range: a named one — `heat`, `cool`, `categorical` —
+   * or two colours to blend between, `{ from, to }`, low to high.
+   *
+   * A named scale steps; a pair blends continuously, in OKLCH so the middle of the range looks like the
+   * middle rather than a muddy detour. The pair is what a reader picking "cold" and "hot" for a heat
+   * map needs, and the continuity is the point of it: with three cards, the middle one's colour says
+   * whether it sits nearer the top or the bottom, which five steps cannot. Either colour may be a token,
+   * a role or any CSS colour.
+   */
+  scale?: string | { from: string; to: string };
 }
 
 /**

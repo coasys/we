@@ -77,6 +77,7 @@ export type { IndexedNode } from './spatial';
 export { GraphStore } from './store';
 export type { StoreChange } from './store';
 export {
+  blendColors,
   edgeVisual,
   matches,
   nodeVisual,

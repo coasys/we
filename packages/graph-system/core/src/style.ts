@@ -206,6 +206,21 @@ const SCALES: Record<string, string[]> = {
   cool: ['neutral-200', 'neutral-400', 'primary-400', 'primary-600', 'primary-800'],
 };
 
+/**
+ * A point between two colours, as CSS a renderer can paint — see `MetricRef.scale`.
+ *
+ * `color-mix` in OKLCH rather than a computed value, for two reasons: the stops may be tokens or roles
+ * that only the renderer can turn into a colour, and they follow the theme, so the blend has to be
+ * worked out where the theme is. The ends are the stops themselves rather than a 0% or 100% mix, so a
+ * card at either end paints exactly the colour somebody picked.
+ */
+export function blendColors(from: string, to: string, t: number): string {
+  const share = Math.round(Math.min(1, Math.max(0, t)) * 1000) / 10;
+  if (share <= 0) return from;
+  if (share >= 100) return to;
+  return `color-mix(in oklch, ${to} ${share}%, ${from})`;
+}
+
 export function resolveColor(
   value: StyleValue<string> | undefined,
   subject: GraphNode | GraphEdge,
@@ -222,6 +237,7 @@ export function resolveColor(
   if (!isMetricRef(value)) return fallback;
   const normalised = metrics.get(metricKey(value))?.get(subject.id);
   if (normalised === undefined) return fallback;
+  if (value.scale && typeof value.scale === 'object') return blendColors(value.scale.from, value.scale.to, normalised);
   const scale = SCALES[value.scale ?? 'heat'] ?? SCALES.heat;
   const index = Math.min(scale.length - 1, Math.floor(normalised * scale.length));
   return scale[index];

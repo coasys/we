@@ -9,7 +9,16 @@
 import type { GraphNode, GraphValue, NodeVisual } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
-import { blendVisual, edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
+import {
+  blendColors,
+  blendVisual,
+  edgeVisual,
+  matches,
+  nodeVisual,
+  resolveColor,
+  resolveNumber,
+  resolveStyle,
+} from './style';
 
 const belief: GraphNode = {
   id: 'a',
@@ -438,5 +447,16 @@ describe('reversing a morph that is already in flight', () => {
     // At the end the blend is the destination visual outright, morph and all.
     expect(blendVisual(halfWay, card('triangle'), 1).morph).toBeUndefined();
     expect(blendVisual(halfWay, card('triangle'), 1).cardShape).toBe('triangle');
+  });
+});
+
+describe('a two-colour scale', () => {
+  it('blends continuously between the stops, and paints exactly a stop at either end', () => {
+    expect(blendColors('primary-100', 'accent', 0)).toBe('primary-100');
+    expect(blendColors('primary-100', 'accent', 1)).toBe('accent');
+    expect(blendColors('primary-100', 'accent', 0.5)).toBe('color-mix(in oklch, accent 50%, primary-100)');
+    // Continuous: three cards at 0.1, 0.4 and 0.9 are three different colours, not two buckets.
+    const shades = [0.1, 0.4, 0.9].map((t) => blendColors('a', 'b', t));
+    expect(new Set(shades).size).toBe(3);
   });
 });

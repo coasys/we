@@ -423,6 +423,31 @@ function readableFields(node: GraphNode): { name: string; value: string }[] {
  * Unknown names fall through to `--we-color-<token>` exactly as before, so nothing that worked
  * stops — including a name this build's role list has not heard of.
  */
+/** One colour inside a `color-mix`: a role or a scale position resolved, anything else left as CSS. */
+function mixStop(stop: string): string {
+  if (ROLE_NAMES.has(stop)) return `var(--we-role-${stop})`;
+  if (/^(neutral|primary|success|warning|danger)-\d+$/.test(stop)) return `var(--we-color-${stop})`;
+  // A nested mix gets the same treatment; a CSS colour, a function or a name is CSS already.
+  return /^color-mix\(/i.test(stop) ? color(stop, '') : stop;
+}
+
+/** Split on commas that are not inside brackets — the arguments of a CSS function. */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')') depth--;
+    else if (text[i] === ',' && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
 export function color(value: string | undefined, fallback: string): string {
   /*
     `||`, not `??`: an empty value means "nothing chosen" and should reach the fallback, where `??`
@@ -443,7 +468,24 @@ export function color(value: string | undefined, fallback: string): string {
     that format left the card uncoloured with nothing to say why.
   */
   if (/^#/.test(token)) return token;
-  if (/^(rgba?|hsla?|oklch|oklab|lch|lab|hwb|color|color-mix|var)\(/i.test(token)) return token;
+  /*
+    A mix, with its colours resolved by these same rules — a heat scale blends between two stops a reader
+    picked, and those may be tokens or roles that only mean anything here. Passed through whole, as it
+    used to be, `color-mix(in oklch, accent 40%, primary-100)` names two colours CSS has never heard of.
+    Each argument after the colour space is a colour with an optional share. Only a role or a scale
+    position is resolved inside one: a bare word there may equally be a CSS colour name (`red`), and a
+    mix written in plain CSS has to come out exactly as it went in.
+  */
+  const mix = /^color-mix\(\s*(in [^,]+),(.*)\)$/i.exec(token);
+  if (mix) {
+    const parts = splitTopLevel(mix[2]).map((part) => {
+      const piece = /^(.*?)(\s+[\d.]+%)?$/.exec(part.trim());
+      const [, stop = '', share = ''] = piece ?? [];
+      return `${mixStop(stop.trim())}${share}`;
+    });
+    return `color-mix(${mix[1].trim()}, ${parts.join(', ')})`;
+  }
+  if (/^(rgba?|hsla?|oklch|oklab|lch|lab|hwb|color|var)\(/i.test(token)) return token;
   if (/^(transparent|currentcolor)$/i.test(token)) return token;
   if (ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
   return `var(--we-color-${token})`;

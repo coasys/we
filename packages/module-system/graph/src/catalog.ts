@@ -376,9 +376,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'field',
       category: 'metric',
       description:
-        'Reads a number already on the card and normalises it against the rest of the visible graph — what makes a HEAT MAP. Pair it with a scale to colour by it, or a range to size by it. Works on a freeform canvas as readily as on a tree, since it is a style value rather than an arrangement. A card with no value is left out entirely rather than scored zero, so it falls through to whatever an earlier rule set: "nobody has answered this" and "this is the coldest thing here" are different facts.',
+        'Reads a number already on the card and normalises it against the rest of the visible graph — what makes a HEAT MAP. Pair it with a scale to colour by it — a named one ("heat") steps, and two colours, scale: { from, to }, blend continuously low to high, so a card’s shade says where in the range it sits — or a range to size by it. Works on a freeform canvas as readily as on a tree, since it is a style value rather than an arrangement. A card with no value is left out entirely rather than scored zero, so it falls through to whatever an earlier rule set: "nobody has answered this" and "this is the coldest thing here" are different facts.',
       options: [
-        { name: 'from', type: 'string', description: 'The data field to read — "weight", "signalsCount".' },
+        {
+          name: 'from',
+          type: 'string',
+          description: 'The data field to read — "weight", "signalsCount", or a date such as "createdAt".',
+        },
         {
           name: 'min',
           type: 'number',
