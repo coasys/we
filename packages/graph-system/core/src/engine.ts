@@ -736,7 +736,14 @@ export class GraphEngine {
     }
 
     this.recomputeMetrics();
-    this.relayout({ fit: wasEmpty });
+    /*
+      Travelled where the layout derives the positions. There a refresh can reorder things by itself —
+      a vote landing, a card's reactions read for the first time, a peer's drop — and that is the engine
+      rearranging the graph, which should read as the cards moving rather than as a new picture. On a
+      canvas the positions are the data and a refresh moves nothing the data did not already say.
+    */
+    const derived = this.layout?.derivesPositions !== false;
+    this.relayout({ fit: wasEmpty, travel: derived ? this.selfTravel : 0 });
     this.notify('graph');
   }
 

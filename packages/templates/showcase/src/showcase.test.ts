@@ -2125,14 +2125,14 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain("? 'desc' : 'asc'");
   });
 
-  it('fetches the reactions only when something reads them', () => {
+  it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
     /*
-      Hydrating every card's reactions on a canvas nobody is ranking is a projection paid for on every
-      load and every refresh, for a number nothing draws. `null` is what the seed reads as "weigh
-      nothing", and a change here reloads the seed — correctly, since unlike `pending` it changes what
-      is fetched.
+      Only while ordering by a reaction, the weights were asked for at the moment the order changed —
+      which changed the seed, and choosing "by reaction" dimmed the canvas and redrew it. Read whenever
+      the tree is shown, they are already there. The freeform canvas still reads none: `null` is what
+      the seed reads as "weigh nothing", and nothing there is ordered.
     */
-    expect(canvas).toContain('"weigh":{"$":"(local.order == \'signal\'');
+    expect(canvas).toContain('"weigh":{"$":"local.treeMode && (');
     /*
       And it weighs the type the picker is SHOWING, not only one somebody has explicitly chosen.
 

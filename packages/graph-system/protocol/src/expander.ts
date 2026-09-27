@@ -204,29 +204,29 @@ export interface SeedSource {
   id: string;
   description?: string;
   /**
-   * Options that change how this seed *draws* what it found, never what it fetches.
+   * Options whose change leaves this the same graph — the same records, drawn or read differently —
+   * as opposed to the options that decide which records it is.
    *
-   * A seed's options are one bag holding two kinds of thing. Most of them decide the queries — which
-   * canvas, which types, how many. A few are applied to rows that have already come back: which
-   * cards to mark as suggestions, which to leave off. The host cannot tell them apart, and the
-   * difference decides whether a change to one is worth throwing the graph away for.
+   * A seed's options are one bag holding two kinds of thing. Most decide which records the graph is
+   * made of: which canvas, which types, how many. A few change nothing about that: which cards to mark
+   * as suggestions, which to leave off, how much to read about each card that is already there. The
+   * host cannot tell them apart, and the difference decides whether a change is worth throwing the
+   * graph away for.
    *
-   * It matters because the naming ones are stable and these are not. The workshop's canvas hands its
-   * suggestion markers straight from the transcriber, so they change every time an extraction pass
-   * stages a record or somebody accepts one — which, with auto-extract on, is every couple of
-   * minutes for the length of a call. Each of those was a full reload: the store cleared, every
-   * query re-run, the old graph left faded on screen under a spinner, for a change that amounted to
-   * fading two cards.
+   * A change to one of the first kind goes down {@link GraphEngine.start}, which raises the loading
+   * state and treats the result as a different graph. A change to one named here goes down
+   * {@link GraphEngine.refresh}, which re-reads and merges in the background — nothing on screen
+   * dims, goes stale or loses its place, and the new data arrives as one more change to a graph that
+   * never went away.
    *
-   * Naming them here sends those changes down {@link GraphEngine.refresh} instead, which re-reads
-   * and merges without clearing — so nothing on screen goes stale and nothing loses its place. A
-   * seed that names nothing behaves exactly as before.
+   * It matters most for the options that change often. The workshop's suggestion markers come
+   * straight from the transcriber and change every couple of minutes during a call; each change used
+   * to be a full reload, the old graph faded under a spinner for two cards changing opacity. And
+   * ordering a tree by a reaction needs each card's reactions read — more data about the same cards,
+   * which is a refresh and not a new graph.
    *
-   * Still more work than the change deserves: `refresh` re-runs the queries, where a marker needs no
-   * query at all. The way out of that is for the marker to stop being a seed option and become a
-   * prop of its own, beside `focus` and `folded` — which is a bigger change and is not blocked by
-   * this one.
+   * A seed that names nothing behaves exactly as before.
    */
-  presentationOptions?: string[];
+  refreshOptions?: string[];
   seed(options: unknown, context: ExpanderContext, signal?: AbortSignal): Promise<ExpandResult>;
 }

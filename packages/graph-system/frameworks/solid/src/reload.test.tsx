@@ -67,6 +67,7 @@ describe('what makes the canvas reload', () => {
 
   it('reloads for a change to what the canvas is, and not for a change to how it is marked', async () => {
     const [pending, setPending] = createSignal<string[]>([]);
+    const [weigh, setWeigh] = createSignal<{ signalTypeId: string } | null>(null);
     const [canvas, setCanvas] = createSignal('canvas-1');
     const { host: graphHost, hangNext } = fakeHost();
 
@@ -76,7 +77,7 @@ describe('what makes the canvas reload', () => {
       () => (
         <GraphView
           host={graphHost as never}
-          seeds={{ source: 'canvas', options: { canvas: canvas(), pending: pending() } }}
+          seeds={{ source: 'canvas', options: { canvas: canvas(), pending: pending(), weigh: weigh() } }}
         />
       ),
       el,
@@ -93,6 +94,14 @@ describe('what makes the canvas reload', () => {
     setPending(['record-a']);
     await settle();
     expect(reloading(el), 'marking a card as a suggestion reloaded the whole canvas').toBe(false);
+
+    /*
+      More read about the same cards. Ordering a tree by a reaction reads each card's reactions, which
+      changed the seed and dimmed the whole canvas for what is a re-sort of the cards already there.
+    */
+    setWeigh({ signalTypeId: 'like' });
+    await settle();
+    expect(reloading(el), 'reading the reactions of the cards on screen reloaded the whole canvas').toBe(false);
 
     /*
       And the control: a different canvas genuinely is a different graph, so the old one going stale

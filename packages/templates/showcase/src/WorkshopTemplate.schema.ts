@@ -3359,12 +3359,12 @@ const canvas: SchemaNode = {
         */
         counts: ['signals', 'comments'],
         /*
-          What each card weighs, when the tree is ordered by a reaction — see `WorkshopTree`.
+          What each card weighs, whenever the tree is shown — see `TREE_WEIGH` in `WorkshopTree` for why
+          not only while ordering by a reaction.
 
-          `null` the rest of the time, which the seed reads as "weigh nothing": the reactions are
-          hydrated only where a weight is actually being read, so the ordinary canvas pays one
-          projection less. A change here reloads the seed, correctly — unlike `pending` and `hidden`,
-          this changes what is *fetched*.
+          `null` on the freeform canvas, which the seed reads as "weigh nothing": nothing there is
+          ordered, so it pays one projection less. A change here is read again in the background rather
+          than reloading the graph, since `weigh` is one of the canvas seed's `refreshOptions`.
         */
         weigh: TREE_WEIGH,
       },

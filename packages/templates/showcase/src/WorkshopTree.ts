@@ -129,7 +129,17 @@ const box = (size: { width: number; height: number }) => `{ width: ${size.width}
 const CARD_BOX = `(local.cardSize == 'sm' ? ${box(CARD_SIZES.sm)} : (local.cardSize == 'lg' ? ${box(CARD_SIZES.lg)} : ${box(CARD_SIZES.md)}))`;
 
 /**
- * How each card is weighed, for the seed — or nothing, when the order does not depend on reactions.
+ * How each card is weighed, for the seed — whenever the tree is shown, whatever it is ordered by.
+ *
+ * Not only while ordering by a reaction, which is what it used to be, and why choosing "by reaction"
+ * dimmed the whole canvas and redrew it: the weights were only asked for at the moment they were
+ * needed, so the choice changed the seed and the graph reloaded. Read whenever the tree is up, they
+ * are already there when the order changes, and "by reaction" is the same re-sort the other orders
+ * are. Picking a different reaction still reads again — in the background, since `weigh` is one of
+ * the canvas seed's `refreshOptions`, and the rows move when the new weights arrive.
+ *
+ * The freeform canvas still reads none: nothing there is ordered, so the reactions would be hydrated
+ * for nothing on every card.
  *
  * The community's own `aggregate` is passed through rather than worked out here. That rule lives with
  * the vocabulary — a toggle counts, a vote nets out, a rating averages — and a second copy of it in a
@@ -141,7 +151,7 @@ const CARD_BOX = `(local.cardSize == 'sm' ? ${box(CARD_SIZES.sm)} : (local.cardS
  */
 export const TREE_WEIGH: SchemaProp = {
   $:
-    `${BY_SIGNAL} ? { signalTypeId: ${SIGNAL_IN_FORCE},` +
+    `${TREE_ON} && ${SIGNAL_IN_FORCE} ? { signalTypeId: ${SIGNAL_IN_FORCE},` +
     ` aggregate: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).aggregate,` +
     ` excludeAuthors: spaceStore.mutedDids } : null`,
 };

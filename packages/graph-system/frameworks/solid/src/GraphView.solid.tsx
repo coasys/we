@@ -883,30 +883,28 @@ export function GraphView(props: GraphViewProps) {
   });
 
   /**
-   * A seed spec split into the part that decides the queries and the part that decides the drawing.
+   * A seed spec split into the part that decides which graph this is and the part that only reads it
+   * again — see `refreshOptions` on `SeedSource`.
    *
-   * The narrowness the effect below advertises used to stop at the prop: `seeds` was tracked whole,
-   * and `seeds` is one bag holding two kinds of thing. Which canvas, which types and how many decide
-   * what is fetched; which cards are marked as suggestions and which are left off are applied to
-   * rows already in hand. Only the seed knows which of its own options are which, so it says — see
-   * `presentationOptions` on `SeedSource`.
+   * `seeds` is one bag holding both, and tracked whole it restarted the graph for a change that left it
+   * the same graph. Only the seed knows which of its own options are which, so it says.
    *
-   * A spec naming a source nothing has registered, or a literal one, has no presentation half and
-   * lands entirely in the structural key, which is the behaviour every seed had before this.
+   * A spec naming a source nothing has registered, or a literal one, has nothing to refresh and lands
+   * entirely in the structural key, which is the behaviour every seed had before this.
    */
-  const splitSeed = (spec: unknown): [structural: unknown, presentation: unknown] => {
+  const splitSeed = (spec: unknown): [structural: unknown, refresh: unknown] => {
     const source = (spec as { source?: unknown } | null)?.source;
     const options = (spec as { options?: Record<string, unknown> } | null)?.options;
-    const keys = typeof source === 'string' ? registry.seed(source)?.presentationOptions : undefined;
+    const keys = typeof source === 'string' ? registry.seed(source)?.refreshOptions : undefined;
     if (!keys?.length || !options) return [spec, null];
 
     const structural: Record<string, unknown> = {};
-    const presentation: Record<string, unknown> = {};
+    const refresh: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(options)) {
-      if (keys.includes(key)) presentation[key] = value;
+      if (keys.includes(key)) refresh[key] = value;
       else structural[key] = value;
     }
-    return [{ ...(spec as object), options: structural }, presentation];
+    return [{ ...(spec as object), options: structural }, refresh];
   };
 
   /** Both halves of every seed, as two comparable strings. */
@@ -915,7 +913,7 @@ export function GraphView(props: GraphViewProps) {
     const split = specs.map(splitSeed);
     return {
       structural: JSON.stringify([split.map(([s]) => s), props.expansion ?? null]),
-      presentation: JSON.stringify(split.map(([, p]) => p)),
+      refresh: JSON.stringify(split.map(([, r]) => r)),
     };
   };
 
@@ -942,27 +940,24 @@ export function GraphView(props: GraphViewProps) {
   });
 
   /*
-    A marker changing is not the graph becoming a different graph.
-
-    The same seeds, drawn differently: a card a pass has just staged should start looking provisional,
-    and one somebody has just kept should stop. Sent down `refresh`, which re-reads and merges rather
-    than clearing — so the graph stays on screen, keeps its positions and its arrangement, and
-    `reloading` is never raised.
+    The same graph, read again: a marker changing, or more being read about the same cards — see
+    `refreshOptions`. Sent down `refresh`, which re-reads and merges rather than clearing — so the
+    graph stays on screen, keeps its positions and its arrangement, and `reloading` is never raised.
 
     That last part is what this is for. `start` raises it, and `reloading` is what drops every layer
-    to 40% and puts a spinner over the middle of the canvas. On the workshop's canvas those markers
-    come straight from the transcriber, so with auto-extract on a call the whole screen faded under a
-    "Loading graph…" every couple of minutes — for a change that amounted to two cards changing
-    opacity.
+    to 40% and puts a spinner over the middle of the canvas. On the workshop's canvas the suggestion
+    markers come straight from the transcriber, so with auto-extract on a call the whole screen faded
+    under a "Loading graph…" every couple of minutes for two cards changing opacity; and ordering a
+    tree by a reaction dimmed and redrew everything for a re-sort.
 
-    `setSpec` first, or `refresh` would re-read the seeds against the markers they had last time.
+    `setSpec` first, or `refresh` would re-read the seeds against the options they had last time.
 
     The first run only records the value: the structural effect above has already loaded, and firing
     here on mount would run every seed query a second time — the reason the revision effect below
     does the same.
   */
   createEffect((previous: string | undefined) => {
-    const next = seedKeys().presentation;
+    const next = seedKeys().refresh;
     if (previous === undefined || previous === next) return next;
     untrack(() => {
       engine.setSpec(currentSpec());

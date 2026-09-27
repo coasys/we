@@ -179,6 +179,22 @@ describe('arranging a card in a tree', () => {
     expect(order(engine, ['a', 'b', 'c'])).toEqual(['a', 'c', 'b']);
   });
 
+  it('moves the cards when newer data re-sorts the tree, rather than cutting to the new order', async () => {
+    // A vote landing, or a card's reactions read for the first time, reorders a row by itself. That is
+    // the engine rearranging the tree, and it should read as the cards moving.
+    const setup = world();
+    const { engine, at } = await started(setup.seed);
+    engine.setSelfTravel(300);
+    const [a, c] = [at('a'), at('c')];
+    setup.ranks.c = -1;
+    await engine.refresh();
+
+    // Still where it was drawn: the move has begun, not landed.
+    expect(at('c').x).toBeCloseTo(c.x, 0);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(at('c').x).toBeCloseTo(a.x, 0);
+  });
+
   it('goes back to what the data says when a dropped card’s write never lands', async () => {
     const { engine, at, press, move, drop } = await started(world().seed);
     const b = at('b');
