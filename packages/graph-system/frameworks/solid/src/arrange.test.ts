@@ -361,6 +361,64 @@ describe('arranging a card in a tree', () => {
     expect(events[0]).toMatchObject({ into: 'loose' });
   });
 
+  it('reaches both the end of one family and the start of the next, which the layout draws at one spot', async () => {
+    // Reported: R over A, B and C; A over a1 and a2, B over b1, C over nothing. Carrying B, "A's third child"
+    // could not be reached — it and "C's first child" put B at the same spot, and C always won the tie.
+    const edges: GraphEdge[] = [
+      ['R', 'A'],
+      ['R', 'B'],
+      ['R', 'C'],
+      ['A', 'a1'],
+      ['A', 'a2'],
+      ['B', 'b1'],
+    ].map(([source, target]) => ({ id: `${source}-${target}`, source, target, type: 'rel' }));
+    const ranks: Record<string, number> = { R: 0, A: 0, B: 1, C: 2, a1: 0, a2: 1, b1: 0 };
+    const seed: SeedSource = {
+      id: 'test',
+      async seed() {
+        return {
+          nodes: Object.keys(ranks).map((id) => ({
+            id,
+            kind: 'entity' as const,
+            type: 'Thing',
+            label: id,
+            data: { rank: ranks[id] },
+          })),
+          edges: edges.map((edge) => ({ ...edge })),
+        };
+      },
+    };
+    const { engine, events, at, press, move, drop, ghostAt } = await started(seed);
+    press('B');
+    const spot = ghostAt('B', { parent: 'A', index: 2 });
+    expect(ghostAt('B', { parent: 'C', index: 0 })).toEqual(spot);
+
+    // Just left of the shared spot: the end of A's family.
+    move({ x: spot.x - 10, y: spot.y });
+    expect(engine.getArrangePreview()?.line?.from.x).toBeCloseTo(ghostAt('B', { parent: 'A', index: 2 }).x - 120, 0);
+    // Just right of it: the start of C's.
+    move({ x: spot.x + 10, y: spot.y });
+    drop({ x: spot.x + 10, y: spot.y });
+    expect(events[0]).toMatchObject({ into: 'child', target: { id: 'C' } });
+
+    // And sliding along the level from the left passes through every place in order.
+    await vi.advanceTimersByTimeAsync(2000);
+    press('B');
+    // Named by what the preview shows: where the ghost is, and which parent its line comes from.
+    const seen: string[] = [];
+    for (let px = at('a1').x; px <= spot.x + 40; px += 5) {
+      move({ x: px, y: spot.y });
+      const preview = engine.getArrangePreview()!;
+      const name = `${Math.round(preview.at.x)}<${Math.round(preview.line!.from.x)}`;
+      if (seen[seen.length - 1] !== name) seen.push(name);
+    }
+    // A's three places, then C's first: four stops, the last two at one spot under different parents.
+    expect(seen).toHaveLength(4);
+    const [, , endOfA, startOfC] = seen.map((name) => name.split('<').map(Number));
+    expect(endOfA[0]).toBe(startOfC[0]);
+    expect(endOfA[1]).toBeLessThan(startOfC[1]);
+  });
+
   it('never shows a sibling order a drag cannot keep, where siblings are ordered by something else', async () => {
     const { engine, events, at, press, move, drop } = await started(world().seed, { reorder: false });
     const b = at('b');

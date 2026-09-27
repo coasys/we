@@ -564,6 +564,8 @@ type Decision = { to: ArrangeState['to']; event?: ArrangeEvent; refused?: string
  */
 interface Place extends Decision {
   at?: Point | null;
+  /** Where the parent it would hang from is drawn, sideways — its family's place in reading order. */
+  family?: number;
 }
 
 /**
@@ -628,6 +630,8 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
   let levelY = new Map<number, number>();
   /** Half the height of the card in the hand: how far from a level's line it still counts as on it. */
   let halfHeight = 0;
+  /** Half its width: how far apart two places drawn at one spot are pulled — see {@link sideways}. */
+  let halfWidth = 0;
   let home: { parent: string | null; index: number } = { parent: null, index: 0 };
   /** The connection holding the dragged card under its parent, if it has one. */
   let homeEdge: string | undefined;
@@ -663,7 +667,9 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     const own = ctx.boundsOf(id);
     const ownAt = ctx.positionOf(id);
     halfHeight = own ? (own.maxY - own.minY) / 2 : 0;
-    add(depthOf(id), { to: null, at: ownAt });
+    halfWidth = own ? (own.maxX - own.minX) / 2 : 0;
+    const familyOf = (parent: string | null) => (parent ? ctx.positionOf(parent)?.x : undefined);
+    add(depthOf(id), { to: null, at: ownAt, family: familyOf(home.parent) });
 
     const inTree = new Set([...tree.parents.keys(), ...tree.parents.values()]);
     for (const card of inTree) {
@@ -672,7 +678,9 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
       const depth = depthOf(card) + 1;
       if (!options.reorder) {
         // No position to ask for: the card joins that parent wherever the order puts it, and is written last.
-        if (card !== home.parent) add(depth, { to: { parent: card }, event: { into: 'child', target: card } });
+        if (card !== home.parent) {
+          add(depth, { to: { parent: card }, event: { into: 'child', target: card }, family: familyOf(card) });
+        }
         continue;
       }
       for (let index = 0; index <= kids.length; index++) {
@@ -681,6 +689,7 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
         order.splice(index, 0, id);
         add(depth, {
           to: { parent: card, index },
+          family: familyOf(card),
           event: kids.length
             ? { into: 'sibling', target: kids[Math.min(index, kids.length - 1)], before: index < kids.length, order }
             : { into: 'child', target: card, order },
@@ -730,6 +739,34 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     return places;
   };
 
+  /**
+   * Where each place counts as being along its level — where its ghost is drawn, except where two families
+   * would draw it at the same spot.
+   *
+   * They do at every boundary between neighbouring families: the end of one and the start of the next both
+   * put the card in the next slot along, and differ only in which parent its line comes from. Measured by
+   * the ghost alone the two tie, and one of them can never be reached. So places sharing a spot are pulled
+   * apart, a quarter of a card each way, in reading order — the family whose parent is further left takes
+   * the left side. Just left of the spot is the end of the family on the left; just right of it, the start
+   * of the one on the right. The ghost does not move between them; the line and the parents above do.
+   */
+  const sideways = (places: readonly Place[]): (number | undefined)[] => {
+    const xs = places.map((place) => place.at?.x);
+    const shared = new Map<number, number[]>();
+    xs.forEach((x, i) => {
+      if (x === undefined) return;
+      const spot = Math.round(x);
+      (shared.get(spot) ?? shared.set(spot, []).get(spot)!).push(i);
+    });
+    for (const [spot, members] of shared) {
+      if (members.length < 2) continue;
+      const ordered = [...members].sort((a, b) => (places[a].family ?? spot) - (places[b].family ?? spot) || a - b);
+      const step = halfWidth / 2;
+      ordered.forEach((member, rank) => (xs[member] = spot + (rank - (ordered.length - 1) / 2) * step * 2));
+    }
+    return xs;
+  };
+
   /** Whether a connection holds anything {@link ArrangeNodesOptions.keep} says it must be kept for. */
   const kept = (ctx: BehaviourContext): boolean => {
     const edge = homeEdge ? ctx.edgeOf(homeEdge) : null;
@@ -759,11 +796,14 @@ export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     if (depth === undefined) return current;
     let best: Place | undefined;
     let gap = Infinity;
-    for (const place of placesOn(depth, ctx)) {
-      if (!place.at) continue;
-      const off = Math.abs(place.at.x - centre.x);
+    const places = placesOn(depth, ctx);
+    const across = sideways(places);
+    places.forEach((place, i) => {
+      const x = across[i];
+      if (x === undefined) return;
+      const off = Math.abs(x - centre.x);
       if (off < gap) [best, gap] = [place, off];
-    }
+    });
     if (!best) return current;
     return { to: best.to, ...(best.event ? { event: best.event } : {}) };
   };
