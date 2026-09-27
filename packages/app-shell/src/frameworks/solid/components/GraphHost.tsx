@@ -46,6 +46,7 @@ import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 import { nodeControls } from './graphControls';
 import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
+import { ReactionBadge } from './ReactionBadge';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -381,6 +382,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard, record: RecordCard },
+    // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
+    nodeBadges: { reaction: ReactionBadge },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.
     nodeControls,
 

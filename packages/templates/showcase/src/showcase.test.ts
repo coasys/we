@@ -2125,6 +2125,10 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain("|| local.order == 'newest') ? 'desc' : 'asc'");
   });
 
+  it('puts each card’s score on it while the tree is ordered by a reaction, and nowhere else', () => {
+    expect(canvas).toContain('"badge":{"$":"local.treeMode && (local.order == \'signal\' && (');
+  });
+
   it('brings the tree back into view when its cards change size', () => {
     // Large cards make a larger tree, and one left where it was pushed cards off the screen.
     expect(canvas).toContain('"reframeOn":{"$":"local.treeMode ? local.cardSize : \'\'"}');

@@ -243,6 +243,12 @@ export const TREE_CARD_STYLE = {
   // Stacking is meaningless where nothing overlaps, and a card sent behind on the canvas must not be
   // behind anything here — there is nothing for it to be behind.
   z: { $: `${TREE_ON} ? 0 : { from: 'data.canvasZ' }` },
+  /*
+    Each card's score for the reaction the tree is ordered by, on its lower edge, pressed to give one's
+    own — see `ReactionBadge`. Only while that is the order: under any other the number would be a
+    ranking nobody asked to see, and the inspector already holds every reaction for the card selected.
+  */
+  badge: { $: `${TREE_ON} && ${BY_SIGNAL} ? 'reaction' : ''` },
 };
 
 /**
