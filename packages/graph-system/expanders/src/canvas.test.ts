@@ -935,7 +935,8 @@ describe('weighSignals', () => {
   it('counts how many people reacted, by default', () => {
     const data = weighSignals([signal('did:a', 1), signal('did:b', 1)], { signalTypeId: type });
 
-    expect(data).toEqual({ weight: 2, weightCount: 2 });
+    // And says what produced it, for a card's own mark to read.
+    expect(data).toEqual({ weight: 2, weightCount: 2, weightType: type, weightAggregate: 'count' });
   });
 
   it('nets a vote out, averages a rating, and takes a median when asked', () => {
@@ -962,17 +963,35 @@ describe('weighSignals', () => {
     const data = weighSignals(rows, { signalTypeId: type, aggregate: 'sum' });
 
     // The newer of the two, and one voice from that author.
-    expect(data).toEqual({ weight: 6, weightCount: 2 });
+    expect(data).toMatchObject({ weight: 6, weightCount: 2 });
   });
 
-  it('answers with nothing at all when nobody has reacted', () => {
+  it('answers with no weight when nobody has voted or rated, and with zero when nobody has liked', () => {
     /*
-      Absent, not zero. A card nobody has answered about sorts last whichever way the order runs and
-      leaves a heat rule falling through to whatever set the fill before it — where a zero would claim
-      the coldest colour and the leftmost slot in the row.
+      Absent, not zero, for a vote or a rating. A card nobody has answered about sorts last whichever way
+      the order runs and leaves a heat rule falling through to the plain colour — where a zero would claim
+      the coldest colour. A count is the exception: no likes is a score, and belongs at the cold end.
     */
-    expect(weighSignals([], { signalTypeId: type })).toEqual({});
-    expect(weighSignals([signal('did:a', 1)], { signalTypeId: 'other' })).toEqual({});
+    expect(weighSignals([], { signalTypeId: type, mode: 'rating' }).weight).toBeUndefined();
+    expect(weighSignals([], { signalTypeId: type, mode: 'vote' }).weight).toBeUndefined();
+    expect(weighSignals([], { signalTypeId: type })).toMatchObject({ weight: 0, weightCount: 0 });
+    expect(weighSignals([signal('did:a', 1)], { signalTypeId: 'other', mode: 'toggle' })).toMatchObject({ weight: 0 });
+  });
+
+  it('reads a rating as its average even when its type still says count', () => {
+    // The manifest's default `count` is on every type nobody set an aggregate for, whatever its mode.
+    const rows = [signal('did:a', 5), signal('did:b', 1), signal('did:c', 3), signal('did:d', 3)];
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'count', mode: 'rating' })).toMatchObject({
+      weight: 3,
+      weightAggregate: 'mean',
+    });
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'count', mode: 'vote' }).weight).toBe(12);
+  });
+
+  it('says what the reader gave, when they gave anything', () => {
+    const rows = [signal('did:a', 4), signal('did:me', 2)];
+    expect(weighSignals(rows, { signalTypeId: type, mode: 'rating', me: 'did:me' }).weightMine).toBe(2);
+    expect(weighSignals(rows, { signalTypeId: type, mode: 'rating', me: 'did:other' }).weightMine).toBeUndefined();
   });
 
   it('writes a zero that is a real answer', () => {
@@ -982,7 +1001,7 @@ describe('weighSignals', () => {
       aggregate: 'sum',
     });
 
-    expect(data).toEqual({ weight: 0, weightCount: 2 });
+    expect(data).toMatchObject({ weight: 0, weightCount: 2 });
   });
 
   it('leaves out a muted author, so a weight agrees with every other reaction surface', () => {
@@ -991,7 +1010,7 @@ describe('weighSignals', () => {
       excludeAuthors: ['did:muted'],
     });
 
-    expect(data).toEqual({ weight: 1, weightCount: 1 });
+    expect(data).toMatchObject({ weight: 1, weightCount: 1 });
   });
 
   it('ignores an unattributed reaction rather than counting it as a stranger', () => {
@@ -999,16 +1018,15 @@ describe('weighSignals', () => {
     // duplicate of one already counted.
     const data = weighSignals([{ signalTypeId: type, value: 1 }, signal('did:a', 1)], { signalTypeId: type });
 
-    expect(data).toEqual({ weight: 1, weightCount: 1 });
+    expect(data).toMatchObject({ weight: 1, weightCount: 1 });
   });
 
   it('survives rubbish rather than taking the canvas down with it', () => {
     expect(weighSignals(undefined, { signalTypeId: type })).toEqual({});
-    expect(weighSignals([null, 'nope', 7], { signalTypeId: type })).toEqual({});
-    expect(weighSignals([{ ...signal('did:a', 1), value: 'many' }], { signalTypeId: type, aggregate: 'sum' })).toEqual({
-      weight: 0,
-      weightCount: 1,
-    });
+    expect(weighSignals([null, 'nope', 7], { signalTypeId: type, mode: 'rating' }).weight).toBeUndefined();
+    expect(
+      weighSignals([{ ...signal('did:a', 1), value: 'many' }], { signalTypeId: type, aggregate: 'sum' }),
+    ).toMatchObject({ weight: 0, weightCount: 1 });
   });
 
   it('weighs nothing without a type, which is what lets a picker start empty', () => {

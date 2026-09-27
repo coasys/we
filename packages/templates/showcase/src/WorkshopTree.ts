@@ -147,10 +147,11 @@ const CARD_BOX = `(local.cardSize == 'sm' ? ${box(CARD_SIZES.sm)} : (local.cardS
  * straight into the order the reader picked. The canvas pays for it only while that order is chosen;
  * otherwise it reads none, since nothing there is ordered.
  *
- * The community's own `aggregate` is passed through rather than worked out here. That rule lives with
- * the vocabulary — a toggle counts, a vote nets out, a rating averages — and a second copy of it in a
- * template is the copy that falls behind: it would go on netting out a type somebody had switched to
- * averaging, and nothing on screen would say why the order looked wrong.
+ * The community's own `aggregate` is passed through rather than worked out here, with the type's `mode`
+ * beside it: the seed reads them by the rule every reaction surface uses (`aggregateFor`), under which a
+ * stored `count` on a rating means its average — every type nobody set an aggregate for still carries
+ * the manifest's default `count`. Without the mode a star rating ordered its cards by how many people
+ * had rated them. `me` is the reader, so each card also says what they gave, for its reaction mark.
  *
  * Muted authors are left out, because every other reaction surface in WE leaves them out and this would
  * otherwise be the one place somebody a reader has muted still moves their cards about.
@@ -159,7 +160,8 @@ export const TREE_WEIGH: SchemaProp = {
   $:
     `(${TREE_ON} || local.order == 'signal') && ${SIGNAL_IN_FORCE} ? { signalTypeId: ${SIGNAL_IN_FORCE},` +
     ` aggregate: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).aggregate,` +
-    ` excludeAuthors: spaceStore.mutedDids } : null`,
+    ` mode: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).mode,` +
+    ` excludeAuthors: spaceStore.mutedDids, me: me.did } : null`,
 };
 
 /**

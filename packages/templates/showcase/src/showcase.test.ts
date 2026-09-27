@@ -2159,6 +2159,9 @@ describe('the workshop’s tree', () => {
     // The community's own aggregate, passed through rather than re-derived. A second copy of that rule
     // is the copy that falls behind, and nothing on screen would say why an order looked wrong.
     expect(canvas).toContain(`aggregate: find(local.treeSignalTypes, { id: (${inForce}) }).aggregate`);
+    // And the mode, which is what a stored aggregate that cannot express it is read through.
+    expect(canvas).toContain(`mode: find(local.treeSignalTypes, { id: (${inForce}) }).mode`);
+    expect(canvas).toContain('me: me.did');
     // Muted authors left out, as they are on every other reaction surface here.
     expect(canvas).toContain('excludeAuthors: spaceStore.mutedDids');
   });

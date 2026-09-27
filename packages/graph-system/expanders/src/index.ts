@@ -36,6 +36,7 @@ export {
   PLACEMENT_UNSET,
   placementPosition,
   placementStyle,
+  effectiveAggregate,
   weighSignals,
 } from './canvas';
 /*
