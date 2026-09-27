@@ -16,9 +16,10 @@
  *   in several ways, and nothing in the data says which of those makes a *parent*. So a tree is always
  *   "follow this one kind", chosen from the kinds this community has named. Also in the address, for
  *   the same reason.
- * - **The order.** By date, by a reaction, or by hand. Three genuinely different questions — "what came
- *   first", "what do we most agree on", "what do we mean to do about it" — and the third is the one the
- *   other two cannot answer, which is why dragging imprints a rank rather than merely looking sorted.
+ * - **The order.** By hand, by date either way, or by a reaction. Genuinely different questions — "what
+ *   do we mean to do about it", "what came first" or "what is latest", "what do we most agree on" — and
+ *   the first is the one the others cannot answer, which is why dragging imprints a rank rather than
+ *   merely looking sorted.
  * - **The card size.** A reading preference rather than view state, so it is kept on the device and a
  *   shared link does not impose it: a forty-card tree wants smaller cards than a six-card one, and that
  *   is about the screen somebody is at.
@@ -109,13 +110,13 @@ export const BY_SIGNAL = `(local.order == 'signal' && ${SIGNAL_IN_FORCE})`;
 const SORT_FIELD = `(local.order == 'manual' ? 'canvasRank' : (${BY_SIGNAL} ? 'weight' : 'createdAt'))`;
 
 /**
- * Strongest first, oldest first.
+ * Strongest first; oldest or newest first, as asked.
  *
- * The two read in opposite directions and both are what people mean: "most agreed" belongs at the left
- * of a row and "said first" belongs at the left of a row, and those are different numbers running
- * different ways. A dragged order is ascending because the rank *is* the position.
+ * "Most agreed" belongs at the left of a row, and so does whichever end of time the reader asked for —
+ * different numbers running different ways, so the direction follows the order rather than the field.
+ * A dragged order is ascending because the rank *is* the position.
  */
-const SORT_DIRECTION = `(${BY_SIGNAL} ? 'desc' : 'asc')`;
+const SORT_DIRECTION = `((${BY_SIGNAL} || local.order == 'newest') ? 'desc' : 'asc')`;
 
 /**
  * A box as the expression grammar spells an object literal — bare keys, not JSON.
@@ -415,6 +416,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                   options: [
                     { label: 'As arranged', value: 'manual' },
                     { label: 'Oldest first', value: 'date' },
+                    { label: 'Newest first', value: 'newest' },
                     { label: 'By reaction', value: 'signal' },
                   ],
                   onChange: { $setLocal: 'order', value: { $: 'event.detail' } },

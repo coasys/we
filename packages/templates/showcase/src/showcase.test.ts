@@ -2121,8 +2121,13 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain("local.order == 'manual' ? 'canvasRank'");
     expect(canvas).toContain("'weight'");
     expect(canvas).toContain("'createdAt'");
-    // Strongest first, oldest first: the two read in opposite directions and both are what people mean.
-    expect(canvas).toContain("? 'desc' : 'asc'");
+    // Strongest first, and whichever end of time was asked for: the direction follows the order.
+    expect(canvas).toContain("|| local.order == 'newest') ? 'desc' : 'asc'");
+  });
+
+  it('offers the date order both ways', () => {
+    expect(canvas).toContain('"value":"date"');
+    expect(canvas).toContain('"value":"newest"');
   });
 
   it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
