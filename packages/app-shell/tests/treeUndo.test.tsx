@@ -54,7 +54,9 @@ const { world, Placement, Relationship } = vi.hoisted(() => {
         return link ? live(link) : null;
       },
       create: async (_p: unknown, data: Omit<Link, 'id'>) => {
-        const link: Link = { ...data, id: `link-${state.next++}` };
+        // A relation handed as a one-element array is stored as its one value, as the ORM does.
+        const one = (value: unknown) => (Array.isArray(value) ? value[0] : value);
+        const link: Link = { ...data, source: one(data.source), target: one(data.target), id: `link-${state.next++}` };
         state.links.set(link.id, link);
         return live(link);
       },

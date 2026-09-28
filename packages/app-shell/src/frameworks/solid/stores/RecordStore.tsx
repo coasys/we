@@ -145,6 +145,27 @@ async function createPlacement(
 }
 
 /**
+ * A connection between two records, written as ONE commit — answering with its id.
+ *
+ * Its ends go in as one-element arrays for the reason `createPlacement` gives: a plain value is
+ * skipped, and the generated `setSource`/`setTarget` each commit on their own. The line used to be
+ * made that way — create, then one end, then the other — which was three round trips before it could
+ * be drawn, and a moment in between where a peer could read a connection with one end or none.
+ */
+async function createConnection(
+  dataset: unknown,
+  fields: Record<string, unknown>,
+  sourceId: string,
+  targetId: string,
+): Promise<string> {
+  const created = (await getEntity(RELATIONSHIP).create(
+    dataset as never,
+    { ...fields, source: [sourceId], target: [targetId] } as never,
+  )) as { id?: string } | null;
+  return String(created?.id ?? '');
+}
+
+/**
  * A stored placement, as this file reads one back.
  *
  * Loose beyond the three fields anything here names, because the interesting use is putting a
@@ -1218,17 +1239,12 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !link?.sourceId || !link?.targetId) return '';
     try {
-      const created = (await getEntity(RELATIONSHIP).create(dataset.handle, {
-        sourceType: link.sourceType,
-        targetType: link.targetType,
-      })) as {
-        id?: string;
-        setSource?: (value: string) => Promise<unknown>;
-        setTarget?: (value: string) => Promise<unknown>;
-      };
-      await created.setSource?.(link.sourceId);
-      await created.setTarget?.(link.targetId);
-      const id = created?.id ?? '';
+      const id = await createConnection(
+        dataset.handle,
+        { sourceType: link.sourceType, targetType: link.targetType },
+        link.sourceId,
+        link.targetId,
+      );
       setLastCreatedId(id);
       return id;
     } catch (error) {
@@ -1534,13 +1550,12 @@ export function RecordStoreProvider(props: ParentProps) {
     parent: { id: string; type: string },
     card: { id: string; type: string },
   ): Promise<string> {
-    const created = (await getEntity(RELATIONSHIP).create(
-      handle as never,
-      { relationshipTypeId, sourceType: parent.type, targetType: card.type } as never,
-    )) as { id?: string; setSource?: (v: string) => Promise<unknown>; setTarget?: (v: string) => Promise<unknown> };
-    await created.setSource?.(parent.id);
-    await created.setTarget?.(card.id);
-    return String(created.id ?? '');
+    return createConnection(
+      handle,
+      { relationshipTypeId, sourceType: parent.type, targetType: card.type },
+      parent.id,
+      card.id,
+    );
   }
 
   /**
