@@ -204,7 +204,8 @@ describe('undoing a tree drop', () => {
  */
 describe('connections written and not yet seen', () => {
   /** What the graph would report drawing from its own data, in records. */
-  const drawn = () => [...world.links.values()].map(({ id, source, target }) => ({ id, source, target }));
+  const drawn = () =>
+    [...world.links.values()].map(({ id, source, target }) => ({ id, source: source ?? '', target: target ?? '' }));
 
   it('draws a line somebody drew at once, and stops when the graph draws the real one', async () => {
     const store = mount();
