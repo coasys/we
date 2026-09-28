@@ -1,7 +1,7 @@
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { createInMemoryBackendPorts, type SeededPeer } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
-import { applyFixture, datasetIdFor, type Fixture, type FixtureId, FIXTURES } from '@we/template-fixtures';
+import { applyFixture, datasetIdFor, type Fixture, type FixtureId, FIXTURES, pathFor } from '@we/template-fixtures';
 
 /**
  * The whole difference between this host and we-web.
@@ -28,6 +28,24 @@ export function requestedFixture(): Fixture {
   return Object.values(FIXTURES)[0];
 }
 
+/**
+ * Where the host lands.
+ *
+ * For a template `we-render` injected: the `?route=` asked for, else `/`, inside the fixture's space
+ * — a template's routes hang off `/space/<id>`, and a path without that prefix leaves the space and
+ * finds none of them. A fixture's own route is no use here; it names a page of the fixture's
+ * template. A path that already names a space is taken as it is.
+ *
+ * Otherwise the fixture's route, or a `?route=` in its place, exactly as before.
+ */
+export function startRoute(fixture: Fixture): string {
+  const requested = new URLSearchParams(window.location.search).get('route');
+  if (!(window as unknown as Record<string, unknown>).__externalTemplateId) return requested ?? pathFor(fixture);
+  const path = requested ?? '/';
+  if (path.startsWith('/space/')) return path;
+  return `/space/${datasetIdFor(fixture)}${path === '/' ? '' : path}`;
+}
+
 export const inMemoryConnector: BackendConnector = {
   async initialize(ctx): Promise<BackendInitResult> {
     let fixture = requestedFixture();
@@ -52,6 +70,8 @@ export const inMemoryConnector: BackendConnector = {
       // in-memory backend re-mints everything on every load.
       datasets: [{ id: datasetId, name: fixture.space.name, sharedUri: `inmemory://${datasetId}` }],
       profiles: [
+        // The agent this host signs in as. Nameless, it met the first-run "what should we call you?"
+        // prompt, which sat over every render this host exists to take.
         { did: 'did:preview:me', firstName: 'Preview', lastName: 'User', handle: 'preview', bio: '' },
         ...fixture.agents.map((agent) => ({
           did: agent.did,
@@ -92,7 +112,7 @@ export const inMemoryConnector: BackendConnector = {
       fixture: fixture.id,
       templateId: fixture.templateId,
       datasetId,
-      path: applied.path,
+      path: startRoute(fixture),
       nodes: applied.nodes,
     };
 

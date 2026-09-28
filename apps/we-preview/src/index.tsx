@@ -18,25 +18,61 @@ import {
   type ValidationError,
 } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
-import { datasetIdFor, pathFor } from '@we/template-fixtures';
+import { datasetIdFor } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
 
 import rootSeed from '../../../we-seed.json';
-import { inMemoryConnector, requestedFixture } from './platform/inMemoryConnector';
+import { bareNode, type ExternalTemplate } from './bare';
+import { inMemoryConnector, requestedFixture, startRoute } from './platform/inMemoryConnector';
 import { previewPlatform } from './platform/previewPlatform';
 import { PreviewBootstrap } from './PreviewBootstrap';
 
 const params = new URLSearchParams(window.location.search);
 const templateUrl = params.get('templateUrl');
-let externalTemplate: ExternalTemplate | undefined;
-if (templateUrl) {
-  const res = await fetch(templateUrl);
-  if (res.ok) {
-    externalTemplate = (await res.json()) as ExternalTemplate;
-    const id = externalTemplate.id || 'cli-external';
-    (templateRegistry as Record<string, unknown>)[id] = externalTemplate;
-    (window as unknown as Record<string, unknown>).__externalTemplateId = id;
-    reportSchemaFindings(externalTemplate);
+const externalTemplate = templateUrl ? await loadExternalTemplate(templateUrl) : undefined;
+if (templateUrl && !externalTemplate) {
+  // Stop here. Rendering the fixture's own template instead would hand back a picture of the wrong
+  // template, and one that looks entirely plausible.
+  throw new Error(
+    `[preview] ${((window as unknown as Record<string, unknown>).__wePreview as { error: string }).error}`,
+  );
+}
+if (externalTemplate) {
+  const id = externalTemplate.id || 'cli-external';
+  (templateRegistry as Record<string, unknown>)[id] = externalTemplate;
+  (window as unknown as Record<string, unknown>).__externalTemplateId = id;
+  reportSchemaFindings(externalTemplate);
+}
+
+/**
+ * The template `we-render` serves beside the page, or undefined with the reason on `__wePreview`,
+ * which is what the CLI is waiting on — so a failure answers at once instead of after its timeout.
+ *
+ * Same origin only. The CLI serves the template from the server that serves this page; a URL from
+ * anywhere else would let a link render whatever JSON its author pointed it at.
+ */
+async function loadExternalTemplate(url: string): Promise<ExternalTemplate | undefined> {
+  const fail = (error: string) => {
+    (window as unknown as Record<string, unknown>).__wePreview = { error };
+    return undefined;
+  };
+  let target: URL;
+  try {
+    target = new URL(url, window.location.href);
+  } catch {
+    return fail(`templateUrl is not a URL: ${url}`);
+  }
+  if (target.origin !== window.location.origin) return fail(`templateUrl must be on ${window.location.origin}`);
+  try {
+    const res = await fetch(target);
+    if (!res.ok) return fail(`${target.pathname} answered ${res.status}`);
+    const template = (await res.json()) as unknown;
+    if (!template || typeof template !== 'object' || Array.isArray(template)) {
+      return fail('the template is not a JSON object');
+    }
+    return template as ExternalTemplate;
+  } catch (error) {
+    return fail((error as Error).message);
   }
 }
 
@@ -61,30 +97,6 @@ function reportSchemaFindings(template: unknown): void {
   }
   // zod reports a bad value once per union branch it failed, all at one path: keep the first.
   structural.filter((f, i) => structural.findIndex((g) => g.path === f.path) === i).forEach(warn);
-}
-
-type SchemaNode = { type?: string; props?: Record<string, unknown>; children?: unknown[]; [key: string]: unknown };
-type ExternalTemplate = SchemaNode & { id?: string; routes?: Array<SchemaNode & { path?: string }> };
-
-/**
- * The template alone, with no shell around it: `?bare=1`.
- *
- * The full host mounts a template as a space's content, inside the sidebar and the module rail, and
- * that content area is a query container — so a template cannot even paint over the chrome with a
- * fixed-position root. A mockup of a screen that is not a space (an onboarding step, an account
- * page) needs the viewport to itself. Bare mode renders the template's root with its `$routes` slot
- * replaced by the one route asked for (`?route=`, default `/`), through the same renderer and the
- * same component registry as the app, inside a surface as the app provides, over empty stores —
- * which is what a static mockup reads.
- */
-function bareNode(template: ExternalTemplate, path: string): SchemaNode {
-  const route = template.routes?.find((r) => r.path === path) ?? template.routes?.[0];
-  const { routes: _routes, id: _id, schemaVersion: _v, meta: _meta, ...root } = template;
-  const swap = (children: unknown[] | undefined): unknown[] | undefined =>
-    children?.map((child) =>
-      child && typeof child === 'object' && (child as SchemaNode).type === '$routes' ? route : child,
-    );
-  return route ? { ...root, children: swap(root.children) } : root;
 }
 
 /**
@@ -113,7 +125,7 @@ const previewSeed: WeSeedFile = {
 };
 
 const fixture = requestedFixture();
-const routeOverride = new URLSearchParams(window.location.search).get('route');
+const routeOverride = params.get('route');
 
 /**
  * The root, composed rather than the packaged `<App/>`.
@@ -125,7 +137,9 @@ const routeOverride = new URLSearchParams(window.location.search).get('route');
 const bare = params.get('bare') === '1' && externalTemplate !== undefined;
 
 if (bare) {
-  const path = routeOverride ?? '/';
+  const { node, path } = bareNode(externalTemplate!, routeOverride);
+  if (routeOverride && path !== routeOverride)
+    console.warn(`no route ${routeOverride} in the template; rendered ${path}`);
   // The app pins html/body/#root to the viewport and scrolls inside; a mockup should grow with its
   // content, so a full-page capture shows the whole screen.
   const release = document.createElement('style');
@@ -137,7 +151,7 @@ if (bare) {
       <RenderSchema
         // The host's surface, as the full app puts one wherever it mounts a schema tree — without it
         // no `*UpProps` tier would ever match, and every render would be the phone layout.
-        node={{ type: '$surface', children: [bareNode(externalTemplate!, path)] } as never}
+        node={{ type: '$surface', children: [node] } as never}
         stores={{}}
         registry={componentRegistry}
       />
@@ -150,7 +164,7 @@ if (bare) {
     () => (
       <PlatformProvider seed={previewSeed} platform={previewPlatform} backend={inMemoryConnector}>
         <StoreProvider>
-          <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={routeOverride ?? pathFor(fixture)} />
+          <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={startRoute(fixture)} />
           <TemplateProvider />
           <ToastContainer />
         </StoreProvider>
