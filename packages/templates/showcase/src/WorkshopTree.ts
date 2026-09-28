@@ -620,7 +620,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
           onClick: { $toggleLocal: 'treeMode' },
         },
         children: [
-          { type: 'we-icon', props: { name: { $: `${TREE_ON} ? 'graph' : 'tree-structure'` } } },
+          { type: 'we-icon', props: { name: { $: `${TREE_ON} ? 'cards-three' : 'tree-structure'` } } },
           { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${TREE_ON} ? 'Freeform' : 'Tree'` }] },
         ],
       },
