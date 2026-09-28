@@ -158,7 +158,7 @@ export interface QueryIR {
   /** Ordered; first key is primary. */
   sort?: SortKey[];
   page?: Page;
-  /** Scalar projection; omit = all scalar props. */
+  /** The fields each row carries — properties, and relations as their target ids; omit = all. */
   select?: string[];
   include?: IncludeMap;
   aggregate?: Aggregation[];

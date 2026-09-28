@@ -414,6 +414,14 @@ export type QueryToken = {
     offset?: number | Record<string, unknown>;
     include?: Record<string, unknown>;
     /**
+     * The fields a row carries — properties, and relations as their target ids. `id` always comes.
+     *
+     * Omitted, a row carries everything, relation id lists included: a container's `children` is the
+     * id of everything in it, so a list of thirty calls showing a title each carried every utterance
+     * id of every call. Name what the rows render. A field left out reads as absent.
+     */
+    select?: string[];
+    /**
      * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
      * `via` relation. The adapter resolves `via` to a backend handle (AD4M: → the relation's predicate).
      */

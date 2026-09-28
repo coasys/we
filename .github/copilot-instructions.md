@@ -608,6 +608,11 @@ Query (data retrieval):
 { "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
+select names the fields each row carries — properties, and relations as their target ids — and
+`id` always comes: { "select": ["title", "createdAt", "participants"] }. Without it a row carries
+every field, relation id lists included, and a container's children is the id of everything in it.
+A list of containers (CollectionBlock) names what its rows draw; a single-record read need not.
+A field left out reads as absent, so select what every expression on the row reads.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 subscribe may also be an EXPRESSION, which is how a surface follows its subject only while the
 subject is still changing: { "subscribe": { "$": "modules.transcribe.callOnScreenLive" } } reads a

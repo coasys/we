@@ -25,6 +25,12 @@ export interface FlatQuery {
   limit?: number;
   offset?: number;
   include?: Record<string, unknown>;
+  /**
+   * The fields each row carries — properties, and relations as their target ids. `id` always comes.
+   * Omitted, a row carries every field, relation id lists included: on a container that is the id
+   * of everything in it, which a list showing a title and a date never reads.
+   */
+  select?: string[];
   /** Neutral drill-down; passed straight to the IR, resolved to a backend handle by the adapter. */
   scope?: Scope;
   subscribe?: boolean;
@@ -192,6 +198,7 @@ export function compileQuery(query: FlatQuery): CompileResult {
     if (filter) ir.filter = filter;
   }
   if (query.order) ir.sort = translateOrder(query.order);
+  if (query.select) ir.select = [...query.select];
   if (query.limit != null) {
     ir.page = { limit: query.limit, ...(query.offset != null ? { offset: query.offset } : {}) };
   } else if (query.offset != null) {
@@ -328,6 +335,7 @@ export function irToFlatQuery(ir: QueryIR): FlatQuery {
   const flat: FlatQuery = { entity: ir.entity };
   if (ir.filter) flat.where = whereFromFilter(ir.filter);
   if (ir.sort) flat.order = orderFromSort(ir.sort);
+  if (ir.select) flat.select = [...ir.select];
   if (ir.page && 'limit' in ir.page) {
     flat.limit = ir.page.limit;
     if ('offset' in ir.page && ir.page.offset !== undefined) flat.offset = ir.page.offset;

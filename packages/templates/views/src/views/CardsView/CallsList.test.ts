@@ -102,3 +102,17 @@ describe('the calls list', () => {
     expect(json).not.toContain('count(call.children)');
   });
 });
+
+describe('what a row of the list carries', () => {
+  /**
+   * A call is a container, and a container read without `select` carries the id of everything in it
+   * — every utterance of every call, to draw a row that shows a title.
+   */
+  it('selects the fields the row draws, and not the transcript', () => {
+    const list = queries(callsList).find((q) => (q.where as Record<string, unknown> | undefined)?.kind === 'call');
+    expect(list?.select).toEqual(
+      expect.arrayContaining(['title', 'description', 'author', 'createdAt', 'participants']),
+    );
+    expect(list?.select).not.toContain('children');
+  });
+});

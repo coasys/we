@@ -321,6 +321,29 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
 }
 
 /**
+ * The neutral `select` under the name `Ad4mModel` reads, at the root and on every relation sub-query.
+ *
+ * Unrenamed, the model ignores it and returns every field — relation id lists included, which on a
+ * container means the id of everything in it. A projection (`$`-key, `from:`) takes no field list.
+ */
+function selectAsProperties(query: Record<string, unknown>): Record<string, unknown> {
+  const { select, include, ...rest } = query;
+  const out: Record<string, unknown> = { ...rest };
+  if (Array.isArray(select)) out.properties = select;
+  if (include && typeof include === 'object') {
+    out.include = Object.fromEntries(
+      Object.entries(include as Record<string, unknown>).map(([key, spec]) => [
+        key,
+        spec && typeof spec === 'object' && !('from' in spec)
+          ? selectAsProperties(spec as Record<string, unknown>)
+          : spec,
+      ]),
+    );
+  }
+  return out;
+}
+
+/**
  * Build the AD4M {@link QueryAdapter}. A factory (not a singleton) because `lower` needs the current
  * perspective's model manifest to resolve a `scope` drill-down — so `getEntities` returns the SHACL model
  * entries (including synced ones, e.g. Flux's) at call time.
@@ -370,7 +393,7 @@ export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[])
       if (scope) {
         (opts as Record<string, unknown>).parent = resolveScopeToParent(getEntities(), scope);
       }
-      return opts as QueryOptions;
+      return selectAsProperties(opts) as QueryOptions;
     },
   };
 }
