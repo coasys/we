@@ -810,8 +810,8 @@ const voicesPopover = (): Scenario => {
   const column = base.node as SchemaNode & { $localState: Record<string, unknown> };
   column.$localState = {
     ...column.$localState,
-    treeMode: { ...(TREE_LOCALS.treeMode as object), initial: true },
-    order: { ...(TREE_LOCALS.order as object), initial: 'signal' },
+    treeMode: { ...TREE_LOCALS.treeMode, initial: true },
+    order: { ...TREE_LOCALS.order, initial: 'signal' },
     voiceSummary: {
       type: 'object',
       initial: {
