@@ -354,6 +354,15 @@ export interface GraphViewProps {
     y: number;
   }) => void;
   /**
+   * Whether a selected card offers its resize handles. Default true, where `onNodeResize` is bound.
+   *
+   * For an arrangement that decides the size itself: a tree gives every card one box, so a card's own
+   * size is not drawn there and a handle would change nothing anybody can see — and the handles would
+   * cover the card's badge, which sits on the edge they run along. A handler cannot be bound
+   * conditionally, so this is how a template says "not in this reading".
+   */
+  resizable?: boolean;
+  /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
    * Binding it is what puts the handles on screen — a handle that moved and then changed nothing is

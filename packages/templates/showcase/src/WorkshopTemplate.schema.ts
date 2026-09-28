@@ -121,6 +121,7 @@ import {
   TREE_HEAT_RULES,
   TREE_LAYOUT,
   TREE_LOCALS,
+  TREE_ON,
   TREE_QUERIES,
   TREE_REFRAME,
   TREE_VOICE_SUMMARY,
@@ -3649,6 +3650,9 @@ const canvas: SchemaNode = {
     // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
     onSeedSummary: TREE_VOICE_SUMMARY,
     onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CALL, { $: 'event' }] },
+    // Not in the tree, which gives every card one box: a resize there would change nothing on screen, and
+    // its handles would sit over the card's reaction badge on the same edge.
+    resizable: { $: `!${TREE_ON}` },
     /*
       Routing a line by hand, written back — and binding these is what puts the handles on one.
 

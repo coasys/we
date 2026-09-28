@@ -4084,12 +4084,11 @@ export function GraphView(props: GraphViewProps) {
                 what every canvas tool does and what keeps a selected card from being ringed with
                 furniture.
               */}
-              <Show when={props.onNodeResize && entry.visual.shape === 'card'}>
+              <Show when={props.onNodeResize && props.resizable !== false && entry.visual.shape === 'card'}>
                 <For each={HANDLES}>
                   {(handle) => (
                     <div
                       class={`we-graph__resize we-graph__resize--${handle.id}`}
-                      title="Resize"
                       onPointerDown={(event) => beginResize(event, entry, handle.grip)}
                     />
                   )}

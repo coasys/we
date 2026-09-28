@@ -2839,6 +2839,11 @@
           "optional": true
         },
         {
+          "name": "emphasis",
+          "type": "\"quiet\" | \"present\"",
+          "optional": true
+        },
+        {
           "name": "onPress",
           "type": "(() => void)",
           "optional": true
@@ -3428,6 +3433,11 @@
         {
           "name": "onNodeArrange",
           "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "resizable",
+          "type": "boolean",
           "optional": true
         },
         {
