@@ -31,6 +31,8 @@ let disconnect: (() => Promise<void>) | undefined;
 /** Set by the tests that need a host able to restart the backend; absent is the web shape. */
 /** Set by a test to wrap the backend's ports before the shell boots against them. */
 let onPorts: ((ports: ReturnType<typeof createInMemoryBackendPorts>) => void) | undefined;
+/** Datasets that exist before boot — a space the agent already has, say. */
+let seededDatasets: { id: string; name: string }[] = [];
 
 let executorHost:
   | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
@@ -42,7 +44,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
       if (connectFailure) throw new Error(connectFailure);
-      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
+      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions, datasets: seededDatasets });
       onPorts?.(ports);
       lifecycle = ports.lifecycle;
       return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
@@ -169,6 +171,7 @@ beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
   executorHost = undefined;
   onPorts = undefined;
+  seededDatasets = [];
   connectFailure = null;
   disconnect = undefined;
   navigate.mockClear();
@@ -240,6 +243,42 @@ describe('boot', () => {
     await vi.waitFor(() => expect(started).toEqual(expect.arrayContaining(['root', 'personal'])));
     releaseRoot();
     await ready(stores);
+  });
+
+  /*
+    A reload on a space's address waited for the whole boot before that space began to load, then
+    read its templates, then its schema, one after another. Its templates and schema reads now start
+    as soon as the list names it, and the agent's spaces are read beside the system datasets.
+  */
+  it('starts the addressed space, and reads spaces, while the system datasets come up', async () => {
+    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
+    window.history.replaceState({}, '', '/space/garden-1/canvas');
+    let releaseRoot!: () => void;
+    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
+    const prepared: unknown[] = [];
+    onPorts = (ports) => {
+      const { installRoot } = ports.schemas;
+      ports.schemas.installRoot = async (dataset) => {
+        await rootHeld;
+        return installRoot(dataset);
+      };
+      ports.schemas.prepare = (dataset) => prepared.push(dataset);
+    };
+    try {
+      const stores = mountShell();
+      const loadSpaces = vi.spyOn(stores.spaces, 'loadSpaces');
+
+      await vi.waitFor(() => expect(prepared).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(loadSpaces).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'garden-1' })])),
+      );
+      expect(stores.session.bootState()).not.toBe('ready');
+
+      releaseRoot();
+      await ready(stores);
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
   });
 
   it('walks the lock → login flow, including a failed password', async () => {

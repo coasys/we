@@ -153,8 +153,18 @@ export interface DatasetStore {
    * into a disposed scope. See `hostListeners`.
    */
   onDatasetRemoved: (cb: (uuid: string) => void) => () => void;
-  /** Resolves with every dataset it saw or made, for `loadDatasets` — see there. */
-  initSystemDatasets: () => Promise<AppDataset[] | null>;
+  /** The backend's dataset list, or null when it cannot be read. Publishes nothing. */
+  readDatasets: () => Promise<AppDataset[] | null>;
+  /**
+   * Bring up the system datasets. Given the list `readDatasets` just read, works from that rather
+   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`.
+   */
+  initSystemDatasets: (known?: AppDataset[] | null) => Promise<AppDataset[] | null>;
+  /**
+   * Start the reads a switch into this dataset makes, ahead of the switch — see
+   * `SchemaPort.prepare`. For a boot, while the system datasets come up.
+   */
+  prepareDataset: (dataset: AppDataset) => void;
   /**
    * Publish the dataset list. Given the list `initSystemDatasets` just read, publishes that rather
    * than asking the backend again — every ask builds a handle per dataset, and a boot asked twice.
@@ -787,16 +797,26 @@ export function DatasetStoreProvider(props: ParentProps) {
    * leave the other unset — no settings because the notes schema failed to refresh is the wrong
    * way round.
    */
-  async function initSystemDatasets(): Promise<AppDataset[] | null> {
+  async function readDatasets(): Promise<AppDataset[] | null> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return null;
-    let refs: AppDataset[];
     try {
-      refs = (await lifecycle.list()).map(toApp);
+      return (await lifecycle.list()).map(toApp);
     } catch (error) {
-      console.error('DatasetStore: initSystemDatasets error', error);
+      console.error('DatasetStore: could not read the dataset list', error);
       return null;
     }
+  }
+
+  function prepareDataset(dataset: AppDataset): void {
+    session.backendPorts()?.schemas.prepare?.(dataset.handle);
+  }
+
+  async function initSystemDatasets(known?: AppDataset[] | null): Promise<AppDataset[] | null> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return null;
+    const refs = known ?? (await readDatasets());
+    if (!refs) return null;
 
     // Side by side: the three share nothing but the list, and each is several round trips to the
     // executor — one after another they were most of the wait before a space could open.
@@ -1153,7 +1173,9 @@ export function DatasetStoreProvider(props: ParentProps) {
 
     trackDataset,
     onDatasetRemoved: removedListeners.add,
+    readDatasets,
     initSystemDatasets,
+    prepareDataset,
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,

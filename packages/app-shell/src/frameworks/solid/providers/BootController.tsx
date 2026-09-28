@@ -44,13 +44,27 @@ export function BootController() {
   session.onSessionUnlocked(async () => {
     if (!session.lifecycle()) return;
 
-    // initSystemDatasets must complete before loadDatasets/loadSpaces so that the
-    // dataset snapshot always includes we-root and we-test — even on first boot when
-    // they don't exist yet and have to be created. It hands back the list it read, with anything it
-    // made, so the snapshot is published without asking the backend a second time.
-    const [, known] = await Promise.all([session.refreshMe(), datasetStore.initSystemDatasets()]);
+    /*
+      One list read, then everything that only needs the list, side by side.
+
+      initSystemDatasets must complete before loadDatasets so that the published snapshot always
+      includes we-root and we-test — even on first boot, when they have to be created — and it hands
+      back the list with what it made, so the snapshot costs no second read. Spaces are read from the
+      same list at the same time: a system dataset holds no Space, so none the boot creates can be
+      missed. And the space the address names starts loading its templates and schema reads now,
+      so the switch the route asks for once the list is published finds them done.
+    */
+    const me = session.refreshMe();
+    const listed = await datasetStore.readDatasets();
+    if (listed) spaceStore.prepareSpaceAt(guestBoot ? `/space/${guestBoot.spaceId}` : (pendingDeepLink ?? ''), listed);
+    const [, known] = await Promise.all([
+      me,
+      datasetStore.initSystemDatasets(listed),
+      listed ? spaceStore.loadSpaces(listed) : undefined,
+    ]);
     await datasetStore.loadDatasets(known);
-    await spaceStore.loadSpaces();
+    // The list could not be read up front, so spaces wait for the one loadDatasets published.
+    if (!listed) await spaceStore.loadSpaces();
     datasetStore.subscribeToChanges();
     session.markReady();
 

@@ -309,6 +309,15 @@ export function warmStoredShapes(p: PerspectiveProxy): void {
   void cachedStoredShapes(p).catch(() => {});
 }
 
+/**
+ * Start every read a switch into this perspective makes: the SubjectClass markers and the stored
+ * shapes. What a switch arriving within their windows asks for is then already answered.
+ */
+export function warmSchemaReads(p: PerspectiveProxy): void {
+  warmStoredShapes(p);
+  void cachedSubjectClasses(p).catch(() => {});
+}
+
 /** Exported for testing — clears the storedShapes TTL cache. */
 export function clearStoredShapesCache(): void {
   storedShapesCache.clear();

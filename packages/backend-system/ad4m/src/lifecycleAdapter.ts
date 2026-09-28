@@ -290,13 +290,17 @@ export function createAd4mDatasetLifecycle(
 
   return {
     async list() {
-      await resolveOwnProfileDatasetId();
       // Once the registry is known complete, it is the answer: `all()` builds a handle for every
       // perspective, and each one's subscriptions stay behind however quickly it is dropped.
+      // The own-profile lookup the filter needs runs beside the read, not before it: on a boot it
+      // was a round trip of its own ahead of everything else.
       if (!complete) {
         const tracked = tracking;
-        for (const p of await client.perspective.all()) adopt(p);
+        const [, all] = await Promise.all([resolveOwnProfileDatasetId(), client.perspective.all()]);
+        for (const p of all) adopt(p);
         complete = tracked;
+      } else {
+        await resolveOwnProfileDatasetId();
       }
       return [...proxies.values()].filter((p) => !isBackendBookkeeping(p)).map(toRef);
     },

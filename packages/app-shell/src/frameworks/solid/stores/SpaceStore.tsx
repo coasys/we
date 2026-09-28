@@ -955,7 +955,14 @@ export interface SpaceStore {
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
   // Boot wiring (used by the boot controller, not by schemas)
-  loadSpaces: () => Promise<void>;
+  /** Given the dataset list, reads spaces from it rather than from the published one — see there. */
+  loadSpaces: (candidates?: readonly AppDataset[] | null) => Promise<void>;
+  /**
+   * Start what opening the space at this address needs — its templates and its schema reads — for a
+   * boot that is about to open it. Answers nothing, and does nothing for an address that is not a
+   * space among these datasets.
+   */
+  prepareSpaceAt: (path: string, datasets: readonly AppDataset[]) => void;
 
   // Testing
 }
@@ -1513,12 +1520,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     return mktId ? items.filter((item) => item.spaceId !== mktId) : items;
   });
 
-  /** Load the Space model from every candidate dataset. Runs after DatasetStore.loadDatasets. */
-  async function loadSpaces(): Promise<void> {
+  /**
+   * Load the Space model from every candidate dataset.
+   *
+   * From the published dataset list, or from one handed in: a boot passes the list it just read, so
+   * this runs while the system datasets come up rather than after — it only ever reads datasets that
+   * already exist, and a system dataset made by the boot is never a candidate.
+   */
+  async function loadSpaces(from?: readonly AppDataset[] | null): Promise<void> {
     try {
       // System datasets hold no Space record — the root and the sandbox have no Space SDNA at all,
       // so `Space.findOne` on them is an RPC 500 "No SHACL shape" error — and none is a space.
-      const candidates = datasetStore.datasets().filter((d) => !isSystemDataset(d.name));
+      const candidates = (from ?? datasetStore.datasets()).filter((d) => !isSystemDataset(d.name));
       // Any other joined dataset without Space SDNA installed (e.g. a Flux
       // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
       // Promise.all, one rejection would otherwise abort the whole batch and hide every
@@ -1540,6 +1553,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
     }
+  }
+
+  function prepareSpaceAt(path: string, datasets: readonly AppDataset[]): void {
+    const [first, segment] = path.split(/[?#]/)[0].split('/').filter(Boolean);
+    if (first !== 'space' || !segment) return;
+    const ds = datasets.find((d) => datasetAddressedBy(d, segment));
+    if (!ds) return;
+    datasetStore.prepareDataset(ds);
+    void templateStore.preloadSpaceTemplates(ds).catch(() => {});
   }
 
   const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
@@ -5151,6 +5173,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceInCache,
 
     loadSpaces,
+    prepareSpaceAt,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;
