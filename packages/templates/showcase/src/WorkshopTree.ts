@@ -609,19 +609,19 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
         One button, not a pair of tabs.
 
         The state is binary and the button says which reading it will give you — "Tree" while you are on
-        the canvas, "Canvas" while you are in the tree. A segmented control would spend twice the room
+        freeform, "Freeform" while you are in the tree. A segmented control would spend twice the room
         to say the same thing, in a strip that has to leave the canvas visible.
       */
       {
         type: 'we-button',
         props: {
           variant: { $: `${TREE_ON} ? 'secondary' : 'ghost'` },
-          title: { $: `${TREE_ON} ? 'Back to the freeform canvas' : 'Arrange these cards as a tree'` },
+          title: { $: `${TREE_ON} ? 'Back to freeform — place each card yourself' : 'Arrange these cards as a tree'` },
           onClick: { $toggleLocal: 'treeMode' },
         },
         children: [
           { type: 'we-icon', props: { name: { $: `${TREE_ON} ? 'graph' : 'tree-structure'` } } },
-          { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${TREE_ON} ? 'Canvas' : 'Tree'` }] },
+          { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${TREE_ON} ? 'Freeform' : 'Tree'` }] },
         ],
       },
       {
