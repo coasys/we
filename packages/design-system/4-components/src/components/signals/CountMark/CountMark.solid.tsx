@@ -102,9 +102,17 @@ export function CountMark(props: CountMarkProps) {
         faint at rest and muted under the pointer, each a step brighter than the quiet mark.
       */
       color={props.mine ? 'accent-text' : props.emphasis === 'present' ? 'text-faint' : 'control-surface'}
+      /*
+        Somebody else's score, a little further back at rest than the colour alone puts it — so a card you
+        have answered and one you have not are told apart at a glance — and fully present under the pointer.
+      */
+      opacity={!props.mine && props.emphasis === 'present' ? 0.7 : undefined}
       // Yours: one step past `accent-text` (primary-700). It went to 500, which is two steps nearer the
       // background, so hovering your own mark dimmed it where every other mark brightens.
-      hoverProps={{ color: props.mine ? 'primary-800' : props.emphasis === 'present' ? 'text-muted' : 'neutral-400' }}
+      hoverProps={{
+        color: props.mine ? 'primary-800' : props.emphasis === 'present' ? 'text-muted' : 'neutral-400',
+        ...(!props.mine && props.emphasis === 'present' ? { opacity: 1 } : {}),
+      }}
     >
       {/*
         Named once and then ordered, rather than written out per direction: the gap, the colour and
