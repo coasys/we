@@ -14,15 +14,17 @@
  *   --wait <ms>           Settle time after boot (default: 1500)
  *   --port <n>            Local server port (default: auto)
  *   --bare                Render the template alone, without the app shell around it
- *   --route <path>        Route to render (default: /); with --bare, picks one of the template's routes
+ *   --route <path>        Route to render (default: the fixture's own); with --bare, one of the template's routes
  *   --full-page           Capture the whole scrollable page, not only the viewport
  */
 
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { basename, dirname, extname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { parseRenderArgs, type RenderArgs, resolveInRoot, USAGE, UsageError } from '../src/render';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -44,92 +46,14 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
-interface RenderArgs {
-  templatePath: string;
-  output: string;
-  fixture?: string;
-  width: number;
-  height: number;
-  scale: number;
-  svg: boolean;
-  wait: number;
-  port: number;
-  bare: boolean;
-  route: string;
-  fullPage: boolean;
-}
-
 function parseArgs(argv: string[]): RenderArgs {
-  const args: Partial<RenderArgs> & {
-    width: number;
-    height: number;
-    scale: number;
-    wait: number;
-    port: number;
-    bare: boolean;
-    route: string;
-    fullPage: boolean;
-  } = {
-    width: 1440,
-    height: 900,
-    scale: 2,
-    svg: false,
-    wait: 1500,
-    port: 0,
-    bare: false,
-    route: '/',
-    fullPage: false,
-  };
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    const next = (): string => {
-      i += 1;
-      return argv[i];
-    };
-    if (arg === '--output' || arg === '-o') args.output = next();
-    else if (arg === '--fixture') args.fixture = next();
-    else if (arg === '--viewport') {
-      const [w, h] = next().split('x').map(Number);
-      if (w > 0 && h > 0) {
-        args.width = w;
-        args.height = h;
-      }
-    } else if (arg === '--scale') args.scale = Number(next());
-    else if (arg === '--svg') args.svg = true;
-    else if (arg === '--png') args.svg = false;
-    else if (arg === '--wait') args.wait = Number(next());
-    else if (arg === '--port') args.port = Number(next());
-    else if (arg === '--bare') args.bare = true;
-    else if (arg === '--route') args.route = next();
-    else if (arg === '--full-page') args.fullPage = true;
-    else if (!arg.startsWith('-') && !args.templatePath) args.templatePath = arg;
-  }
-
-  if (!args.templatePath) {
-    console.error(
-      'Usage: we-render <template.json> [--output file] [--fixture id] [--viewport WxH] [--svg]\n\n' +
-        'Renders a WE template JSON to an image using the preview host and Playwright.\n\n' +
-        'Options:\n' +
-        '  --output, -o <path>   Output file path\n' +
-        '  --fixture <id>        Bundled fixture: discord, twitter, instagram, youtube, kanban, events\n' +
-        '  --viewport <WxH>      Viewport size (default: 1440x900)\n' +
-        '  --scale <n>           Device pixel ratio (default: 2)\n' +
-        '  --svg                 SVG output via foreignObject\n' +
-        '  --wait <ms>           Wait after boot (default: 1500)\n' +
-        '  --bare                Render the template alone, without the app shell\n' +
-        '  --route <path>        Route to render (default: /)\n' +
-        '  --full-page           Capture the whole scrollable page',
-    );
+  try {
+    return parseRenderArgs(argv);
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    console.error(`${error.message}\n\n${USAGE}`);
     process.exit(1);
   }
-
-  if (!args.output) {
-    const stem = basename(args.templatePath, extname(args.templatePath));
-    args.output = `${stem}.${args.svg ? 'svg' : 'png'}`;
-  }
-
-  return args as RenderArgs;
 }
 
 function findPreviewDist(): string {
@@ -149,13 +73,14 @@ async function startServer(
     const pathname = url.pathname;
 
     if (pathname === '/__cli_template__') {
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      // Same origin as the page asking for it, so no CORS header: nothing else should read it.
+      res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(templateJson);
       return;
     }
 
-    const filePath = resolve(distDir, pathname.slice(1));
-    if (!filePath.startsWith(distDir)) {
+    const filePath = resolveInRoot(distDir, pathname);
+    if (!filePath) {
       res.writeHead(403);
       res.end();
       return;
@@ -257,7 +182,16 @@ async function render(args: RenderArgs): Promise<void> {
   const base = `http://127.0.0.1:${port}`;
 
   try {
-    const browser = await chromium.launch({ channel: 'chrome' });
+    let browser: import('playwright-core').Browser;
+    try {
+      browser = await chromium.launch({ channel: 'chrome' });
+    } catch (error) {
+      // playwright-core ships no browser of its own; it drives the Google Chrome installed here.
+      console.error(
+        `Could not start Google Chrome, which we-render drives:\n  ${(error as Error).message.split('\n')[0]}`,
+      );
+      process.exit(1);
+    }
 
     try {
       const page = await browser.newPage({
@@ -271,7 +205,8 @@ async function render(args: RenderArgs): Promise<void> {
       });
       page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
-      const params = new URLSearchParams({ templateUrl: `${base}/__cli_template__`, route: args.route });
+      const params = new URLSearchParams({ templateUrl: `${base}/__cli_template__` });
+      if (args.route) params.set('route', args.route);
       if (args.fixture) params.set('fixture', args.fixture);
       if (args.bare) params.set('bare', '1');
 
@@ -284,6 +219,11 @@ async function render(args: RenderArgs): Promise<void> {
       const info: Record<string, unknown> | null = await page.evaluate(
         () => (window as unknown as Record<string, unknown>).__wePreview as Record<string, unknown> | null,
       );
+      if (typeof info?.error === 'string') {
+        console.error(`The preview could not load the template: ${info.error}`);
+        process.exitCode = 1;
+        return;
+      }
 
       const outputPath = resolve(process.cwd(), args.output);
       await mkdir(dirname(outputPath), { recursive: true });

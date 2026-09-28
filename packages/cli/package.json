@@ -9,6 +9,7 @@
     "bootstrap": "tsup",
     "build:steps": "tsup",
     "build": "if [ -f ./dist/we-build.js ]; then node ./dist/we-build.js; else pnpm run build:steps; fi",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "bin": {
@@ -31,7 +32,8 @@
   "devDependencies": {
     "@types/node": "^26.4.0",
     "playwright-core": "^1.62.1",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"
