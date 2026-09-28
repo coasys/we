@@ -200,7 +200,14 @@ export function ReactionBadge(props: {
                 ref={watchOpen as unknown as HTMLElement}
               >
                 <span slot="trigger" onPointerDown={() => void readRows()}>
-                  <CountMark icon={signalType().icon} count={score()} mine={mine()} size="sm" label={label()} />
+                  <CountMark
+                    icon={signalType().icon}
+                    count={score()}
+                    mine={mine()}
+                    size="sm"
+                    emphasis="present"
+                    label={label()}
+                  />
                 </span>
                 {/*
                   In the popover's `content` slot — it shows nothing else, and the control in its
@@ -226,6 +233,8 @@ export function ReactionBadge(props: {
               count={score()}
               mine={mine()}
               size="sm"
+              // The score is what a card's badge is read for; quiet, it all but vanished on the card.
+              emphasis="present"
               label={label()}
               onPress={() => give(mine() ? null : signalType().rangeMax || 1)}
             />
