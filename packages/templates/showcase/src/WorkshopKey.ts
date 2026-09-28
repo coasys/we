@@ -758,7 +758,7 @@ const heatBody: SchemaNode = {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-muted' },
       children: [
-        'Order the tree oldest first, newest first or by a reaction, and the cards are shaded by it. As arranged, a card’s place is its order already.',
+        'Order the tree oldest first, newest first or by a signal, and the cards are shaded by it. As arranged, a card’s place is its order already.',
       ],
     },
     else: {
@@ -1275,7 +1275,7 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                   lensSection({
                     lens: 'order',
                     label: 'Order',
-                    help: 'Shade every card by what the tree is ordered by — its score for the reaction, or when it was made — between two colours kept on the space. A card nobody has answered yet takes a colour of its own, outside the scale — the plain card colour until you pick one. Colours every card, so it takes over from kinds and states while it is on.',
+                    help: 'Shade every card by what the tree is ordered by — its score for the signal, or when it was made — between two colours kept on the space. A card nobody has answered yet takes a colour of its own, outside the scale — the plain card colour until you pick one. Colours every card, so it takes over from kinds and states while it is on.',
                     body: heatBody,
                   }),
                 ],

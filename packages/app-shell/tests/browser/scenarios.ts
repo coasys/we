@@ -801,8 +801,35 @@ const treeStripOverCanvas = (): Scenario => ({
   },
 });
 
+/**
+ * The tree strip ordered by a reaction, with the Voices list holding three people — what the
+ * canvas seed's summary would report — so the popover has rows to lay out.
+ */
+const voicesPopover = (): Scenario => {
+  const base = treeStripOverCanvas();
+  const column = base.node as SchemaNode & { $localState: Record<string, unknown> };
+  column.$localState = {
+    ...column.$localState,
+    treeMode: { ...(TREE_LOCALS.treeMode as object), initial: true },
+    order: { ...(TREE_LOCALS.order as object), initial: 'signal' },
+    voiceSummary: {
+      type: 'object',
+      initial: {
+        type: 'st-1',
+        voices: [
+          { author: 'did:key:ana', cards: 4, mean: 3.5 },
+          { author: 'did:key:ben', cards: 2, mean: 1 },
+          { author: 'pretend:1', cards: 1, mean: 5, name: 'Ada' },
+        ],
+      },
+    },
+  };
+  return base;
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'canvas:tree-strip': treeStripOverCanvas,
+  'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,

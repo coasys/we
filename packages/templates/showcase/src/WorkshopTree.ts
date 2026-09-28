@@ -16,13 +16,12 @@
  *   in several ways, and nothing in the data says which of those makes a *parent*. So a tree is always
  *   "follow this one kind", chosen from the kinds this community has named. Also in the address, for
  *   the same reason.
- * - **The order.** By hand, by date either way, or by a reaction. Genuinely different questions — "what
+ * - **The order.** By hand, by date either way, or by a signal. Genuinely different questions — "what
  *   do we mean to do about it", "what came first" or "what is latest", "what do we most agree on" — and
  *   the first is the one the others cannot answer, which is why dragging imprints a rank rather than
  *   merely looking sorted.
- * - **The card size.** A reading preference rather than view state, so it is kept on the device and a
- *   shared link does not impose it: a forty-card tree wants smaller cards than a six-card one, and that
- *   is about the screen somebody is at.
+ * - **The card size.** Medium for now, with no picker: three sizes earned less than the room the
+ *   control took on the strip. The sizes are still defined, so a picker can come back as one control.
  *
  * ## Where the strip sits, and why it is not in the key
  *
@@ -65,7 +64,13 @@ export const TREE_LOCALS = {
   spine: { type: 'string', initial: '', syncParam: 'spine' },
   order: { type: 'string', initial: 'manual', syncParam: 'order' },
   signalType: { type: 'string', initial: '', syncParam: 'by' },
-  cardSize: { type: 'string', initial: 'md', persist: 'workshop.treeCardSize' },
+  /*
+    Medium, and nothing to change it with: the picker was taken off the strip for the room, since the
+    sizes bought little. The sizes and the reframe on a change stay, so bringing it back is one control
+    — but no longer kept on the device, which would leave anybody who had picked large stuck on it with
+    no way back.
+  */
+  cardSize: { type: 'string', initial: 'md' },
   /*
     How much each person's voice counts in a reaction's score — `did=50,did=0`, anyone not named in
     full. View state like the order it re-weighs: a link carries the weighting, so somebody sent it sees
@@ -296,11 +301,16 @@ const voicesControl: SchemaNode = {
                     else: {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-muted' },
-                      children: ['Nobody has answered with this reaction on this canvas yet.'],
+                      children: ['Nobody has answered with this signal on this canvas yet.'],
                     },
                     then: {
                       type: 'Column',
-                      props: { gap: '300', width: '100%', maxHeight: '60vh', overflowY: 'auto' },
+                      /*
+                        Room under the last row. A slider's thumb stands proud of its track, so the
+                        list's content ran a few pixels past its last box — and a scroller one pixel
+                        over shows a bar, which is why the list always had one however few people it held.
+                      */
+                      props: { gap: '300', width: '100%', maxHeight: '60vh', overflowY: 'auto', pb: '200' },
                       children: [
                         {
                           type: '$each',
@@ -428,7 +438,7 @@ export const TREE_LAYOUT: SchemaProp = {
  * Re-ordering a row keeps the camera where it is — a vote landing must not lurch the view — but bigger
  * cards make a bigger tree, and switching to large ones left cards off the screen. The graph centres
  * it again and zooms out only if it no longer fits, never in, so the size somebody picked is the size
- * they see. Only in the tree: on the freeform canvas every card has its own size and this picker is
+ * they see. Only in the tree: on the freeform canvas every card has its own size and the tree's is
  * not what sets it.
  */
 export const TREE_REFRAME: SchemaProp = { $: `${TREE_ON} ? local.cardSize : ''` };
@@ -652,7 +662,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                   fit: true,
                   placeholder: 'Any connection',
                   value: { $: 'local.spine' },
-                  options: { $: 'local.relationshipKinds.map(k, { label: k.name, value: k.id })' },
+                  options: { $: 'local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })' },
                   onChange: { $setLocal: 'spine', value: { $: 'event.detail' } },
                 },
               },
@@ -680,10 +690,10 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                   fit: true,
                   value: { $: 'local.order' },
                   options: [
-                    { label: 'As arranged', value: 'manual' },
-                    { label: 'Oldest first', value: 'date' },
-                    { label: 'Newest first', value: 'newest' },
-                    { label: 'By reaction', value: 'signal' },
+                    { label: 'As arranged', value: 'manual', icon: 'hand-grabbing' },
+                    { label: 'Oldest first', value: 'date', icon: 'clock-counter-clockwise' },
+                    { label: 'Newest first', value: 'newest', icon: 'clock-clockwise' },
+                    { label: 'By signal', value: 'signal', icon: 'chart-bar' },
                   ],
                   onChange: { $setLocal: 'order', value: { $: 'event.detail' } },
                 },
@@ -691,7 +701,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
               /*
                 Which reaction, and only while one is what the order depends on.
 
-                It defaults to the first type the community has rather than to nothing: "By reaction"
+                It defaults to the first type the community has rather than to nothing: "By signal"
                 with no reaction picked is a state that looks like an order and is not one, and the
                 order it would actually give — by date — contradicts the control saying otherwise.
               */
@@ -706,7 +716,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                       fit: true,
                       value: { $: SIGNAL_IN_FORCE },
                       options: {
-                        $: 'local.treeSignalTypes.map(t, { label: t.name, value: t.id })',
+                        $: 'local.treeSignalTypes.map(t, { label: t.name, value: t.id, icon: t.icon })',
                       },
                       onChange: { $setLocal: 'signalType', value: { $: 'event.detail' } },
                     },
@@ -714,21 +724,6 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                 },
               },
               voicesControl,
-              { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
-              {
-                type: 'we-select',
-                props: {
-                  size: 'sm',
-                  fit: true,
-                  value: { $: 'local.cardSize' },
-                  options: [
-                    { label: 'Small cards', value: 'sm' },
-                    { label: 'Medium cards', value: 'md' },
-                    { label: 'Large cards', value: 'lg' },
-                  ],
-                  onChange: { $setLocal: 'cardSize', value: { $: 'event.detail' } },
-                },
-              },
             ],
           },
         },

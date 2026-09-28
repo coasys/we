@@ -180,6 +180,32 @@ function measureAll(selector: string) {
 }
 
 /**
+ * Every box under `selector` (itself included) that scrolls, with what it holds against what it shows.
+ *
+ * For "does this list get a scroll bar it has no need of" — which a box's size cannot answer, since a
+ * scroller with a bar and one without are the same size. Light DOM only, like `measureAll`: slotted
+ * content lives there, which is where a schema's own boxes are.
+ */
+function scrollers(selector: string) {
+  const out: { tag: string; scrollH: number; clientH: number; scrollW: number; clientW: number }[] = [];
+  for (const root of document.querySelectorAll(selector)) {
+    for (const el of [root, ...root.querySelectorAll('*')]) {
+      const style = getComputedStyle(el);
+      const scrolls = (v: string) => v === 'auto' || v === 'scroll' || v === 'overlay';
+      if (!scrolls(style.overflowY) && !scrolls(style.overflowX)) continue;
+      out.push({
+        tag: el.tagName.toLowerCase(),
+        scrollH: el.scrollHeight,
+        clientH: el.clientHeight,
+        scrollW: el.scrollWidth,
+        clientW: el.clientWidth,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * The element carrying exactly this text.
  *
  * An assertion about a person's name should not be spelled as a selector for the props the fix
@@ -328,6 +354,7 @@ injectDSInteropStyles();
   idleFrames,
   measure,
   measureAll,
+  scrollers,
   measurePart,
   measureControl,
   measureText,

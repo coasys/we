@@ -2105,7 +2105,7 @@ describe('the workshop’s tree', () => {
   const workshop = showcase.workshopTemplate as Schema;
   const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
 
-  it('keeps the reading in the address, and the card size on the device', () => {
+  it('keeps the reading in the address, and the card size nowhere', () => {
     /*
       Two different questions. Send somebody a link and they should see the shape you are looking at —
       so the mode, the spine and the order are view state. How large the cards are is about the screen
@@ -2115,7 +2115,8 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain('"treeMode":{"type":"boolean","initial":false,"syncParam":{"name":"tree","push":true}}');
     expect(canvas).toContain('"spine":{"type":"string","initial":"","syncParam":"spine"}');
     expect(canvas).toContain('"order":{"type":"string","initial":"manual","syncParam":"order"}');
-    expect(canvas).toContain('"cardSize":{"type":"string","initial":"md","persist":"workshop.treeCardSize"}');
+    // Medium for everyone while there is no picker: a size kept on the device would outlive the control.
+    expect(canvas).toContain('"cardSize":{"type":"string","initial":"md"}');
   });
 
   it('puts the only way out of the mode on screen rather than in a panel', () => {
@@ -2291,6 +2292,6 @@ describe('the workshop’s tree', () => {
     // select would render empty. Guarded globally as well, and stated here where the temptation was.
     expect(canvas).toContain('"placeholder":"Any connection"');
     expect(canvas).toContain('"$setLocal":"spine","value":""');
-    expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id })');
+    expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
   });
 });
