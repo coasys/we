@@ -1006,6 +1006,7 @@ export const contextData: ContextData = {
         { name: 'size', type: '"xs" | "sm" | "md"', optional: true },
         { name: 'countTone', type: '"text" | "glyph"', optional: true },
         { name: 'countFirst', type: 'boolean', optional: true },
+        { name: 'emphasis', type: '"quiet" | "present"', optional: true },
         { name: 'onPress', type: '(() => void)', optional: true },
         { name: 'label', type: 'string', optional: true },
         { name: 'disabled', type: 'boolean', optional: true },
@@ -1235,6 +1236,7 @@ export const contextData: ContextData = {
           type: '((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)',
           optional: true,
         },
+        { name: 'resizable', type: 'boolean', optional: true },
         {
           name: 'onNodeResize',
           type: '((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)',
