@@ -71,6 +71,21 @@ function visible(engine: GraphEngine): number {
 }
 
 describe('a layout swap', () => {
+  it('puts a card dragged on the freeform canvas into its place in the tree', async () => {
+    const engine = await freeformFarFromTheOrigin();
+    // What a canvas drag does as it drops a card: pins it where it landed.
+    engine.pin('a', { x: 9999, y: 9999 });
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: TREE as never });
+    engine.relayout({ fit: true, travel: 420 });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // `a` and `b` are both children of `p`: the tree puts them on one rank, the pin would not have.
+    const [a, b] = [engine.getPositions().get('a')!, engine.getPositions().get('b')!];
+    expect(a.y).toBeCloseTo(b.y, 0);
+    expect(a.x).not.toBeCloseTo(9999, 0);
+  });
+
   it('keeps the cards in view when a re-derive carries it out before the layout is asked for', async () => {
     const engine = await freeformFarFromTheOrigin();
     expect(visible(engine)).toBe(5);

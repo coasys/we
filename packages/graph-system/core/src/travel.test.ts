@@ -351,12 +351,14 @@ describe('switching away from a canvas', () => {
       instruction. Only the engine can tell them apart, which is why it answers here.
     */
     const engine = await canvas();
-    engine.pin('a', { x: 77, y: 88 });
+    // Through the pin control's own call — a card a drag merely dropped is not a pin anybody asked for.
+    const held = { ...engine.getPositions().get('a')! };
+    engine.setPinned(['a'], true);
 
     engine.setSpec({ seeds: { source: 'placed' }, layout: { type: 'derived' } });
     engine.relayout();
 
-    expect(engine.getPositions().get('a')).toMatchObject({ x: 77, y: 88 });
+    expect(engine.getPositions().get('a')).toMatchObject({ x: held.x, y: held.y });
     expect(xOf(engine, 'b')).toBe(510);
   });
 });

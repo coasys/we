@@ -647,6 +647,7 @@ export class GraphEngine {
       this.positions = new Map();
       // A different graph cannot inherit holds on nodes it does not contain.
       this.pinnedIds.clear();
+      this.droppedPins.clear();
       this.selected.clear();
       /*
         A fold in mid-travel is abandoned, and the fold *set* is not.
@@ -1599,6 +1600,19 @@ export class GraphEngine {
     const swapping = !!this.layout && was.slice(0, was.indexOf(':')) !== spec.type;
     // And travels, for the same reason: a caller that did not know it was swapping asked for none.
     if (swapping) options = { fit: options?.fit || true, travel: options?.travel || this.selfTravel };
+    /*
+      Pins made where a pin means nothing are not carried into a layout where it means everything.
+
+      A canvas's drag pins the card it drops (`drag-node` with `pin`), and on a layout that places
+      nothing itself that is inert — every card already stays where its data says. Carried into a tree,
+      the same pin told the tree to leave that one card where it was dropped on the canvas, so a card
+      moved moments before the switch sat outside the tree until a reload cleared the pins. A pin the
+      reader asked for (`setPinned`, the pin control) is theirs, and survives.
+    */
+    if (swapping && this.layout?.derivesPositions === false) {
+      for (const id of this.droppedPins) this.pinnedIds.delete(id);
+      this.droppedPins.clear();
+    }
     if (!this.layout || this.layoutKey !== key) {
       this.layout?.stop?.();
       this.layout = this.registry.layout(spec.type, spec.options);
@@ -2685,13 +2699,19 @@ export class GraphEngine {
       // Held or released, the layout's travel is no longer the authority on where this card is.
       this.stopTravel(id);
       if (pinned) {
-        if (this.isPinned(id)) continue;
+        // Pinned by a drop already: now the reader's own, which is kept through a change of layout. Asked
+        // of the pins themselves rather than `isPinned`, which a canvas answers yes for every card.
+        if (this.pinnedIds.has(id)) {
+          this.droppedPins.delete(id);
+          continue;
+        }
         this.pinnedIds.add(id);
         this.positions.set(id, { x: at.x, y: at.y, fixed: true });
         this.layout?.fix?.(id, { x: at.x, y: at.y });
       } else {
         if (!this.isPinned(id)) continue;
         this.pinnedIds.delete(id);
+        this.droppedPins.delete(id);
         this.positions.set(id, { x: at.x, y: at.y });
         this.layout?.fix?.(id, null);
       }
@@ -2704,14 +2724,23 @@ export class GraphEngine {
     this.resumeLayout(!pinned);
   }
 
+  /**
+   * Pins a gesture left behind — a card dropped where it was dragged — as opposed to pins the reader
+   * asked for through `setPinned`. Kept apart because only these are inert on a canvas and wrong in a
+   * tree; see the note where a layout swap lets them go.
+   */
+  private droppedPins = new Set<string>();
+
   pin(id: string, at: Point | null): void {
     // Whoever is pinning owns this card's position now — see {@link stopTravel}.
     this.stopTravel(id);
     if (at) {
+      if (!this.pinnedIds.has(id)) this.droppedPins.add(id);
       this.pinnedIds.add(id);
       this.positions.set(id, { ...at, fixed: true });
     } else {
       this.pinnedIds.delete(id);
+      this.droppedPins.delete(id);
       const existing = this.positions.get(id);
       if (existing) this.positions.set(id, { x: existing.x, y: existing.y });
     }
