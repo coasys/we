@@ -49,6 +49,7 @@ import {
   refreshSpaceSdna,
   ROOT_MODELS,
   SPACE_MODELS,
+  warmStoredShapes,
 } from './sdnaEntities';
 import { getFluxSubgroupMessages } from './syncHelpers';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
@@ -65,7 +66,11 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
     refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
     ensure: (dataset, schema) => ensureEntityRegistered(proxy(dataset), schema as never),
-    hasCoreSchema: (dataset) => isEntityRegistered(proxy(dataset), Space as never),
+    hasCoreSchema: (dataset) => {
+      // A switch reads the stored shapes next if this answers yes — start that read alongside.
+      warmStoredShapes(proxy(dataset));
+      return isEntityRegistered(proxy(dataset), Space as never);
+    },
     hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
 
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {

@@ -210,3 +210,90 @@ describe('development registration', () => {
     warn.mockRestore();
   });
 });
+
+describe('one handle per dataset', () => {
+  /**
+   * Every proxy the SDK builds registers four socket subscriptions it can never release on its own,
+   * so a handle built and dropped keeps running for the life of the session. The trace this was
+   * found in held 27 proxies for 8 datasets after one load, each filtering every socket message.
+   */
+  function perspectiveClient() {
+    const constructed: { uuid: string; name: string; sharedUrl?: string | null }[] = [];
+    const listeners: Record<string, (handle: unknown) => unknown> = {};
+    const build = (uuid: string, name = uuid, sharedUrl: string | null = null) => {
+      const p = { uuid, name, sharedUrl, state: 'Private', neighbourhood: null };
+      constructed.push(p);
+      return p;
+    };
+    const client = {
+      agent: { me: vi.fn(async () => ({ did: 'did:me', perspective: null })) },
+      perspective: {
+        all: vi.fn(async () => [build('a', 'Alpha'), build('b', 'Beta')]),
+        byUUID: vi.fn(async (uuid: string) => build(uuid)),
+        add: vi.fn(async (name: string) => build(`new-${name}`, name)),
+        remove: vi.fn(async () => undefined),
+        addPerspectiveAddedListener: vi.fn((cb) => (listeners.added = cb)),
+        addPerspectiveUpdatedListener: vi.fn((cb) => (listeners.updated = cb)),
+        addPerspectiveRemovedListener: vi.fn((cb) => (listeners.removed = cb)),
+      },
+    };
+    return { client, constructed, listeners };
+  }
+
+  it('hands out the same handle for a dataset however it is read', async () => {
+    const { client } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    const [first] = await lifecycle.list();
+    const [again] = await lifecycle.list();
+    const got = await lifecycle.get('a');
+
+    expect(again.handle).toBe(first.handle);
+    expect(got?.handle).toBe(first.handle);
+    // Answered from what is held: a switch into a listed dataset costs no round trip.
+    expect(client.perspective.byUUID).not.toHaveBeenCalled();
+  });
+
+  it('refreshes what the held handle says from later reads and events, without reading again', async () => {
+    const { client, listeners } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+    const updated: unknown[] = [];
+    lifecycle.subscribe({ onUpdated: (ref) => updated.push(ref) });
+    const [held] = await lifecycle.list();
+
+    listeners.updated({ uuid: 'a', name: 'Alpha, renamed', sharedUrl: 'neighbourhood://Qm-a', state: 'Synced' });
+
+    expect(updated).toEqual([expect.objectContaining({ id: 'a', name: 'Alpha, renamed', handle: held.handle })]);
+    expect((await lifecycle.get('a'))?.sharedUri).toBe('neighbourhood://Qm-a');
+    expect(client.perspective.byUUID).not.toHaveBeenCalled();
+  });
+
+  it('answers the list from what it holds once it is listening and has read everything once', async () => {
+    const { client, listeners } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await lifecycle.list(); // before listening: cannot be trusted complete
+    lifecycle.subscribe({});
+    await lifecycle.list(); // the one full read made while listening
+    listeners.removed('b');
+    listeners.updated({ uuid: 'a', name: 'Alpha, renamed' });
+    const names = (await lifecycle.list()).map((d) => d.name);
+
+    expect(client.perspective.all).toHaveBeenCalledTimes(2);
+    expect(names).toEqual(['Alpha, renamed']);
+  });
+
+  it('reads a dataset it does not hold, once, and lets a removed one go', async () => {
+    const { client, listeners } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+    lifecycle.subscribe({});
+
+    const first = await lifecycle.get('c');
+    expect((await lifecycle.get('c'))?.handle).toBe(first?.handle);
+    expect(client.perspective.byUUID).toHaveBeenCalledTimes(1);
+
+    listeners.removed('c');
+    await lifecycle.get('c');
+    expect(client.perspective.byUUID).toHaveBeenCalledTimes(2);
+  });
+});

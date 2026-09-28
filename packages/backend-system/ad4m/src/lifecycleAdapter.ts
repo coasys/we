@@ -61,6 +61,10 @@ const SERVER_LINK_LANGUAGE_META = {
  */
 const SESSION_SETTLE_MS = 150_000;
 
+/** What a perspective's handle says about it — the same whether it arrives as a proxy or an event. */
+type PerspectiveFacts = Pick<PerspectiveProxy, 'name'> &
+  Partial<Pick<PerspectiveProxy, 'state' | 'sharedUrl' | 'neighbourhood' | 'owners'>>;
+
 function toRef(p: PerspectiveProxy): DatasetRef {
   return {
     id: p.uuid,
@@ -75,6 +79,99 @@ export function createAd4mDatasetLifecycle(
   options: Ad4mLifecycleOptions = {},
 ): DatasetLifecyclePort {
   const client = backendClient as Ad4mClient;
+
+  /*
+    One proxy per perspective, for the life of the connection.
+
+    Every \`PerspectiveProxy\` the SDK builds registers four subscriptions on the shared socket (link
+    added, removed and updated, and sync state) in its constructor, and nothing a caller holds can
+    release them without also releasing every other proxy's for the same perspective:
+    \`dispose()\` clears per uuid, and the sync-state one sits in a list nothing removes from. So a
+    proxy built to read a name and dropped was never dropped. \`list()\` built one per perspective
+    on every call, \`get()\` one per switch, and every \`perspective-updated\` event one more — each
+    firing on every message the socket carries, for the rest of the session.
+
+    Holding the first proxy and refreshing its facts from later reads keeps one set of listeners
+    per perspective, and lets a read the registry can already answer skip the round trip.
+  */
+  const proxies = new Map<string, PerspectiveProxy>();
+
+  /** The facts a ref reads, from a later read or event, onto the proxy already held. */
+  function refresh(held: PerspectiveProxy, fresh: PerspectiveFacts): void {
+    held.name = fresh.name;
+    if (fresh.state !== undefined) held.state = fresh.state;
+    if (fresh.sharedUrl) held.sharedUrl = fresh.sharedUrl;
+    if (fresh.neighbourhood) held.neighbourhood = fresh.neighbourhood;
+    if (fresh.owners) held.owners = fresh.owners;
+  }
+
+  function adopt(p: PerspectiveProxy): PerspectiveProxy {
+    const held = proxies.get(p.uuid);
+    if (!held) {
+      proxies.set(p.uuid, p);
+      return p;
+    }
+    refresh(held, p);
+    return held;
+  }
+
+  /*
+    Keeping the registry true, so it can answer \`list()\` itself.
+
+    From the first subscription on, the adapter hears every perspective added, updated and removed,
+    and applies each to the registry before anyone else hears of it. The registry is then complete
+    after one full read made while listening — nothing can have changed unheard since — and \`list()\`
+    stops reading at all. A read made before listening began cannot be trusted that way: a
+    perspective could have arrived between the read and the first event.
+  */
+  let tracking = false;
+  let complete = false;
+  const subscribers = new Set<DatasetChangeHandlers>();
+
+  function track(): void {
+    if (tracking) return;
+    tracking = true;
+
+    client.perspective.addPerspectiveAddedListener((handle) => {
+      void (async () => {
+        await resolveOwnProfileDatasetId();
+        const held = proxies.get(handle.uuid);
+        if (held) refresh(held, handle);
+        const p = held ?? (await proxyFor(handle.uuid));
+        if (!p || isBackendBookkeeping(p)) return;
+        for (const s of subscribers) s.onAdded?.(toRef(p));
+      })();
+      return null;
+    });
+
+    client.perspective.addPerspectiveUpdatedListener((handle) => {
+      // The event carries the whole handle, so a perspective already held needs no read at all.
+      const held = proxies.get(handle.uuid);
+      if (held) {
+        refresh(held, handle);
+        for (const s of subscribers) s.onUpdated?.(toRef(held));
+        return null;
+      }
+      void proxyFor(handle.uuid).then((p) => {
+        if (p) for (const s of subscribers) s.onUpdated?.(toRef(p));
+      });
+      return null;
+    });
+
+    client.perspective.addPerspectiveRemovedListener((uuid) => {
+      proxies.delete(uuid);
+      for (const s of subscribers) s.onRemoved?.(uuid);
+      return null;
+    });
+  }
+
+  /** The held proxy for this uuid, or a fresh read of it adopted as the one to hold. */
+  async function proxyFor(uuid: string): Promise<PerspectiveProxy | null> {
+    const held = proxies.get(uuid);
+    if (held) return held;
+    const p = await client.perspective.byUUID(uuid);
+    return p ? adopt(p) : null;
+  }
 
   /**
    * AD4M keeps its own bookkeeping in perspectives too: the agent's public profile perspective,
@@ -194,20 +291,28 @@ export function createAd4mDatasetLifecycle(
   return {
     async list() {
       await resolveOwnProfileDatasetId();
-      return (await client.perspective.all()).filter((p) => !isBackendBookkeeping(p)).map(toRef);
+      // Once the registry is known complete, it is the answer: `all()` builds a handle for every
+      // perspective, and each one's subscriptions stay behind however quickly it is dropped.
+      if (!complete) {
+        const tracked = tracking;
+        for (const p of await client.perspective.all()) adopt(p);
+        complete = tracked;
+      }
+      return [...proxies.values()].filter((p) => !isBackendBookkeeping(p)).map(toRef);
     },
 
     async get(id) {
-      const p = await client.perspective.byUUID(id);
+      const p = await proxyFor(id);
       return p ? toRef(p) : null;
     },
 
     async create(name) {
-      return toRef(await client.perspective.add(name));
+      return toRef(adopt(await client.perspective.add(name)));
     },
 
     async remove(id) {
       await client.perspective.remove(id);
+      proxies.delete(id);
     },
 
     /**
@@ -215,7 +320,7 @@ export function createAd4mDatasetLifecycle(
      * the proxy's own `sharedUrl` is not updated in place.
      */
     async publish(id: string, linkLanguageTemplate?: string) {
-      const p = await client.perspective.byUUID(id);
+      const p = await proxyFor(id);
       if (!p) throw new Error(`publish: no dataset with id ${id}`);
       const templateAddress = linkLanguageTemplate || (await publishableTemplates())[0]?.address;
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
@@ -231,6 +336,8 @@ export function createAd4mDatasetLifecycle(
       );
       const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
       const uri = await client.neighbourhood.publishFromPerspective(id, linkLanguage.address, new Perspective([]));
+      // The held proxy outlives this call, so it carries the answer too — a later `get` reads it.
+      p.sharedUrl = uri;
       return { uri, sharedId: uri.replace(SCHEME, '') };
     },
 
@@ -240,7 +347,9 @@ export function createAd4mDatasetLifecycle(
       // Accept a bare shared id: this backend's URIs carry the neighbourhood scheme.
       const uri = idOrUri.includes('://') ? idOrUri : SCHEME + idOrUri;
       const handle = await client.neighbourhood.joinFromUrl(uri);
-      const joined = await client.perspective.byUUID(handle.uuid);
+      const held = proxies.get(handle.uuid);
+      if (held) refresh(held, handle);
+      const joined = held ?? (await proxyFor(handle.uuid));
       if (!joined) throw new Error(`join: no dataset handle after joining ${uri}`);
       return toRef(joined);
     },
@@ -250,37 +359,14 @@ export function createAd4mDatasetLifecycle(
     },
 
     /**
-     * AD4M's listener API has no detach; the returned unsubscribe guards the callbacks instead.
-     * In practice the shell subscribes once for the app's lifetime.
+     * AD4M's listener API has no detach, so the adapter registers its three listeners once, for
+     * the life of the connection, and hands each event to whoever is subscribed at the time.
      */
     subscribe(handlers: DatasetChangeHandlers) {
-      let active = true;
-
-      client.perspective.addPerspectiveAddedListener((handle) => {
-        if (!active) return null;
-        void (async () => {
-          await resolveOwnProfileDatasetId();
-          const p = await client.perspective.byUUID(handle.uuid);
-          if (active && p && !isBackendBookkeeping(p)) handlers.onAdded?.(toRef(p));
-        })();
-        return null;
-      });
-
-      client.perspective.addPerspectiveUpdatedListener((handle) => {
-        if (!active) return null;
-        client.perspective.byUUID(handle.uuid).then((p) => {
-          if (active && p) handlers.onUpdated?.(toRef(p));
-        });
-        return null;
-      });
-
-      client.perspective.addPerspectiveRemovedListener((uuid) => {
-        if (active) handlers.onRemoved?.(uuid);
-        return null;
-      });
-
+      track();
+      subscribers.add(handlers);
       return () => {
-        active = false;
+        subscribers.delete(handlers);
       };
     },
   };

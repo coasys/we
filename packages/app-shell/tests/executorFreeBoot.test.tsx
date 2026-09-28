@@ -29,6 +29,9 @@ let connectFailure: string | null = null;
 let disconnect: (() => Promise<void>) | undefined;
 
 /** Set by the tests that need a host able to restart the backend; absent is the web shape. */
+/** Set by a test to wrap the backend's ports before the shell boots against them. */
+let onPorts: ((ports: ReturnType<typeof createInMemoryBackendPorts>) => void) | undefined;
+
 let executorHost:
   | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
   | undefined;
@@ -40,6 +43,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
     initialize: async (ctx: { selfId(): string | undefined }) => {
       if (connectFailure) throw new Error(connectFailure);
       const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
+      onPorts?.(ports);
       lifecycle = ports.lifecycle;
       return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
     },
@@ -164,6 +168,7 @@ const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootSta
 beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
   executorHost = undefined;
+  onPorts = undefined;
   connectFailure = null;
   disconnect = undefined;
   navigate.mockClear();
@@ -182,6 +187,59 @@ describe('boot', () => {
     expect(names).toEqual(['we-personal', 'we-root', 'we-test']);
     expect(stores.session.me()?.did).toBe('did:test:james');
     expect(navigate).toHaveBeenCalledWith('/');
+  });
+
+  /*
+    Every dataset listing builds a handle per dataset on AD4M, and each handle registers socket
+    subscriptions nothing releases — so boot reads the list once, and publishes what it read plus
+    what it made. Answering from the first read must still include a system dataset created after it.
+  */
+  it('reads the dataset list once, and publishes the system datasets it created', async () => {
+    let listed = 0;
+    onPorts = (ports) => {
+      const list = ports.lifecycle.list.bind(ports.lifecycle);
+      ports.lifecycle.list = async () => {
+        listed++;
+        return list();
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    expect(listed).toBe(1);
+    expect(
+      stores.datasets
+        .datasets()
+        .map((d) => d.name)
+        .sort(),
+    ).toEqual(['we-personal', 'we-root', 'we-test']);
+  });
+
+  /*
+    The root and the personal space share nothing but the list, and each is several round trips to
+    a remote executor. One after the other they were most of the wait before a space could open.
+  */
+  it('brings the root and the personal space up side by side', async () => {
+    let releaseRoot!: () => void;
+    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
+    const started: string[] = [];
+    onPorts = (ports) => {
+      const { installRoot, installSpace } = ports.schemas;
+      ports.schemas.installRoot = async (dataset) => {
+        started.push('root');
+        await rootHeld;
+        return installRoot(dataset);
+      };
+      ports.schemas.installSpace = async (dataset, modules) => {
+        started.push('personal');
+        return installSpace(dataset, modules);
+      };
+    };
+    const stores = mountShell();
+
+    await vi.waitFor(() => expect(started).toEqual(expect.arrayContaining(['root', 'personal'])));
+    releaseRoot();
+    await ready(stores);
   });
 
   it('walks the lock → login flow, including a failed password', async () => {

@@ -46,9 +46,10 @@ export function BootController() {
 
     // initSystemDatasets must complete before loadDatasets/loadSpaces so that the
     // dataset snapshot always includes we-root and we-test — even on first boot when
-    // they don't exist yet and have to be created.
-    await Promise.all([session.refreshMe(), datasetStore.initSystemDatasets()]);
-    await datasetStore.loadDatasets();
+    // they don't exist yet and have to be created. It hands back the list it read, with anything it
+    // made, so the snapshot is published without asking the backend a second time.
+    const [, known] = await Promise.all([session.refreshMe(), datasetStore.initSystemDatasets()]);
+    await datasetStore.loadDatasets(known);
     await spaceStore.loadSpaces();
     datasetStore.subscribeToChanges();
     session.markReady();

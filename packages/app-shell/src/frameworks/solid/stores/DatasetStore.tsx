@@ -153,8 +153,13 @@ export interface DatasetStore {
    * into a disposed scope. See `hostListeners`.
    */
   onDatasetRemoved: (cb: (uuid: string) => void) => () => void;
-  initSystemDatasets: () => Promise<void>;
-  loadDatasets: () => Promise<void>;
+  /** Resolves with every dataset it saw or made, for `loadDatasets` — see there. */
+  initSystemDatasets: () => Promise<AppDataset[] | null>;
+  /**
+   * Publish the dataset list. Given the list `initSystemDatasets` just read, publishes that rather
+   * than asking the backend again — every ask builds a handle per dataset, and a boot asked twice.
+   */
+  loadDatasets: (known?: AppDataset[] | null) => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
   /**
@@ -742,11 +747,11 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   /** Load the dataset snapshot and bootstrap the sidebar ordering on first run. */
-  async function loadDatasets(): Promise<void> {
+  async function loadDatasets(known?: AppDataset[] | null): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     try {
-      const refs = (await lifecycle.list()).map(toApp);
+      const refs = known ?? (await lifecycle.list()).map(toApp);
       setDatasets(refs);
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
@@ -782,33 +787,31 @@ export function DatasetStoreProvider(props: ParentProps) {
    * leave the other unset — no settings because the notes schema failed to refresh is the wrong
    * way round.
    */
-  async function initSystemDatasets(): Promise<void> {
+  async function initSystemDatasets(): Promise<AppDataset[] | null> {
     const lifecycle = session.lifecycle();
-    if (!lifecycle) return;
+    if (!lifecycle) return null;
     let refs: AppDataset[];
     try {
       refs = (await lifecycle.list()).map(toApp);
     } catch (error) {
       console.error('DatasetStore: initSystemDatasets error', error);
-      return;
+      return null;
     }
 
-    try {
-      await initRootDataset(refs);
-    } catch (error) {
-      console.error('DatasetStore: root dataset error', error);
-    }
-    try {
-      await initPersonalDataset(refs);
-    } catch (error) {
-      console.error('DatasetStore: personal dataset error', error);
-    }
-    try {
-      const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
-      setTestDataset(existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test)));
-    } catch (error) {
-      console.error('DatasetStore: test dataset error', error);
-    }
+    // Side by side: the three share nothing but the list, and each is several round trips to the
+    // executor — one after another they were most of the wait before a space could open.
+    const made: AppDataset[] = [];
+    await Promise.all([
+      initRootDataset(refs, made).catch((error) => console.error('DatasetStore: root dataset error', error)),
+      initPersonalDataset(refs, made).catch((error) => console.error('DatasetStore: personal dataset error', error)),
+      (async () => {
+        const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
+        const test = existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test));
+        if (!existingTest) made.push(test);
+        setTestDataset(test);
+      })().catch((error) => console.error('DatasetStore: test dataset error', error)),
+    ]);
+    return [...refs, ...made];
   }
 
   /**
@@ -818,21 +821,26 @@ export function DatasetStoreProvider(props: ParentProps) {
    * to query. Module entities no longer install here — an agent-scoped module's records are the
    * agent's own things, and they live in the personal space. See `systemDatasets.ts`.
    */
-  async function initRootDataset(refs: AppDataset[]): Promise<void> {
+  async function initRootDataset(refs: AppDataset[], made: AppDataset[]): Promise<void> {
     const lifecycle = session.lifecycle()!;
     const schemas = session.backendPorts()!.schemas;
     const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.root);
 
     if (existing) {
-      await schemas.installRoot(existing.handle);
+      // An existing root already holds `AgentSettings`, so reading it need not wait for the
+      // reinstall, which only brings shapes up to date.
+      const [, settings] = await Promise.all([
+        schemas.installRoot(existing.handle),
+        AgentSettings.findOne(existing.handle),
+      ]);
       setRootDataset(existing);
-      const settings = await AgentSettings.findOne(existing.handle);
       if (settings) setAgentSettings(settings);
       return;
     }
 
     trace('dataset', 'root:create');
     const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
+    made.push(created);
     await schemas.installRoot(created.handle);
     await AgentSettings.create(created.handle, {
       currentTemplateId: 'default',
@@ -866,21 +874,24 @@ export function DatasetStoreProvider(props: ParentProps) {
    * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
    * list that reads `Space` — which is exactly the listing a system dataset stays out of.
    */
-  async function initPersonalDataset(refs: AppDataset[]): Promise<void> {
+  async function initPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<void> {
     const lifecycle = session.lifecycle()!;
     const schemas = session.backendPorts()!.schemas;
     const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
     const personal = existing ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.personal));
+    if (!existing) made.push(personal);
     const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
 
     if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
       await schemas.installSpace(personal.handle, moduleSchemas);
     } else {
-      // The same two catches a space gets on every switch — see `switchDataset`.
-      await schemas.installModules(personal.handle, moduleSchemas);
-      await schemas.refreshSpace(personal.handle).catch((err) => {
-        console.error('DatasetStore: personal space schema refresh failed', err);
-      });
+      // The same two catches a space gets on every switch, run together — see `switchDataset`.
+      await Promise.all([
+        schemas.installModules(personal.handle, moduleSchemas),
+        schemas.refreshSpace(personal.handle).catch((err) => {
+          console.error('DatasetStore: personal space schema refresh failed', err);
+        }),
+      ]);
     }
     setPersonalDataset(personal);
   }
@@ -1015,15 +1026,21 @@ export function DatasetStoreProvider(props: ParentProps) {
         // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
         // install on every switch; the port diffs before writing, so this is a read in the
         // common case.
-        await schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas));
+        //
         // The same skip has a second cost, in two forms: a *property* added to one of WE's own
         // models, and a *model* added outright, both reach newly created spaces only — the first
         // silently dropping writes, the second failing every query against the new entity with "No
         // SHACL shape stored for class X". Refresh covers both; it diffs before writing.
-        const written = await schemas.refreshSpace(handle).catch((err) => {
-          console.error('DatasetStore: space schema refresh failed', err);
-          return [] as string[];
-        });
+        //
+        // Together rather than in turn: they register disjoint classes (a module's, WE's own) from
+        // the same reads, which the port shares — so both cost the one round trip.
+        const [, written] = await Promise.all([
+          schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas)),
+          schemas.refreshSpace(handle).catch((err) => {
+            console.error('DatasetStore: space schema refresh failed', err);
+            return [] as string[];
+          }),
+        ]);
         if (written.length) console.info(`DatasetStore: brought space schemas up to date — ${written.join(', ')}`);
       }
 
