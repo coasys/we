@@ -102,7 +102,9 @@ export function CountMark(props: CountMarkProps) {
         faint at rest and muted under the pointer, each a step brighter than the quiet mark.
       */
       color={props.mine ? 'accent-text' : props.emphasis === 'present' ? 'text-faint' : 'control-surface'}
-      hoverProps={{ color: props.mine ? 'primary-500' : props.emphasis === 'present' ? 'text-muted' : 'neutral-400' }}
+      // Yours: one step past `accent-text` (primary-700). It went to 500, which is two steps nearer the
+      // background, so hovering your own mark dimmed it where every other mark brightens.
+      hoverProps={{ color: props.mine ? 'primary-800' : props.emphasis === 'present' ? 'text-muted' : 'neutral-400' }}
     >
       {/*
         Named once and then ordered, rather than written out per direction: the gap, the colour and
