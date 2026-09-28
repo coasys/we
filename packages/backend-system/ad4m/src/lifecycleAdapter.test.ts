@@ -283,6 +283,25 @@ describe('one handle per dataset', () => {
     expect(names).toEqual(['Alpha, renamed']);
   });
 
+  it('reads the list without waiting for the own-profile lookup first', async () => {
+    // The lookup only feeds the filter; on a boot it was a round trip of its own ahead of the read.
+    const { client } = perspectiveClient();
+    let releaseMe!: () => void;
+    client.agent.me = vi.fn(
+      () =>
+        new Promise<{ did: string; perspective: null }>(
+          (resolve) => (releaseMe = () => resolve({ did: 'did:me', perspective: null })),
+        ),
+    );
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    const listed = lifecycle.list();
+    await vi.waitFor(() => expect(client.perspective.all).toHaveBeenCalled());
+    releaseMe();
+
+    expect((await listed).map((d) => d.id)).toEqual(['a', 'b']);
+  });
+
   it('reads a dataset it does not hold, once, and lets a removed one go', async () => {
     const { client, listeners } = perspectiveClient();
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);

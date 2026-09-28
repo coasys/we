@@ -49,6 +49,7 @@ import {
   refreshSpaceSdna,
   ROOT_MODELS,
   SPACE_MODELS,
+  warmSchemaReads,
   warmStoredShapes,
 } from './sdnaEntities';
 import { getFluxSubgroupMessages } from './syncHelpers';
@@ -71,6 +72,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
       warmStoredShapes(proxy(dataset));
       return isEntityRegistered(proxy(dataset), Space as never);
     },
+    prepare: (dataset) => warmSchemaReads(proxy(dataset)),
     hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
 
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
