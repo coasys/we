@@ -346,8 +346,8 @@ export function InterpretationStoreProvider(props: ParentProps) {
       several links at once, so an event per link would be a re-read per link.
     */
     let coalesce: ReturnType<typeof setTimeout> | undefined;
-    // Held rather than awaited: the watch takes an executor round trip to start, and a space switch
-    // inside it would otherwise leave it — and its keepalive — running for the life of the app.
+    // Held rather than awaited: the watch takes a round trip to the backend to start, and a space
+    // switch inside it would otherwise leave it running for the life of the app.
     const stopProposals = holdSubscription(
       ports.interpretation.onProposalsChanged?.(handle, () => {
         clearTimeout(coalesce);
