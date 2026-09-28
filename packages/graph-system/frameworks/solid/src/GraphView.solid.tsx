@@ -40,6 +40,8 @@ import {
   FOLD_BUNDLE,
   GraphEngine,
   matches,
+  PENDING_EDGE_PREFIX,
+  PENDING_EDGE_TYPE,
   PluginRegistry,
   polyline,
   readField,
@@ -59,6 +61,7 @@ import type {
   ControlContext,
   EdgeGeometry,
   EdgeSide,
+  GraphEdge,
   GraphNode,
   GraphValue,
   NodeVisual,
@@ -1683,6 +1686,66 @@ export function GraphView(props: GraphViewProps) {
       return patch && raw && at?.id && isSettled(raw, patch) ? [at.id] : [];
     });
     if (settled.length) props.host?.confirmPending?.(settled);
+  });
+
+  /*
+    The host's pending connections, turned from records into this graph's nodes and edges.
+
+    Records the graph is not showing are skipped rather than guessed at: a line to a card that is not
+    on the canvas has nowhere to be drawn, and a connection the canvas does not show has nothing to
+    hide. Tracks `version()` so a card arriving after the hold went up is picked up when it does.
+  */
+  createEffect(() => {
+    version();
+    const pending = props.host?.pendingConnections?.();
+    if (!pending) return;
+    const nodeOf = new Map<string, string>();
+    const edgeOf = new Map<string, string>();
+    untrack(() => {
+      for (const node of engine.store.nodes()) {
+        const at = parseAddress(node.id);
+        if (at?.kind === 'entity' && at.id) nodeOf.set(at.id, node.id);
+      }
+      for (const edge of engine.store.edges()) {
+        const at = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+        if (at?.kind === 'entity' && at.id) edgeOf.set(at.id, edge.id);
+      }
+    });
+    const added: GraphEdge[] = pending.added.flatMap((line) => {
+      const [source, target] = [nodeOf.get(line.source), nodeOf.get(line.target)];
+      return source && target
+        ? [{ id: `${PENDING_EDGE_PREFIX}${line.key}`, source, target, type: PENDING_EDGE_TYPE, data: line.data ?? {} }]
+        : [];
+    });
+    const patches = new Map<string, Record<string, GraphValue>>();
+    for (const move of pending.moved) {
+      const [edge, to] = [edgeOf.get(move.id), nodeOf.get(move.to)];
+      if (edge && to) patches.set(edge, { ...patches.get(edge), [move.end]: to });
+    }
+    const removed = new Set(pending.removed.flatMap((id) => (edgeOf.has(id) ? [edgeOf.get(id)!] : [])));
+    engine.setPendingEdges({ added, patches, removed });
+  });
+
+  /*
+    What the graph is drawing from its own data, in records, for the host to judge its pending
+    connections against. Only while something is pending, and from the store rather than the drawn
+    list — the drawn list already carries the promises, and asking it would call every one kept.
+  */
+  createEffect(() => {
+    version();
+    const pending = props.host?.pendingConnections?.();
+    const report = props.host?.observeConnections;
+    if (!report || !pending || !(pending.added.length + pending.moved.length + pending.removed.length)) return;
+    const observed = untrack(() =>
+      [...engine.store.edges()].flatMap((edge) => {
+        const record = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+        const [source, target] = [parseAddress(edge.source), parseAddress(edge.target)];
+        return record?.kind === 'entity' && record.id && source?.id && target?.id
+          ? [{ id: record.id, source: source.id, target: target.id }]
+          : [];
+      }),
+    );
+    report(observed);
   });
 
   /*

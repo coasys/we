@@ -484,6 +484,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     */
     confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
 
+    /*
+      Connections the store has written and not yet seen come back — a line just drawn, one just deleted,
+      an end just moved — and the graph's report of what it is drawing from its own data, which is how the
+      store knows when to stop. The same round trip as `pendingData` and `confirmPending`, for lines.
+    */
+    pendingConnections: () => recordStore.pendingConnections(),
+    observeConnections: (connections) => recordStore.observeConnections(connections),
+
     /**
      * Tell the graph when the answer to one of its reads changes here.
      *

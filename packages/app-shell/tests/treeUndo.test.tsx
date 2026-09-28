@@ -197,3 +197,84 @@ describe('undoing a tree drop', () => {
     expect(parentOf('b')).toBe('q');
   });
 });
+
+/**
+ * Connections held ahead of the data: drawn from the moment of the gesture, and dropped once the graph
+ * reports its own data says the same — see `holdConnection`.
+ */
+describe('connections written and not yet seen', () => {
+  /** What the graph would report drawing from its own data, in records. */
+  const drawn = () => [...world.links.values()].map(({ id, source, target }) => ({ id, source, target }));
+
+  it('draws a line somebody drew at once, and stops when the graph draws the real one', async () => {
+    const store = mount();
+    const writing = store.connectNodesNow({
+      sourceId: 'a',
+      sourceType: 'Card',
+      targetId: 'x',
+      targetType: 'Card',
+    } as never);
+    // Before the write has come back.
+    expect(store.pendingConnections().added).toEqual([expect.objectContaining({ source: 'a', target: 'x' })]);
+    const id = await writing;
+
+    store.observeConnections(drawn().filter((line) => line.id !== id));
+    expect(store.pendingConnections().added).toHaveLength(1);
+    store.observeConnections(drawn());
+    expect(store.pendingConnections().added).toHaveLength(0);
+  });
+
+  it('stops drawing a deleted connection at once, and forgets it once it is gone', async () => {
+    const store = mount();
+    await store.deleteRecords([{ recordId: 'pa', recordType: 'Relationship' }]);
+    expect(store.pendingConnections().removed).toEqual(['pa']);
+
+    store.observeConnections(drawn());
+    expect(store.pendingConnections().removed).toEqual(['pa']);
+    world.links.delete('pa');
+    store.observeConnections(drawn());
+    expect(store.pendingConnections().removed).toEqual([]);
+  });
+
+  it('draws a re-attached end at its new card until the connection says so', async () => {
+    const store = mount();
+    const writing = store.retargetOnCanvas(CANVAS, {
+      recordId: 'pb',
+      recordType: 'Relationship',
+      end: 'source',
+      nodeId: 'q',
+      nodeType: 'Card',
+    });
+    expect(store.pendingConnections().moved).toEqual([{ id: 'pb', end: 'source', to: 'q' }]);
+    await writing;
+    store.observeConnections(drawn());
+    expect(store.pendingConnections().moved).toEqual([]);
+  });
+
+  it('lets go of a line whose write failed', async () => {
+    const store = mount();
+    const create = Relationship.create;
+    Relationship.create = async () => {
+      throw new Error('refused');
+    };
+    try {
+      await store.connectNodesNow({ sourceId: 'a', sourceType: 'Card', targetId: 'x', targetType: 'Card' } as never);
+    } finally {
+      Relationship.create = create;
+    }
+    expect(store.pendingConnections().added).toEqual([]);
+  });
+
+  it('leaves a tree drop’s new line to the graph, which is already drawing it from the held card', async () => {
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'z',
+      recordType: 'Card',
+      into: 'child',
+      targetId: 'x',
+      targetType: 'Card',
+      order: ['z'],
+    });
+    expect(store.pendingConnections().added).toEqual([]);
+  });
+});

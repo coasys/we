@@ -771,6 +771,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // and the optimism is applied for it.
     pendingCardStyle: WIRING,
     confirmPending: WIRING,
+    pendingConnections: WIRING,
+    observeConnections: WIRING,
     // Template-facing: a control that reports while it moves previews through this and writes on
     // release, which is what makes a slider show its result before the drag ends.
     previewCardStyle: action('content'),

@@ -48,7 +48,7 @@ import {
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { createHistory, type HistoryState } from '@we/history';
-import { createOptimism, keyOf, sameValue } from '@we/optimism';
+import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
@@ -205,6 +205,13 @@ async function drawnPlacement(
     if (row !== drawn && (row.tier ?? '') === (drawn.tier ?? '')) await Placement.delete(dataset as never, row.id);
   }
   return drawn;
+}
+
+/** Connections held ahead of the data — see `RecordStore.pendingConnections`. Record ids throughout. */
+export interface PendingConnectionWrites {
+  added: { key: string; source: string; target: string; data?: Record<string, string> }[];
+  moved: { id: string; end: 'source' | 'target'; to: string }[];
+  removed: string[];
 }
 
 /**
@@ -601,6 +608,16 @@ export interface RecordStore {
    * edit flashed to its new size, snapped back, and arrived again.
    */
   confirmPending: (recordIds: readonly string[]) => void;
+  /**
+   * Connections written and not yet seen come back — a line just drawn, one just deleted, an end just
+   * moved — in records, for the graph to draw ahead of the data. See `holdConnection`.
+   */
+  pendingConnections: Accessor<PendingConnectionWrites>;
+  /**
+   * What the graph is drawing from its own data, in records, so each pending connection can be judged
+   * against it and dropped once the data has caught up. Called by whoever draws on the store's behalf.
+   */
+  observeConnections: (connections: readonly { id: string; source: string; target: string }[]) => void;
   /**
    * Show a presentation change without writing it — for a control that reports while it is moving.
    *
@@ -1239,11 +1256,14 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !link?.sourceId || !link?.targetId) return '';
     try {
-      const id = await createConnection(
-        dataset.handle,
-        { sourceType: link.sourceType, targetType: link.targetType },
-        link.sourceId,
-        link.targetId,
+      // Drawn from the moment of the gesture rather than a round trip later — see `holdConnection`.
+      const id = await withConnectionHold({ kind: 'added', source: link.sourceId, target: link.targetId }, () =>
+        createConnection(
+          dataset.handle,
+          { sourceType: link.sourceType, targetType: link.targetType },
+          link.sourceId,
+          link.targetId,
+        ),
       );
       setLastCreatedId(id);
       return id;
@@ -1532,7 +1552,7 @@ export function RecordStoreProvider(props: ParentProps) {
       toastService.info('People have discussed that connection. Select the line itself to remove it.');
       return false;
     }
-    await Model.delete(handle as never, linkId);
+    await withConnectionHold({ kind: 'removed', id: linkId }, () => Model.delete(handle as never, linkId));
     return true;
   }
 
@@ -1549,12 +1569,29 @@ export function RecordStoreProvider(props: ParentProps) {
     relationshipTypeId: string,
     parent: { id: string; type: string },
     card: { id: string; type: string },
+    /*
+      Whether to draw the new line ahead of the write. Not for a drop: the graph is already drawing that
+      one from the card it is holding, and a second promise between the same two cards would be drawn
+      beside it. An undo or a redo has nobody holding anything, so it holds its own.
+    */
+    hold = true,
   ): Promise<string> {
-    return createConnection(
-      handle,
-      { relationshipTypeId, sourceType: parent.type, targetType: card.type },
-      parent.id,
-      card.id,
+    const write = () =>
+      createConnection(
+        handle,
+        { relationshipTypeId, sourceType: parent.type, targetType: card.type },
+        parent.id,
+        card.id,
+      );
+    if (!hold) return write();
+    return withConnectionHold(
+      {
+        kind: 'added',
+        source: parent.id,
+        target: card.id,
+        ...(relationshipTypeId ? { data: { relationshipTypeId } } : {}),
+      },
+      write,
     );
   }
 
@@ -1731,7 +1768,7 @@ export function RecordStoreProvider(props: ParentProps) {
           step = { kind: 'moved', link: held.id, from, to: parent };
         }
       } else {
-        step = { kind: 'created', link: await createSpine(handle, relationshipTypeId, parent, card), parent };
+        step = { kind: 'created', link: await createSpine(handle, relationshipTypeId, parent, card, false), parent };
       }
 
       const placements = (await Placement.findAll(handle, {
@@ -1968,6 +2005,103 @@ export function RecordStoreProvider(props: ParentProps) {
     cardStyle.settle((key, entry) => (agreed.has(key.slice(0, key.indexOf('\u0000'))) ? entry.value : undefined));
   }
 
+  // ─── Connections written and not yet seen ────────────────────────────────────
+
+  /*
+    A connection is a record like any other, and every gesture that makes, moves or deletes one waited a
+    round trip for the line to change — the line somebody drew appeared a second later, the one they
+    deleted lingered, the end they moved snapped back first. Held here and drawn at once, on the same
+    rules as every other hold in the app (`@we/optimism`): kept until the data has moved, released on a
+    failed write, disbelieved after the backstop.
+
+    What each hold draws, and what it waits to see, is kept beside the value — the optimism package holds
+    one comparable value per key, and a line needs its two ends to be drawn at all:
+    - **added** — a line between two records. Waits for the connection's own id to appear, which it
+      learns when the create returns; until then there is nothing to recognise it by, and the write is
+      still in flight anyway, so the hold stands regardless.
+    - **moved** — one end re-attached. Waits for the connection to say the new end.
+    - **removed** — a connection being deleted. Waits for it to be gone.
+  */
+  type ConnectionHold =
+    | { kind: 'added'; source: string; target: string; id?: string; data?: Record<string, string> }
+    | { kind: 'moved'; id: string; end: 'source' | 'target'; to: string }
+    | { kind: 'removed'; id: string };
+  const connections = createOptimism<string | number>(createSignal, { same: sameValue });
+  const connectionHolds = new Map<string, ConnectionHold>();
+  let addedSerial = 0;
+
+  /** Draw this connection change from now on; answers the key its write reports back under. */
+  function holdConnection(change: ConnectionHold): string {
+    const key =
+      change.kind === 'added'
+        ? keyOf('added', String(++addedSerial))
+        : change.kind === 'moved'
+          ? keyOf('moved', change.id, change.end)
+          : keyOf('removed', change.id);
+    connectionHolds.set(key, change);
+    connections.hold(key, change.kind === 'moved' ? change.to : change.kind === 'added' ? 1 : 0);
+    return key;
+  }
+
+  const pendingConnections = createMemo((): PendingConnectionWrites => {
+    const held = connections.holds();
+    const out: PendingConnectionWrites = { added: [], moved: [], removed: [] };
+    const now = Date.now();
+    for (const [key, entry] of Object.entries(held)) {
+      const change = connectionHolds.get(key);
+      if (!change || now - entry.at > DEFAULT_TTL_MS) continue;
+      if (change.kind === 'added') {
+        out.added.push({
+          key,
+          source: change.source,
+          target: change.target,
+          ...(change.data ? { data: change.data } : {}),
+        });
+      } else if (change.kind === 'moved') {
+        out.moved.push({ id: change.id, end: change.end, to: change.to });
+      } else {
+        out.removed.push(change.id);
+      }
+    }
+    return out;
+  });
+
+  function observeConnections(drawn: readonly { id: string; source: string; target: string }[]): void {
+    if (!connections.inFlight()) return;
+    const byId = new Map(drawn.map((line) => [line.id, line]));
+    connections.settle((key) => {
+      const change = connectionHolds.get(key);
+      if (!change) return undefined;
+      if (change.kind === 'added') return change.id ? (byId.has(change.id) ? 1 : 0) : undefined;
+      if (change.kind === 'removed') return byId.has(change.id) ? 1 : 0;
+      return byId.get(change.id)?.[change.end];
+    });
+    // What the holder let go of needs nothing kept about what it drew.
+    const live = connections.holds();
+    for (const key of [...connectionHolds.keys()]) if (!(key in live)) connectionHolds.delete(key);
+  }
+
+  /**
+   * Hold a connection change around the write that makes it: drawn at once, released if the write fails,
+   * and otherwise left for the data to overtake. `write` answers the new connection's id for an added
+   * line, so the hold knows what to wait for.
+   */
+  async function withConnectionHold<T>(change: ConnectionHold, write: () => Promise<T>): Promise<T> {
+    const key = holdConnection(change);
+    try {
+      const result = await write();
+      if (change.kind === 'added' && typeof result === 'string') {
+        if (result) change.id = result;
+        else connections.release(key);
+      }
+      connections.done(key);
+      return result;
+    } catch (error) {
+      connections.release(key);
+      throw error;
+    }
+  }
+
   /**
    * Patch the placement for one node on one canvas.
    *
@@ -2143,13 +2277,18 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !event.recordId || !event.end || !event.nodeId || !event.nodeType) return;
 
+    // The end drawn at its new card from now, not when the write comes back — see `holdConnection`.
+    const held = holdConnection({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
     try {
       const Model = getEntity(event.recordType || RELATIONSHIP);
       const record = (await Model.findOne(dataset.handle, { where: { id: event.recordId } })) as Record<
         string,
         unknown
       > | null;
-      if (!record) return;
+      if (!record) {
+        connections.release(held);
+        return;
+      }
 
       await Model.update(dataset.handle, event.recordId, {
         [event.end === 'source' ? 'sourceType' : 'targetType']: event.nodeType,
@@ -2172,7 +2311,9 @@ export function RecordStoreProvider(props: ParentProps) {
       // The anchor for the end that moved, dropped — see the note above. Reusing the same action a
       // person's own clear goes through, so there is one path that knows how to unset one.
       if (canvas) await anchorOnCanvas(canvas, { recordId: event.recordId, end: event.end, side: '' });
+      connections.done(held);
     } catch (error) {
+      connections.release(held);
       console.error('RecordStore: re-attaching a connection failed', error);
       toastService.error('Could not move that connection.');
     }
@@ -2626,6 +2767,10 @@ export function RecordStoreProvider(props: ParentProps) {
     const rows = (records ?? []).filter((row) => row?.recordId && row.recordType);
     if (!dataset || !rows.length) return;
 
+    // Connections among them stop being drawn now rather than when the delete comes back.
+    const held = rows
+      .filter((row) => row.recordType === RELATIONSHIP)
+      .map((row) => holdConnection({ kind: 'removed', id: row.recordId! }));
     try {
       await runEntityTransaction(dataset.handle, async (tx) => {
         for (const row of rows) {
@@ -2645,7 +2790,9 @@ export function RecordStoreProvider(props: ParentProps) {
         is rare, and a lost undo stack is a smaller surprise than an undo that resurrects a ghost.
       */
       history.clear();
+      for (const key of held) connections.done(key);
     } catch (error) {
+      for (const key of held) connections.release(key);
       console.error('RecordStore: deleting records failed', error);
       toastService.error('Could not delete those.');
     }
@@ -2791,6 +2938,8 @@ export function RecordStoreProvider(props: ParentProps) {
     },
     pendingCardStyle,
     confirmPending,
+    pendingConnections,
+    observeConnections,
     previewCardStyle,
     resizeOnCanvas,
     anchorOnCanvas,

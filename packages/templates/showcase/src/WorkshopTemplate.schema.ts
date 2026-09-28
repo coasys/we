@@ -3751,7 +3751,15 @@ const canvas: SchemaNode = {
       {
         $if: {
           condition: { $: "event.kind == 'edge' && event.recordId" },
-          then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+          /*
+            Through the store rather than `record.delete`, which the store never sees: going through it is
+            what lets the line vanish on the press instead of lingering until the delete comes back.
+            Destructive either way, so the host asks the same question it always did.
+          */
+          then: {
+            $action: 'recordStore.deleteRecords',
+            args: [{ $: '[{ recordId: event.recordId, recordType: event.recordType }]' }],
+          },
         },
       },
     ],
