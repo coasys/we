@@ -605,6 +605,7 @@ export class GraphEngine {
    * seed set would leave nodes on screen that nothing can account for.
    */
   async start(): Promise<void> {
+    this.context.trace?.('reload', { nodes: this.store.nodeCount });
     /*
       Held across the whole method, not just the seed load.
 
@@ -1673,6 +1674,10 @@ export class GraphEngine {
     */
     this.context.trace?.('layout', {
       layout: spec.type,
+      // What moves the camera: whether this fitted, travelled, and swapped the kind of layout.
+      fit: options?.fit ?? false,
+      travel: options?.travel ?? 0,
+      swapping,
       nodes: this.store.nodeCount,
       edges: [...this.store.edges()].length,
       positioned: this.positions.size,
@@ -1895,6 +1900,7 @@ export class GraphEngine {
   private beginCameraTravel(from: { x: number; y: number; zoom: number }): void {
     const now = this.viewport.get();
     if (!this.travel.startCamera(from, { x: now.x, y: now.y, zoom: now.zoom })) return;
+    this.context.trace?.('camera:travel', { from, to: { x: now.x, y: now.y, zoom: now.zoom } });
     this.viewport.set({ x: from.x, y: from.y, zoom: from.zoom });
     this.notify('viewport');
   }
@@ -1907,7 +1913,19 @@ export class GraphEngine {
    * a canvas that will not be moved rather than as two writers.
    */
   private stopCameraTravel(): void {
+    if (this.travel.running) this.context.trace?.('camera:stop', {});
     this.travel.stopCamera();
+  }
+
+  /** Whether any placed card is inside the viewport — for the trace's alarm only. */
+  private anyOnScreen(): boolean {
+    const { x, y, zoom, width, height } = this.viewport.get();
+    for (const at of this.positions.values()) {
+      const sx = at.x * zoom + x;
+      const sy = at.y * zoom + y;
+      if (sx > 0 && sx < width && sy > 0 && sy < height) return true;
+    }
+    return false;
   }
 
   /** One frame of the travel: cards, camera, shapes and lines, all on its one clock. */
@@ -1919,8 +1937,17 @@ export class GraphEngine {
     const running = this.travel.step(Date.now(), this.positions);
     const camera = this.travel.cameraNow();
     if (camera) {
+      const before = this.viewport.get();
+      // An alarm for the trace: a camera that moves a third of the screen in one frame is a cut, not a travel.
+      if (this.context.trace && Math.abs(camera.x - before.x) > before.width / 3) {
+        this.context.trace('camera:jump', { from: { x: before.x, y: before.y }, to: camera });
+      }
       this.viewport.set(camera);
       this.notify('viewport');
+    }
+    // And for every card having left the screen mid-travel, which is what a reader sees as the graph vanishing.
+    if (this.context.trace && this.positions.size && !this.anyOnScreen()) {
+      this.context.trace('travel:offscreen', { progress: this.travel.progress, camera: this.viewport.get() });
     }
     // Before the reindex, because a card's hit area resolves from the same blended visual that is painted.
     this.reindex();
@@ -2505,6 +2532,7 @@ export class GraphEngine {
    */
   resize(width: number, height: number): void {
     const previous = this.viewport.get();
+    this.context.trace?.('resize', { width, height, pendingFit: this.pendingFit, travelling: this.travel.running });
     this.viewport.resize(width, height);
     if (!width || !height) return;
 
@@ -2562,6 +2590,7 @@ export class GraphEngine {
   frame(region: { x: number; y: number; width: number; height: number }): void {
     const { width, height } = this.viewport.get();
     if (!width || !height) return;
+    this.context.trace?.('camera:frame', { region, travelling: this.travel.running });
     this.viewport.frameRegion(region);
     this.notify('viewport');
   }
