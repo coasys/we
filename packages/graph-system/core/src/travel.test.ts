@@ -57,6 +57,14 @@ const layouts = {
       return { positions: new Map(input.nodes.map((node, i) => [node.id, { x: 1000, y: i * 100 }])) };
     },
   }),
+  /** One layout whose options move it — re-tuned rather than swapped, which is what a re-read does. */
+  slide: (options?: Record<string, unknown>) => ({
+    id: 'slide',
+    init(input: { nodes: { id: string }[] }) {
+      const x = Number(options?.x ?? 0);
+      return { positions: new Map(input.nodes.map((node, i) => [node.id, { x, y: i * 100 }])) };
+    },
+  }),
 };
 
 async function started(spec: Parameters<typeof GraphEngine.prototype.setSpec>[0]) {
@@ -171,6 +179,30 @@ describe('layout travel', () => {
 
     await vi.advanceTimersByTimeAsync(600);
     expect(xOf(engine, 'a')).toBe(0);
+  });
+
+  it('carries a re-aimed card on from where it is drawn, with no jump on the next frame', async () => {
+    const slide = (x: number) => ({ seeds: { source: 'test' }, layout: { type: 'slide', options: { x } } });
+    const engine = await started(slide(0));
+
+    engine.setSpec(slide(1000));
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+    const partway = xOf(engine, 'a')!;
+
+    /*
+      A re-read landing mid-switch, re-tuning the same layout and asking for no travel of its own. The card
+      used to set off again from where it was drawn on the clock that was already part-way through — so on
+      the next frame it leapt the share of the remaining distance the clock had already covered.
+    */
+    engine.setSpec(slide(1200));
+    engine.relayout();
+    expect(xOf(engine, 'a')).toBeCloseTo(partway, 5);
+    await vi.advanceTimersByTimeAsync(16);
+    expect(Math.abs(xOf(engine, 'a')! - partway)).toBeLessThan(120);
+
+    await vi.advanceTimersByTimeAsync(600);
+    expect(xOf(engine, 'a')).toBe(1200);
   });
 
   it('hands a card over to a drag rather than fighting it for the rest of the travel', async () => {

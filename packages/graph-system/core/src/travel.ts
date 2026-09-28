@@ -232,7 +232,7 @@ export class Travel {
       if (!planned && !moving.has(id)) continue;
       // Sub-pixel moves are not worth a frame.
       if (Math.abs(from.x - to.x) < 0.5 && Math.abs(from.y - to.y) < 0.5) continue;
-      this.cards.set(id, { from: { x: from.x, y: from.y }, to });
+      this.cards.set(id, { from: planned ? { x: from.x, y: from.y } : this.rebased(from, to), to });
       positions.set(id, { ...to, x: from.x, y: from.y });
     }
 
@@ -242,6 +242,22 @@ export class Travel {
     this.fromVisuals = new Map(this.drawnVisuals);
     this.plans = planned;
     this.at = 0;
+  }
+
+  /**
+   * Where a re-aimed card's path has to start, so that it passes through where the card is drawn NOW.
+   *
+   * A re-aim keeps the clock the reader's action started, which is already part-way through. Starting the
+   * new path at the drawn point would put the card, on the next frame, that same share of the way along
+   * the rest of it at once: a jump of hundreds of pixels on a re-read landing mid-switch. Solving the
+   * interpolation backwards instead gives the point it would have set off from to be here now, so the
+   * movement carries on from where it is and still ends where it lands.
+   */
+  private rebased(drawn: Point, to: Point): Point {
+    const at = this.at;
+    // Nearly there: the backward solve divides by what is left, so land rather than overshoot.
+    if (at <= 0 || at >= 0.98) return { x: drawn.x, y: drawn.y };
+    return { x: (drawn.x - to.x * at) / (1 - at), y: (drawn.y - to.y * at) / (1 - at) };
   }
 
   /** Send the camera from where it was to where the refit put it; false when that is nowhere. */
