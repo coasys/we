@@ -380,6 +380,7 @@ describe('a theme parameter that would fetch', () => {
       roles: {
         page: 'url(https://attacker.example/ping)',
         surface: 'image-set("https://attacker.example/i.png" 1x)',
+        surfaceRaised: 'u\\72l(https://attacker.example/escaped)',
         accent: 'oklch(85% 0.12 160)',
       },
       fontFamily: 'Inter, url(https://attacker.example/f)',

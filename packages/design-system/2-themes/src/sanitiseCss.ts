@@ -35,8 +35,9 @@
  *    a font CDN still learns who applied the theme and when. A theme that needs a font should carry
  *    it (see the retro theme, which vendors VT323 for exactly this reason).
  * 3. **Drop any declaration whose value fetches.** `url(…)` unless it is `data:`, and the CSS
- *    functions that take a URL. Checked on the serialized value, so a custom property holding a URL
- *    and referenced elsewhere is caught by the same rule.
+ *    functions that take a URL. Checked on the serialized value with its escapes decoded, so a
+ *    custom property holding a URL and referenced elsewhere is caught by the same rule — the browser
+ *    keeps a custom property's text as written, escapes included, so step 1 does not do it there.
  * 4. **Namespace `@keyframes`.** They are global by name, so two themes — or a theme and the app —
  *    can otherwise silently redefine each other's animations.
  * 5. **Confine the sheet to a container** with `@scope`, so its rules cannot reach host chrome. This
@@ -74,17 +75,36 @@ export interface SanitiseCssResult {
 /** Values that reach the network. `data:` is allowed — it is bytes, not a request. */
 const FETCHING_VALUE = /(^|[^a-z-])(url\s*\(|image-set\s*\(|-webkit-image-set\s*\()/i;
 const DATA_URL = /url\s*\(\s*(['"]?)data:[^)]*\1\s*\)/gi;
+/** A CSS escape: up to six hex digits and one optional whitespace, or any other escaped character. */
+const CSS_ESCAPE = /\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([^\n\r\f0-9a-f]))/gi;
+
+/** What the browser's tokenizer reads an escape as. Out-of-range code points become U+FFFD, as there. */
+function decodeCssEscapes(value: string): string {
+  return value.replace(CSS_ESCAPE, (_, hex: string | undefined, char: string | undefined) => {
+    if (char !== undefined) return char;
+    const code = parseInt(hex!, 16);
+    const valid = code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+    return String.fromCodePoint(valid ? code : 0xfffd);
+  });
+}
 
 /**
  * Whether a CSS value would make a request. Exported for theme parameters, which become custom
  * properties without passing through a stylesheet.
  *
- * Data URLs are removed first and whatever fetches in the rest counts. Checking only the `url()`s,
+ * Escapes are decoded first, because the tokenizer decodes them before it decides what a function
+ * is: `u\72l(https://…)` is a `url()` and fetches. Re-serializing does not remove them from a custom
+ * property, whose value the browser keeps as written, so a `--x: u\72l(…)` came back out of the
+ * round trip below exactly as it went in, and a theme parameter never takes that trip at all.
+ * Decoding can only add matches — an escaped `(` reads as a real one here and not in a browser —
+ * so it errs towards dropping a harmless value, never towards keeping a fetching one.
+ *
+ * Data URLs are removed next and whatever fetches in the rest counts. Checking only the `url()`s,
  * as this once did, passed `image-set("https://…" 1x, url(data:…) 2x)`: `image-set()` takes a bare
  * string as a URL too, so its only `url()` being a data URL said nothing about the request.
  */
 export function fetchesRemotely(value: string): boolean {
-  return FETCHING_VALUE.test(value.replace(DATA_URL, ''));
+  return FETCHING_VALUE.test(decodeCssEscapes(value).replace(DATA_URL, ''));
 }
 
 /**
