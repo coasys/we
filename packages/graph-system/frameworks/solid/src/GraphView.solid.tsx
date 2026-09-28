@@ -1747,7 +1747,8 @@ export function GraphView(props: GraphViewProps) {
     const geometry = engine.getEdgeGeometry();
     const metrics = engine.getMetrics();
     /*
-      The store's lines, plus the ones standing in for what a fold hid.
+      The store's lines, plus the ones standing in for what a fold hid — and, through `drawnEdges`,
+      less a connection just removed and plus one just drawn, while each is waiting to come back.
 
       The bundles are not in the store, deliberately — they are derived from the fold and would
       otherwise have to be merged in and taken back out on every fold, refresh and reload, with a
@@ -1756,7 +1757,7 @@ export function GraphView(props: GraphViewProps) {
       by the same geometry, which is what makes one fan apart from a real line between the same pair
       instead of lying under it.
     */
-    return [...engine.store.edges(), ...engine.foldBundles()].flatMap((edge) => {
+    return engine.drawnEdges().flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
       const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle, metrics), metrics);

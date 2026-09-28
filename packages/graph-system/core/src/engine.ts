@@ -114,6 +114,27 @@ const ARRANGE_EDGE_ID = '__arranging__';
  */
 export type Fit = boolean | 'contain';
 
+/**
+ * Connections a host has written and not yet seen come back, drawn as if they had.
+ *
+ * `added` are lines with no record yet, each with a node id at both ends; `patches` move an end or
+ * change a field of a line that exists, by edge id — `source`/`target` re-attach it, as a gesture's
+ * draft does; `removed` are edge ids to stop drawing. Presentation only: the layout never sees them,
+ * and nothing about the stored graph changes.
+ */
+export interface PendingEdges {
+  added: readonly GraphEdge[];
+  patches: ReadonlyMap<string, Record<string, GraphValue>>;
+  removed: ReadonlySet<string>;
+}
+
+export const NO_PENDING_EDGES: PendingEdges = { added: [], patches: new Map(), removed: new Set() };
+
+/** How a line with no record behind it yet is marked, so rules and pickers can tell. */
+export const PENDING_EDGE_TYPE = 'pending-edge';
+/** And how its id begins, so it cannot collide with a node address. */
+export const PENDING_EDGE_PREFIX = 'pending-edge:';
+
 function sameArrangeTo(a: ArrangeState['to'], b: ArrangeState['to']): boolean {
   if (!a || !b) return a === b;
   return a.parent === b.parent && a.index === b.index;
@@ -1810,10 +1831,10 @@ export class GraphEngine {
    */
   private planRoutes(): Map<string, RoutePlan> {
     const plans = new Map<string, RoutePlan>();
-    for (const edge of [...this.store.edges(), ...this.fold.bundles]) {
+    for (const edge of this.drawnEdges()) {
       const drawn = this.travel.drawnRoute(edge.id);
       if (!drawn) continue;
-      const patch = this.edgeOverlay.get(edge.id);
+      const patch = this.edgePatch(edge.id);
       const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
       const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
       // A held card's lines run from its ghost, which travels on its own — see `ghostAt` — and need no plan.
@@ -2036,9 +2057,99 @@ export class GraphEngine {
     this.notify('graph');
   }
 
-  /** The fields laid over this edge, if any. Read by a renderer so it draws from the same values. */
+  /**
+   * The fields a gesture's own draft lays over this edge, if any — the draft alone, which is what a
+   * renderer compares against its draft to know whether to hand it over again.
+   */
   edgeOverlayFor(id: string): Record<string, GraphValue> | undefined {
     return this.edgeOverlay.get(id);
+  }
+
+  /**
+   * Connections written and not yet seen come back — see {@link PendingEdges}.
+   *
+   * The host's to say, because only it knows what it wrote: a line somebody just drew, a connection
+   * just deleted, an end just moved. Drawn at once rather than a round trip later, and dropped the
+   * moment the host decides the data has caught up.
+   */
+  private pendingEdges: PendingEdges = NO_PENDING_EDGES;
+  private pendingEdgesKey = '';
+
+  setPendingEdges(pending: PendingEdges): void {
+    // Compared by value: the renderer hands this over on every redraw, and each one notifies.
+    const key = JSON.stringify([pending.added, [...pending.patches], [...pending.removed]]);
+    if (key === this.pendingEdgesKey) return;
+    this.pendingEdgesKey = key;
+    this.pendingEdges = pending;
+    this.routeEdges();
+    this.notify('graph');
+  }
+
+  /**
+   * Everything laid over one edge: the host's pending write, then a dropped tree card's new parent,
+   * then a gesture's draft — the nearest to the reader's hand winning.
+   */
+  private edgePatch(id: string): Record<string, GraphValue> | undefined {
+    const pending = this.pendingEdges.patches.get(id);
+    const arranged = this.arrangedLines();
+    const tree = arranged.patch?.[0] === id ? arranged.patch[1] : undefined;
+    const draft = this.edgeOverlay.get(id);
+    if (!pending && !tree && !draft) return undefined;
+    return { ...pending, ...tree, ...draft };
+  }
+
+  /**
+   * What a dropped tree card's line should be while the layout holds the card in its new place.
+   *
+   * The engine already holds the CARD there until the data agrees — see {@link arrangementSettled} —
+   * but its line read its ends from the stored connection, so it ran from the old parent to the new
+   * place for the whole round trip. The engine knows the answer the moment of the drop, which the
+   * store cannot: the store learns what the card's connection is only by reading the tree, itself a
+   * round trip. So the line is drawn from here — re-attached to the new parent, taken away for a card
+   * dropped out of its tree, or made up for a card that had no parent before.
+   */
+  private arrangedLines(): { patch?: [string, Record<string, GraphValue>]; added?: GraphEdge; removed?: string } {
+    const held = this.arrangement;
+    const tree = this.hierarchy;
+    if (!held || held.at || !held.to || !tree || this.arrangementSettled()) return {};
+    const parentEdge = tree.parentEdges.get(held.id);
+    const parent = held.to.parent;
+    if (!parent) return parentEdge ? { removed: parentEdge } : {};
+    if (parentEdge) return { patch: [parentEdge, { source: parent }] };
+    return {
+      added: {
+        id: `${PENDING_EDGE_PREFIX}arranged:${held.id}`,
+        source: parent,
+        target: held.id,
+        type: PENDING_EDGE_TYPE,
+        data: this.spineData(),
+      },
+    };
+  }
+
+  /** The field a made-up tree line carries so the rules draw it as the spine the tree follows. */
+  private spineData(): Record<string, GraphValue> {
+    const spine = (this.spec.layout?.options as { spine?: { field?: unknown; value?: unknown } } | undefined)?.spine;
+    const field = typeof spine?.field === 'string' && spine.field.startsWith('data.') ? spine.field.slice(5) : '';
+    return field && spine?.value !== undefined ? { [field]: spine.value as GraphValue } : {};
+  }
+
+  /**
+   * The lines to draw: the stored ones less any pending removal, plus lines written and not yet seen,
+   * plus what a fold stands in with. What routing, travel planning and a renderer all walk, so they
+   * cannot disagree about which lines exist. The layout does not — it reads the data, since a line
+   * that is only a promise must not move cards.
+   */
+  drawnEdges(): GraphEdge[] {
+    const arranged = this.arrangedLines();
+    const hidden = this.pendingEdges.removed;
+    const present = (edge: GraphEdge) => !!this.store.node(edge.source) && !!this.store.node(edge.target);
+    return [
+      ...[...this.store.edges()].filter((edge) => !hidden.has(edge.id) && edge.id !== arranged.removed),
+      ...this.pendingEdges.added.filter(present),
+      ...(arranged.added ? [arranged.added] : []),
+      ...this.fold.bundles,
+    ];
   }
 
   /** The fields laid over this node, if any. Read by a renderer so it draws from the same values. */
@@ -2179,10 +2290,10 @@ export class GraphEngine {
       real lines do, and stops short of a card the same way. Grouped with them rather than drawn on
       top, because a summary line that overlapped a claim would be indistinguishable from it.
     */
-    for (const group of groupByEndpoints([...this.store.edges(), ...this.fold.bundles]).values()) {
+    for (const group of groupByEndpoints(this.drawnEdges()).values()) {
       const offsets = bowOffsets(group.length);
       group.forEach((edge, index) => {
-        const patch = this.edgeOverlay.get(edge.id);
+        const patch = this.edgePatch(edge.id);
         /*
           An endpoint the overlay has moved — what a drag from one card to another previews with.
 
@@ -2293,7 +2404,9 @@ export class GraphEngine {
           interface would then act on. No bounds means no hit, and the cards at either end are still
           there to be clicked.
         */
-        if (edge.type !== FOLD_BUNDLE) this.edgeBoxes.set(edge.id, edgeBounds(drawn));
+        // A line with no record behind it yet has nothing a press could open, so it is not pickable.
+        if (edge.type !== FOLD_BUNDLE && edge.type !== PENDING_EDGE_TYPE)
+          this.edgeBoxes.set(edge.id, edgeBounds(drawn));
       });
     }
   }

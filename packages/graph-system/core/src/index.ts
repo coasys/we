@@ -37,7 +37,7 @@ export {
   zoomOutControl,
 } from './controls';
 export { connectionTarget } from './connect';
-export { GraphEngine, kindOf } from './engine';
+export { GraphEngine, kindOf, NO_PENDING_EDGES, PENDING_EDGE_PREFIX, PENDING_EDGE_TYPE } from './engine';
 export {
   anchorsOf,
   bowOffsets,
@@ -65,7 +65,7 @@ export {
 } from './geometry';
 export type { Cubic, EdgeClearance, EdgeWaypoint, Facing } from './geometry';
 export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
-export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
+export type { ChangeReason, EngineOptions, EngineStatus, PendingEdges } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';
 export type { CollapseResult } from './expansion';
 export { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, wouldFold } from './fold';

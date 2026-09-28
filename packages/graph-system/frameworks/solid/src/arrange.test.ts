@@ -179,6 +179,56 @@ describe('arranging a card in a tree', () => {
     expect(order(engine, ['a', 'b', 'c'])).toEqual(['a', 'c', 'b']);
   });
 
+  it('draws a dropped card’s line from its new parent at once, not from the old one until the write lands', async () => {
+    const setup = world();
+    const { engine, at, press, move, ghostAt, drop } = await started(setup.seed);
+    const x = at('x');
+    press('c');
+    const before = ghostAt('c', { parent: 'q', index: 0 });
+    move({ x: before.x + 10, y: x.y });
+    drop({ x: before.x + 10, y: x.y });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // The stored connection still says p; the line is drawn from q, where the card was dropped.
+    const line = engine.getEdgeGeometry().get('p-c')!;
+    const q = at('q');
+    expect(Math.abs(line.from.x - q.x)).toBeLessThan(60);
+    expect(Math.abs(line.from.y - q.y)).toBeLessThan(60);
+
+    // The write lands: the same connection now says q, and there is still one line, drawn from there.
+    setup.edges.find((edge) => edge.id === 'p-c')!.source = 'q';
+    await engine.refresh();
+    expect(engine.drawnEdges().filter((edge) => edge.target === 'c')).toHaveLength(1);
+    expect(Math.abs(engine.getEdgeGeometry().get('p-c')!.from.x - at('q').x)).toBeLessThan(60);
+  });
+
+  it('draws a line for a card that had no parent the moment it is dropped under one', async () => {
+    const setup = world({ nodes: [{ id: 'z', kind: 'entity', type: 'Thing', label: 'z', data: { rank: 0 } }] });
+    const { engine, at, press, move, drop } = await started(setup.seed);
+    const b = at('b');
+    const below = { x: b.x, y: b.y + (b.y - at('p').y) };
+    press('z');
+    move(below);
+    drop(below);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const made = engine.drawnEdges().filter((edge) => edge.target === 'z');
+    expect(made).toHaveLength(1);
+    expect(made[0].source).toBe('b');
+    // A promise, not a record: nothing to press on yet.
+    expect(made[0].type).toBe('pending-edge');
+
+    // The write lands as a real connection, and the made-up line goes: one line, the real one.
+    setup.edges.push({ id: 'b-z', source: 'b', target: 'z', type: 'rel' });
+    await engine.refresh();
+    expect(
+      engine
+        .drawnEdges()
+        .filter((edge) => edge.target === 'z')
+        .map((edge) => edge.id),
+    ).toEqual(['b-z']);
+  });
+
   it('moves the cards when newer data re-sorts the tree, rather than cutting to the new order', async () => {
     // A vote landing, or a card's reactions read for the first time, reorders a row by itself. That is
     // the engine rearranging the tree, and it should read as the cards moving.
