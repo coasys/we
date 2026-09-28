@@ -1678,7 +1678,7 @@ export const extractionTargets: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                size: 'xs',
+                size: 'sm',
                 gap: '100',
                 /*
                   On is filled, off is an outline — the state is in the *weight* of the chip.
