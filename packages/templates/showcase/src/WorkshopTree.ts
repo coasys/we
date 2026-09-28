@@ -256,7 +256,6 @@ const voicesControl: SchemaNode = {
           type: 'we-button',
           slot: 'trigger',
           props: {
-            size: 'sm',
             // Marked while anybody's voice is not in full, so a weighted order is never mistaken for a plain one.
             variant: { $: "local.voices ? 'secondary' : 'ghost'" },
           },
@@ -597,9 +596,11 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
       ay: 'center',
       wrap: true,
       bg: 'surface-raised',
-      r: 'surface',
+      // Dressed as the pills above it — the same control size, radius family and shadow — so the
+      // canvas's chrome reads as one set rather than a smaller one under a larger.
+      r: 'control',
       border: '1px solid border',
-      shadow: 'sm',
+      shadow: 'lg',
       // The inset on each side, so a wrapped strip never runs off a narrow canvas.
       maxWidth: 'calc(100% - 2 * var(--we-space-300))',
     },
@@ -614,7 +615,6 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
       {
         type: 'we-button',
         props: {
-          size: 'sm',
           variant: { $: `${TREE_ON} ? 'secondary' : 'ghost'` },
           title: { $: `${TREE_ON} ? 'Back to the freeform canvas' : 'Arrange these cards as a tree'` },
           onClick: { $toggleLocal: 'treeMode' },
@@ -641,7 +641,7 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
             type: 'Row',
             props: { gap: '200', ay: 'center', wrap: true },
             children: [
-              { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
+              { type: 'we-divider', props: { orientation: 'vertical', height: '24px' } },
               /*
                 Which connection makes a parent.
 
@@ -658,7 +658,6 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
               {
                 type: 'we-select',
                 props: {
-                  size: 'sm',
                   fit: true,
                   placeholder: 'Any connection',
                   value: { $: 'local.spine' },
@@ -673,7 +672,6 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                   then: {
                     type: 'we-button',
                     props: {
-                      size: 'sm',
                       variant: 'ghost',
                       square: true,
                       title: 'Follow every kind of connection',
@@ -686,7 +684,6 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
               {
                 type: 'we-select',
                 props: {
-                  size: 'sm',
                   fit: true,
                   value: { $: 'local.order' },
                   options: [
@@ -712,7 +709,6 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                   then: {
                     type: 'we-select',
                     props: {
-                      size: 'sm',
                       fit: true,
                       value: { $: SIGNAL_IN_FORCE },
                       options: {
