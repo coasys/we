@@ -93,6 +93,29 @@ export const signalOptimism = {
     });
   },
 
+  /**
+   * What this agent's reaction of one type on one record is held at — a value, `null` for a withdrawal,
+   * or undefined when nothing is held. Reading it is what makes a drawer redraw on a press.
+   */
+  held(record: string, type: string): number | null | undefined {
+    const entry = optimism.holds()[key(record, type)];
+    return entry ? entry.value : undefined;
+  },
+
+  /**
+   * Report what this agent's reaction of one type on one record was observed as, when the drawer has
+   * the value rather than the rows — a card on a canvas, whose seed reads the reactions and hands on
+   * only what the reader gave (`weightMine`). The same judgement as {@link settleFromSignals}, and the
+   * same rule for a record whose reactions have not been read: a drawer with no reading reports nothing.
+   */
+  settleObserved(record: string, type: string, observed: number | null): void {
+    if (!record || !type) return;
+    optimism.settle((k) => {
+      const [heldRecord, heldType] = parts(k);
+      return heldRecord === record && heldType === type ? observed : undefined;
+    });
+  },
+
   /** Forget everything — for a change of space, where a hold is about records nobody is showing. */
   reset: () => optimism.reset(),
 };

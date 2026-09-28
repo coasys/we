@@ -16,6 +16,11 @@
  *
  * With both lenses on, state wins for a task and kind answers for the rest.
  *
+ * - **By order.** A heat map of whatever the tree is ordered by — a reaction's score, or when the card
+ *   was made — shaded continuously between two colours the community picks. It colours every card, so
+ *   it is exclusive: turning it on turns kind and state off, and either of those turns it off. A card
+ *   with no score takes a colour of its own, outside the scale, which the section lets a community set.
+ *
  * Underneath all three, and not a lens at all: **the canvas itself** — what a card with no other
  * colour is drawn in, and the ground behind them. Both were constants in the template, which made
  * the one colour every canvas certainly shows the only colour nobody could change. They are the
@@ -52,7 +57,7 @@ import {
   UNCONFIRMED,
 } from '@we/template-kit';
 
-/** The query parameter the lenses ride in — `kind`, `state`, `kind,state` or `none`. */
+/** The query parameter the lenses ride in — `kind`, `state`, `kind,state`, `order` or `none`. */
 export const LENS_PARAM = 'colour';
 
 /**
@@ -64,7 +69,8 @@ const LENS = `(routeStore.params.${LENS_PARAM} ? routeStore.params.${LENS_PARAM}
 /** Whether each lens is on — expressions, readable wherever the address is. */
 export const BY_KIND = `contains(${LENS}, 'kind')`;
 export const BY_STATE = `contains(${LENS}, 'state')`;
-export const NO_LENS = `!(${BY_KIND} || ${BY_STATE})`;
+export const BY_ORDER = `contains(${LENS}, 'order')`;
+export const NO_LENS = `!(${BY_KIND} || ${BY_STATE} || ${BY_ORDER})`;
 
 /**
  * The lens parameter, ready to append to a query string the template builds — empty when the
@@ -159,7 +165,15 @@ export const UNFOLD_ALL: SchemaProp = { $action: 'routeStore.setParam', args: [F
  * they started with — and `none` is the one value that has to be spelt, since absent already means
  * something.
  */
-export function toggleLens(lens: 'kind' | 'state'): SchemaProp {
+export function toggleLens(lens: 'kind' | 'state' | 'order'): SchemaProp {
+  /*
+    The heat map colours every card, so it is on alone: turning it on replaces whatever was on, and
+    turning it off goes back to the default. Kind and state combine, and turning either on from here
+    replaces the heat map — which the arithmetic below already does, since neither is in `order`.
+  */
+  if (lens === 'order') {
+    return { $action: 'routeStore.setParam', args: [LENS_PARAM, { $: `${BY_ORDER} ? '' : 'order'` }] };
+  }
   const other = lens === 'kind' ? 'state' : 'kind';
   const on = `contains(${LENS}, '${lens}')`;
   const otherOn = `contains(${LENS}, '${other}')`;
@@ -299,6 +313,19 @@ export const LINK_DEFAULT = 'var(--we-color-primary-300)';
 export const CARD_KEY = '@card';
 export const CANVAS_KEY = '@canvas';
 export const LINK_KEY = '@link';
+/** The two ends of the heat map's scale — see `BY_ORDER`. Stored like the three above. */
+export const HEAT_LOW_KEY = '@heatLow';
+export const HEAT_HIGH_KEY = '@heatHigh';
+/** And what a card nobody has answered is drawn in under it — outside the scale, and the community's to set. */
+export const HEAT_NONE_KEY = '@heatNone';
+
+/**
+ * The heat map's ends before the community picks its own: a pale tint of the theme's hue to the accent
+ * itself. Neither is the plain card colour, deliberately — a card with no score keeps the plain colour,
+ * and an end of the scale drawn in it would make "nobody has answered" read as "the lowest answer".
+ */
+export const HEAT_LOW_DEFAULT = 'var(--we-color-primary-100)';
+export const HEAT_HIGH_DEFAULT = 'var(--we-role-accent)';
 
 /**
  * The one kind that is never a card.
@@ -317,6 +344,9 @@ const spaceColor = (key: string) => `find(local.typeStyles, { nodeType: '${key}'
 export const cardColorChosen = spaceColor(CARD_KEY);
 export const canvasColorChosen = spaceColor(CANVAS_KEY);
 export const linkColorChosen = spaceColor(LINK_KEY);
+export const heatLowChosen = spaceColor(HEAT_LOW_KEY);
+export const heatHighChosen = spaceColor(HEAT_HIGH_KEY);
+export const heatNoneChosen = spaceColor(HEAT_NONE_KEY);
 
 /**
  * What a card with no other colour is drawn in: the community's choice, else the template's.
@@ -332,8 +362,18 @@ export const CANVAS_FILL = `(${canvasColorChosen} ? ${canvasColorChosen} : '${CA
 /** And for a connection, which the graph takes as an `edgeStyle` colour — the line and its head. */
 export const LINK_FILL = `(${linkColorChosen} ? ${linkColorChosen} : '${LINK_DEFAULT}')`;
 
+/** The heat map's two ends: the community's, else the template's. */
+export const HEAT_LOW_FILL = `(${heatLowChosen} ? ${heatLowChosen} : '${HEAT_LOW_DEFAULT}')`;
+export const HEAT_HIGH_FILL = `(${heatHighChosen} ? ${heatHighChosen} : '${HEAT_HIGH_DEFAULT}')`;
+/**
+ * A card with no score under the heat map: the community's choice, else the plain card colour — which is
+ * what it means by default, a card nothing has been said about yet. Kept apart from the scale's two ends
+ * either way, so an unanswered card never reads as the lowest answer.
+ */
+export const HEAT_NONE_FILL = `(${heatNoneChosen} ? ${heatNoneChosen} : ${CARD_FILL})`;
+
 /** The key's rows that are not kinds, for the per-kind rules to skip. */
-const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']`;
+const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}', '${HEAT_NONE_KEY}']`;
 
 /**
  * `KIND_DEFAULTS` as an object literal the expression grammar can index.
@@ -568,8 +608,10 @@ export function keyRow(opts: KeyRowOptions): SchemaNode {
  * Still the address, not a local: a panel and a route cannot share one, and a lens is view state —
  * see `toggleLens`. A switch reports only that it was flicked, which is all `toggleLens` needs.
  */
-function lensSwitch(lens: 'kind' | 'state', label: string): SchemaNode {
-  const on = lens === 'kind' ? BY_KIND : BY_STATE;
+const LENS_ON = { kind: BY_KIND, state: BY_STATE, order: BY_ORDER };
+
+function lensSwitch(lens: 'kind' | 'state' | 'order', label: string): SchemaNode {
+  const on = LENS_ON[lens];
   return {
     type: 'we-tooltip',
     props: { content: `Colour cards by ${label}` },
@@ -595,14 +637,14 @@ function lensSwitch(lens: 'kind' | 'state', label: string): SchemaNode {
  * left in the DOM at zero height is a scroll region pretending to be shorter than it is.
  */
 function lensSection(opts: {
-  lens: 'kind' | 'state';
+  lens: 'kind' | 'state' | 'order';
   label: string;
   /** What this lens colours and how far the colours reach, behind the heading's info glyph. */
   help?: string;
   aside?: SchemaNode;
   body: SchemaNode;
 }): SchemaNode {
-  const on = opts.lens === 'kind' ? BY_KIND : BY_STATE;
+  const on = LENS_ON[opts.lens];
   return {
     type: 'Column',
     props: { gap: '300', width: '100%' },
@@ -643,7 +685,13 @@ function lensSection(opts: {
  * certainly shows the only one nobody could change.
  */
 /** One of the canvas's own colours: the picker, the name, and the way back to the default. */
-function canvasRow(opts: { key: string; chosen: string; fill: string; icon: string; label: string }): SchemaNode {
+function canvasRow(opts: {
+  key: string;
+  chosen: string;
+  fill: string;
+  icon: string;
+  label: string | ExpressionToken;
+}): SchemaNode {
   const write = (color: SchemaProp): SchemaProp => ({
     $action: 'recordStore.setSpaceTypeColor',
     args: [{ $: 'spaceStore.currentSpace.id' }, opts.key, color],
@@ -678,6 +726,105 @@ const canvasRows: SchemaNode = {
     */
     canvasRow({ key: LINK_KEY, chosen: linkColorChosen, fill: LINK_FILL, icon: 'flow-arrow', label: 'Connections' }),
   ],
+};
+
+/**
+ * What the tree is ordered by, from the address — the canvas's own `order`, which it keeps there so a
+ * panel can read it. Absent is the canvas's default, as arranged.
+ */
+const TREE_ORDER = `(routeStore.params.order ? routeStore.params.order : 'manual')`;
+const BY_DATE = `(${TREE_ORDER} == 'date' || ${TREE_ORDER} == 'newest')`;
+
+/** What the two ends of the scale are, in words — dates run old to new, a reaction least to most. */
+const HEAT_LOW_LABEL = `${BY_DATE} ? 'Oldest' : 'Least'`;
+const HEAT_HIGH_LABEL = `${BY_DATE} ? 'Newest' : 'Most'`;
+
+/**
+ * The heat map's legend and its colours.
+ *
+ * The bar is the scale as the cards are shaded by it — blended in OKLCH, the same way the graph blends
+ * them — with its two ends named, so a card's shade can be read against it. Under it, a picker for
+ * each end, and for a reaction a third row: the plain colour, for cards nobody has answered yet, which
+ * are outside the scale rather than at its bottom.
+ *
+ * Nothing to show while the tree is as arranged: there a card's place is its order already, and
+ * shading by it would repeat what the row says.
+ */
+const heatBody: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${TREE_ORDER} == 'manual'` },
+    then: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: [
+        'Order the tree oldest first, newest first or by a signal, and the cards are shaded by it. As arranged, a card’s place is its order already.',
+      ],
+    },
+    else: {
+      type: 'Column',
+      props: { gap: '200', width: '100%' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: HEAT_LOW_LABEL }] },
+            {
+              type: 'Column',
+              props: {
+                flex: '1',
+                height: '10px',
+                r: 'pill',
+                border: '1px solid border',
+                bgImage: {
+                  $: `'linear-gradient(to right in oklch, ' + ${HEAT_LOW_FILL} + ', ' + ${HEAT_HIGH_FILL} + ')'`,
+                },
+              },
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: [{ $: HEAT_HIGH_LABEL }],
+            },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { width: '100%' },
+          children: [
+            canvasRow({
+              key: HEAT_LOW_KEY,
+              chosen: heatLowChosen,
+              fill: HEAT_LOW_FILL,
+              icon: 'thermometer-cold',
+              label: { $: HEAT_LOW_LABEL },
+            }),
+            canvasRow({
+              key: HEAT_HIGH_KEY,
+              chosen: heatHighChosen,
+              fill: HEAT_HIGH_FILL,
+              icon: 'thermometer-hot',
+              label: { $: HEAT_HIGH_LABEL },
+            }),
+            {
+              type: '$if',
+              props: {
+                condition: { $: `${TREE_ORDER} == 'signal'` },
+                then: canvasRow({
+                  key: HEAT_NONE_KEY,
+                  chosen: heatNoneChosen,
+                  fill: HEAT_NONE_FILL,
+                  icon: 'minus-circle',
+                  label: 'No answers yet',
+                }),
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
 };
 
 /**
@@ -1124,6 +1271,12 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                       props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
                       children: [stateRow],
                     },
+                  }),
+                  lensSection({
+                    lens: 'order',
+                    label: 'Order',
+                    help: 'Shade every card by what the tree is ordered by — its score for the signal, or when it was made — between two colours kept on the space. A card nobody has answered yet takes a colour of its own, outside the scale — the plain card colour until you pick one. Colours every card, so it takes over from kinds and states while it is on.',
+                    body: heatBody,
                   }),
                 ],
               },

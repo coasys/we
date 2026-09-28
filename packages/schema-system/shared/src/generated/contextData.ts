@@ -1006,6 +1006,7 @@ export const contextData: ContextData = {
         { name: 'size', type: '"xs" | "sm" | "md"', optional: true },
         { name: 'countTone', type: '"text" | "glyph"', optional: true },
         { name: 'countFirst', type: 'boolean', optional: true },
+        { name: 'emphasis', type: '"quiet" | "present"', optional: true },
         { name: 'onPress', type: '(() => void)', optional: true },
         { name: 'label', type: 'string', optional: true },
         { name: 'disabled', type: 'boolean', optional: true },
@@ -1226,6 +1227,17 @@ export const contextData: ContextData = {
           optional: true,
         },
         {
+          name: 'onSeedSummary',
+          type: '((payload: { source: string; } & Record<string, unknown>) => void)',
+          optional: true,
+        },
+        {
+          name: 'onNodeArrange',
+          type: '((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)',
+          optional: true,
+        },
+        { name: 'resizable', type: 'boolean', optional: true },
+        {
           name: 'onNodeResize',
           type: '((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)',
           optional: true,
@@ -1265,6 +1277,7 @@ export const contextData: ContextData = {
         { name: 'onPointerAt', type: '((at: { x: number; y: number; } | null) => void)', optional: true },
         { name: 'onViewport', type: '((region: GraphRegion) => void)', optional: true },
         { name: 'region', type: 'GraphRegion | null', optional: true },
+        { name: 'reframeOn', type: 'string | number | boolean | null', optional: true },
         { name: 'host', type: 'GraphHostBindings', optional: true },
       ],
       source: 'widgets',
@@ -1615,6 +1628,7 @@ export const contextData: ContextData = {
         { name: 'z', type: 'number', predicate: 'we://z', required: false },
         { name: 'color', type: 'string', predicate: 'we://color', required: false },
         { name: 'cardShape', type: 'string', predicate: 'we://card_shape', required: false },
+        { name: 'rank', type: 'number', predicate: 'we://rank', required: false },
       ],
       relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://placed_node' }],
     },
@@ -2391,6 +2405,7 @@ export const contextData: ContextData = {
         'anchorOnCanvas',
         'rerouteOnCanvas',
         'retargetOnCanvas',
+        'arrangeOnTree',
         'setCardStyle',
         'previewCardStyle',
         'setTypeColor',
@@ -3061,6 +3076,19 @@ export const contextData: ContextData = {
       doc: "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).",
       example:
         'signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })',
+    },
+    {
+      name: 'voices',
+      params: ['options'],
+      doc: "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).",
+      example:
+        'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })',
+    },
+    {
+      name: 'voicesParam',
+      params: ['options'],
+      doc: 'The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.',
+      example: 'voicesParam({ param: local.voices, did: voice.did, weight: event.detail })',
     },
     {
       name: 'formatJson',

@@ -135,7 +135,70 @@ export const communityMetric: Metric = {
   },
 };
 
+/**
+ * A number already on the node, normalised against the rest of the visible graph.
+ *
+ * The bridge between the two halves of a style value. A `FieldRef` reads a field and uses it as
+ * it is, which is right for a size somebody chose and useless for a colour: a scale needs 0..1 and a
+ * vote count is 0..40. A metric is the thing that knows what the rest of the graph holds, so
+ * normalising a field is a metric's job rather than a widening of `FieldRef`.
+ *
+ * This is what makes a heat map: `{ metric: 'field', options: { from: 'weight' }, scale: 'heat' }`
+ * colours every card by how it stands against the others on screen — and because it is a style value
+ * rather than a layout, the same reading works on a freeform canvas, where nothing is ordered at all.
+ *
+ * **A node with no value is left out of the result entirely**, not scored zero. "Nobody has reacted to
+ * this" and "this is the coldest thing here" are different facts, and a style value that cannot be
+ * resolved falls through to whatever an earlier rule set — which is the same rule a `FieldRef` follows,
+ * for the same reason.
+ *
+ * Options:
+ * - `from` — the data field to read. A numeric string is accepted, since that is what a backend with
+ *   no numeric column hands back, and so is a date — an ISO timestamp reads as its time, which is what
+ *   lets a card be shaded by when it was made.
+ * - `min` / `max` — map against a **fixed** domain instead of the data's own. For a value whose scale
+ *   means something absolutely (a 0..1 share, a 1..5 rating), where normalising to the visible graph
+ *   would make one card at 2 stars look like the best there is. Values outside are clamped.
+ */
+/** A string as a number: numeric if it is one, else a date's time, else nothing. */
+function numberOrTime(text: string): number {
+  if (!text.trim()) return NaN;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : Date.parse(text);
+}
+
+export const fieldMetric: Metric = {
+  id: 'field',
+  description:
+    "Reads a number off each node's data and normalises it across the visible graph — pair with a scale for a heat map, or a range to size by it.",
+  compute(graph, options) {
+    const settings = (options ?? {}) as { from?: string; min?: number; max?: number };
+    const from = typeof settings.from === 'string' ? settings.from : '';
+    if (!from) return new Map();
+
+    const raw = new Map<string, number>();
+    for (const node of graph.nodes) {
+      const read = node.data?.[from];
+      const value = typeof read === 'string' ? numberOrTime(read) : read;
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+      raw.set(node.id, value);
+    }
+
+    const lower = Number(settings.min);
+    const upper = Number(settings.max);
+    if (Number.isFinite(lower) && Number.isFinite(upper) && upper !== lower) {
+      const span = upper - lower;
+      const result = new Map<string, number>();
+      // Clamped rather than dropped: a value past a declared domain is still a value, and the right
+      // reading of one is "at least as much as the top of the scale".
+      for (const [id, value] of raw) result.set(id, Math.min(1, Math.max(0, (value - lower) / span)));
+      return result;
+    }
+    return normalise(raw);
+  },
+};
+
 /** The default set, ready to register. */
 export function defaultMetrics(): Metric[] {
-  return [degreeMetric, communityMetric];
+  return [degreeMetric, communityMetric, fieldMetric];
 }
