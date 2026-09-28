@@ -1901,6 +1901,7 @@ export class GraphEngine {
     const now = this.viewport.get();
     if (!this.travel.startCamera(from, { x: now.x, y: now.y, zoom: now.zoom })) return;
     this.context.trace?.('camera:travel', { from, to: { x: now.x, y: now.y, zoom: now.zoom } });
+    this.lastTravelStep = Date.now();
     this.viewport.set({ x: from.x, y: from.y, zoom: from.zoom });
     this.notify('viewport');
   }
@@ -1917,15 +1918,20 @@ export class GraphEngine {
     this.travel.stopCamera();
   }
 
-  /** Whether any placed card is inside the viewport — for the trace's alarm only. */
-  private anyOnScreen(): boolean {
+  /** For the trace's alarms only: when the last travel frame ran, and whether this travel has alarmed. */
+  private lastTravelStep = 0;
+  private travelAlarmed = false;
+
+  /** How many placed cards have their centre inside the viewport — for the trace's alarms only. */
+  private onScreenCount(): number {
     const { x, y, zoom, width, height } = this.viewport.get();
+    let count = 0;
     for (const at of this.positions.values()) {
       const sx = at.x * zoom + x;
       const sy = at.y * zoom + y;
-      if (sx > 0 && sx < width && sy > 0 && sy < height) return true;
+      if (sx > 0 && sx < width && sy > 0 && sy < height) count += 1;
     }
-    return false;
+    return count;
   }
 
   /** One frame of the travel: cards, camera, shapes and lines, all on its one clock. */
@@ -1945,9 +1951,31 @@ export class GraphEngine {
       this.viewport.set(camera);
       this.notify('viewport');
     }
-    // And for every card having left the screen mid-travel, which is what a reader sees as the graph vanishing.
-    if (this.context.trace && this.positions.size && !this.anyOnScreen()) {
-      this.context.trace('travel:offscreen', { progress: this.travel.progress, camera: this.viewport.get() });
+    if (this.context.trace && this.positions.size) {
+      /*
+        Alarms for the trace, each once per travel. Most of the cards off screen is what a reader sees as the
+        graph vanishing, whether or not one card is still in view; and a long gap between two frames is the
+        main thread stalling, which a reader sees as the travel cut short, since the clock is the wall's.
+      */
+      const now = Date.now();
+      const gap = this.lastTravelStep ? now - this.lastTravelStep : 0;
+      this.lastTravelStep = now;
+      if (gap > 120) this.context.trace('travel:stall', { gap, progress: this.travel.progress });
+      const onScreen = this.onScreenCount();
+      if (onScreen * 2 < this.positions.size && !this.travelAlarmed) {
+        this.travelAlarmed = true;
+        this.context.trace('travel:offscreen', {
+          onScreen,
+          of: this.positions.size,
+          progress: this.travel.progress,
+          camera: this.viewport.get(),
+        });
+      }
+      if (!running) {
+        this.context.trace('travel:done', { onScreen, of: this.positions.size });
+        this.lastTravelStep = 0;
+        this.travelAlarmed = false;
+      }
     }
     // Before the reindex, because a card's hit area resolves from the same blended visual that is painted.
     this.reindex();
