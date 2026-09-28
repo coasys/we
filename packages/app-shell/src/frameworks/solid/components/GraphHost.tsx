@@ -23,6 +23,7 @@ import '@we/graph-solid/styles';
 import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shared';
 import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
+import { Column, Row } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { placementPosition, placementStyle } from '@we/graph-expanders';
 import type { GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
@@ -34,6 +35,14 @@ import { createComputed, createEffect, createMemo, createSignal, type JSX, onCle
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
+import {
+  actAs,
+  actingAs,
+  pretendPeople,
+  pretendPeopleAvailable,
+  pretendSettings,
+  setPretendCount,
+} from '../../../shared/pretendPeople';
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
 import { componentRegistry } from '../registries/componentRegistry';
@@ -46,6 +55,7 @@ import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 import { nodeControls } from './graphControls';
 import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
+import { ReactionBadge } from './ReactionBadge';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -379,10 +389,33 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     });
   });
 
+  /**
+   * The seeds with any pretend people mixed into a weighed canvas — a development tool; see
+   * `pretendPeople`. Everything else passes through untouched, and a production build never gets here.
+   */
+  const seedList = () => (Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : []);
+  const weighs = createMemo(() =>
+    seedList().some((seed) => 'source' in seed && seed.source === 'canvas' && Boolean(seed.options?.weigh)),
+  );
+  const pretending = () => pretendPeopleAvailable && sessionStore.devTools() && weighs();
+  const seeds = createMemo(() => {
+    const simulate = pretending() ? pretendSettings() : undefined;
+    if (!simulate) return props.seeds;
+    return seedList().map((seed) =>
+      'source' in seed && seed.source === 'canvas' && seed.options?.weigh
+        ? { ...seed, options: { ...seed.options, simulate } }
+        : seed,
+    ) as GraphViewProps['seeds'];
+  });
+
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard, record: RecordCard },
+    // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
+    nodeBadges: { reaction: ReactionBadge },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.
     nodeControls,
+    // Only while a canvas is weighed, in a development build with developer tools showing.
+    ...(pretendPeopleAvailable ? { overlay: () => <Show when={pretending()}>{PretendControl()}</Show> } : {}),
 
     /**
      * Peers' marks, and anything else a capability has put on this canvas.
@@ -450,6 +483,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       in between — so clearing where the rows arrive put the old value back for that whole window.
     */
     confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
+
+    /*
+      Connections the store has written and not yet seen come back — a line just drawn, one just deleted,
+      an end just moved — and the graph's report of what it is drawing from its own data, which is how the
+      store knows when to stop. The same round trip as `pendingData` and `confirmPending`, for lines.
+    */
+    pendingConnections: () => recordStore.pendingConnections(),
+    observeConnections: (connections) => recordStore.observeConnections(connections),
 
     /**
      * Tell the graph when the answer to one of its reads changes here.
@@ -616,6 +657,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   return (
     <GraphView
       {...props}
+      seeds={seeds()}
       host={host}
       onPointerAt={(at) => {
         live()?.reportPointer(at);
@@ -631,3 +673,68 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 }
 
 export default GraphHost;
+
+/**
+ * How many pretend people are answering, and which of them the reader answers as — on the canvas
+ * itself, so it cannot be left on unnoticed. Development builds only; see `pretendPeople`.
+ */
+function PretendControl() {
+  const options = () => [
+    { label: 'Myself', value: '' },
+    ...pretendPeople().map((person) => ({ label: person.name, value: person.id })),
+  ];
+  return (
+    <Column
+      class="we-graph-pretend"
+      bg="surface-raised"
+      border="1px solid border"
+      shadow="sm"
+      r="200"
+      p="200"
+      gap="200"
+      maxWidth="240px"
+    >
+      <Row ay="center" gap="200">
+        <we-icon name="robot" color="text-muted" />
+        <we-text variant="footnote" color="text-muted">
+          Pretend people
+        </we-text>
+        <Row ay="center" gap="100" ml="auto">
+          <we-button
+            variant="ghost"
+            size="xs"
+            square
+            label="One fewer"
+            disabled={!pretendPeople().length}
+            onClick={() => setPretendCount(pretendPeople().length - 1)}
+          >
+            <we-icon name="minus" />
+          </we-button>
+          <we-text variant="footnote">{pretendPeople().length}</we-text>
+          <we-button
+            variant="ghost"
+            size="xs"
+            square
+            label="One more"
+            onClick={() => setPretendCount(pretendPeople().length + 1)}
+          >
+            <we-icon name="plus" />
+          </we-button>
+        </Row>
+      </Row>
+      <Show when={pretendPeople().length}>
+        <Row ay="center" gap="200">
+          <we-text variant="footnote" color="text-muted">
+            Answer as
+          </we-text>
+          <we-select
+            size="xs"
+            value={actingAs()}
+            options={options()}
+            onChange={(event: CustomEvent) => actAs(String(event.detail ?? ''))}
+          />
+        </Row>
+      </Show>
+    </Column>
+  );
+}

@@ -39,6 +39,13 @@ export interface CountMarkProps {
    * every other row — the one column a reader scans.
    */
   countFirst?: boolean;
+  /**
+   * How present it is at rest. `quiet` (the default) sits back until the pointer is on it, which is
+   * right in a row of reactions under a post, where several marks sit together and the content is the
+   * subject. `present` starts brighter and goes brighter still under the pointer — for a mark that IS the
+   * thing being read, such as a card's score on a canvas, where quiet reads as absent.
+   */
+  emphasis?: 'quiet' | 'present';
   /** What pressing it does. Omit for a mark that only reports. */
   onPress?: () => void;
   /** What a screen reader is told the press does. */

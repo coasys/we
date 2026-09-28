@@ -307,6 +307,62 @@ export interface GraphViewProps {
     carried?: { recordId: string; recordType: string; x: number; y: number }[];
   }) => void;
   /**
+   * The user dragged a card to somewhere else in a hierarchy — see the `arrange-nodes` behaviour.
+   *
+   * Binding it is what makes a structured reading of a graph editable rather than merely viewable, and
+   * it pairs with a layout that derives positions (`forest`, `tree`) exactly as `onNodeDragEnd` pairs
+   * with `manual`. Where positions come from the data, a drag means "put the card here"; where the
+   * layout decides them, it means "change what the layout reads".
+   *
+   * Three intents, told apart geometrically so the gesture needs no knowledge of what a parent means
+   * here:
+   *
+   * - `child` — dropped on `targetId`, which becomes its parent.
+   * - `sibling` — dropped in the gap beside `targetId`, at the same level. `before` says which side,
+   *   and the consumer resolves the actual parent from the target, since only it knows which relation
+   *   the hierarchy is.
+   * - `loose` — dropped out of every tree. No target.
+   *
+   * **Nothing is validated against the graph, and it cannot be.** A drop onto a card's own descendant
+   * would make a cycle, and only the consumer knows which relation to walk to find out. So refuse it
+   * there, and say so — the card has already been handed back to the layout, so a refusal that writes
+   * nothing puts it back where it was with no special case.
+   */
+  /**
+   * What a seed said about everything it loaded — see `SeedSource.derive`. The canvas seed reports the
+   * people whose reactions a weighted score was made from (`{ type, voices }`), which a template lists
+   * beside the canvas for a reader to turn up or down. Called when it changes, with the seed's id.
+   */
+  onSeedSummary?: (payload: { source: string } & Record<string, unknown>) => void;
+  onNodeArrange?: (payload: {
+    id: string;
+    into: 'child' | 'sibling' | 'loose';
+    recordId: string;
+    recordType: string;
+    targetId?: string;
+    targetType?: string;
+    before?: boolean;
+    /**
+     * The new parent's children as record ids, left to right, as the reader saw them land — the card
+     * included. Write the order from this rather than working it out again: rules that differ from the
+     * layout's, for cards nobody has ranked yet say, would write an order the reader did not choose.
+     * Absent where the drop sets no order.
+     */
+    order?: string[];
+    /** Where the pointer let go, for a consumer that also wants to keep a position. */
+    x: number;
+    y: number;
+  }) => void;
+  /**
+   * Whether a selected card offers its resize handles. Default true, where `onNodeResize` is bound.
+   *
+   * For an arrangement that decides the size itself: a tree gives every card one box, so a card's own
+   * size is not drawn there and a handle would change nothing anybody can see — and the handles would
+   * cover the card's badge, which sits on the edge they run along. A handler cannot be bound
+   * conditionally, so this is how a template says "not in this reading".
+   */
+  resizable?: boolean;
+  /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
    * Binding it is what puts the handles on screen — a handle that moved and then changed nothing is
@@ -636,6 +692,19 @@ export interface GraphViewProps {
    */
   region?: GraphRegion | null;
   /**
+   * A value that, when it changes, has the graph brought back into view with its next arrangement —
+   * centred, and zoomed out only as far as it takes to show all of it, never in.
+   *
+   * For a change the reader made to how big everything is, such as a tree's card size. A layout being
+   * re-tuned keeps the camera where it is on purpose — re-ordering a row must not lurch the view — but
+   * bigger cards make a bigger tree, and one left where it was pushes cards off the screen. Framing it
+   * fully would undo the choice instead: a small tree would be zoomed into and a big one zoomed out to
+   * the size it was. So it is centred, and the zoom only ever goes down.
+   *
+   * Compared by value; the first value is recorded, not acted on.
+   */
+  reframeOn?: string | number | boolean | null;
+  /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */
@@ -747,6 +816,22 @@ export interface NodeAction {
 export type NodeContent = (props: { node: GraphNode }) => JSX.Element;
 
 /**
+ * A mark pinned to a card's lower edge — see `NodeStyle.badge`. Handed the node, and the record it
+ * stands for where the node is one, so a press can write to it. Draws its own box; the graph places it,
+ * and a press on it goes nowhere else.
+ *
+ * `keepStill` holds the cards where they are while the badge needs them there — a popover it opened,
+ * which the pointer leaves the badge to use. The graph already holds them while the pointer is over the
+ * badge itself. See `GraphEngine.keepStill`.
+ */
+export type NodeBadge = (props: {
+  node: GraphNode;
+  recordId?: string;
+  recordType?: string;
+  keepStill: (on: boolean) => void;
+}) => JSX.Element;
+
+/**
  * A control the host lends a node's action header — see {@link NodeAction.control}.
  *
  * Handed the node, the value the action's `value` names on it (undefined where the node carries
@@ -766,6 +851,27 @@ export type NodeControl = (props: {
 }) => JSX.Element;
 
 /** What the host lends the graph so its expanders can read data without knowing the backend. */
+/** A connection as the host thinks of it — records at both ends. */
+export interface ObservedConnection {
+  /** The record the line stands for. */
+  id: string;
+  source: string;
+  target: string;
+}
+
+/**
+ * What a host has written about connections and not yet seen come back. Everything is a record id.
+ *
+ * `added` are lines to draw between two records before the connection exists, each with a key of the
+ * host's own; `moved` re-attach one end of an existing connection to another record; `removed` stop
+ * drawing a connection that is being deleted.
+ */
+export interface PendingConnections {
+  added: { key: string; source: string; target: string; data?: Record<string, GraphValue> }[];
+  moved: { id: string; end: 'source' | 'target'; to: string }[];
+  removed: string[];
+}
+
 export interface GraphHostBindings {
   /**
    * Components a style rule may name with `content`, keyed by name.
@@ -775,6 +881,8 @@ export interface GraphHostBindings {
    * such component simply has a card that falls back to its label.
    */
   nodeContent?: Record<string, NodeContent>;
+  /** Badges a node style may name with `badge`, keyed by that name — see {@link NodeBadge}. */
+  nodeBadges?: Record<string, NodeBadge>;
   /**
    * Controls a node action may name with `control`, keyed by name — a colour picker, a shape menu,
    * a scale slider. Lent by the host for the reason `nodeContent` is: the primitives are the
@@ -793,6 +901,13 @@ export interface GraphHostBindings {
    * something renderable.
    */
   decorations?(): GraphDecoration[];
+  /**
+   * Furniture of the host's own, stacked above the controls in the graph's lower right corner and clear of whatever
+   * `obscured` says is covering it — for a control about how this graph is being read that belongs
+   * to no template, such as a development tool. Screen-anchored, unlike a decoration, and inert to
+   * the canvas's gestures, which it sits outside.
+   */
+  overlay?(): JSX.Element;
   /**
    * Fields to lay over a node's own data, keyed by the record id the node stands for.
    *
@@ -837,6 +952,21 @@ export interface GraphHostBindings {
    * arrives again — which is exactly the flicker optimism was added to remove.
    */
   confirmPending?(recordIds: string[]): void;
+  /**
+   * Connections the host has written and not yet seen come back, in records rather than nodes — see
+   * {@link PendingConnections}. Drawn at once: a line somebody just drew, one they just deleted, an end
+   * they just moved. The graph translates them to its own nodes and edges, and draws nothing for a
+   * record it is not showing.
+   *
+   * Reactive: read inside an effect, so a host signal here redraws the lines it names.
+   */
+  pendingConnections?(): PendingConnections;
+  /**
+   * The connections the graph is now drawing from its own data, in records — for the host to judge
+   * which of its pending ones the data has overtaken. The counterpart of {@link confirmPending}, and
+   * reported from what is drawn for the same reason. Only called while something is pending.
+   */
+  observeConnections?(connections: ObservedConnection[]): void;
   query(request: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   /**
    * Report changes to records of a type, and return a function that stops reporting.

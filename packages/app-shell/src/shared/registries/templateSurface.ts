@@ -765,11 +765,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     anchorOnCanvas: action('content'),
     rerouteOnCanvas: action('content'),
     retargetOnCanvas: action('content'),
+    arrangeOnTree: action('content'),
     // Host wiring, both halves of one mechanism: the graph host reads what is pending and reports
     // the rows it read back. A template has no use for either — it writes through the actions above
     // and the optimism is applied for it.
     pendingCardStyle: WIRING,
     confirmPending: WIRING,
+    pendingConnections: WIRING,
+    observeConnections: WIRING,
     // Template-facing: a control that reports while it moves previews through this and writes on
     // release, which is what makes a slider show its result before the drag ends.
     previewCardStyle: action('content'),

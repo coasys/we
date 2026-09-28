@@ -180,7 +180,8 @@ export function SignalControl(props: SignalControlProps) {
           variant="bare"
           size={size() === 'md' ? 'sm' : 'xs'}
           square
-          color="control-surface"
+          // A foreground role: `control-surface` is a fill, and on a popover's raised ground it all but vanished.
+          color="text-muted"
           prop:hoverProps={{ color: 'danger-text' }}
           label="Remove your reaction"
           onClick={() => signal(null)}

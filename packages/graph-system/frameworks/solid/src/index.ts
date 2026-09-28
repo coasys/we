@@ -5,6 +5,14 @@
  * that a second framework is a second adapter of this size rather than a second engine.
  */
 export { GraphView, pathFrom } from './GraphView.solid';
-export type { GraphDecoration, GraphHostBindings, GraphRegion, GraphViewProps, NodeControl } from './GraphView.types';
+export type {
+  GraphDecoration,
+  GraphHostBindings,
+  GraphRegion,
+  GraphViewProps,
+  NodeControl,
+  ObservedConnection,
+  PendingConnections,
+} from './GraphView.types';
 export { type Box, type Grip, HANDLES, resizeBox } from './resize';
 export { isSettled, patched } from './pending';

@@ -160,6 +160,18 @@ export class Viewport {
   }
 
   /**
+   * Centre a set of world bounds, zooming out only as far as it takes to show all of them — never in.
+   *
+   * For content that has grown or shrunk under a reader who chose their zoom: they asked for bigger
+   * cards, and a fit that zoomed in on a small tree or out to the same apparent size on a big one would
+   * be undoing the choice. Centred, the tree stays where they are looking; zoomed out only when it no
+   * longer fits, nothing is left off screen.
+   */
+  contain(bounds: Bounds, margin = 60): void {
+    this.frameBounds(bounds, margin, this.state.zoom);
+  }
+
+  /**
    * Frame exactly the region somebody else can see — what following their view does.
    *
    * Two differences from {@link fit}, and both are about it being a *region somebody chose* rather
