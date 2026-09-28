@@ -91,6 +91,9 @@ export class Placement extends Ad4mModel {
   @Property({ through: 'we://card_shape' })
   cardShape: string = '';
 
+  @Property({ through: 'we://rank' })
+  rank: number = 0;
+
   /**
    * What is placed. Untyped, because a canvas holds whatever its community puts on it.
    *

@@ -7,7 +7,7 @@
  * the same graph run as a hundred rich cards or as ten thousand dots without the plugins knowing.
  */
 import type { GraphEdge, GraphNode } from './graph';
-import type { Bounds, Point } from './layout';
+import type { Bounds, LayoutHierarchy, Point } from './layout';
 import type { CardShape, NodeStyle } from './style';
 
 /**
@@ -40,12 +40,40 @@ export interface NodeVisual {
   content?: string;
   /** Zoom below which the content is hidden and the label stands in for it. */
   contentMinZoom?: number;
+  /** Registered badge pinned to the card's lower edge — see `NodeStyle.badge`. */
+  badge?: string;
   /** The card's outline. See `NodeStyle.cardShape`. */
   cardShape?: CardShape;
   /** Multiplier on the size the card's content is drawn at. See `NodeStyle.contentScale`. */
   contentScale?: number;
   /** Stacking order among nodes, a whole number. Absent is 0. See `NodeStyle.z`. */
   z?: number;
+  /**
+   * A card caught between two shapes, while the arrangement is rearranging.
+   *
+   * `outline` is the silhouette to use for everything that reads one — the clip, the two text-flow
+   * floats, the selection ring, the edge attach point — in the box's own 0..1 space. Its presence is
+   * what says "clipped right now", which is a different question from `cardShape` naming a cut shape:
+   * a note card is a box at rest and a polygon for as long as it is turning into a triangle.
+   *
+   * `from` and `at` are the two shape names and how far along, for the one thing an outline cannot
+   * answer: how far inside its own edges a shape holds its content. That is a number per shape rather
+   * than a property of the points, so it is interpolated from the names.
+   *
+   * Absent whenever a card is at rest, which is the point — a note keeps its real corner radius and its
+   * real `box-shadow`, and borrows a polygon only while it needs one.
+   */
+  morph?: {
+    outline: readonly (readonly [number, number])[];
+    from: CardShape;
+    at: number;
+    /**
+     * The radii the outline was built from, per direction — what a blend carries forward so that blending it
+     * AGAIN never has to ask a blended polygon how far it reaches. See `sampledBlend`; the renderer has no
+     * use for it and reads `outline`.
+     */
+    samples?: readonly { ux: number; uy: number; r: number }[];
+  };
 }
 
 /**
@@ -85,6 +113,15 @@ export interface BehaviourContext {
    * Overlap catches what the rectangle touches, which is what people draw a rectangle to mean.
    */
   within(bounds: Bounds): string[];
+  /**
+   * The id of the layout region a world point falls in, if any — see `LayoutRegion`.
+   *
+   * What lets a gesture tell "dropped somewhere with a meaning" from "dropped in open space". Without
+   * it the `forest`'s zone of unconnected cards is indistinguishable from a rank of siblings: it is
+   * full of cards at similar heights, so a drop into it reads as a reorder, which is the opposite of
+   * what dragging a card out of a tree means.
+   */
+  regionAt(at: Point): string | null;
   select(ids: string[], mode?: 'replace' | 'add' | 'toggle'): void;
   /**
    * Open one edge's route for editing, or close whichever is open.
@@ -138,13 +175,66 @@ export interface BehaviourContext {
    * press, a move across an inert canvas, and a set of rings appearing on release.
    */
   drawMarquee(bounds: Bounds | null): void;
+  /**
+   * The tree the layout read out of the graph, or null where the layout has no parents — see
+   * `LayoutHierarchy`. From the data, not from what a drag in progress is previewing.
+   */
+  hierarchy(): LayoutHierarchy | null;
+  /** A node's box in world units, as it is drawn and picked; null for one that is not placed. */
+  boundsOf(id: string): Bounds | null;
+  /** An edge as the graph holds it, data and all; null for one it does not. */
+  edgeOf(id: string): GraphEdge | null;
+  /**
+   * Where a card would be drawn if it were held at each of these places — see {@link ArrangeState} — laid out
+   * afresh and never drawn. Null for a place the layout could not put it.
+   *
+   * For a gesture that has to choose among the places a card could go: the one whose ghost would be nearest
+   * the card is the one the reader means, and nothing but the layout knows where each ghost would be, since
+   * making room at one place moves every card around it.
+   */
+  placesOf(id: string, places: readonly NonNullable<ArrangeState['to']>[]): (Point | null)[];
+  /**
+   * Hold a card for a gesture that rearranges a hierarchy — see {@link ArrangeState}; null lets it go.
+   *
+   * The preview a rearranging drag needs belongs to the engine rather than the behaviour for the reason
+   * {@link drawConnection} does: the renderer has to draw it. And more than that, the layout has to place it,
+   * because a preview is only honest if it is the arrangement the drop will produce.
+   */
+  arrange(state: ArrangeState | null): void;
   /** Emit a graph event to the host — what a template binds `onNodeClick` and friends to. */
   emit(event: GraphEvent): void;
+}
+
+/**
+ * A card held by a rearranging gesture.
+ *
+ * `at` is where the pointer holds it, and null once it has been let go. `to` is where the drop would put it
+ * — a parent (null for out of every tree) and a position among that parent's other children — or null for
+ * the place it already has.
+ *
+ * While it is held the card is drawn at `at` and the layout places it at `to`, so the rest of the tree makes
+ * room and the empty place it would land in is drawn as a ghost with its line. Let go with a `to`, the card
+ * travels into that place and the layout keeps it there until the data agrees, so the drop and the write
+ * landing read as one movement.
+ *
+ * `refused` says why a drop here would change nothing when the reason is not simply that the card is home —
+ * a move the host would turn down, which the preview should say rather than show happening.
+ */
+export interface ArrangeState {
+  id: string;
+  at: Point | null;
+  to: { parent: string | null; index?: number } | null;
+  refused?: string;
 }
 
 /** Events a template may bind handlers to. Payloads are plain data, addressable from `$event.detail`. */
 export type GraphEvent =
   | { type: 'nodeClick'; node: GraphNode }
+  /**
+   * What a seed's `derive` said about the whole of what it loaded — see `SeedSource.derive`. Emitted
+   * when it changes, not on every load, so a host holding it in state does not churn.
+   */
+  | { type: 'seedSummary'; source: string; summary: Record<string, unknown> }
   | { type: 'nodeDoubleClick'; node: GraphNode }
   | { type: 'nodeHover'; node: GraphNode | null }
   | { type: 'edgeClick'; edge: GraphEdge }
@@ -193,6 +283,50 @@ export type GraphEvent =
    * gets made is the consumer's business — a canvas creates a card, an outline might do nothing.
    */
   | { type: 'canvasDoubleClick'; at: Point }
+  /**
+   * The user dragged a card to somewhere else in a hierarchy.
+   *
+   * Intent, never a mutation — the same rule `edgeCreate` follows, and for a stronger version of the
+   * same reason. What a hierarchy *is* on a given graph is the consumer's decision: on WE's canvas a
+   * parent is a `Relationship` of one community-named kind and the order is a rank on a placement,
+   * where on some other graph it would be a containment link, a field, or nothing writable at all. A
+   * gesture that wrote one of those would be useless to the others, and the engine has no write path.
+   *
+   * The three intents are geometric, so a behaviour can tell them apart without knowing what a parent
+   * means here:
+   *
+   * - `child` — dropped **on** `target`, which is the reparent gesture. The clearest of the three, and
+   *   the one worth drawing a line for while it is in progress.
+   * - `sibling` — dropped in the gap **beside** `target`, at the same level. `before` says which side.
+   *   This is the reorder gesture: the card is already following the pointer, so the reader can see it
+   *   between the two cards it will sit between.
+   * - `loose` — dropped out of every tree, which on a `forest` means the zone of unconnected cards.
+   *
+   * **Nothing here is validated against the graph, and it cannot be.** A drop onto a card's own
+   * descendant would make a cycle, and only something that knows which relation is the hierarchy can
+   * say whether one card is under another. So the consumer refuses that, and says so — exactly as it
+   * decides what "parent" means in the first place.
+   */
+  | {
+      type: 'nodeArrange';
+      node: GraphNode;
+      into: 'child' | 'sibling' | 'loose';
+      /** What it was dropped on or beside. Absent for `loose`. */
+      target?: GraphNode;
+      /** For `sibling`: whether it goes on `target`'s leading side. */
+      before?: boolean;
+      /** Where the pointer let go, in world units — for a consumer that also stores a position. */
+      at: Point;
+      /**
+       * The new parent's children, left to right, as the reader saw them land — the card included.
+       *
+       * What an order is written from. A consumer that worked the order out again from its own data would
+       * be ordering by its own rules, and wherever those differ from the layout's — cards nobody has ranked
+       * yet, say — the order it wrote would not be the one the reader chose. Absent where the drop sets no
+       * order: out of every tree, or where siblings are ordered by something a drag does not change.
+       */
+      order?: string[];
+    }
   | { type: 'expanded'; id: string; added: number; total?: number }
   | { type: 'budgetReached'; limit: number };
 

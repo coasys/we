@@ -133,3 +133,39 @@ describe('framing a region past zoom 1', () => {
     expect(follower.get().zoom).toBe(1);
   });
 });
+
+describe('Viewport.contain', () => {
+  /** Where a world point lands on screen. */
+  const onScreen = (viewport: Viewport, x: number, y: number) => {
+    const { zoom, x: panX, y: panY } = viewport.get();
+    return { x: x * zoom + panX, y: y * zoom + panY };
+  };
+
+  it('centres content that fits, at the zoom the reader chose', () => {
+    const viewport = sized();
+    viewport.zoomAt({ x: 0, y: 0 }, 0.5);
+    viewport.contain({ minX: 0, minY: 0, maxX: 400, maxY: 200 });
+
+    expect(viewport.get().zoom).toBeCloseTo(0.5);
+    expect(onScreen(viewport, 200, 100)).toEqual({ x: 500, y: 400 });
+  });
+
+  it('never zooms in on content smaller than the view', () => {
+    // A fit would zoom in to frame a small tree; asked for smaller cards, that undoes the choice.
+    const viewport = sized();
+    viewport.zoomAt({ x: 0, y: 0 }, 0.4);
+    viewport.contain({ minX: 0, minY: 0, maxX: 100, maxY: 100 });
+    expect(viewport.get().zoom).toBeCloseTo(0.4);
+  });
+
+  it('zooms out just far enough when the content no longer fits', () => {
+    const viewport = sized();
+    viewport.contain({ minX: 0, minY: 0, maxX: 3000, maxY: 400 });
+
+    const { zoom } = viewport.get();
+    expect(zoom).toBeLessThan(1);
+    // The whole width is on screen, inside the margin.
+    expect(onScreen(viewport, 0, 0).x).toBeGreaterThanOrEqual(59);
+    expect(onScreen(viewport, 3000, 0).x).toBeLessThanOrEqual(941);
+  });
+});

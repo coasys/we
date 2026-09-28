@@ -28,7 +28,7 @@ export {
   propertyAddress,
   resourceAddress,
 } from './address';
-export { CARD_SILHOUETTES, cardSilhouette } from './style';
+export { CARD_SILHOUETTES, cardSilhouette, metricKey, MORPH_OUTLINES, morphOutline } from './style';
 export type { GraphEdge, GraphFragment, GraphNode, GraphValue } from './graph';
 export type {
   EntityShape,
@@ -49,14 +49,18 @@ export type {
   EdgeGeometry,
   EdgeSide,
   Layout,
+  LayoutArranging,
   LayoutFactory,
+  LayoutHierarchy,
   LayoutInput,
+  LayoutRegion,
   LayoutResult,
   Placement,
   Point,
 } from './layout';
 export type {
   Behaviour,
+  ArrangeState,
   BehaviourContext,
   BehaviourFactory,
   ControlContext,

@@ -62,6 +62,15 @@ export interface EdgeClearance {
    */
   shape?: CardShape;
   /**
+   * The outline itself, in the same fractions of the box, where a node is mid-morph between two
+   * shapes — see `MORPH_OUTLINES`.
+   *
+   * It beats `shape`, which names one of the two and is therefore the *destination* while a card is
+   * still being drawn as the blend. Without this an edge meets the note a triangle is becoming for
+   * the whole of the change: a small error, and the same one `shape` exists to fix one level up.
+   */
+  outline?: readonly (readonly [number, number])[];
+  /**
    * How far *beyond* the outline to stop, in world units.
    *
    * The end an arrowhead points at wants a few pixels so the head lands against the card rather
@@ -94,6 +103,16 @@ function reachAlong(ux: number, uy: number, clearance: number | EdgeClearance): 
   if (typeof clearance === 'number') return clearance;
   const { halfWidth, halfHeight, shape } = clearance;
   if (halfWidth <= 0 && halfHeight <= 0) return 0;
+
+  /*
+    A blend in progress beats the name of either shape, including the exact ellipse below: mid-morph a
+    round card is not an ellipse, and meeting the one it is *becoming* is what put the line 40px inside
+    a card that was still being drawn as a circle.
+  */
+  if (clearance.outline) {
+    const reach = polygonReach(ux, uy, clearance.outline, halfWidth, halfHeight);
+    if (Number.isFinite(reach)) return reach;
+  }
 
   // A round card is the ellipse inscribed in its box — exact by formula, where a polygon of it would
   // be an approximation of something already known.
@@ -148,13 +167,25 @@ function polygonReach(
     if (Math.abs(denominator) < 1e-9) continue; // Parallel to this side.
     const along = (px * ey - py * ex) / denominator;
     const across = (px * uy - py * ux) / denominator;
-    if (along > 0 && across >= 0 && across <= 1) nearest = Math.min(nearest, along);
+    // Tolerant at both ends, because a ray aimed exactly at a vertex meets two edges at their shared
+    // endpoint and floating point can put both a hair outside the range, which answers with nothing.
+    if (along > 0 && across >= -1e-9 && across <= 1 + 1e-9) nearest = Math.min(nearest, along);
   }
   return nearest;
 }
 
+/**
+ * Which way one end of an edge faces, out of its node — a unit vector.
+ *
+ * The router's own currency for "where does this end attach", and the reason a side letter reaches no
+ * further than {@link facingOf}. Everything downstream — the reach along the outline, the standoff, the
+ * tangent the curve arrives on — is already a function of a direction, so the four sides are simply
+ * four of the directions there are, and a direction *between* two of them is as routable as either.
+ */
+export type Facing = readonly [number, number];
+
 /** Which way a side faces, as a unit vector out of the node. See {@link EdgeSide}. */
-const OUTWARD: Record<EdgeSide, readonly [number, number]> = {
+const OUTWARD: Record<EdgeSide, Facing> = {
   n: [0, -1],
   e: [1, 0],
   s: [0, 1],
@@ -173,10 +204,27 @@ const OUTWARD: Record<EdgeSide, readonly [number, number]> = {
  * whatever a peer wrote — this is a shared, writable data layer — and a bad one reaching the router
  * would land the edge at `NaN`, which draws nothing and reports nothing.
  */
-export function anchorsOf(data: Record<string, unknown> | undefined): EdgeAnchors {
+export function anchorsOf(data: Record<string, unknown> | undefined, fallback?: EdgeAnchors): EdgeAnchors {
   const side = (value: unknown): EdgeSide | undefined =>
     value === 'n' || value === 'e' || value === 's' || value === 'w' ? value : undefined;
-  return { source: side(data?.sourceAnchor), target: side(data?.targetAnchor) };
+  /*
+    `fallback` is a style rule's answer, behind whatever the edge itself carries.
+
+    That order rather than the other way round because the two are facts at different scales: a rule says
+    how a whole arrangement hangs its lines, and a stored anchor is one canvas's tidying of one
+    connection. The narrower fact wins, exactly as a card's own colour sits in front of its type's.
+
+    Resolved through one function so the precedence has one implementation. The router draws the line and
+    the renderer places the grips along it, and a second copy of this rule is how the handles came to sit
+    at the old endpoints while the line moved.
+  */
+  // Both sides go through `side`, not only the stored one. A template is JSON and untyped at runtime,
+  // so a rule saying `'up'` is exactly as possible as a peer writing it — and the consequence is the
+  // same: an edge routed to `NaN`, which draws nothing and reports nothing.
+  return {
+    source: side(data?.sourceAnchor) ?? side(fallback?.source),
+    target: side(data?.targetAnchor) ?? side(fallback?.target),
+  };
 }
 
 /**
@@ -359,16 +407,60 @@ function shiftLane(point: Point, lane: number, horizontal: boolean): Point {
  * `arriving` flips it, because the second control point is measured *back* from the target: an edge
  * arriving at a west side approaches from the west, so its tangent points that way out of the node.
  */
-function departure(
+/**
+ * Which way the `to` end of this span faces, out of its own node.
+ *
+ * The one answer to two questions — which way to measure the outline along, and which way the curve leaves
+ * or arrives — because they must agree or a line meets its node somewhere it is not pointing.
+ *
+ * Roles as `attachPoint` takes them: `to` is the node being attached to and `from` is the other end, so
+ * the source's facing is this asked with the two swapped. `horizontal` is NOT swapped with them — the
+ * axis is a property of the span, decided once from the centres.
+ */
+export function facingOf(
   from: Point,
   to: Point,
+  curve: EdgeCurve,
   horizontal: boolean,
   side: EdgeSide | undefined,
-  arriving: boolean,
-): readonly [number, number] {
+): Facing {
+  // Somebody overruling all of it for this end of this edge.
   if (side) return OUTWARD[side];
-  const sign = Math.sign((horizontal ? to.x - from.x : to.y - from.y) || 1) * (arriving ? -1 : 1);
-  return horizontal ? [sign, 0] : [0, sign];
+  if (curve === 'smooth' || curve === 'step') {
+    // The axis it arrives on is the axis to measure: a curve arriving horizontally meets the left or
+    // right side, and how tall the node happens to be says nothing about where that side is.
+    return horizontal ? [-Math.sign(to.x - from.x || 1), 0] : [0, -Math.sign(to.y - from.y || 1)];
+  }
+  // A straight or arced edge travels the chord, so the chord's direction is the one to measure.
+  const dx = from.x - to.x;
+  const dy = from.y - to.y;
+  const distance = Math.hypot(dx, dy);
+  return distance === 0 ? [0, -1] : [dx / distance, dy / distance];
+}
+
+/** A facing as an angle, and back — what an interpolation between two of them needs. */
+export function angleOf(facing: Facing): number {
+  return Math.atan2(facing[1], facing[0]);
+}
+
+export function facingAt(angle: number): Facing {
+  return [Math.cos(angle), Math.sin(angle)];
+}
+
+/**
+ * The signed turn from one facing to another, the short way round.
+ *
+ * `toward` breaks the tie at exactly half a turn, where the two ways are the same length and the
+ * choice is still visible: it picks the way that passes the direction given, which callers hand the
+ * *near* side — the way the rest of the line already lies — so a swing never travels round the back of
+ * the node it is attached to.
+ */
+export function turnBetween(a: number, b: number, toward?: number): number {
+  const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
+  const delta = wrap(b - a);
+  if (toward === undefined || Math.abs(Math.abs(delta) - Math.PI) > 1e-6) return delta;
+  const near = wrap(toward - a);
+  return Math.sign(near || 1) * Math.PI;
 }
 
 /**
@@ -504,46 +596,34 @@ function midpointOf(points: Point[]): Point {
  * moment the curve itself changes which axis it travels along. One visible change rather than two
  * disagreeing ones.
  *
- * `side` is somebody overruling all of that for this end of this edge — an anchor. It wins over
- * every shape, including the two that trim along the chord: an anchored `straight` edge leaves the
- * middle of the side it was told to, which is the point of saying so.
+ * The direction is decided by {@link facingOf}, or handed in by a caller interpolating between two of
+ * them. This function's whole job is the *distance*: how far along that direction the outline is, plus
+ * the standoff. Which is why a facing between two sides needs nothing added here — walking a rotating
+ * ray out of the centre traces the real outline, corners and all, and can never land inside the node.
+ *
+ * `chord` says the direction IS the line between the two centres, which only a `straight` or an `arc`
+ * with nothing overruling it can be. It is the one case that needs the guard below, because it is the
+ * one case where overshooting the outline means landing past the other node rather than beside it.
  */
-function attachPoint(
-  from: Point,
-  to: Point,
-  curve: EdgeCurve,
-  clearance: number | EdgeClearance,
-  horizontal: boolean,
-  side?: EdgeSide,
-): Point {
+function attachPoint(from: Point, to: Point, clearance: number | EdgeClearance, facing: Facing, chord = false): Point {
   const { halfWidth, halfHeight } = clearanceOf(clearance);
   if (halfWidth <= 0 && halfHeight <= 0) return to;
   const gap = typeof clearance === 'number' ? 0 : (clearance.gap ?? 0);
-  /** The outline's distance along a direction, plus the standoff — the point, given a direction. */
-  const along = (ux: number, uy: number): Point => {
-    const reach = reachAlong(ux, uy, clearance) + gap;
-    return { x: to.x + ux * reach, y: to.y + uy * reach };
-  };
+  const reach = reachAlong(facing[0], facing[1], clearance) + gap;
+  const point = { x: to.x + facing[0] * reach, y: to.y + facing[1] * reach };
+  if (!chord) return point;
+  /*
+    Its own centre rather than past the other end: two overlapping cards would otherwise put this end
+    behind the node it came from.
 
-  if (side) {
-    const [ax, ay] = OUTWARD[side];
-    return along(ax, ay);
-  }
-  if (curve === 'smooth' || curve === 'step') {
-    // The axis it arrives on is the axis to measure: a curve arriving horizontally meets the left or
-    // right side, and how tall the node happens to be says nothing about where that side is.
-    return horizontal ? along(-Math.sign(to.x - from.x || 1), 0) : along(0, -Math.sign(to.y - from.y || 1));
-  }
-  // A straight or arced edge travels the chord, so the chord's direction is the one to measure —
-  // and the point is clamped to the far end, since a target nearer than its own outline would
-  // otherwise put the arrowhead behind the node it came from.
-  const dx = from.x - to.x;
-  const dy = from.y - to.y;
-  const distance = Math.hypot(dx, dy);
+    Deliberately NOT asked of a facing that is being swept. The guard is a snap — beyond the other
+    centre, fall back to this node's own — and a snap inside a movement is a jump waiting for two cards
+    to pass close to one another, which on a rearrangement they do. Along the chord there is nothing
+    moving the direction, so the only way to reach it is to drag two cards together, where it has always
+    been the behaviour.
+  */
+  const distance = Math.hypot(from.x - to.x, from.y - to.y);
   if (distance === 0) return to;
-  const point = along(dx / distance, dy / distance);
-  // Its own centre rather than past the other end: two overlapping cards would otherwise put this
-  // end behind the node it is attaching to.
   return Math.hypot(point.x - to.x, point.y - to.y) >= distance ? to : point;
 }
 
@@ -587,6 +667,11 @@ function attachPoint(
  * *nearest waypoint* rather than the far node, since that is the direction the line actually leaves
  * in, and `offset` is ignored: fanning is a way of separating two edges nobody has shaped, and an
  * explicit route is already separate from whatever it was drawn around.
+ *
+ * `facing` overrules the direction at either end with a vector, which is how an anchor *changing* is
+ * animated rather than jumped: a side is four directions and a rearrangement that repins one has to
+ * cross the ones in between. An override rather than a widening of `anchors`, because a side is a
+ * stored, authored fact that the canvas writes and reads back, and a direction mid-sweep is neither.
  */
 export function routeEdge(
   id: string,
@@ -598,6 +683,7 @@ export function routeEdge(
   sourceClearance: number | EdgeClearance = 0,
   anchors: EdgeAnchors = {},
   waypoints: readonly Point[] = [],
+  facing: { source?: Facing; target?: Facing } = {},
 ): EdgeGeometry {
   if (from.x === to.x && from.y === to.y) {
     // A self-loop has no direction to bow along, so it gets a fixed teardrop above the node.
@@ -619,9 +705,15 @@ export function routeEdge(
   const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
   // Computed from the centres, then held: deriving it again from the attachment point would let a
   // short edge flip axis purely because the clearance shortened it.
-  const end = attachPoint(from, to, curve, clearance, horizontal, anchors.target);
+  const facingTo = facing.target ?? facingOf(from, to, curve, horizontal, anchors.target);
   // The same question at the other end — see `sourceClearance`. Roles swapped, axis not.
-  const begin = attachPoint(to, from, curve, sourceClearance, horizontal, anchors.source);
+  const facingFrom = facing.source ?? facingOf(to, from, curve, horizontal, anchors.source);
+  // Along the chord only where the chord is what decided the direction — see `attachPoint`.
+  const travelsChord = curve === 'straight' || curve === 'arc';
+  const chordTo = travelsChord && !facing.target && !anchors.target;
+  const chordFrom = travelsChord && !facing.source && !anchors.source;
+  const end = attachPoint(from, to, clearance, facingTo, chordTo);
+  const begin = attachPoint(to, from, sourceClearance, facingFrom, chordFrom);
 
   if (waypoints.length) {
     /*
@@ -634,10 +726,18 @@ export function routeEdge(
     */
     const first = waypoints[0];
     const last = waypoints[waypoints.length - 1];
-    const facing = (node: Point, neighbour: Point, side: EdgeSide | undefined, own: number | EdgeClearance) =>
-      attachPoint(neighbour, node, curve, own, Math.abs(neighbour.x - node.x) >= Math.abs(neighbour.y - node.y), side);
-    const head = facing(from, first, anchors.source, sourceClearance);
-    const tail = facing(to, last, anchors.target, clearance);
+    const meeting = (
+      node: Point,
+      neighbour: Point,
+      side: EdgeSide | undefined,
+      own: number | EdgeClearance,
+      override: Facing | undefined,
+    ) => {
+      const axis = Math.abs(neighbour.x - node.x) >= Math.abs(neighbour.y - node.y);
+      return attachPoint(neighbour, node, own, override ?? facingOf(neighbour, node, curve, axis, side));
+    };
+    const head = meeting(from, first, anchors.source, sourceClearance, facing.source);
+    const tail = meeting(to, last, anchors.target, clearance, facing.target);
     const through = [head, ...waypoints, tail];
     const segments =
       curve === 'step'
@@ -709,11 +809,22 @@ export function routeEdge(
       left is a curve that departs upward and arrives from the left, which is the shape an anchor is
       asking for and the reason it cannot be one shared axis any more.
     */
-    const reach = Math.abs(horizontal ? finish.x - start.x : finish.y - start.y) / 2;
-    const out = departure(from, to, horizontal, anchors.source, false);
-    const back = departure(from, to, horizontal, anchors.target, true);
-    const control = { x: start.x + out[0] * reach, y: start.y + out[1] * reach };
-    const control2 = { x: finish.x + back[0] * reach, y: finish.y + back[1] * reach };
+    /*
+      Half the span, on whichever axis it is longer on — measured between the points the curve actually
+      runs between rather than chosen by the axis the *centres* mostly run along.
+
+      The two agree except near the diagonal, where choosing by axis is a discontinuity: `horizontal`
+      flips as a card crosses it mid-travel, and the whole curve would change shape in one frame. A maximum
+      is continuous, and equals the axis choice wherever the difference is worth seeing.
+    */
+    const reach = Math.max(Math.abs(finish.x - start.x), Math.abs(finish.y - start.y)) / 2;
+    /*
+      The tangent at each end IS that end's facing — see `facingOf`, which is the one place the two used
+      to be derived separately. Arriving along the inward direction is also what keeps the arrowhead
+      aimed at the node's centre while the facing sweeps, rather than at wherever the line came from.
+    */
+    const control = { x: start.x + facingFrom[0] * reach, y: start.y + facingFrom[1] * reach };
+    const control2 = { x: finish.x + facingTo[0] * reach, y: finish.y + facingTo[1] * reach };
     return {
       id,
       from: start,
@@ -867,6 +978,207 @@ export function bendPoints(drawn: Point[], waypoints: Point[]): Point[] {
   return edges.slice(1).map((end, index) => pointAlong(drawn, (edges[index] + end) / 2));
 }
 
+/** A cubic Bézier as its four points: the start, the two controls, and the end. */
+export type Cubic = readonly [Point, Point, Point, Point];
+
+const mix = (a: Point, b: Point, t: number): Point => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+
+/**
+ * Any route, as a chain of cubics drawing exactly the same line.
+ *
+ * Every shape a route can take already is one, or converts without loss: a `smooth` curve is a cubic, an
+ * `arc` is a quadratic (which a cubic represents exactly), and a straight leg is a cubic whose controls sit
+ * on the line. A route bent through waypoints is a chain of those. So this is a change of representation
+ * and not an approximation — which is what lets {@link blendRoutes} morph any route into any other.
+ */
+export function cubicsOf(geometry: EdgeGeometry): Cubic[] {
+  const line = (a: Point, b: Point): Cubic => [a, mix(a, b, 1 / 3), mix(a, b, 2 / 3), b];
+  if (geometry.segments) {
+    const chain: Cubic[] = [];
+    let at = geometry.from;
+    for (const segment of geometry.segments) {
+      // The same test `pathFrom` draws by: both controls or a straight leg.
+      chain.push(
+        segment.control && segment.control2
+          ? [at, segment.control, segment.control2, segment.to]
+          : line(at, segment.to),
+      );
+      at = segment.to;
+    }
+    return chain;
+  }
+  if (geometry.elbows) {
+    const corners = [geometry.from, ...geometry.elbows, geometry.to];
+    return corners.slice(1).map((corner, index) => line(corners[index], corner));
+  }
+  const { from, to, control, control2 } = geometry;
+  if (control && control2) return [[from, control, control2, to]];
+  // A quadratic raised to a cubic: each control two thirds of the way from its end to the quadratic's one.
+  if (control) return [[from, mix(from, control, 2 / 3), mix(to, control, 2 / 3), to]];
+  return [line(from, to)];
+}
+
+/** De Casteljau: the two pieces of a cubic either side of parameter `t`, each exactly on the original. */
+export function splitCubic(cubic: Cubic, t: number): [Cubic, Cubic] {
+  const [p0, p1, p2, p3] = cubic;
+  const a = mix(p0, p1, t);
+  const b = mix(p1, p2, t);
+  const c = mix(p2, p3, t);
+  const d = mix(a, b, t);
+  const e = mix(b, c, t);
+  const f = mix(d, e, t);
+  return [
+    [p0, a, d, f],
+    [f, e, c, p3],
+  ];
+}
+
+/**
+ * A cubic with `length` taken off its end, exactly: the same curve, stopping short.
+ *
+ * What an arrowhead needs, since the stroke has to end where the head's base is. Cut rather than
+ * approximated by moving the end point back along its tangent: moving the end without its controls
+ * reshapes the curve, by an amount that depends on how long the piece is — so one line drawn as one
+ * piece and the same line drawn as two would be shortened into different shapes. A cut is the same
+ * curve however it was divided.
+ *
+ * A cubic no longer than `length` is left whole, so a line between two close cards is still drawn.
+ */
+export function trimCubicEnd(cubic: Cubic, length: number): Cubic {
+  if (length <= 0) return cubic;
+  // The length of the cubic from `t` to its end. The piece is short where the answer matters, so four
+  // chords measure it to far below a pixel.
+  const remaining = (t: number) => {
+    let total = 0;
+    let previous = cubicAt(cubic[0], cubic[1], cubic[2], cubic[3], t);
+    for (let step = 1; step <= 4; step += 1) {
+      const point = cubicAt(cubic[0], cubic[1], cubic[2], cubic[3], t + ((1 - t) * step) / 4);
+      total += Math.hypot(point.x - previous.x, point.y - previous.y);
+      previous = point;
+    }
+    return total;
+  };
+  if (remaining(0) <= length) return cubic;
+  // Bisect for the parameter where exactly `length` remains: the remainder shrinks as `t` grows. Eighteen
+  // halvings place the cut within about a hundredth of a unit on any curve a canvas draws.
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 18; step += 1) {
+    const mid = (low + high) / 2;
+    if (remaining(mid) > length) low = mid;
+    else high = mid;
+  }
+  return splitCubic(cubic, (low + high) / 2)[0];
+}
+
+/** How finely a cubic's length is measured, which bounds how exactly a chain is cut by length. */
+const LENGTH_STEPS = 32;
+
+/** Distance travelled along a cubic at each of `LENGTH_STEPS` even steps of its parameter. */
+function lengthTable(cubic: Cubic): number[] {
+  const table = [0];
+  let previous = cubic[0];
+  for (let step = 1; step <= LENGTH_STEPS; step += 1) {
+    const point = cubicAt(cubic[0], cubic[1], cubic[2], cubic[3], step / LENGTH_STEPS);
+    table.push(table[step - 1] + Math.hypot(point.x - previous.x, point.y - previous.y));
+    previous = point;
+  }
+  return table;
+}
+
+/** The parameter at which a cubic has travelled `distance`, read off its table. */
+function parameterAt(table: readonly number[], distance: number): number {
+  let step = 1;
+  while (step < table.length - 1 && table[step] < distance) step += 1;
+  const span = table[step] - table[step - 1];
+  const into = span > 0 ? (distance - table[step - 1]) / span : 0;
+  return (step - 1 + Math.min(1, Math.max(0, into))) / LENGTH_STEPS;
+}
+
+/** Two cut positions closer than this, as fractions of a route's length, are one cut. */
+const CUT_TOLERANCE = 1e-6;
+
+/** A chain measured: each piece's table, where each piece ends as a fraction of the whole, and the whole. */
+function measure(chain: readonly Cubic[]): { tables: number[][]; ends: number[]; total: number } {
+  const tables = chain.map(lengthTable);
+  const total = tables.reduce((sum, table) => sum + table[table.length - 1], 0);
+  let travelled = 0;
+  const ends = tables.map((table) => {
+    travelled += table[table.length - 1];
+    return total > 0 ? travelled / total : 1;
+  });
+  return { tables, ends, total };
+}
+
+/** A chain cut at each of `cuts` — fractions of its length, ascending — that is not already a joint. */
+function cutAt(chain: readonly Cubic[], measured: ReturnType<typeof measure>, cuts: readonly number[]): Cubic[] {
+  const out: Cubic[] = [];
+  let next = 0;
+  chain.forEach((cubic, index) => {
+    const start = index === 0 ? 0 : measured.ends[index - 1];
+    const end = measured.ends[index];
+    const table = measured.tables[index];
+    // The parameters, on this piece as it stands, of every cut falling strictly inside it.
+    const inside: number[] = [];
+    while (next < cuts.length && cuts[next] < end - CUT_TOLERANCE) {
+      if (cuts[next] > start + CUT_TOLERANCE) inside.push(parameterAt(table, (cuts[next] - start) * measured.total));
+      next += 1;
+    }
+    // Each cut splits what is left, so its parameter is rescaled onto the remainder.
+    let rest = cubic;
+    let used = 0;
+    for (const t of inside) {
+      const [head, tail] = splitCubic(rest, (t - used) / (1 - used));
+      out.push(head);
+      rest = tail;
+      used = t;
+    }
+    out.push(rest);
+  });
+  return out;
+}
+
+/**
+ * Two routes as one, `weight` of the way from `a` to `b`, control point by control point.
+ *
+ * The standard path morph. Both chains are cut into the same number of pieces at the same fractions of
+ * their lengths — each at the other's joints — so piece `i` of both covers the same stretch of line, and
+ * then all four points of each piece are interpolated. Interpolating control points rather than points on
+ * the line is what carries the TANGENTS through, so the direction a line leaves and arrives in — and the
+ * arrowhead drawn along it — is itself interpolated.
+ *
+ * Exact at both ends of the weight: 0 is `a` and 1 is `b`, drawn as themselves, so a morph hands over to
+ * the ordinary route with nothing to jump. Two routes of zero length have no fractions to match, and
+ * answer with whichever the weight is nearer.
+ */
+export function blendRoutes(a: EdgeGeometry, b: EdgeGeometry, weight: number): EdgeGeometry {
+  if (weight <= 0) return a;
+  if (weight >= 1) return b;
+  const chainA = cubicsOf(a);
+  const chainB = cubicsOf(b);
+  const measuredA = measure(chainA);
+  const measuredB = measure(chainB);
+  if (measuredA.total <= 0 || measuredB.total <= 0) return weight < 0.5 ? a : b;
+  // Every joint of either, once: each chain is then cut wherever the other has a joint it lacks.
+  const cuts = [...measuredA.ends.slice(0, -1), ...measuredB.ends.slice(0, -1)]
+    .sort((x, y) => x - y)
+    .filter((cut, index, all) => index === 0 || cut - all[index - 1] > CUT_TOLERANCE);
+  const piecesA = cutAt(chainA, measuredA, cuts);
+  const piecesB = cutAt(chainB, measuredB, cuts);
+  if (piecesA.length !== piecesB.length) return weight < 0.5 ? a : b;
+  const chain = piecesA.map(
+    (piece, index) => piece.map((point, which) => mix(point, piecesB[index][which], weight)) as unknown as Cubic,
+  );
+  return {
+    id: b.id,
+    from: chain[0][0],
+    to: chain[chain.length - 1][3],
+    segments: chain.map((piece) => ({ control: piece[1], control2: piece[2], to: piece[3] })),
+    curve: b.curve,
+    mid: mix(a.mid, b.mid, weight),
+  };
+}
+
 /**
  * The route as a polyline.
  *
@@ -942,4 +1254,145 @@ export function edgeBounds(geometry: EdgeGeometry): { minX: number; minY: number
     if (point.y > maxY) maxY = point.y;
   }
   return { minX, minY, maxX, maxY };
+}
+
+/** A silhouette in the box's own 0..1 space, clockwise. */
+export type Outline = readonly (readonly [number, number])[];
+
+/**
+ * Directions a blend describes itself in beyond the two shapes' own corners.
+ *
+ * Small on purpose. The corners come from the shapes themselves — see {@link directionsFor} — so this only
+ * has to keep the angular gaps from getting wide, and eight at forty-five degrees already coincides with
+ * every axis and diagonal. It is a floor, not the sampling.
+ */
+const MORPH_FILL = 8;
+
+/** Clockwise from straight up, the convention the whole shape table is written in. */
+const MORPH_START = -Math.PI / 2;
+const TURN = Math.PI * 2;
+
+/**
+ * One outline part-way between two, sampled by direction rather than matched point for point.
+ *
+ * **Which point becomes which is the whole problem, and this makes it not a question.** Both outlines are
+ * measured along the same set of directions out of the box's centre and the two distances are lerped, so a
+ * diamond's top vertex becomes whatever the note has straight above its centre — by construction, with no
+ * correspondence to find.
+ *
+ * Matching points instead fails as soon as the counts differ much: a rounded note's points cluster at its
+ * corners while a diamond padded to match spreads them along its edges, so vertices map to edge midpoints
+ * and the card passes through a lumpy many-sided shape.
+ *
+ * **It assumes the shapes are convex**, which every one in the table is: a ray out of the centre leaves a
+ * convex outline exactly once, so one distance per direction describes it completely. A star would come out
+ * as its inner hull, and would want a matched-point blend back with a correspondence somebody chose.
+ */
+export function blendOutlines(from: Outline, to: Outline, t: number): Outline {
+  return sampledBlend(from, to, t).outline;
+}
+
+/**
+ * How far a blend reaches along one of its own directions — what it has to carry to be blended AGAIN.
+ *
+ * A reversal mid-morph starts from the outline on screen, and a *blended* polygon cannot safely be asked
+ * how far it reaches: two of its directions can lie close enough to leave an edge pointing almost at the
+ * centre, which a ray between them misses, and the card grows a spike. So a blend carries its own radii
+ * forward, and only the hand-written shape table is ever ray-cast.
+ */
+export interface OutlineSample {
+  ux: number;
+  uy: number;
+  r: number;
+}
+
+/** A blend of two shapes from the table, with the radii it was built from. */
+export function sampledBlend(from: Outline, to: Outline, t: number): { outline: Outline; samples: OutlineSample[] } {
+  const at = Math.min(1, Math.max(0, t));
+  // Per frame this is a lerp and two multiplies per direction. Everything that needed a ray cast against
+  // the two outlines was answered once, for the pair — see `directionsFor`.
+  const samples = directionsFor(from, to).map(({ ux, uy, a, b }) => ({ ux, uy, r: a + (b - a) * at }));
+  return { outline: samples.map(({ ux, uy, r }) => [0.5 + ux * r, 0.5 + uy * r] as const), samples };
+}
+
+/** The same, continuing from a blend already in flight — its own directions, its own radii. */
+export function resampleBlend(
+  from: readonly OutlineSample[],
+  to: Outline,
+  t: number,
+): { outline: Outline; samples: OutlineSample[] } {
+  const at = Math.min(1, Math.max(0, t));
+  const samples = from.map(({ ux, uy, r }) => ({ ux, uy, r: r + (radiusAt(to, ux, uy) - r) * at }));
+  return { outline: samples.map(({ ux, uy, r }) => [0.5 + ux * r, 0.5 + uy * r] as const), samples };
+}
+
+/**
+ * The directions a pair of shapes is blended along: both of their corners, plus a coarse fill.
+ *
+ * Taking the corners from the shapes makes the ends of a blend **exact**: no vertex of either outline lies
+ * between two neighbouring directions, so each chord is an edge, and at `t` of 0 or 1 the result is the
+ * shape itself. Fixed angles would cut every corner that falls between two of them — 1.6% of a pentagon's
+ * size, and still 0.8% at twice the samples. Sized to the pair: eight directions for a diamond becoming a
+ * square, forty for a circle becoming a note.
+ *
+ * **Cached with the two distances along each**, since a pair's answer never changes and a frame then needs
+ * only the lerp: casting both outlines per card per frame measured 4 ms for two hundred cards. The tables
+ * are module constants with at most forty-nine pairs, so the cache has nothing to evict.
+ */
+interface Sampled {
+  ux: number;
+  uy: number;
+  /** How far the outline being left reaches this way, and the one being arrived at. */
+  a: number;
+  b: number;
+}
+
+const directionCache = new WeakMap<object, WeakMap<object, Sampled[]>>();
+
+function directionsFor(from: Outline, to: Outline): Sampled[] {
+  let byTo = directionCache.get(from);
+  if (!byTo) {
+    byTo = new WeakMap();
+    directionCache.set(from, byTo);
+  }
+  const cached = byTo.get(to);
+  if (cached) return cached;
+
+  // Measured as a turn clockwise from straight up, so sorting them puts the outline in the order every
+  // consumer of one expects.
+  const turned = (angle: number) => (((angle - MORPH_START) % TURN) + TURN) % TURN;
+  const found: number[] = [];
+  const add = (angle: number) => {
+    const spun = turned(angle);
+    // A thousandth of a radian — a twentieth of a degree, which is far below anything anybody can see and
+    // wide enough to collapse two directions that would otherwise leave a near-radial edge between them.
+    // At 1e-6 they survived, and a ray between them missed both of its neighbours: see `radiusAt`.
+    if (!found.some((other) => Math.abs(other - spun) < 1e-3)) found.push(spun);
+  };
+  for (let i = 0; i < MORPH_FILL; i += 1) add(MORPH_START + (i / MORPH_FILL) * TURN);
+  for (const [x, y] of [...from, ...to]) add(Math.atan2(y - 0.5, x - 0.5));
+  found.sort((a, b) => a - b);
+
+  const sampled = found.map((spun) => {
+    const angle = MORPH_START + spun;
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    return { ux, uy, a: radiusAt(from, ux, uy), b: radiusAt(to, ux, uy) };
+  });
+  byTo.set(to, sampled);
+  return sampled;
+}
+
+/** How far an outline reaches from the box's centre along one direction, in fractions of the box. */
+function radiusAt(outline: Outline, ux: number, uy: number): number {
+  const reach = polygonReach(ux, uy, outline, 0.5, 0.5);
+  if (Number.isFinite(reach)) return reach;
+  /*
+    The box's own reach along this direction — the honest answer for an outline that cannot answer. A flat
+    half would sit well inside the shape on a diagonal and outside a narrow part of it, and draw a spike.
+  */
+  return Math.min(
+    Math.abs(ux) > 1e-9 ? Math.abs(0.5 / ux) : Infinity,
+    Math.abs(uy) > 1e-9 ? Math.abs(0.5 / uy) : Infinity,
+  );
 }

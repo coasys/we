@@ -9,6 +9,7 @@ import { transcriptLines } from '@we/module-transcribe';
 import { panelScroll } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
+import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 
 export interface Scenario {
   /** The schema to mount, exactly as the app would render it. */
@@ -737,7 +738,98 @@ const transcriptAt = (rows: number): Scenario => ({
   },
 });
 
+/**
+ * The canvas's reading strip, under the chrome it has to clear.
+ *
+ * The strip is `position: absolute`, and the question is not whether it renders — it always did — but
+ * whether a reader can see it. The workshop pins a bar of pills over the whole route with
+ * `position: fixed`, so a strip at the container's own top corner is *underneath* them: rendered,
+ * measurable, correct in every jsdom assertion, and neither visible nor pressable. That is what shipped,
+ * and it took somebody deleting the pills in devtools to find it.
+ *
+ * So the scenario puts a stand-in bar where the pills are — the same `top` and the same height, off the
+ * band the template exports, so a theme that adds to control heights moves both together — and the case
+ * asserts the two do not overlap. A case that hard-coded 68px would pass here and lie about every other
+ * theme.
+ *
+ * `position: absolute` for the stand-in where the real bar is `fixed`: a fixed bar resolves against the
+ * viewport, which in the app is where this route's top edge is, and in the harness is the top of the
+ * page rather than the top of the mounted box. The vertical geometry under test is the same either way.
+ *
+ * The strip itself is the app's, imported. What is restated is the box around it — three props off the
+ * canvas route — because the real first child is a `GraphView` and needs a graph host.
+ */
+const treeStripOverCanvas = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', height: '420px', minHeight: '0', overflow: 'hidden', position: 'relative' },
+    $localState: { ...TREE_LOCALS },
+    $queries: { ...TREE_QUERIES },
+    children: [
+      // Stands in for the canvas: a sibling as tall as the container, which is what the strip floats over.
+      { type: 'Column', props: { width: '100%', height: '100%', bg: 'surface-sunken' } },
+      /*
+        Stands in for the pinned pill bar. Addressed by its words in the case, and given the band's own
+        `top` and `height` rather than numbers, so it cannot drift from what the template pins.
+      */
+      {
+        type: 'Row',
+        props: {
+          position: 'absolute',
+          top: CALL_CHROME_BAND.top,
+          left: '300',
+          height: CALL_CHROME_BAND.height,
+          px: '300',
+          ay: 'center',
+          bg: 'surface-raised',
+          r: 'pill',
+          zIndex: 3,
+        },
+        children: [{ type: 'we-text', props: { variant: 'label' }, children: ['Call pill'] }],
+      },
+      treeStrip({ below: CALL_CHROME_BAND.bottom }),
+    ],
+  },
+  tables: {
+    // Two kinds to choose a spine from, and one reaction to order by — enough for every picker in the
+    // strip to have something to show, which is what makes its width worth measuring.
+    RelationshipType: [
+      { id: 'rt-1', name: 'Supports', slug: 'supports' },
+      { id: 'rt-2', name: 'Contradicts', slug: 'contradicts' },
+    ],
+    SignalType: [{ id: 'st-1', name: 'Agree', slug: 'agree', mode: 'toggle', aggregate: 'count' }],
+  },
+});
+
+/**
+ * The tree strip ordered by a reaction, with the Voices list holding three people — what the
+ * canvas seed's summary would report — so the popover has rows to lay out.
+ */
+const voicesPopover = (): Scenario => {
+  const base = treeStripOverCanvas();
+  const column = base.node as SchemaNode & { $localState: Record<string, unknown> };
+  column.$localState = {
+    ...column.$localState,
+    treeMode: { ...TREE_LOCALS.treeMode, initial: true },
+    order: { ...TREE_LOCALS.order, initial: 'signal' },
+    voiceSummary: {
+      type: 'object',
+      initial: {
+        type: 'st-1',
+        voices: [
+          { author: 'did:key:ana', cards: 4, mean: 3.5 },
+          { author: 'did:key:ben', cards: 2, mean: 1 },
+          { author: 'pretend:1', cards: 1, mean: 5, name: 'Ada' },
+        ],
+      },
+    },
+  };
+  return base;
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'canvas:tree-strip': treeStripOverCanvas,
+  'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,

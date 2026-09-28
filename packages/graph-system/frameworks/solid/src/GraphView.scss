@@ -270,6 +270,49 @@
 }
 
 /*
+  An area of the arrangement the layout named — see `LayoutRegion`.
+
+  A dashed outline and a tinted wash rather than a border and a fill, because a region is a *caption on
+  a place* and not a container: the cards in it are ordinary cards, and something drawn like a panel
+  would say they were inside a thing rather than merely together. Dashed is the same vocabulary a card
+  nobody has agreed to already uses here — provisional, an observation about the drawing.
+
+  `pointer-events: none` for the reason everything in this layer has it: what was clicked is answered
+  from geometry the engine owns, and a region is not a thing that can be clicked.
+*/
+.we-graph__region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px dashed var(--we-role-border);
+  border-radius: var(--we-radius-300);
+  background: var(--we-role-surface-sunken);
+  pointer-events: none;
+}
+
+/*
+  The zone's name, sitting on its top edge.
+
+  Counter-scaled against the camera, like a decoration's content: a caption is chrome about the
+  arrangement rather than part of the drawing, and one that shrank to nothing as the reader zoomed out
+  to take in the whole forest would disappear exactly when it is most worth reading.
+
+  `bottom: 100%` puts it above the region rather than inside it, so it never sits over the first row of
+  cards — a label a card covers is a label that reads as absent.
+*/
+.we-graph__region-label {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  transform: scale(calc(1 / var(--graph-zoom, 1)));
+  transform-origin: 0 100%;
+  padding-block-end: var(--we-space-100);
+  color: var(--we-role-text-faint);
+  font-size: var(--we-font-size-100);
+  white-space: nowrap;
+}
+
+/*
   Marks something outside the graph put on the canvas — see `GraphDecoration`.
 
   The same zero-size anchoring the nodes use, so a mark's own origin lands exactly on its world
@@ -502,6 +545,14 @@
   width: var(--node-width);
   height: var(--node-height);
 
+  /*
+    No transition on the box, deliberately.
+
+    A card stretched into a rectangle on the canvas is given one uniform box in the tree, and it does
+    ease between them — but in the engine, frame by frame, alongside the position and the silhouette.
+    See `GraphEngine.visualOf`. A CSS transition on top would be a second animation on the same
+    property: each correct, and what you see neither.
+  */
   // See `.we-graph__dot`: the fade belongs to the card, not to the chrome anchored beside it.
   opacity: var(--node-opacity, 1);
 
@@ -624,7 +675,10 @@
   box-shadow: none;
 }
 
-.we-graph__card--cut {
+.we-graph__card--cut,
+// A card mid-morph is a polygon too, so its shadow has to follow the silhouette — but it keeps its
+// border and radius, which the clip removes as the outline pulls away from the box. See the markup.
+.we-graph__card--morphing {
   filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--we-role-shadow-color) 30%, transparent));
 }
 
@@ -733,6 +787,8 @@
 // whose size on the board has not changed. `top left` because the card is a page, and text that
 // grew from its centre would drift out of both margins at once.
 .we-graph__card-scale {
+  // Fades through a change of shape — see `contentLayout` in the renderer.
+  opacity: var(--content-opacity, 1);
   width: calc(100% / var(--content-scale, 1));
   height: calc(100% / var(--content-scale, 1));
   transform-origin: top left;
@@ -762,6 +818,23 @@
 }
 
 /*
+  A card's badge — see `NodeStyle.badge`. On the lower edge, straddling it, so it belongs to the card
+  without covering what the card says; toward the right, because a tree's lines leave a parent from the
+  middle of that edge and a mark there would sit on them.
+
+  The one part of a card that takes the pointer. The rest is inert so that a press anywhere falls through
+  to the canvas beneath and picks the card up; a press on the badge stops at the badge.
+*/
+.we-graph__badge {
+  position: absolute;
+  right: var(--we-space-300);
+  bottom: 0;
+  z-index: 2;
+  transform: translateY(50%);
+  pointer-events: auto;
+}
+
+/*
   Hovering says "this one, and it is clickable".
 
   A ring rather than a colour change, because a board lets people choose a card's colour and
@@ -769,7 +842,9 @@
   `outline` rather than a border: a border changes the box and nudges the content inside it, and on
   a surface where a card can be sized to the pixel a hover that moves the layout reads as a bug.
 */
-.we-graph__node--card.we-graph__node--hovered .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
+.we-graph__node--card.we-graph__node--hovered
+  .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing)
+  > .we-graph__card-shape {
   box-shadow: var(--we-shadow-md);
   outline: calc(2px / var(--graph-zoom)) solid color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
   outline-offset: calc(1px / var(--graph-zoom));
@@ -789,7 +864,9 @@
 */
 // The outline pushed out by a constant distance, from the renderer — see `ringClip` for why it
 // is an offset rather than a scaled copy, and why it is written in pixels.
-.we-graph__card--cut::before {
+.we-graph__card--cut::before,
+// A card mid-morph is drawn by the same polygon, so it wears the same ring — see the markup.
+.we-graph__card--morphing::before {
   content: '';
   position: absolute;
   inset: calc(-1 * var(--ring-pad, 0px));
@@ -798,11 +875,11 @@
   pointer-events: none;
 }
 
-.we-graph__node--card.we-graph__node--hovered .we-graph__card--cut {
+.we-graph__node--card.we-graph__node--hovered :is(.we-graph__card--cut, .we-graph__card--morphing) {
   --ring-color: color-mix(in srgb, var(--we-role-accent) 55%, var(--we-role-page));
 }
 
-.we-graph__node--card.we-graph__node--selected .we-graph__card--cut {
+.we-graph__node--card.we-graph__node--selected :is(.we-graph__card--cut, .we-graph__card--morphing) {
   --ring-color: var(--we-role-accent);
 }
 
@@ -815,7 +892,9 @@
   distance off the edge, were pushed into it and then under it. Reported as the dots drifting inwards
   as you zoom, which is the ring growing outwards past them.
 */
-.we-graph__node--card.we-graph__node--selected .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
+.we-graph__node--card.we-graph__node--selected
+  .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing)
+  > .we-graph__card-shape {
   box-shadow: 0 0 0 calc(3px / var(--graph-zoom)) var(--we-role-accent);
 }
 
@@ -834,6 +913,52 @@
 }
 
 /*
+  A card in the hand during a rearranging drag, lifted above the tree making room under it.
+
+  A drop shadow rather than a box shadow, because a cut card is clipped to its outline and a box shadow would
+  be clipped with it. Over every other card, since it is the one being moved, and never taking the pointer
+  from the cards the tree is rearranging underneath.
+*/
+.we-graph__node--held {
+  z-index: 100000 !important;
+  pointer-events: none;
+
+  .we-graph__card,
+  .we-graph__dot {
+    filter: drop-shadow(0 10px 18px color-mix(in srgb, var(--we-role-shadow-color) 35%, transparent));
+  }
+}
+
+// Held where letting go would change nothing: the card says so as well as its place does.
+.we-graph__node--held-idle {
+  opacity: 0.6;
+}
+
+/*
+  The place a held card would land — see `ghostOutline` in the renderer. Faint, dashed and in the accent, the
+  same voice as the connect gesture's line: a proposal, not a card.
+*/
+.we-graph__ghost-outline {
+  fill: color-mix(in srgb, var(--we-role-accent) 7%, transparent);
+  stroke: var(--we-role-accent);
+  stroke-width: 1.5px;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+
+// The card's own place: a hole rather than a destination — neutral, solid and barely there.
+.we-graph__ghost--home .we-graph__ghost-outline {
+  fill: color-mix(in srgb, var(--we-role-text-faint) 6%, transparent);
+  stroke: var(--we-role-border);
+  stroke-dasharray: none;
+}
+
+// Its line, the connection it already has — faded with the hole rather than taken away.
+.we-graph__ghost--home .we-graph__ghost-line {
+  opacity: 0.45;
+}
+
+/*
   A held node says so.
 
   Pinning is state the layout obeys and nothing else shows, so without a mark a graph that refuses to
@@ -845,7 +970,7 @@
   node can easily be both held and selected.
 */
 .we-graph__node--pinned .we-graph__dot,
-.we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut) > .we-graph__card-shape {
+.we-graph__node--pinned .we-graph__card:not(.we-graph__card--cut, .we-graph__card--morphing) > .we-graph__card-shape {
   // Screen-constant, for the reason the selection ring is: a pinned card can carry connect handles
   // too, and this sits further out than the selection ring does. A cut shape goes without: a dashed
   // ring cannot be made from shadows, and on a canvas every card is placed so the mark means nothing.

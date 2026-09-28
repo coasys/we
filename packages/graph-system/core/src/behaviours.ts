@@ -10,7 +10,7 @@
  * it. That is how dragging a node takes precedence over panning the canvas without either behaviour
  * knowing the other exists.
  */
-import type { Behaviour, BehaviourContext, Point, PointerInput } from '@we/graph-protocol';
+import type { ArrangeState, Behaviour, BehaviourContext, Bounds, Point, PointerInput } from '@we/graph-protocol';
 
 import { boundsFromPoints } from './viewport';
 
@@ -250,7 +250,21 @@ export interface ConnectNodesOptions {
    * press falls through to whatever handles nodes next — normally `drag-node`.
    */
   armed?: boolean;
+  /**
+   * Which button starts it. Defaults to `'primary'`, armed as above.
+   *
+   * `'secondary'` is the quick form: a right-drag from a card draws a line from it, whether or not the
+   * tool is armed, and leaves the primary button to move cards exactly as before — so one gesture
+   * connects and the other arranges, with no mode between them. List it **first**, since a press is
+   * owned by the first behaviour that claims it and nothing else distinguishes the buttons. A
+   * right-click that does not travel draws nothing and emits nothing, which keeps a plain right-click
+   * free for a menu one day.
+   */
+  button?: 'primary' | 'secondary';
 }
+
+/** How far a press has to travel before it is a drag rather than a click, in screen pixels. */
+const CONNECT_THRESHOLD = 4;
 
 /**
  * Drag from one node to another to connect them.
@@ -263,12 +277,16 @@ export interface ConnectNodesOptions {
  * wins. After it, arming the gesture would do nothing at all and look like a broken toggle.
  */
 export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
-  const options = { armed: true, ...(rawOptions as ConnectNodesOptions) };
+  const options = { armed: true, button: 'primary', ...(rawOptions as ConnectNodesOptions) };
   let from: string | null = null;
+  let start: Point | null = null;
+  let travelled = false;
 
   /** End the gesture and take down the line, whatever the outcome. */
   function reset(ctx: BehaviourContext): void {
     from = null;
+    start = null;
+    travelled = false;
     ctx.drawConnection(null);
   }
 
@@ -276,10 +294,14 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     id: 'connect-nodes',
     description: 'Drag from one node to another to connect them.',
     onPointerDown(input, ctx) {
-      if (!options.armed) return;
+      // The secondary button is its own gesture: the quick form claims only it, the armed form never.
+      const secondary = (input.buttons & 2) !== 0;
+      if (options.button === 'secondary' ? !secondary : secondary || !options.armed) return;
       const [hit] = ctx.hitTest(ctx.toWorld(input.at));
       if (!hit) return;
       from = hit;
+      start = input.at;
+      travelled = false;
       return true;
     },
     onPointerMove(input, ctx) {
@@ -290,6 +312,11 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
         reset(ctx);
         return;
       }
+      // Not a line until the pointer has gone somewhere: a press that wobbles is still a click.
+      if (!travelled && start && Math.hypot(input.at.x - start.x, input.at.y - start.y) < CONNECT_THRESHOLD) {
+        return true;
+      }
+      travelled = true;
       ctx.drawConnection(from, ctx.toWorld(input.at));
       return true;
     },
@@ -299,8 +326,11 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     onPointerUp(input, ctx) {
       if (!from) return;
       const source = from;
+      const moved = travelled;
       const [target] = ctx.hitTest(ctx.toWorld(input.at));
       reset(ctx);
+      // A click, not a drag: nothing to connect, and the press is still this gesture's to end.
+      if (!moved) return true;
       // A node cannot be connected to itself, and a release on empty canvas is an abandoned
       // gesture rather than a connection to nothing. Both end quietly: the line goes and no event
       // is emitted, so nothing opens a dialog about a connection the user did not make.
@@ -527,11 +557,477 @@ export function expandOnClickBehaviour(rawOptions?: Record<string, unknown>): Be
   };
 }
 
+export interface ArrangeNodesOptions {
+  /**
+   * Whether a drag may change the order of siblings. Default true. False where siblings are ordered by
+   * something a drag cannot change — a date, a tally — so a card can still be moved under another parent,
+   * and lands where that order puts it, but is never shown sliding into a place it would not keep.
+   */
+  reorder?: boolean;
+  /**
+   * Fields of a connection that keep a card in its tree. A drag into the unconnected zone is refused for a card
+   * whose connection to its parent holds a value in any of them — and shown refused, rather than shown
+   * happening and then turned down. Which connections are worth keeping is the host's to say: WE passes
+   * `['commentsCount', 'signalsCount']`, because it will not delete a connection people have discussed.
+   */
+  keep?: string[];
+  /** What the preview says when it refuses for that reason. */
+  keepReason?: string;
+  /**
+   * For a layout that reports no hierarchy: how far from a card, in world units, a drop still counts as
+   * beside it. Beyond it the drop is loose.
+   */
+  reach?: number;
+  /** For a layout that reports no hierarchy: how tall the band searched for siblings is, in world units. */
+  band?: number;
+}
+
+/** What a drop reports, in the terms the host writes it in. */
+type ArrangeEvent = { into: 'child' | 'sibling' | 'loose'; target?: string; before?: boolean; order?: string[] };
+
+/** What a drop at some point would do: where it puts the card, what it reports, and why not when it is refused. */
+type Decision = { to: ArrangeState['to']; event?: ArrangeEvent; refused?: string };
+
+/**
+ * One place a held card could go, and where its ghost would be drawn there — asked of the layout the first
+ * time the card reaches the place's level. `to` null is the card's own place.
+ */
+interface Place extends Decision {
+  at?: Point | null;
+  /** Where the parent it would hang from is drawn, sideways — its family's place in reading order. */
+  family?: number;
+}
+
+/**
+ * Drag a card to another place in a hierarchy — along a row to reorder it, under another parent to move it,
+ * beneath a card with no children to make it the first, into the unconnected zone to take it out of its tree.
+ *
+ * ## Why this is not `drag-node` with a flag
+ *
+ * `drag-node` moves a card and reports where it ended up, because on a canvas the position **is** the
+ * data. Here the position is derived: the layout decides it, and what the drag means is a change to the
+ * *structure* the layout reads. Dropping a card two pixels to the left of where it started must write
+ * nothing at all, where on a canvas it writes a coordinate. List this one where the layout derives
+ * positions and `drag-node` where they come from the data — listing both has them fight for the press.
+ *
+ * ## The preview is the drop
+ *
+ * While a card is held, the engine lays the tree out as if the drop were already written: the other cards
+ * make room, and the empty place the card would land in is drawn as a ghost with the line it would have —
+ * see `ArrangeState`. So the reader sees the result before committing to it, and there is nothing to guess.
+ * On release the card travels into that place and stays there while the write goes through.
+ *
+ * ## The place whose ghost is nearest the card
+ *
+ * Every place a card could go — each gap in each parent's row, the level beneath each card with no
+ * children, and its own place — is asked of the layout: where would the card be drawn if it went there?
+ * The place chosen is the one whose answer is nearest the middle of the card in the hand, on the level the
+ * card is on. So the ghost is always the drop spot closest to the card, by construction.
+ *
+ * Measuring anything else drifts. A gap measured against the tree as it stood is a slot out once the
+ * card's own slot has closed and the trees beside it have slid over; measured against the tree without
+ * the card, the card's own place is claimed by whichever tree closed up into it; measured from the pointer,
+ * a card picked up by its edge opens gaps beside itself. The layout's own answers need no correcting,
+ * because making room is what the layout does.
+ *
+ * - **On a level**, the whole width belongs to one place or another, so moving along a level only ever
+ *   moves the ghost along that level.
+ * - **Between levels**, nothing changes: the last place shown stays, so crossing the gap between two ranks
+ *   does not send the tree back to where it started and out again.
+ * - **In the unconnected zone**, it comes out of its tree — unless {@link ArrangeNodesOptions.keep} says its
+ *   connection cannot go, in which case the preview says so.
+ * - **Over its own place, or well off the tree**, it goes back where it was, and a drop there writes nothing.
+ *
+ * Each level is asked once, when the card first reaches it, and kept: the answers do not depend on the
+ * pointer, and a tree of a few hundred cards would pay a visible pause asking for every level at once.
+ *
+ * A card cannot go under itself or anything beneath it, so its own subtree offers no place at all.
+ *
+ * On a layout that reports no hierarchy there is nothing to preview against, and the gesture falls back to
+ * reporting what a drop beside, onto or away from a card means — see `intentAt` below.
+ */
+export function arrangeNodesBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
+  const options = { reach: 240, band: 0, reorder: true, ...(rawOptions as ArrangeNodesOptions) };
+  let dragging: string | null = null;
+  let moved = false;
+  let grabOffset = { x: 0, y: 0 };
+
+  // ─── With a hierarchy: the preview ──────────────────────────────────────────
+
+  /** The places a drop can land, by the depth of the level they are on. */
+  let levels = new Map<number, Place[]>();
+  /** How far down each level's ghosts are drawn — asked once per level, for the band a card is in. */
+  let levelY = new Map<number, number>();
+  /** Half the height of the card in the hand: how far from a level's line it still counts as on it. */
+  let halfHeight = 0;
+  /** Half its width: how far apart two places drawn at one spot are pulled — see {@link sideways}. */
+  let halfWidth = 0;
+  let home: { parent: string | null; index: number } = { parent: null, index: 0 };
+  /** The connection holding the dragged card under its parent, if it has one. */
+  let homeEdge: string | undefined;
+  /** How far past the tree the card can go before a drop means "never mind". */
+  let reach: Bounds | null = null;
+  /** The place last shown, which holds while the card is between levels. */
+  let current: Decision = { to: null };
+
+  const inside = (box: Bounds, at: Point) =>
+    at.x >= box.minX && at.x <= box.maxX && at.y >= box.minY && at.y <= box.maxY;
+
+  /** Every place the card could go, by level, with where each level lies — taken when a drag begins. */
+  const snapshot = (ctx: BehaviourContext, id: string): boolean => {
+    const tree = ctx.hierarchy();
+    if (!tree) return false;
+    const subtree = new Set([id]);
+    for (const member of subtree) for (const child of tree.children.get(member) ?? []) subtree.add(child);
+    const parent = tree.parents.get(id) ?? null;
+    home = { parent, index: parent ? (tree.children.get(parent) ?? []).indexOf(id) : 0 };
+    homeEdge = tree.parentEdges.get(id);
+    current = { to: null };
+    levels = new Map();
+    levelY = new Map();
+
+    const depthOf = (card: string) => {
+      let depth = 0;
+      for (let at = tree.parents.get(card); at && depth < 1000; at = tree.parents.get(at)) depth++;
+      return depth;
+    };
+    const add = (depth: number, place: Place) => (levels.get(depth) ?? levels.set(depth, []).get(depth)!).push(place);
+
+    // Its own place, where it is drawn now — the one place that needs no asking.
+    const own = ctx.boundsOf(id);
+    const ownAt = ctx.positionOf(id);
+    halfHeight = own ? (own.maxY - own.minY) / 2 : 0;
+    halfWidth = own ? (own.maxX - own.minX) / 2 : 0;
+    const familyOf = (parent: string | null) => (parent ? ctx.positionOf(parent)?.x : undefined);
+    add(depthOf(id), { to: null, at: ownAt, family: familyOf(home.parent) });
+
+    const inTree = new Set([...tree.parents.keys(), ...tree.parents.values()]);
+    for (const card of inTree) {
+      if (!card || subtree.has(card)) continue;
+      const kids = (tree.children.get(card) ?? []).filter((kid) => kid !== id);
+      const depth = depthOf(card) + 1;
+      if (!options.reorder) {
+        // No position to ask for: the card joins that parent wherever the order puts it, and is written last.
+        if (card !== home.parent) {
+          add(depth, { to: { parent: card }, event: { into: 'child', target: card }, family: familyOf(card) });
+        }
+        continue;
+      }
+      for (let index = 0; index <= kids.length; index++) {
+        if (card === home.parent && index === home.index) continue;
+        const order = [...kids];
+        order.splice(index, 0, id);
+        add(depth, {
+          to: { parent: card, index },
+          family: familyOf(card),
+          event: kids.length
+            ? { into: 'sibling', target: kids[Math.min(index, kids.length - 1)], before: index < kids.length, order }
+            : { into: 'child', target: card, order },
+        });
+      }
+    }
+
+    // Where each level lies: one answer per level, from any place on it.
+    for (const [depth, places] of levels) {
+      const probe = places.find((place) => place.to);
+      const at = probe ? ctx.placesOf(id, [probe.to!])[0] : places[0].at;
+      if (probe) probe.at = at;
+      if (at) levelY.set(depth, at.y);
+    }
+
+    /*
+      Off the tree is past every card in a tree and every level a place is on, by a card's size — a drop
+      out there means "never mind", which is how a reader takes a card back and has to stay easy to reach.
+    */
+    const boxes = [...inTree]
+      .flatMap((card) => (card ? [ctx.boundsOf(card)] : []))
+      .filter((box): box is Bounds => !!box);
+    const width = own ? own.maxX - own.minX : 0;
+    const ys = [...levelY.values()];
+    reach = boxes.length
+      ? {
+          minX: Math.min(...boxes.map((box) => box.minX)) - width,
+          maxX: Math.max(...boxes.map((box) => box.maxX)) + width,
+          minY: Math.min(...boxes.map((box) => box.minY), ...ys) - 2 * halfHeight,
+          maxY: Math.max(...boxes.map((box) => box.maxY), ...ys) + 2 * halfHeight,
+        }
+      : null;
+    return true;
+  };
+
+  /** A level's places with where each would be drawn, asking the layout for any not yet known. */
+  const placesOn = (depth: number, ctx: BehaviourContext): Place[] => {
+    const places = levels.get(depth) ?? [];
+    const unknown = places.filter((place) => place.at === undefined && place.to);
+    if (unknown.length && dragging) {
+      const answers = ctx.placesOf(
+        dragging,
+        unknown.map((place) => place.to!),
+      );
+      unknown.forEach((place, i) => (place.at = answers[i]));
+    }
+    return places;
+  };
+
+  /**
+   * Where each place counts as being along its level — where its ghost is drawn, except where two families
+   * would draw it at the same spot.
+   *
+   * They do at every boundary between neighbouring families: the end of one and the start of the next both
+   * put the card in the next slot along, and differ only in which parent its line comes from. Measured by
+   * the ghost alone the two tie, and one of them can never be reached. So places sharing a spot are pulled
+   * apart, a quarter of a card each way, in reading order — the family whose parent is further left takes
+   * the left side. Just left of the spot is the end of the family on the left; just right of it, the start
+   * of the one on the right. The ghost does not move between them; the line and the parents above do.
+   */
+  const sideways = (places: readonly Place[]): (number | undefined)[] => {
+    const xs = places.map((place) => place.at?.x);
+    const shared = new Map<number, number[]>();
+    xs.forEach((x, i) => {
+      if (x === undefined) return;
+      const spot = Math.round(x);
+      (shared.get(spot) ?? shared.set(spot, []).get(spot)!).push(i);
+    });
+    for (const [spot, members] of shared) {
+      if (members.length < 2) continue;
+      const ordered = [...members].sort((a, b) => (places[a].family ?? spot) - (places[b].family ?? spot) || a - b);
+      const step = halfWidth / 2;
+      ordered.forEach((member, rank) => (xs[member] = spot + (rank - (ordered.length - 1) / 2) * step * 2));
+    }
+    return xs;
+  };
+
+  /** Whether a connection holds anything {@link ArrangeNodesOptions.keep} says it must be kept for. */
+  const kept = (ctx: BehaviourContext): boolean => {
+    const edge = homeEdge ? ctx.edgeOf(homeEdge) : null;
+    const data = (edge?.data ?? {}) as Record<string, unknown>;
+    return (options.keep ?? []).some((field) => {
+      const value = data[field];
+      return value !== undefined && value !== null && value !== '' && value !== 0 && value !== false;
+    });
+  };
+
+  /** What a drop with the card's middle here would do. */
+  const decide = (centre: Point, ctx: BehaviourContext): Decision => {
+    if (ctx.regionAt(centre)) {
+      if (!home.parent) return { to: null };
+      if (kept(ctx))
+        return { to: null, refused: options.keepReason || 'This connection can’t be removed by dragging.' };
+      return { to: { parent: null }, event: { into: 'loose' } };
+    }
+    if (!reach || !inside(reach, centre)) return { to: null };
+    // The level the card is on — within half a card of its line — or none, between two.
+    let depth: number | undefined;
+    let nearest = Infinity;
+    for (const [level, y] of levelY) {
+      const off = Math.abs(y - centre.y);
+      if (off <= halfHeight && off < nearest) [depth, nearest] = [level, off];
+    }
+    if (depth === undefined) return current;
+    let best: Place | undefined;
+    let gap = Infinity;
+    const places = placesOn(depth, ctx);
+    const across = sideways(places);
+    places.forEach((place, i) => {
+      const x = across[i];
+      if (x === undefined) return;
+      const off = Math.abs(x - centre.x);
+      if (off < gap) [best, gap] = [place, off];
+    });
+    if (!best) return current;
+    return { to: best.to, ...(best.event ? { event: best.event } : {}) };
+  };
+
+  /**
+   * The middle of the card in the hand, which is what a place is decided from.
+   *
+   * Not the pointer: a card picked up by its edge has most of itself off to one side, and a gap that opened
+   * where the pointer is rather than where the card visibly is would open beside the card, not under it.
+   */
+  const centreOf = (world: Point): Point => ({ x: world.x + grabOffset.x, y: world.y + grabOffset.y });
+
+  /** Hold the card at the pointer, and tell the engine where the drop would put it. */
+  const show = (world: Point, ctx: BehaviourContext) => {
+    if (!dragging) return;
+    current = decide(centreOf(world), ctx);
+    ctx.arrange({
+      id: dragging,
+      at: centreOf(world),
+      to: current.to,
+      ...(current.refused ? { refused: current.refused } : {}),
+    });
+  };
+
+  // ─── Without one: reporting the intent ──────────────────────────────────────
+
+  /** The height of the card being dragged, for the band searched for siblings. */
+  let bandHeight = 0;
+  let previewing = false;
+
+  /** What a drop at this point means, and what it is about — for a layout that reports no hierarchy. */
+  const intentAt = (world: Point, ctx: BehaviourContext, id: string): ArrangeEvent => {
+    // A named zone first: the `forest`'s unconnected cards are cards at similar heights, so without
+    // this a drop into it reads as a reorder — the opposite of what dragging out of a tree means.
+    if (ctx.regionAt(world)) return { into: 'loose' };
+
+    const over = ctx.hitTest(world).find((other) => other !== id);
+    if (over) return { into: 'child', target: over };
+
+    const half = (options.band || bandHeight || 0) / 2;
+    if (half > 0) {
+      const band = ctx.within({
+        minX: world.x - options.reach,
+        minY: world.y - half,
+        maxX: world.x + options.reach,
+        maxY: world.y + half,
+      });
+      let nearest: string | undefined;
+      let distance = Infinity;
+      for (const other of band) {
+        if (other === id) continue;
+        const at = ctx.positionOf(other);
+        if (!at) continue;
+        const gap = Math.abs(at.x - world.x);
+        // Ties break on the id so a pointer exactly between two cards does not depend on index order.
+        if (gap < distance || (gap === distance && nearest !== undefined && other < nearest)) {
+          distance = gap;
+          nearest = other;
+        }
+      }
+      if (nearest !== undefined && distance <= options.reach) {
+        const at = ctx.positionOf(nearest)!;
+        return { into: 'sibling', target: nearest, before: world.x < at.x };
+      }
+    }
+    return { into: 'loose' };
+  };
+
+  const release = () => {
+    dragging = null;
+    moved = false;
+    current = { to: null };
+  };
+
+  return {
+    id: 'arrange-nodes',
+    description:
+      'Drag a card along a row to reorder it, under another parent to move it, beneath a card with no children to make it the first, or into the unconnected zone to take it out of its tree — with the tree making room as you go. Reports the result; writes nothing.',
+    onPointerDown(input, ctx) {
+      // Refused at the start rather than by discarding the result, like every other gesture that moves
+      // a card: a drag that follows the pointer and then snaps back has told you it worked.
+      if (ctx.locked()) return;
+      const world = ctx.toWorld(input.at);
+      const [hit] = ctx.hitTest(world);
+      if (!hit) return;
+      dragging = hit;
+      moved = false;
+      const at = ctx.positionOf(hit);
+      grabOffset = at ? { x: at.x - world.x, y: at.y - world.y } : { x: 0, y: 0 };
+      bandHeight = 0;
+      previewing = snapshot(ctx, hit);
+      return true;
+    },
+    onPointerMove(input, ctx) {
+      if (!dragging) return;
+      // No button held means no drag, whatever this behaviour thinks — the pointer left the window, or
+      // something upstream swallowed the release.
+      if (input.buttons === 0) {
+        if (previewing && moved) ctx.arrange(null);
+        else ctx.drawConnection(null);
+        release();
+        return;
+      }
+      moved = true;
+      const world = ctx.toWorld(input.at);
+      if (previewing) {
+        show(world, ctx);
+        return true;
+      }
+      ctx.pin(dragging, { x: world.x + grabOffset.x, y: world.y + grabOffset.y });
+      /*
+        Measured from where the card is, not from a constant: the band searched for siblings should be
+        one rank tall, and a rank is as tall as the cards on it. Taken from the grab offset, which is
+        half the card's height at most — so a card grabbed near its edge searches a narrower band, which
+        errs toward "loose" and therefore toward writing nothing.
+      */
+      if (!options.band) bandHeight = Math.max(bandHeight, Math.abs(grabOffset.y) * 2, 1);
+      const fallback = intentAt(world, ctx, dragging);
+      // A line only for `child`, which is the one intent the geometry cannot show.
+      ctx.drawConnection(fallback.into === 'child' && fallback.target ? fallback.target : null, world);
+      return true;
+    },
+    onPointerCancel(_input, ctx) {
+      if (previewing && moved) ctx.arrange(null);
+      ctx.drawConnection(null);
+      release();
+    },
+    onPointerUp(input, ctx) {
+      if (!dragging) return;
+      const id = dragging;
+      const wasMoved = moved;
+      const world = ctx.toWorld(input.at);
+      const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
+
+      if (previewing) {
+        const { to, event } = wasMoved ? decide(centreOf(world), ctx) : { to: null, event: undefined };
+        release();
+        /*
+          A press that went nowhere is a click, and must fall through: `select` is listed after this one
+          and would otherwise never see a press on a card at all, so nothing on the tree could be
+          selected or opened.
+        */
+        if (!wasMoved) return;
+        // Back where it was: the card travels home and nothing is written.
+        if (!to || !event) {
+          ctx.arrange(null);
+          return true;
+        }
+        // Into the place the preview showed, held there until the write comes back.
+        ctx.arrange({ id, at: null, to });
+        ctx.emit({
+          type: 'nodeArrange',
+          node: { id, kind: 'entity', type: '' },
+          into: event.into,
+          ...(event.target ? { target: { id: event.target, kind: 'entity' as const, type: '' } } : {}),
+          ...(event.before === undefined ? {} : { before: event.before }),
+          ...(event.order ? { order: event.order } : {}),
+          at,
+        });
+        return true;
+      }
+
+      release();
+      ctx.drawConnection(null);
+      if (!wasMoved) {
+        ctx.pin(id, null);
+        return;
+      }
+      const fallback = intentAt(world, ctx, id);
+      /*
+        Released back to the layout, whatever the consumer decides. The drop wrote nothing here, so the card
+        has to be governed by the arrangement again — left pinned, a card whose move the consumer refused
+        would sit in the gap it was dropped in, looking as though the refusal had worked.
+      */
+      ctx.pin(id, null);
+      ctx.emit({
+        type: 'nodeArrange',
+        node: { id, kind: 'entity', type: '' },
+        into: fallback.into,
+        ...(fallback.target ? { target: { id: fallback.target, kind: 'entity' as const, type: '' } } : {}),
+        ...(fallback.before === undefined ? {} : { before: fallback.before }),
+        at,
+      });
+      return true;
+    },
+  };
+}
+
 /** The default set, keyed by the id a template names in `behaviours`. */
 export function defaultBehaviours() {
   return {
     'pan-zoom': panZoomBehaviour,
     'drag-node': dragNodeBehaviour,
+    'arrange-nodes': arrangeNodesBehaviour,
     'connect-nodes': connectNodesBehaviour,
     'canvas-double-click': canvasDoubleClickBehaviour,
     'node-double-click': nodeDoubleClickBehaviour,

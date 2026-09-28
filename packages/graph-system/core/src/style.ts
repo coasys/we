@@ -28,8 +28,9 @@ import type {
   StyleRules,
   StyleValue,
 } from '@we/graph-protocol';
+import { metricKey, morphOutline } from '@we/graph-protocol';
 
-import { normaliseCurve } from './geometry';
+import { normaliseCurve, resampleBlend, sampledBlend } from './geometry';
 
 /** Normalised metric output, by metric id then node id. Produced by the algorithms package. */
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
@@ -101,10 +102,11 @@ export function flattenRules<TStyle>(rules: StyleRules<TStyle> | undefined): Sty
 export function resolveStyle<TStyle extends object>(
   subject: GraphNode | GraphEdge,
   rules: StyleRule<TStyle>[] | StyleRules<TStyle> | undefined,
+  metrics?: MetricValues,
 ): TStyle {
   let result = {} as TStyle;
   for (const rule of flattenRules(rules)) {
-    if (matches(subject, rule.when)) result = { ...result, ...contributed(subject, rule.style) };
+    if (matches(subject, rule.when)) result = { ...result, ...contributed(subject, rule.style, metrics) };
   }
   return result;
 }
@@ -118,11 +120,23 @@ export function resolveStyle<TStyle extends object>(
  * `undefined` for the cards that carry none, it would overwrite the type colour with the built-in
  * default and the first rule would be pointless. Deferring instead means "read this off the record,
  * and if it is not there, leave whatever was decided above".
+ *
+ * A {@link MetricRef} the metrics have no value for is dropped the same way, when the metrics are given.
+ * A heat rule over a field some cards do not carry — a rating nobody has given — is the case: without
+ * this the rule overwrote the colour an earlier rule chose with nothing, and those cards came out in
+ * the built-in default rather than in whatever the rules before it said an unscored card is.
  */
-function contributed<TStyle extends object>(subject: GraphNode | GraphEdge, style: TStyle): Partial<TStyle> {
+function contributed<TStyle extends object>(
+  subject: GraphNode | GraphEdge,
+  style: TStyle,
+  metrics?: MetricValues,
+): Partial<TStyle> {
   let out: Partial<TStyle> | undefined;
   for (const [key, value] of Object.entries(style)) {
-    if (!isFieldRef(value) || readField(subject, value.from) !== undefined) continue;
+    const unanswered = isFieldRef(value)
+      ? readField(subject, value.from) === undefined
+      : !!metrics && isMetricRef(value) && metrics.get(metricKey(value))?.get(subject.id) === undefined;
+    if (!unanswered) continue;
     // Copied once, on the first property that defers — the common rule has no field refs at all and
     // must not pay for a clone.
     out = out ?? { ...style };
@@ -163,7 +177,7 @@ export function resolveNumber(
     return value.fallback ?? fallback;
   }
   if (!isMetricRef(value)) return fallback;
-  const normalised = metrics.get(value.metric)?.get(subject.id);
+  const normalised = metrics.get(metricKey(value))?.get(subject.id);
   if (normalised === undefined) return fallback;
   const [min, max] = value.range ?? [fallback, fallback * 2];
   return min + normalised * (max - min);
@@ -205,6 +219,21 @@ const SCALES: Record<string, string[]> = {
   cool: ['neutral-200', 'neutral-400', 'primary-400', 'primary-600', 'primary-800'],
 };
 
+/**
+ * A point between two colours, as CSS a renderer can paint — see `MetricRef.scale`.
+ *
+ * `color-mix` in OKLCH rather than a computed value, for two reasons: the stops may be tokens or roles
+ * that only the renderer can turn into a colour, and they follow the theme, so the blend has to be
+ * worked out where the theme is. The ends are the stops themselves rather than a 0% or 100% mix, so a
+ * card at either end paints exactly the colour somebody picked.
+ */
+export function blendColors(from: string, to: string, t: number): string {
+  const share = Math.round(Math.min(1, Math.max(0, t)) * 1000) / 10;
+  if (share <= 0) return from;
+  if (share >= 100) return to;
+  return `color-mix(in oklch, ${to} ${share}%, ${from})`;
+}
+
 export function resolveColor(
   value: StyleValue<string> | undefined,
   subject: GraphNode | GraphEdge,
@@ -219,8 +248,9 @@ export function resolveColor(
     return value.fallback ?? fallback;
   }
   if (!isMetricRef(value)) return fallback;
-  const normalised = metrics.get(value.metric)?.get(subject.id);
+  const normalised = metrics.get(metricKey(value))?.get(subject.id);
   if (normalised === undefined) return fallback;
+  if (value.scale && typeof value.scale === 'object') return blendColors(value.scale.from, value.scale.to, normalised);
   const scale = SCALES[value.scale ?? 'heat'] ?? SCALES.heat;
   const index = Math.min(scale.length - 1, Math.floor(normalised * scale.length));
   return scale[index];
@@ -284,6 +314,7 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     // have a renderer looking up a component it has no room to draw.
     if (style.content !== undefined) visual.content = style.content;
     if (style.contentMinZoom !== undefined) visual.contentMinZoom = style.contentMinZoom;
+    if (style.badge) visual.badge = style.badge;
   }
   if (style.z !== undefined) {
     // Only when it says something: an absent `z` and a zero are the same order, and leaving the field
@@ -339,4 +370,58 @@ export function edgeVisual(edge: GraphEdge, style: EdgeStyle, metrics: MetricVal
   if (style.showLabel) visual.label = edge.label ?? edge.type;
   if (style.labelColor !== undefined) visual.labelColor = style.labelColor;
   return visual;
+}
+
+/**
+ * One node's geometry part-way between two resolutions of the style rules.
+ *
+ * This is the whole of shape morphing, and it is here rather than in the renderer for the reason
+ * {@link nodeVisual} exists at all: a card's silhouette is read by six things — the clip, the content
+ * inset, the two text-flow floats, the selection ring and the edge attach point — and three of those
+ * live on the picking side rather than the painting side. A blend done in CSS would move the drawing and
+ * leave the geometry behind, which is the drift this file's one-function rule was written to prevent.
+ *
+ * What is blended is what a reader can see changing continuously: the box, the silhouette, the content's
+ * scale, a mark's radius. What is not is everything discrete — the colour, the label, the content
+ * component, the stacking order — which takes the destination's answer immediately. A colour crossfade
+ * would be a second animation nobody asked for, and a half-resolved content component is not a thing.
+ *
+ * Shapes only morph within `card`. A card becoming a dot is a change of *kind* — a box against a radius,
+ * content against a caption — and there is no half-way house worth drawing, so it switches.
+ */
+export function blendVisual(from: NodeVisual, to: NodeVisual, t: number): NodeVisual {
+  const at = Math.min(1, Math.max(0, t));
+  if (at >= 1 || from.shape !== to.shape) return to;
+  const lerp = (a: number | undefined, b: number | undefined, fallback: number): number =>
+    (a ?? fallback) + ((b ?? fallback) - (a ?? fallback)) * at;
+
+  const blended: NodeVisual = { ...to, size: lerp(from.size, to.size, to.size) };
+  if (to.shape !== 'card') return blended;
+
+  blended.width = lerp(from.width, to.width, to.width ?? DEFAULT_CARD.width);
+  blended.height = lerp(from.height, to.height, to.height ?? DEFAULT_CARD.height);
+  blended.contentScale = lerp(from.contentScale, to.contentScale, 1);
+
+  /*
+    The silhouette, and only where the two shapes differ.
+
+    Same shape, different size is the ordinary case — every card on the workshop's canvas becomes a note
+    in the tree, and most of them already were one — and it must not pay for a polygon it does not need,
+    nor hand the renderer a `morph` that would switch a note off its own corner radius for no reason.
+  */
+  const fromShape = from.cardShape ?? 'note';
+  const toShape = to.cardShape ?? 'note';
+  /*
+    A card caught mid-morph is neither of its two shapes: it starts from the outline on screen, not the one
+    its name says (a blended visual takes the destination's `cardShape`). Which is also why equal names are
+    not enough to skip — a switch reversed half-way has both names equal and a card still half of another.
+  */
+  if (!from.morph && fromShape === toShape) return blended;
+  const carried = from.morph?.samples;
+  const blend = carried
+    ? resampleBlend(carried, morphOutline(toShape), at)
+    : sampledBlend(morphOutline(fromShape), morphOutline(toShape), at);
+
+  blended.morph = { outline: blend.outline, samples: blend.samples, from: fromShape, at };
+  return blended;
 }
