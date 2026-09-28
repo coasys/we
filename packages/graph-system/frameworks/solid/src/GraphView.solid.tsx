@@ -2962,6 +2962,16 @@ export function GraphView(props: GraphViewProps) {
         )
       : null;
 
+  /** Whether a right-drag from a card draws a connection here — the `connect-nodes` quick form. */
+  const rightDragConnects = createMemo(() =>
+    (props.behaviours ?? []).some(
+      (spec) =>
+        typeof spec === 'object' &&
+        spec?.type === 'connect-nodes' &&
+        (spec.options as { button?: string } | undefined)?.button === 'secondary',
+    ),
+  );
+
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
   }
@@ -3076,7 +3086,8 @@ export function GraphView(props: GraphViewProps) {
   function armCarry(event: PointerEvent): void {
     carrying = null;
     carriedAway = false;
-    if (!props.carry || engine.isLocked()) return;
+    // The primary button only: a right-drag from a card is a connection, not a card being carried off.
+    if (!props.carry || engine.isLocked() || event.button !== 0) return;
     const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
     if (!hit) return;
     const ids = draggedBy(hit);
@@ -3325,6 +3336,15 @@ export function GraphView(props: GraphViewProps) {
           dispatch('onPointerCancel', event);
         }}
         onDblClick={(event) => dispatch('onDoubleClick', event)}
+        /*
+          The browser's own menu, kept off a card while a right-drag there means something — see
+          `connect-nodes`'s `button`. Only on a card, so the canvas around them keeps it.
+        */
+        onContextMenu={(event) => {
+          if (!rightDragConnects()) return;
+          const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
+          if (hit) event.preventDefault();
+        }}
         onWheel={(event) => {
           event.preventDefault();
           dispatch('onWheel', event);

@@ -704,7 +704,11 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).not.toContain('connect-nodes');
+    // Only the quick form, which needs no arming for the same reason: the right button is the target.
+    const listed = json.match(/connect-nodes/g) ?? [];
+    const quick = json.match(/\{ type: 'connect-nodes', options: \{ button: 'secondary' \} \}/g) ?? [];
+    expect(listed.length).toBe(quick.length);
+    expect(quick.length).toBeGreaterThan(0);
     expect(json).not.toContain('local.connecting');
     /*
       And the drop writes the connection rather than asking about it.

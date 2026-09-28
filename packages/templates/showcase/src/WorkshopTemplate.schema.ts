@@ -3464,14 +3464,15 @@ const canvas: SchemaNode = {
       { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
     ],
     /*
-      No `connect-nodes`. Connecting is a handle on the card now, not a mode.
+      No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.
 
-      That behaviour claims a press *anywhere on a node*, so it has to be armed — a switch somebody
-      turns on to connect and off again to move cards, which is a thing to remember and a thing to
-      forget, and forgetting it either way is a gesture doing something nobody asked for. The dots
-      off a selected card's edges need no arming, because the target is what makes the gesture
-      unambiguous. Nothing else changes: they end in the same `edgeCreate`, so `onEdgeCreate` below
-      is unchanged.
+      Armed, that behaviour claims a press *anywhere on a node* — a switch somebody turns on to connect
+      and off again to move cards, which is a thing to remember and a thing to forget. The dots off a
+      selected card's edges need no arming, because the target is what makes the gesture unambiguous.
+
+      Its quick form is listed, and needs no arming for the same reason: a right-drag, which nothing
+      else here uses, so the button is what makes it unambiguous. See `TREE_BEHAVIOURS`. All three end
+      in the same `edgeCreate`, so `onEdgeCreate` below serves them all.
     */
     behaviours: TREE_BEHAVIOURS,
     /*

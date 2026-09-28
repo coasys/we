@@ -465,11 +465,16 @@ export const TREE_REFRAME: SchemaProp = { $: `${TREE_ON} ? local.cardSize : ''` 
  */
 export const TREE_BEHAVIOURS: SchemaProp = {
   $:
-    `${TREE_ON} ? ['node-double-click', 'canvas-double-click', 'select',` +
+    /*
+      A right-drag from a card draws a connection from it, in both readings — the quick form beside the
+      handles on a selected card, which stay. First, because a press belongs to the first gesture that
+      claims it and nothing else here tells the buttons apart.
+    */
+    `${TREE_ON} ? [{ type: 'connect-nodes', options: { button: 'secondary' } }, 'node-double-click', 'canvas-double-click', 'select',` +
     ` { type: 'arrange-nodes', options: { reorder: local.order == 'manual',` +
     ` keep: ['commentsCount', 'signalsCount'],` +
     ` keepReason: 'People have discussed this connection. Select the line itself to remove it.' } }, 'pan-zoom']` +
-    ` : ['node-double-click', 'canvas-double-click', 'marquee-select', 'select',` +
+    ` : [{ type: 'connect-nodes', options: { button: 'secondary' } }, 'node-double-click', 'canvas-double-click', 'marquee-select', 'select',` +
     ` { type: 'drag-node', options: { pin: true } }, 'pan-zoom']`,
 };
 

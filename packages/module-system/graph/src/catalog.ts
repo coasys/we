@@ -535,8 +535,14 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           type: 'boolean',
           description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
         },
+        {
+          name: 'button',
+          type: '"primary" | "secondary"',
+          description:
+            'Which button starts it. Default "primary", armed as above. "secondary" is the quick form: a right-drag from a card draws a line whether or not anything is armed, leaving the left button to move cards — list it FIRST. A right-click that does not travel draws nothing, and the browser menu is kept off cards while it is listed. Touchscreens have no right-click, so keep another way to connect.',
+        },
       ],
-      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$": "local.connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "button": "secondary" } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`,
     },
     {
       id: 'node-double-click',

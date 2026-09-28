@@ -317,6 +317,37 @@ describe('connectNodesBehaviour', () => {
     expect(ctx.emit).not.toHaveBeenCalled();
   });
 
+  it('connects on a right-drag in its quick form, armed or not, and leaves the left button alone', () => {
+    const ctx = fakeContext();
+    const quick = connectNodesBehaviour({ button: 'secondary', armed: false });
+
+    // The left button is for moving cards: not this gesture's.
+    expect(quick.onPointerDown?.(input(100, 100), ctx)).toBeUndefined();
+
+    expect(quick.onPointerDown?.(input(100, 100, { buttons: 2 }), ctx)).toBe(true);
+    quick.onPointerMove?.(input(200, 100, { buttons: 2 }), ctx);
+    quick.onPointerUp?.(input(300, 100, { buttons: 0 }), ctx);
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'edgeCreate', source: expect.objectContaining({ id: 'n1' }) }),
+    );
+  });
+
+  it('leaves the right button to the quick form, so an armed tool does not claim it too', () => {
+    const ctx = fakeContext();
+    expect(connectNodesBehaviour().onPointerDown?.(input(100, 100, { buttons: 2 }), ctx)).toBeUndefined();
+  });
+
+  it('draws nothing and says nothing for a right-click that does not travel', () => {
+    const ctx = fakeContext();
+    const quick = connectNodesBehaviour({ button: 'secondary' });
+
+    quick.onPointerDown?.(input(100, 100, { buttons: 2 }), ctx);
+    quick.onPointerMove?.(input(102, 101, { buttons: 2 }), ctx);
+    expect(ctx.drawConnection).not.toHaveBeenCalledWith('n1', expect.anything());
+    quick.onPointerUp?.(input(102, 101, { buttons: 0 }), ctx);
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
   it('claims nothing when disarmed, so the press reaches drag-node', () => {
     const ctx = fakeContext();
     const behaviour = connectNodesBehaviour({ armed: false });

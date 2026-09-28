@@ -250,7 +250,21 @@ export interface ConnectNodesOptions {
    * press falls through to whatever handles nodes next — normally `drag-node`.
    */
   armed?: boolean;
+  /**
+   * Which button starts it. Defaults to `'primary'`, armed as above.
+   *
+   * `'secondary'` is the quick form: a right-drag from a card draws a line from it, whether or not the
+   * tool is armed, and leaves the primary button to move cards exactly as before — so one gesture
+   * connects and the other arranges, with no mode between them. List it **first**, since a press is
+   * owned by the first behaviour that claims it and nothing else distinguishes the buttons. A
+   * right-click that does not travel draws nothing and emits nothing, which keeps a plain right-click
+   * free for a menu one day.
+   */
+  button?: 'primary' | 'secondary';
 }
+
+/** How far a press has to travel before it is a drag rather than a click, in screen pixels. */
+const CONNECT_THRESHOLD = 4;
 
 /**
  * Drag from one node to another to connect them.
@@ -263,12 +277,16 @@ export interface ConnectNodesOptions {
  * wins. After it, arming the gesture would do nothing at all and look like a broken toggle.
  */
 export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
-  const options = { armed: true, ...(rawOptions as ConnectNodesOptions) };
+  const options = { armed: true, button: 'primary', ...(rawOptions as ConnectNodesOptions) };
   let from: string | null = null;
+  let start: Point | null = null;
+  let travelled = false;
 
   /** End the gesture and take down the line, whatever the outcome. */
   function reset(ctx: BehaviourContext): void {
     from = null;
+    start = null;
+    travelled = false;
     ctx.drawConnection(null);
   }
 
@@ -276,10 +294,14 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     id: 'connect-nodes',
     description: 'Drag from one node to another to connect them.',
     onPointerDown(input, ctx) {
-      if (!options.armed) return;
+      // The secondary button is its own gesture: the quick form claims only it, the armed form never.
+      const secondary = (input.buttons & 2) !== 0;
+      if (options.button === 'secondary' ? !secondary : secondary || !options.armed) return;
       const [hit] = ctx.hitTest(ctx.toWorld(input.at));
       if (!hit) return;
       from = hit;
+      start = input.at;
+      travelled = false;
       return true;
     },
     onPointerMove(input, ctx) {
@@ -290,6 +312,11 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
         reset(ctx);
         return;
       }
+      // Not a line until the pointer has gone somewhere: a press that wobbles is still a click.
+      if (!travelled && start && Math.hypot(input.at.x - start.x, input.at.y - start.y) < CONNECT_THRESHOLD) {
+        return true;
+      }
+      travelled = true;
       ctx.drawConnection(from, ctx.toWorld(input.at));
       return true;
     },
@@ -299,8 +326,11 @@ export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Beh
     onPointerUp(input, ctx) {
       if (!from) return;
       const source = from;
+      const moved = travelled;
       const [target] = ctx.hitTest(ctx.toWorld(input.at));
       reset(ctx);
+      // A click, not a drag: nothing to connect, and the press is still this gesture's to end.
+      if (!moved) return true;
       // A node cannot be connected to itself, and a release on empty canvas is an abandoned
       // gesture rather than a connection to nothing. Both end quietly: the line goes and no event
       // is emitted, so nothing opens a dialog about a connection the user did not make.
