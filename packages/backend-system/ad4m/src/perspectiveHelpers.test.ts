@@ -161,6 +161,20 @@ describe('getForeignShacl', () => {
     warn.mockRestore();
   });
 
+  it('reads every shape, and keeps the answer, when the index query fails', async () => {
+    const perspective = mockPerspective([
+      { name: 'Task', shape: makeShape('app://Task') },
+      { name: 'Message', shape: makeShape('flux://Message') },
+    ]);
+    vi.mocked(perspective.querySparql).mockRejectedValue(new Error('SPARQL unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
+    expect(shapesRead(perspective)).toEqual(['Task', 'Message']);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
   it('reads nothing the registry does not list', async () => {
     // A shape's links can outlive its `ad4m://has_shacl` entry; the registry says what is installed.
     const perspective = mockPerspective(

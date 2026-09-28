@@ -105,7 +105,9 @@ export async function readShapeProperties(
   for (const row of rows) {
     const shape = shapeName(row.name);
     if (!shape || !row.prop || !row.path) continue;
-    byShape.set(shape, [...(byShape.get(shape) ?? []), { path: row.path, name: propertyName(row.prop) }]);
+    const properties = byShape.get(shape) ?? [];
+    properties.push({ path: row.path, name: propertyName(row.prop) });
+    byShape.set(shape, properties);
   }
   return names.flatMap((name) => (byShape.has(name) ? [{ name, properties: byShape.get(name)! }] : []));
 }
@@ -127,17 +129,24 @@ export async function readShapeProperties(
  * this data, not separate fetches.
  */
 export async function getForeignShacl(perspective: PerspectiveProxy): Promise<ForeignShape[]> {
-  const [names, rows] = await Promise.all([perspective.getShaclNames(), select(perspective, SHAPE_INDEX)]);
+  // Without the index every shape is read, as before it existed: slower, and the same answer.
+  const [names, rows] = await Promise.all([
+    perspective.getShaclNames(),
+    select(perspective, SHAPE_INDEX).catch((error: unknown) => {
+      console.warn('ad4m: the shape index query failed; reading every shape instead', error);
+      return null;
+    }),
+  ]);
   const nativeNames = new Set(getRegisteredEntityNames());
   const nativeTargetClass = (name: string) => getEntityTargetClass(getEntity(name));
 
   const storedClasses = new Map<string, Set<string>>();
-  for (const row of rows) {
+  for (const row of rows ?? []) {
     const name = shapeName(row.name);
     if (name && row.targetClass) storedClasses.set(name, (storedClasses.get(name) ?? new Set()).add(row.targetClass));
   }
   const worthReading = (name: string) =>
-    !nativeNames.has(name) || [...(storedClasses.get(name) ?? [])].some((c) => c !== nativeTargetClass(name));
+    !rows || !nativeNames.has(name) || [...(storedClasses.get(name) ?? [])].some((c) => c !== nativeTargetClass(name));
 
   const read = await Promise.all(
     names.filter(worthReading).map(async (name) => {
