@@ -617,16 +617,27 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
         freeform, "Freeform" while you are in the tree. A segmented control would spend twice the room
         to say the same thing, in a strip that has to leave the canvas visible.
       */
+      // The design system's tooltip rather than the browser's, like every other control over the canvas.
       {
-        type: 'we-button',
+        type: 'we-tooltip',
         props: {
-          variant: { $: `${TREE_ON} ? 'secondary' : 'ghost'` },
-          title: { $: `${TREE_ON} ? 'Back to freeform — place each card yourself' : 'Arrange these cards as a tree'` },
-          onClick: { $toggleLocal: 'treeMode' },
+          placement: 'bottom',
+          content: {
+            $: `${TREE_ON} ? 'Back to freeform — place each card yourself' : 'Arrange these cards as a tree'`,
+          },
         },
         children: [
-          { type: 'we-icon', props: { name: { $: `${TREE_ON} ? 'cards-three' : 'tree-structure'` } } },
-          { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${TREE_ON} ? 'Freeform' : 'Tree'` }] },
+          {
+            type: 'we-button',
+            props: {
+              variant: { $: `${TREE_ON} ? 'secondary' : 'ghost'` },
+              onClick: { $toggleLocal: 'treeMode' },
+            },
+            children: [
+              { type: 'we-icon', props: { name: { $: `${TREE_ON} ? 'cards-three' : 'tree-structure'` } } },
+              { type: 'we-text', props: { variant: 'label' }, children: [{ $: `${TREE_ON} ? 'Freeform' : 'Tree'` }] },
+            ],
+          },
         ],
       },
       {
@@ -675,14 +686,20 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
                 props: {
                   condition: { $: 'local.spine' },
                   then: {
-                    type: 'we-button',
-                    props: {
-                      variant: 'ghost',
-                      square: true,
-                      title: 'Follow every kind of connection',
-                      onClick: { $setLocal: 'spine', value: '' },
-                    },
-                    children: [{ type: 'we-icon', props: { name: 'x' } }],
+                    type: 'we-tooltip',
+                    props: { placement: 'bottom', content: 'Follow every kind of connection' },
+                    children: [
+                      {
+                        type: 'we-button',
+                        props: {
+                          variant: 'ghost',
+                          square: true,
+                          label: 'Follow every kind of connection',
+                          onClick: { $setLocal: 'spine', value: '' },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'x' } }],
+                      },
+                    ],
                   },
                 },
               },
