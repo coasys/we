@@ -521,7 +521,9 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   callback, so a watch hears a refresh rather than nothing.
 - The executor shares one server-side subscription between identical queries from the same user.
   Disposing one ends it for the other too, until the other's 30-second keepalive fails and
-  re-subscribes. Two live watches with the same query text see that gap.
+  re-subscribes. So hold one subscription per perspective and query, count its holders, and dispose
+  it a grace period after the last one lets go — \`onProposalsChanged\` shows how. The grace matters:
+  a dispose racing a fresh subscribe with the same text can land after it and end that one too.
 
 ### Reading shapes from \`@we/backend-ad4m\`
 

@@ -8,7 +8,7 @@
  * lets every other screen stop showing a card as pending.
  */
 import { createAd4mInterpretationPort } from '@we/backend-ad4m';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 function perspective(decide: () => Promise<boolean>) {
   let resultCb: (() => void) | null = null;
@@ -99,17 +99,94 @@ describe('hearing that the staged suggestions moved', () => {
     expect(heard).toBe(2);
   });
 
-  it('stops firing after the cleanup function runs', async () => {
+  it('stops firing after the cleanup function runs, and lets the subscription go after a grace', async () => {
+    vi.useFakeTimers();
+    try {
+      const p = perspective(async () => true);
+      let heard = 0;
+      const off = await port.onProposalsChanged!(p.handle, () => heard++);
+
+      p.pushResult();
+      expect(heard).toBe(1);
+
+      off();
+      p.pushResult();
+      expect(heard).toBe(1);
+      expect(p.disposed).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(p.disposed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('two watches on one perspective', () => {
+  /*
+    The executor gives identical subscriptions from one user one server-side subscription and keeps
+    no count of who holds it, so a dispose ends it for everyone. The case that bites: a space switch
+    away and back inside a round trip, where the first watch finishes starting after the second one
+    and is stopped the moment it does.
+  */
+  it('share one subscription, so one letting go leaves the other hearing', async () => {
+    vi.useFakeTimers();
+    try {
+      const port = createAd4mInterpretationPort();
+      const p = perspective(async () => true);
+      let first = 0;
+      let second = 0;
+      const offFirst = await port.onProposalsChanged!(p.handle, () => first++);
+      await port.onProposalsChanged!(p.handle, () => second++);
+      expect(p.queries).toHaveLength(1);
+
+      offFirst();
+      vi.advanceTimersByTime(5000);
+      p.pushResult();
+
+      expect(p.disposed).toBe(false);
+      expect([first, second]).toEqual([0, 1]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pick the subscription back up when a holder returns inside the grace', async () => {
+    vi.useFakeTimers();
+    try {
+      const port = createAd4mInterpretationPort();
+      const p = perspective(async () => true);
+      const off = await port.onProposalsChanged!(p.handle, () => {});
+      off();
+      vi.advanceTimersByTime(1000);
+
+      let heard = 0;
+      await port.onProposalsChanged!(p.handle, () => heard++);
+      vi.advanceTimersByTime(5000);
+      p.pushResult();
+
+      expect(p.queries).toHaveLength(1);
+      expect(p.disposed).toBe(false);
+      expect(heard).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ask again after a watch failed to start, rather than holding the failure', async () => {
+    const port = createAd4mInterpretationPort();
     const p = perspective(async () => true);
+    const subscribe = (p.handle as { subscribeQuery: (q: string) => Promise<unknown> }).subscribeQuery;
+    let calls = 0;
+    (p.handle as { subscribeQuery: (q: string) => Promise<unknown> }).subscribeQuery = (query) =>
+      ++calls === 1 ? Promise.reject(new Error('executor unreachable')) : subscribe(query);
+
+    await expect(port.onProposalsChanged!(p.handle, () => {})).rejects.toThrow('executor unreachable');
     let heard = 0;
-    const off = await port.onProposalsChanged!(p.handle, () => heard++);
-
+    await port.onProposalsChanged!(p.handle, () => heard++);
     p.pushResult();
-    expect(heard).toBe(1);
 
-    off();
-    p.pushResult();
+    expect(calls).toBe(2);
     expect(heard).toBe(1);
-    expect(p.disposed).toBe(true);
   });
 });

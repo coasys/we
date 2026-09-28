@@ -43,6 +43,9 @@ const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 /** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
 const OVERLAY_KIND_PREDICATE = 'ad4m://interp/kind';
 
+/** How long a staged-suggestion watch nobody holds stays up, for a holder about to come back. */
+const PROPOSAL_WATCH_GRACE_MS = 1500;
+
 /**
  * Answer `false` where the executor refuses because the suggestion is not staged any more.
  *
@@ -599,6 +602,21 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
   const oneShotExchange = new Map<string, { prompt?: string; response?: string }>();
 
   /**
+   * One staged-suggestion watch per perspective, shared by every holder.
+   *
+   * The executor hands identical subscriptions from one user the same server-side subscription, with
+   * no count of who holds it, so disposing one ends it for all. Two watches on a perspective are
+   * ordinary: a space switch away and back inside a round trip has the first watch finish starting
+   * after the second, and its late stop silenced the live one until the keepalive noticed. So the
+   * watch is shared here and disposed when its last holder lets go — after a grace, because a
+   * dispose racing a fresh subscribe with the same text can land after it and end that one too.
+   */
+  const proposalWatches = new Map<
+    PerspectiveProxy,
+    { listeners: Set<() => void>; started: Promise<{ dispose(): void }>; idle?: ReturnType<typeof setTimeout> }
+  >();
+
+  /**
    * Where a pass came from, for a consumer keeping a history — see `collection` on the activity row.
    *
    * Two lookups because there are two ways a pass starts, and the id it reports itself under differs
@@ -1068,11 +1086,48 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         stay SPARQL naming the predicate outright: that is what the executor reads to decide which
         diffs to re-run it for.
       */
-      const sub = await perspective.subscribeQuery(
-        `SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`,
-      );
-      sub.onResult(() => cb());
-      return () => sub.dispose();
+      let watch = proposalWatches.get(perspective);
+      if (!watch) {
+        const listeners = new Set<() => void>();
+        const started = perspective
+          .subscribeQuery(`SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`)
+          .then((sub) => {
+            sub.onResult(() => {
+              for (const listener of [...listeners]) listener();
+            });
+            return sub;
+          });
+        const created = { listeners, started };
+        proposalWatches.set(perspective, created);
+        // A watch that never started holds nothing; the next caller asks again.
+        started.catch(() => {
+          if (proposalWatches.get(perspective) === created) proposalWatches.delete(perspective);
+        });
+        watch = created;
+      }
+      const shared = watch;
+      clearTimeout(shared.idle);
+      shared.idle = undefined;
+      const listener = () => cb();
+      shared.listeners.add(listener);
+      try {
+        await shared.started;
+      } catch (error) {
+        shared.listeners.delete(listener);
+        throw error;
+      }
+      return () => {
+        if (!shared.listeners.delete(listener) || shared.listeners.size) return;
+        clearTimeout(shared.idle);
+        shared.idle = setTimeout(() => {
+          if (shared.listeners.size) return;
+          if (proposalWatches.get(perspective) === shared) proposalWatches.delete(perspective);
+          void shared.started.then(
+            (sub) => sub.dispose(),
+            () => {},
+          );
+        }, PROPOSAL_WATCH_GRACE_MS);
+      };
     },
 
     async watch(dataset: DatasetHandle, request: WatchRequest): Promise<void> {
