@@ -1584,6 +1584,20 @@ export class GraphEngine {
       `columns` on its own.
     */
     const key = `${spec.type}:${JSON.stringify(spec.options ?? null)}`;
+    /*
+      A different KIND of layout frames what it lays out, whoever asked for the relayout.
+
+      The renderer asks with a fit when its layout changes — but the spec reaches the engine through
+      every effect that sets it, and a seed option changed by the same click (a re-derive, a refresh)
+      can relay out first, synchronously, with the new layout already in the spec and no fit asked for.
+      The cards then travelled to where the tree goes while the camera stayed on the freeform view,
+      which emptied the screen until the renderer's own fit caught up and slid the tree back in. The
+      camera moves when the layout does, so it is decided here, where the layout actually changes.
+    */
+    const was = this.layoutKey ?? '';
+    const swapping = !!this.layout && was.slice(0, was.indexOf(':')) !== spec.type;
+    // And travels, for the same reason: a caller that did not know it was swapping asked for none.
+    if (swapping) options = { fit: options?.fit || true, travel: options?.travel || this.selfTravel };
     if (!this.layout || this.layoutKey !== key) {
       this.layout?.stop?.();
       this.layout = this.registry.layout(spec.type, spec.options);
