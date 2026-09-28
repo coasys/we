@@ -1762,41 +1762,6 @@ export const extractionTargets: SchemaNode = {
             },
           ],
         },
-        /*
-          The way to add a kind of thing, at the end of the row of kinds.
-
-          What a call can extract is whatever this space has models for, and until now the panel
-          could only ever say so — the chips were a closed list with no visible route to a longer
-          one, and the only mention of where that list comes from was a link that appeared solely
-          where the chips could not be pressed. So the answer to "why is the thing I want not here"
-          was two screens away and nothing pointed at it.
-
-          Inside the same wrapping row rather than beside it, so it reflows with the chips and sits
-          after the last one at any width. Square and outlined: it is one more thing in a row of
-          outlined things, and the one that is not a toggle.
-
-          It opens the space's vocabulary rather than doing anything itself. Adding a model is a
-          decision about the community, with its own screen and its own wizard, and a panel about
-          one call is the wrong place to make it — but exactly the right place to be reminded it can
-          be made.
-        */
-        {
-          type: 'we-tooltip',
-          props: { content: "Add a kind of thing to extract, in this space's vocabulary" },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'outline',
-                square: true,
-                label: "Add a kind of thing to extract, in this space's vocabulary",
-                onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
-              },
-              children: [{ type: 'we-icon', props: { name: 'plus' } }],
-            },
-          ],
-        },
       ],
     },
   ],
@@ -2791,13 +2756,45 @@ const extract: SchemaNode = {
           // Not a verdict: a number of ticked models is no more a status than a timestamp is.
           tone: 'neutral',
           open: { field: 'targetsOpen' },
+          /*
+            The way to add a kind of thing, beside the count of the kinds.
+
+            What a call can extract is whatever this space has models for, and without this the chips are
+            a closed list with no visible route to a longer one. It lived at the end of the row of chips,
+            where it read as one more chip; in the heading it is about the list rather than in it, and it
+            is there when the section is folded too.
+
+            It opens the space's vocabulary rather than doing anything itself: adding a model is a
+            decision about the community, with its own screen and wizard, and a panel about one call is
+            the wrong place to make it — but the right place to be reminded it can be made. `xs`, ghost
+            and square, which is what a section heading's action is — see `newSignalTypeButton`.
+          */
+          action: {
+            type: 'we-tooltip',
+            props: { content: "Add a kind of thing to extract, in this space's vocabulary" },
+            children: [
+              {
+                type: 'we-button',
+                props: {
+                  size: 'xs',
+                  variant: 'ghost',
+                  square: true,
+                  label: "Add a kind of thing to extract, in this space's vocabulary",
+                  onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+                },
+                children: [{ type: 'we-icon', props: { name: 'plus' } }],
+              },
+            ],
+          },
         }),
         foldingBody({
           open: { field: 'targetsOpen' },
           children: [
             {
               type: 'Column',
-              props: { gap: '200' },
+              // Room between the chips and the button that acts on them, so the button reads as the
+              // end of the section rather than as one more chip wrapped onto a new line.
+              props: { gap: '400' },
               children: [
                 /*
                   No well around them.

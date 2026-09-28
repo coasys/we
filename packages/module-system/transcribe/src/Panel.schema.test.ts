@@ -1246,11 +1246,13 @@ describe('the extraction panel', () => {
       place to make it.
     */
     const chips = JSON.stringify(extractionTargets);
+    const add = '{"$action":"shellStore.openSpaceSettings","args":["vocabulary"]}';
 
-    expect(chips).toContain('{"$action":"shellStore.openSpaceSettings","args":["vocabulary"]}');
-    expect(chips).toContain('"name":"plus"');
-    // Inside the wrapping row with the chips, so it reflows with them and follows the last one.
-    expect(chips.indexOf('"name":"plus"')).toBeGreaterThan(chips.indexOf('target.label'));
+    // In the section's heading, about the list rather than one more thing in it — and not among the chips.
+    expect(chips).not.toContain(add);
+    const label = json.indexOf('"Things to extract"');
+    expect(json.indexOf(add, label)).toBeGreaterThan(label);
+    expect(json.indexOf(add, label)).toBeLessThan(json.indexOf('transcribe.extractionTargets'));
   });
 
   it('keeps Extract now at one weight, whatever the automatic pass is doing', () => {
