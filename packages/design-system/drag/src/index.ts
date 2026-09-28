@@ -10,6 +10,7 @@ export type {
   DragPayload,
   DragPoint,
   DragPreview,
+  DragWithin,
   DragRef,
   DragZone,
   DropContext,

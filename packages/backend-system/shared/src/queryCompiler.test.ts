@@ -122,6 +122,34 @@ describe('compileQuery', () => {
 });
 
 describe('irToFlatQuery', () => {
+  /**
+   * The flag has to survive BOTH halves of the trip: the schema's `include` becoming an aggregate,
+   * and the aggregate becoming the backend's flat projection. It was dropped in the first half and
+   * the whole suite stayed green — a count that quietly means "direct children" where the caller
+   * asked for "everything below" is a plausible number, so nothing downstream complains and no
+   * assertion anywhere was about the flag.
+   */
+  it('carries `transitive` from an include projection through to the flat query', () => {
+    const { ir } = compileQuery({
+      entity: 'CollectionBlock',
+      include: { $descendants: { from: 'comments', count: true, transitive: true } },
+    });
+    expect(ir.aggregate?.[0]).toMatchObject({ as: '$descendants', over: 'comments', transitive: true });
+
+    const flat = irToFlatQuery(ir);
+    expect((flat.include as Record<string, unknown>).$descendants).toMatchObject({
+      from: 'comments',
+      count: true,
+      transitive: true,
+    });
+  });
+
+  it('leaves an ordinary count projection alone', () => {
+    const { ir } = compileQuery({ entity: 'Post', include: { $likes: { from: 'signals', count: true } } });
+    expect(ir.aggregate?.[0]).not.toHaveProperty('transitive');
+    expect((irToFlatQuery(ir).include as Record<string, unknown>).$likes).not.toHaveProperty('transitive');
+  });
+
   it('maps aggregate → count projection and alias → single projection', () => {
     const legacy = irToFlatQuery({
       irVersion: 1,
@@ -142,14 +170,18 @@ describe('irToFlatQuery', () => {
     });
   });
 
-  it('throws on shapes needing adapter resolution or that AD4M cannot express (scope, op, rel-filter, non-count agg)', () => {
+  it('throws on shapes needing adapter resolution or that the flat dialect cannot express (scope, op, rel-filter, non-count agg)', () => {
     // scope needs binding resolution — the adapter's job, not this translator
     expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
       /scope \(drill-down\)/,
     );
-    expect(() =>
-      irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
-    ).toThrow(/operator "gt"/);
+    // A range bound lowers now that the flat grammar has one; only whether the backend compares that
+    // kind of bound natively is left to the adapter's plan.
+    expect(
+      irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }).where,
+    ).toEqual({
+      likes: { gt: 5 },
+    });
     // A relation `exists` is the one quantifier with no flat spelling — `some`/`none` lower fine.
     expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'exists' } })).toThrow(
       /relation `exists`/,
@@ -163,7 +195,7 @@ describe('irToFlatQuery', () => {
     ).toThrow(/aggregate fn "sum"/);
   });
 
-  // The load-bearing guarantee the AD4M adapter rests on: crossing legacy → IR → legacy loses nothing,
+  // The load-bearing guarantee an adapter rests on: crossing legacy → IR → legacy loses nothing,
   // proven by re-deriving the IR from the reconstructed legacy and getting the identical IR back.
   const samples: FlatQuery[] = [
     {
@@ -218,5 +250,35 @@ describe('lowering a where clause back to the flat dialect', () => {
   it('emits an explicit AND when the branches collide on a key', () => {
     // Same key on both branches cannot merge into sibling keys without one silently winning.
     expect(flatOf({ AND: [{ title: { contains: 'a' } }, { title: { contains: 'b' } }] })).toHaveProperty('where.AND');
+  });
+});
+
+describe('range bounds', () => {
+  it('compiles a single bound to its operator', () => {
+    expect(compileQuery({ entity: 'TaskBlock', where: { dueDate: { lt: '2026-10-01' } } }).ir.filter).toEqual({
+      field: 'dueDate',
+      op: 'lt',
+      value: '2026-10-01',
+    });
+  });
+
+  it('compiles a pair of bounds on one field to a conjunction, not to whichever was read first', () => {
+    const { ir, unsupported } = compileQuery({ entity: 'Listing', where: { price: { gte: 10, lt: 50 } } });
+    expect(unsupported).toEqual([]);
+    expect(ir.filter).toEqual({
+      and: [
+        { field: 'price', op: 'lt', value: 50 },
+        { field: 'price', op: 'gte', value: 10 },
+      ],
+    });
+    expect(validateQueryIR(ir).valid).toBe(true);
+  });
+
+  it('lowers a range back to one operator object beside its siblings', () => {
+    const where = { status: 'todo', price: { gte: 10, lt: 50 } };
+    expect(irToFlatQuery(compileQuery({ entity: 'Listing', where }).ir).where).toEqual({
+      status: 'todo',
+      price: { lt: 50, gte: 10 },
+    });
   });
 });

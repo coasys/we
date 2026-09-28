@@ -21,6 +21,7 @@ const input = (overrides: Partial<ExtractionLogInput> = {}): ExtractionLogInput 
   passes: [],
   records: [],
   proposals: [],
+  amendments: [],
   nameFor,
   ...overrides,
 });
@@ -120,5 +121,59 @@ describe('the extraction log', () => {
     expect(log).toContain('### New TaskBlock: `task-1`');
     // A pass from before prompts were stored says so rather than showing an empty fence.
     expect(log).toContain('#### Prompt\n\n_Not recorded._');
+  });
+});
+
+/**
+ * Changes that were accepted.
+ *
+ * The section exists because nothing else in the log holds this: the records section shows values as
+ * they stand now with no account of how they got there, and a pass's response holds what the model
+ * *proposed* rather than what somebody kept or what it replaced. The previous value appears here and
+ * nowhere else, in this log or in the graph.
+ */
+describe('the accepted changes section', () => {
+  const amendment = {
+    createdAt: '2026-09-14T11:30:00.000Z',
+    author: 'did:key:anna',
+    property: 'status',
+    previousValue: 'todo',
+    newValue: 'done',
+    nodeType: 'TaskBlock',
+    node: 'task-1',
+  };
+
+  it('names the record, the property and both values', () => {
+    const log = formatExtractionLog(input({ amendments: [amendment] }));
+
+    expect(log).toContain('## Accepted changes (1)');
+    expect(log).toContain('### TaskBlock: `task-1`');
+    expect(log).toContain('- Property: `status`');
+    expect(log).toContain('- Was: "todo"');
+    expect(log).toContain('- Now: "done"');
+  });
+
+  it('credits whoever kept it, not whoever wrote the record', () => {
+    // The two are routinely different people — a change is proposed about somebody else's task and
+    // accepted by whoever was reviewing — and which is which is the question a log answers.
+    const log = formatExtractionLog(input({ amendments: [amendment] }));
+
+    expect(log).toContain('- Kept by: Anna (`did:key:anna`)');
+  });
+
+  it('quotes an empty previous value rather than leaving a gap', () => {
+    // A property filled in for the first time is an ordinary amendment and the common one. Unquoted,
+    // the line reads as though the log failed to record something.
+    const log = formatExtractionLog(input({ amendments: [{ ...amendment, previousValue: '' }] }));
+
+    expect(log).toContain('- Was: ""');
+  });
+
+  it('says so when nothing was changed, rather than leaving the section out', () => {
+    // The same rule the sections above follow: an absent heading reads as a log that forgot to ask.
+    const log = formatExtractionLog(input());
+
+    expect(log).toContain('## Accepted changes (0)');
+    expect(log).toContain('_No suggested change to an existing record has been kept on this call._');
   });
 });

@@ -50,9 +50,9 @@ const defineEntityTool = {
             name: { type: 'string' as const, description: 'camelCase identifier, e.g. "dueDate".' },
             type: {
               type: 'string' as const,
-              enum: ['text', 'number', 'boolean', 'date', 'select'],
+              enum: ['text', 'paragraph', 'link', 'number', 'boolean', 'date', 'select'],
               description:
-                '"select" is a text field with a fixed set of allowed values — declare them in options. To point at another model, use a relationship instead of a property.',
+                '"paragraph" is text long enough to need several lines (a description, notes); "link" is a web address. "select" is a text field with a fixed set of allowed values — declare them in options. A picture, a file or a place is not a property: point at ImageBlock, FileBlock or LocationBlock with a relationship.',
             },
             required: { type: 'boolean' as const },
             hint: {
@@ -170,7 +170,8 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
 function draftProblems(draft: ShapeDraft, existingEntities: string[], referenceTargets: string[]): string[] {
   const lowered = draftToManifest(draft, 'preview');
   if (!lowered.ok) return lowered.errors;
-  const gate = validateManifest(lowered.manifest, { externalEntities: referenceTargets });
+  // `WeNode` is what every lowered draft extends, and is never a reference target the model is offered.
+  const gate = validateManifest(lowered.manifest, { externalEntities: [...referenceTargets, 'WeNode'] });
   const problems = gate.valid ? [] : gate.errors.map((e) => `${e.path}: ${e.message}`);
   const entityName = Object.keys(lowered.manifest.entities)[0];
   if (existingEntities.includes(entityName)) {

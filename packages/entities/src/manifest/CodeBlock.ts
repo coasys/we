@@ -4,6 +4,7 @@ export const CodeBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A snippet of code, with its language',
     flag: { predicate: 'we://flag', value: 'we://code_block' },
     authoring: { fields: ['title', 'language', 'code'] },
     properties: {

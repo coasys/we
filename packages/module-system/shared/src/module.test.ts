@@ -1,45 +1,72 @@
 import { describe, expect, it } from 'vitest';
 
-import { checkModuleCompatibility, defineModule, type ModuleDefinition, modulePredicateViolations } from './module';
+import {
+  checkModuleCompatibility,
+  defineModule,
+  moduleCapabilities,
+  type ModuleDefinition,
+  modulePredicateViolations,
+} from './module';
+import { markAction, markState, memberDoc, memberKind, storeSurface } from './store';
 
 const host = { backend: 'ad4m', framework: 'solid' };
 
 function mod(overrides: Partial<ModuleDefinition> = {}): ModuleDefinition {
-  return defineModule({ id: 'test', name: 'Test', ...overrides });
+  return defineModule({ manifest: { id: 'test', name: 'Test' }, ...overrides });
 }
 
 describe('checkModuleCompatibility', () => {
   it('treats an omitted axis as agnostic, so the portable case is the default', () => {
-    // A module that declares neither backends nor frameworks runs anywhere. Making the portable case
-    // the default is what forces coupling to be opted into and declared.
+    // A module that declares neither backends nor frameworks nor kernels runs anywhere. Making the
+    // portable case the default is what forces coupling to be opted into and declared.
     expect(checkModuleCompatibility(mod(), host).compatible).toBe(true);
     expect(checkModuleCompatibility(mod(), { backend: 'nextgraph', framework: 'react' }).compatible).toBe(true);
   });
 
   it('refuses a module that needs a backend this host is not', () => {
-    const plan = checkModuleCompatibility(mod({ backends: ['ad4m'] }), { ...host, backend: 'nextgraph' });
+    const plan = checkModuleCompatibility(mod({ manifest: { id: 't', name: 'T', requires: { backends: ['ad4m'] } } }), {
+      ...host,
+      backend: 'nextgraph',
+    });
     expect(plan.compatible).toBe(false);
     expect(plan.problems[0]).toContain('ad4m');
     expect(plan.problems[0]).toContain('nextgraph');
   });
 
-  it('admits an entity-owning module on the backend it declares', () => {
-    // The escape hatch working as intended: coupling is visible, not blocking.
-    expect(checkModuleCompatibility(mod({ backends: ['ad4m'] }), host).compatible).toBe(true);
-  });
-
   it('refuses a module with no build for this framework', () => {
-    const plan = checkModuleCompatibility(mod({ frameworks: ['react'] }), host);
+    const plan = checkModuleCompatibility(
+      mod({ manifest: { id: 't', name: 'T', requires: { frameworks: ['react'] } } }),
+      host,
+    );
     expect(plan.compatible).toBe(false);
     expect(plan.problems[0]).toContain('react');
   });
 
-  it('accepts a module listing several options if the host is any of them', () => {
-    expect(checkModuleCompatibility(mod({ frameworks: ['react', 'solid'] }), host).compatible).toBe(true);
+  it('refuses a module that names a kernel this host does not implement', () => {
+    // The point of naming kernels: a module that reaches presence on a host with no presence is
+    // refused with a sentence at registration, instead of degrading silently inside its store.
+    const plan = checkModuleCompatibility(
+      mod({ manifest: { id: 't', name: 'T', requires: { kernels: ['presence', 'languageModel'] } } }),
+      { ...host, kernels: ['records', 'presence'] },
+    );
+    expect(plan.compatible).toBe(false);
+    expect(plan.problems[0]).toContain('languageModel');
+    expect(plan.problems[0]).not.toContain('presence');
+  });
+
+  it('assumes every kernel when a host declares none — the permissive default a test wants', () => {
+    const plan = checkModuleCompatibility(
+      mod({ manifest: { id: 't', name: 'T', requires: { kernels: ['records', 'media'] } } }),
+      host,
+    );
+    expect(plan.compatible).toBe(true);
   });
 
   it('reports every problem at once, so the install prompt can show them together', () => {
-    const plan = checkModuleCompatibility(mod({ backends: ['nextgraph'], frameworks: ['vue'] }), host);
+    const plan = checkModuleCompatibility(
+      mod({ manifest: { id: 't', name: 'T', requires: { backends: ['nextgraph'], frameworks: ['vue'] } } }),
+      host,
+    );
     expect(plan.problems).toHaveLength(2);
   });
 });
@@ -47,28 +74,97 @@ describe('checkModuleCompatibility', () => {
 describe('defineModule', () => {
   it('round-trips the definition unchanged', () => {
     const definition = defineModule({
-      id: 'notes',
-      name: 'Notes',
-      capabilities: ['storage', 'slot:dock-right'],
-      backends: ['ad4m'],
-      slots: [{ anchor: 'dock-right', node: { type: 'Column' }, order: 100 }],
+      manifest: { id: 'notes', name: 'Notes', requires: { backends: ['ad4m'] } },
+      contributes: { slots: [{ anchor: 'dock-right', node: { type: 'Column' }, order: 100 }] },
     });
-    expect(definition.id).toBe('notes');
-    expect(definition.slots?.[0].anchor).toBe('dock-right');
+    expect(definition.manifest.id).toBe('notes');
+    expect(definition.contributes?.slots?.[0].anchor).toBe('dock-right');
   });
 
-  it('allows a fragments-only module to declare no framework at all', () => {
-    // The case that matters for dynamic loading: no `components`, no `frameworks`, so nothing
-    // framework-shaped is imported and there is no second-runtime hazard.
+  it('allows a declaration-only module: no store, no framework, no kernels', () => {
+    // The case that matters for distribution: nothing here is code, so nothing here has to be trusted.
     const definition = defineModule({
-      id: 'banner',
-      name: 'Banner',
-      schemas: { bar: { type: 'Column', children: ['hi'] } },
-      slots: [{ anchor: 'banner', node: { type: 'Column' } }],
+      manifest: { id: 'banner', name: 'Banner' },
+      contributes: {
+        parts: { bar: { type: 'Column', children: ['hi'] } },
+        panels: [{ name: 'main', title: 'Banner', node: { type: 'Column' } }],
+      },
     });
-    expect(definition.frameworks).toBeUndefined();
-    expect(definition.components).toBeUndefined();
-    expect(checkModuleCompatibility(definition, { backend: 'anything', framework: 'anything' }).compatible).toBe(true);
+    expect(definition.createStore).toBeUndefined();
+    expect(definition.contributes?.components).toBeUndefined();
+    expect(
+      checkModuleCompatibility(definition, { backend: 'anything', framework: 'anything', kernels: [] }).compatible,
+    ).toBe(true);
+  });
+});
+
+describe('moduleCapabilities', () => {
+  it('derives what a person is agreeing to from the manifest and the contributions', () => {
+    // Nothing here is authored: a free list six modules wrote and nothing read is what this replaces.
+    const caps = moduleCapabilities(
+      defineModule({
+        manifest: {
+          id: 'call',
+          name: 'Calls',
+          requires: { kernels: ['presence', 'ephemeral', 'media'], permissions: ['microphone', 'camera'] },
+        },
+        contributes: {
+          panels: [{ name: 'stage', title: 'Call', node: { type: 'Column' } }],
+          slots: [{ anchor: 'dock-bottom', node: { type: 'Row' } }],
+        },
+      }),
+    );
+    expect(caps).toEqual(
+      expect.arrayContaining(['microphone', 'camera', 'kernel:presence', 'kernel:media', 'dock', 'slot:dock-bottom']),
+    );
+    expect(caps).not.toContain('storage:space');
+  });
+
+  it('says which dataset a module writes into', () => {
+    const manifest = { version: '1.0.0', entities: {} } as never;
+    expect(moduleCapabilities(mod({ contributes: { entities: { manifest } } }))).toContain('storage:space');
+    expect(moduleCapabilities(mod({ contributes: { entities: { manifest, scope: 'agent' } } }))).toContain(
+      'storage:agent',
+    );
+  });
+
+  it('is empty for a module that asks for nothing', () => {
+    expect(moduleCapabilities(mod())).toEqual([]);
+  });
+});
+
+describe('store markers', () => {
+  it('marks state and actions apart, and keeps the description', () => {
+    const read = () => 1;
+    const act = () => undefined;
+    expect(memberKind(markState(read, 'a number'))).toBe('state');
+    expect(memberKind(markAction(act, 'does a thing'))).toBe('action');
+    expect(memberDoc(markState(read, 'a number'))).toBe('a number');
+  });
+
+  it('returns the member it was given, so a marked accessor is still the signal', () => {
+    // A copy would break reactivity: the host's memo has to call the very function the signal made.
+    const read = () => 1;
+    expect(markState(read, 'x')).toBe(read);
+  });
+
+  it('wraps a plain value in an accessor, so the bag has one shape to tag', () => {
+    const marked = markState(3, 'three');
+    expect(typeof marked).toBe('function');
+    expect(marked()).toBe(3);
+  });
+
+  it('leaves an unmarked member out of the surface — private by default', () => {
+    const surface = storeSurface({
+      open: markState(() => true, 'whether the panel is open'),
+      toggle: markAction(() => undefined, 'opens or closes it'),
+      plumbing: () => 'right',
+      constant: 4,
+    });
+    expect(surface).toEqual({
+      open: { kind: 'state', doc: 'whether the panel is open' },
+      toggle: { kind: 'action', doc: 'opens or closes it' },
+    });
   });
 });
 
@@ -78,9 +174,6 @@ describe('modulePredicateViolations', () => {
   });
 
   it('allows reuse of the core vocabulary', () => {
-    // Shared vocabulary is the point — generic UI that displays a name works on this entity for
-    // free. Only *minting* a new flat name is unadjudicated, and that is not distinguishable from
-    // reuse without a registry of core names, so reuse is permitted.
     expect(modulePredicateViolations('notes', ['we://name', 'we://title'])).toEqual([]);
   });
 

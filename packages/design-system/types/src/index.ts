@@ -334,3 +334,19 @@ export interface DesignSystemProps {
   mdUpProps?: Partial<DesignSystemProps>;
   lgUpProps?: Partial<DesignSystemProps>;
 }
+
+/**
+ * What content inside a popover dispatches to close the popover it is in.
+ *
+ * Bubbling and composed, so it crosses the shadow boundaries between a control and the panel it was
+ * slotted into. `we-popover` listens for it; `SignalControl` raises it once a reaction is written,
+ * because a control that has finished what it was opened for should not go on sitting over the row
+ * it belongs to.
+ *
+ * Here rather than in either of them because both ends need the same word, and they are in
+ * different packages: the primitive cannot be imported for its VALUES (its type entry is a global
+ * declaration file, not a module), and a string literal written out twice across a package boundary
+ * is how the next silent mismatch starts. A `toggle` from a tooltip closing a popover that could
+ * not tell it from its own is the version of that mistake this codebase has already paid for.
+ */
+export const POPOVER_DISMISS = 'we-popover-dismiss';

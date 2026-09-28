@@ -1,13 +1,13 @@
 /**
  * The core vocabulary, running on rows.
  *
- * These are the real `CORE_MANIFEST` entities — the same declaration the AD4M adapter compiles
+ * These are the real `CORE_MANIFEST` entities — the same declaration the production adapter compiles
  * into decorated classes — compiled here into something backed by arrays. What the suite is
  * checking is that the declaration carries enough to *be* an entity: identity, declared starting
  * values, relations in both directions, and the query shapes stores actually issue.
  *
  * Where a manifest turns out to be missing something, this is where it shows up, because nothing
- * here can fall back on knowledge the AD4M classes happen to encode.
+ * here can fall back on knowledge the production classes happen to encode.
  */
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -185,15 +185,15 @@ describe('failing loudly', () => {
   });
 });
 
-describe("'' means empty, on this backend and on AD4M", () => {
+describe("'' means empty, on this backend and in production", () => {
   /*
     The contract the two backends disagreed about for a release, in the direction that makes the
-    suite lie: `Ad4mModel.setProperty` returned early for `''` — so a clear was a no-op there —
+    suite lie: the production model's property setter returned early for `''` — so a clear was a no-op there —
     while this backend wrote it and read it back as empty. Every store test exercising a clear
     passed here and silently did nothing against a real executor, in the one suite whose header
     calls itself a conformance test.
 
-    The AD4M side is repaired (`clearOnEmpty.ts` removes the property's links instead of skipping),
+    The production side is repaired (its adapter removes the property's links instead of skipping),
     so both now agree that `''` means empty. These pin *this* half of the agreement: what the
     reference implementation does is the definition, and a change to it has to be a deliberate one.
   */
@@ -241,7 +241,7 @@ describe('retiring a signal type keeps what people gave', () => {
     - Re-creating a type with the same slug does NOT bring them back, because the new record has a
       new id. "Delete it and add it back" therefore loses the history permanently.
     - So a cascade was proposed — sweep up every signal with that id. That destroys other members'
-      reactions on one person's click, in a neighbourhood every member can write to, irreversibly,
+      reactions on one person's click, in a shared dataset every member can write to, irreversibly,
       and it cannot even be guaranteed: a peer offline during the sweep re-orphans immediately.
 
     `retired` is the reversible answer, and it is what `deleteShape` already does one layer up:
@@ -290,13 +290,13 @@ describe('an absent property, and what the two backends do with it', () => {
   /*
     Found while adding `SignalType.retired`, and pinned because it decided a design choice.
 
-    A property is a *link* on AD4M, so a record that never had one written has no value at all —
+    A property is a *link* in production, so a record that never had one written has no value at all —
     where this backend holds a row and simply lacks the key. The three cases below are not the same
     across the two, and the middle one is a genuine conformance divergence:
 
     - `{ field: '' }` does not match an absent value on either. They agree.
     - `{ field: { not: x } }` MATCHES an absent value here, because `undefined !== x` is true in
-      JavaScript — and does NOT match on AD4M, because `!=` over an unbound variable excludes the
+      JavaScript — and does NOT match in production, because `!=` over an unbound variable excludes the
       row, exactly as SQL's three-valued logic excludes NULL. **A `where` written with `not` is
       therefore green in this suite and silently empty against a real executor**, which is the same
       shape as the `''` contract bug above it.
@@ -330,7 +330,7 @@ describe('an absent property, and what the two backends do with it', () => {
     expect(await Space.findAll(dataset, { where: { avatar: '' } })).toHaveLength(0);
   });
 
-  it('DOES match an absent property against `not` — where AD4M would not', async () => {
+  it('DOES match an absent property against `not` — where production would not', async () => {
     /*
       The divergence, asserted so it is a known quantity rather than a surprise. Do not read this
       as an endorsement: it is what this backend does today, and a `where` relying on it will not

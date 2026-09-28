@@ -179,8 +179,11 @@ export interface SessionPort {
   messages: () => EditorChatMessage[];
   isStreaming: () => boolean;
   streamingContent: () => string;
-  apiKeyConfigured: () => boolean;
-  setApiKey: (key: string) => void;
+  /** The node has a language model to talk to. The composer says so when it has not. */
+  assistantAvailable: () => boolean;
+  /** Which model answers, and whether it can — for the header's status line. Null until checked. */
+  assistantStatus: () => EditorAssistantStatus | null;
+  refreshAssistant: () => void | Promise<void>;
   sendMessage: (text: string) => Promise<void>;
   clearHistory: () => void;
   sessions: () => { id: string; name: string }[];
@@ -188,6 +191,14 @@ export interface SessionPort {
   newChat: () => void;
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
+}
+
+/** The chat's model, as the header shows it. Structural — the backend contract's own shape passes. */
+export interface EditorAssistantStatus {
+  state: 'ready' | 'loading' | 'error' | 'unchecked' | 'none';
+  name: string;
+  model: string;
+  detail: string;
 }
 
 /** Who the user is, and which dataset the editor is working against. */

@@ -27,6 +27,15 @@ export { instagramTemplate } from './InstagramTemplate.schema.ts';
 export { kanbanTemplate } from './KanbanTemplate.schema.ts';
 export { scrapbookTemplate } from './ScrapbookTemplate.schema.ts';
 export { twitterTemplate } from './TwitterTemplate.schema.ts';
-export { workshopTemplate } from './WorkshopTemplate.schema.ts';
+export { CALL_CHROME_BAND, workshopTemplate } from './WorkshopTemplate.schema.ts';
 export { youtubeTemplate } from './YoutubeTemplate.schema.ts';
 export { KIND, MODE } from './shared.ts';
+
+/*
+  The canvas's reading strip and the locals it reads, for the browser layout harness.
+
+  Exported because the strip is `position: absolute` and whether it lands inside its container is a
+  claim about pixels, which only a real browser can answer — so the harness mounts the app's own node
+  rather than a restatement of it. See `tests/browser/cases/treeStrip.mjs`.
+*/
+export { TREE_LOCALS, TREE_QUERIES, treeStrip } from './WorkshopTree.ts';

@@ -26,7 +26,7 @@ const host = { backend: 'ad4m', framework: 'solid' };
 const schemas = { entries: manifestToEntries } as unknown as SchemaPort;
 
 function reset() {
-  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
+  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
 }
 
 beforeEach(reset);
@@ -34,7 +34,10 @@ beforeEach(reset);
 describe('a module-declared relation', () => {
   it('is in the list a scope is resolved against', () => {
     moduleRegistry.register(
-      { id: 'pocket', name: 'Pocket', entities: { manifest: POCKET_MANIFEST, scope: 'agent' } } as ModuleDefinition,
+      {
+        manifest: { id: 'pocket', name: 'Pocket' },
+        contributes: { entities: { manifest: POCKET_MANIFEST, scope: 'agent' } },
+      } as ModuleDefinition,
       host,
     );
 
@@ -47,7 +50,10 @@ describe('a module-declared relation', () => {
     // writes under the one the module names. Two spellings of one edge is a folder whose contents
     // are stored somewhere its own query does not look.
     moduleRegistry.register(
-      { id: 'pocket', name: 'Pocket', entities: { manifest: POCKET_MANIFEST, scope: 'agent' } } as ModuleDefinition,
+      {
+        manifest: { id: 'pocket', name: 'Pocket' },
+        contributes: { entities: { manifest: POCKET_MANIFEST, scope: 'agent' } },
+      } as ModuleDefinition,
       host,
     );
 
@@ -63,7 +69,10 @@ describe('a module-declared relation', () => {
     // Pocket's panel reads the root dataset while a space is open, so filtering this by scope would
     // put its relations out of reach exactly when they are used.
     moduleRegistry.register(
-      { id: 'spacey', name: 'Spacey', entities: { manifest: POCKET_MANIFEST } } as ModuleDefinition,
+      {
+        manifest: { id: 'spacey', name: 'Spacey' },
+        contributes: { entities: { manifest: POCKET_MANIFEST } },
+      } as ModuleDefinition,
       host,
     );
 
@@ -71,7 +80,7 @@ describe('a module-declared relation', () => {
   });
 
   it('lists nothing for a module that declares no entities', () => {
-    moduleRegistry.register({ id: 'plain', name: 'Plain' } as ModuleDefinition, host);
+    moduleRegistry.register({ manifest: { id: 'plain', name: 'Plain' } } as ModuleDefinition, host);
     expect(moduleRegistry.entityEntries(schemas)).toEqual([]);
   });
 });

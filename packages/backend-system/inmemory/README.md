@@ -17,11 +17,11 @@ render(() => <SchemaRenderer node={template} stores={backend.stores} registry={r
 Two reasons, and the second is the one that pays daily.
 
 **It is the reference adapter.** A thin `QueryAdapter` over the neutral engine — `compileQuery` →
-`executeQueryIR` — with an honest capability profile. It exercises the same renderer path the AD4M
+`executeQueryIR` — with an honest capability profile. It exercises the same renderer path the production
 adapter does, so a change that breaks the contract breaks here first, loudly and in milliseconds.
 
 **It makes stores testable without a running executor.** Anything that only needs `DataSource` can be
-tested against this instead of booting an executor and waiting on a perspective.
+tested against this instead of booting a backend process and waiting on a dataset.
 
 ## Consolidation
 

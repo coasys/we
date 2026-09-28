@@ -10,10 +10,15 @@ import {
   asEntityName,
   controlFor,
   emptyRecordDraft,
+  entryLabel,
   fieldsFor,
   humanise,
+  recordDraftChanged,
   recordDraftErrors,
   recordDraftFields,
+  withoutRelationEntry,
+  withPlace,
+  withRelationEntry,
   writeFieldValue,
 } from '@shared/shapes/recordDraft';
 import type { EntitySchema } from '@we/backend-shared';
@@ -70,6 +75,8 @@ describe('controlFor', () => {
     expect(controlFor({ type: 'boolean' })).toBe('switch');
     expect(controlFor({ type: 'number' })).toBe('number');
     expect(controlFor({ type: 'string' })).toBe('text');
+    // A link is typed as one — the URL keyboard, and a value the browser can check.
+    expect(controlFor({ type: 'string', control: 'url' })).toBe('url');
   });
 });
 
@@ -165,5 +172,176 @@ describe('saving a draft', () => {
     draft.fields[0].value = '51.5';
 
     expect(recordDraftFields(draft)).toEqual({ lat: 51.5 });
+  });
+});
+
+describe('relations and files in a form', () => {
+  const sighting: EntitySchema = {
+    properties: { species: { type: 'string', required: true, default: '' } },
+    relations: {
+      photos: { target: 'ImageBlock', cardinality: 'many' },
+      place: { target: 'Site', cardinality: 'one' },
+      mystery: { target: 'Unknown', cardinality: 'one' },
+    },
+  };
+  const abilities = (target: string) =>
+    target === 'ImageBlock'
+      ? { canCreate: true, canPick: false, label: 'Image', inline: 'image' as const }
+      : target === 'Site'
+        ? { canCreate: true, canPick: true, label: 'Site' }
+        : undefined;
+
+  it('offers a community model’s relations, with what their targets allow, and skips a target nobody can answer for', () => {
+    const fields = fieldsFor(sighting, true, abilities);
+    expect(fields.map((f) => [f.name, f.control])).toEqual([
+      ['species', 'text'],
+      ['photos', 'relation'],
+      ['place', 'relation'],
+    ]);
+    expect(fields[1]).toMatchObject({
+      target: 'ImageBlock',
+      targetLabel: 'Image',
+      many: true,
+      canCreate: true,
+      canPick: false,
+    });
+    expect(fields[1].inline).toBe('image');
+    expect(fields[2]).toMatchObject({ many: false, canPick: true, inline: '' });
+  });
+
+  it('offers no relations when the caller cannot say what a target allows', () => {
+    expect(fieldsFor(sighting, true).map((f) => f.name)).toEqual(['species']);
+  });
+
+  it('gives a file property a file control that takes pictures when its name says so', () => {
+    const image: EntitySchema = {
+      authoring: { fields: ['src', 'altText'] },
+      properties: { src: { type: 'string', format: 'file', required: true, default: '' }, altText: { type: 'string' } },
+      relations: {},
+    };
+    const [src] = fieldsFor(image, false);
+    expect(src).toMatchObject({ control: 'file', accept: 'image/*', required: true });
+  });
+
+  it('adds and removes chips on a new draft, keeping every other row the same object', () => {
+    const draft = emptyRecordDraft({
+      entity: 'Sighting',
+      schema: sighting,
+      authorable: true,
+      relationTarget: abilities,
+    });
+    const [species] = draft.fields;
+    const added = withRelationEntry(draft, 'photos', {
+      key: 'new-1',
+      label: 'wren.jpg',
+      entity: 'ImageBlock',
+      fields: {},
+    });
+    // `<For>` keys on identity: an unchanged row that became a new object would remount mid-typing.
+    expect(added.fields[0]).toBe(species);
+    expect(added.fields[1].entries.map((e) => e.key)).toEqual(['new-1']);
+    expect(recordDraftChanged(draft)).toBe(false);
+    expect(recordDraftChanged(added)).toBe(true);
+    expect(withoutRelationEntry(added, 'photos', 'new-1').fields[1].entries).toEqual([]);
+  });
+
+  it('replaces rather than appends on a to-one relation', () => {
+    const draft = emptyRecordDraft({
+      entity: 'Sighting',
+      schema: sighting,
+      authorable: true,
+      relationTarget: abilities,
+    });
+    const once = withRelationEntry(draft, 'place', { key: 'a', id: 'a', label: 'Marsh', entity: 'Site' });
+    const twice = withRelationEntry(once, 'place', { key: 'b', id: 'b', label: 'Wood', entity: 'Site' });
+    expect(twice.fields[2].entries.map((e) => e.key)).toEqual(['b']);
+  });
+
+  it('leaves relations out of the create payload — they are linked once the record exists', () => {
+    const draft = emptyRecordDraft({
+      entity: 'Sighting',
+      schema: sighting,
+      authorable: true,
+      relationTarget: abilities,
+    });
+    writeFieldValue(draft, 'species', 'Wren');
+    const linked = withRelationEntry(draft, 'place', { key: 'a', id: 'a', label: 'Marsh', entity: 'Site' });
+    expect(recordDraftFields(linked)).toEqual({ species: 'Wren' });
+  });
+
+  it('names an inline record by its name, else by its file, else by its kind', () => {
+    const image: EntitySchema = {
+      authoring: { fields: ['src', 'altText'] },
+      properties: { src: { type: 'string', format: 'file', default: '' }, altText: { type: 'string', default: '' } },
+      relations: {},
+    };
+    const draft = emptyRecordDraft({ entity: 'ImageBlock', label: 'Image', schema: image, authorable: false });
+    expect(entryLabel(draft, '', 'Image')).toBe('Image');
+    writeFieldValue(draft, 'src', { data_base64: 'x', name: 'wren.jpg', file_type: 'image/jpeg' });
+    expect(entryLabel(draft, '', 'Image')).toBe('wren.jpg');
+  });
+});
+
+describe('pinning a place', () => {
+  const place: EntitySchema = {
+    authoring: { fields: ['name', 'latitude', 'longitude', 'address'] },
+    properties: {
+      name: { type: 'string', default: '' },
+      latitude: { type: 'number' },
+      longitude: { type: 'number' },
+      address: { type: 'string', default: '' },
+    },
+    relations: {},
+  };
+
+  it('writes the coordinates and address, and names a place nobody named', () => {
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+    const next = withPlace(draft, { latitude: 51.45, longitude: -2.58, city: 'Bristol', address: 'Bristol, UK' })!;
+
+    expect(recordDraftFields(next)).toMatchObject({
+      name: 'Bristol',
+      latitude: 51.45,
+      longitude: -2.58,
+      address: 'Bristol, UK',
+    });
+  });
+
+  it('keeps a typed name, and the identity of every row it did not change', () => {
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+    writeFieldValue(draft, 'name', 'The workshop');
+    const name = draft.fields.find((field) => field.name === 'name');
+
+    const next = withPlace(draft, { latitude: 1, longitude: 2 })!;
+
+    expect(recordDraftFields(next).name).toBe('The workshop');
+    // Unchanged rows keep their object, so a control being typed into keeps focus.
+    expect(next.fields.find((field) => field.name === 'name')).toBe(name);
+  });
+
+  it('ignores anything that is not a place', () => {
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+    expect(withPlace(draft, { latitude: 'north' })).toBeNull();
+    expect(withPlace(draft, null)).toBeNull();
+  });
+});
+
+describe('starting values and controls', () => {
+  it('leaves a number with no default empty — 0 is a value, and a latitude of 0 is in the ocean', () => {
+    const place: EntitySchema = {
+      authoring: { fields: ['latitude', 'count'] },
+      properties: { latitude: { type: 'number' }, count: { type: 'number', default: 0 } },
+      relations: {},
+    };
+    const draft = emptyRecordDraft({ entity: 'LocationBlock', schema: place, authorable: false });
+
+    expect(draft.fields.find((f) => f.name === 'latitude')?.value).toBe('');
+    expect(draft.fields.find((f) => f.name === 'count')?.value).toBe(0);
+    // An empty number is not written.
+    expect(recordDraftFields(draft)).not.toHaveProperty('latitude');
+  });
+
+  it('picks an icon with the icon picker, and a closed vocabulary with a select', () => {
+    expect(controlFor({ type: 'string', control: 'icon' })).toBe('icon');
+    expect(controlFor({ type: 'string', options: ['info', 'warning'] })).toBe('select');
   });
 });

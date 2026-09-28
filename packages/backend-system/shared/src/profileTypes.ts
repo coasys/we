@@ -93,8 +93,8 @@ export const ANONYMOUS_AGENT_NAME = 'Anonymous';
  * honestly. It does not — it says nothing at all, and reads as a broken byline rather than as an
  * unnamed person. The case it was written to protect is the avatar stack, which labels faces with
  * `hash` and never reads this, so it is unaffected either way. Meanwhile a real population arrived
- * with no name at all: agents created outside WE, through ad4m-connect, whom WE never asks (see
- * `getProfile` in @we/backend-ad4m).
+ * with no name at all: agents created outside WE, by the backend's own onboarding, whom WE never
+ * asks (see the profile port's adapter).
  *
  * Pass an explicit `fallback` where a placeholder would be worse than nothing — `''` for a label
  * that is decoration beside a face that already identifies the person.

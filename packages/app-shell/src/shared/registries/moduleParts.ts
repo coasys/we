@@ -3,9 +3,8 @@
  *
  * The middle rung of the content chain, and the last one to be built. A module's presentation is a
  * default rather than a monopoly: its panel is several surfaces in one, and an interface that wants
- * them arranged differently could only hand-write copies of them. `ModuleDefinition.schemas` has
- * always said "named schema fragments a template can place", and nothing read it — so the promise
- * was there and the mechanism was not.
+ * them arranged differently could only hand-write copies of them. `contributes.parts` is where a
+ * module publishes them, and this is what reads it.
  *
  * ## Resolved here rather than in the renderer
  *
@@ -34,7 +33,7 @@ const reported = new Set<string>();
 function warnUnknown(id: string): void {
   if (reported.has(id)) return;
   reported.add(id);
-  const known = Object.keys(moduleRegistry.schemas());
+  const known = Object.keys(moduleRegistry.parts());
   console.warn(
     `[parts] no module publishes "${id}", so it renders nothing.` +
       (known.length ? ` Available: ${known.join(', ')}.` : ' No module publishes any part.'),
@@ -98,7 +97,7 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
     const id = typeof props.id === 'string' ? props.id : '';
     if (!id) return [];
 
-    const part = moduleRegistry.schemas()[id];
+    const part = moduleRegistry.parts()[id];
     if (!part) {
       warnUnknown(id);
       return [];

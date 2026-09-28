@@ -151,7 +151,14 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
     // `data:` is for the retro theme, which carries VT323 inline.
     "font-src 'self' data:",
     "media-src 'self' data: blob:",
-    `connect-src 'self' blob: ${connect} ws://localhost:* http://localhost:* https: ${BING_TILES}`,
+    /*
+      `data:` because custom-element libraries fetch their own inline icons. Shoelace's and Web
+      Awesome's `sl-icon`/`wa-icon` load an SVG by `fetch()`ing a `data:` URI, and `fetch` is governed
+      here, so every icon those libraries draw — a rating's stars, a select's caret — was refused and
+      rendered as nothing once a seed allowed their elements. A `data:` URI is already in the page and
+      reaches no server, so this grants no egress; the network entries beside it are unchanged.
+    */
+    `connect-src 'self' data: blob: ${connect} ws://localhost:* http://localhost:* https: ${BING_TILES}`,
     // Embedded apps, and the embeds a post can contain. Not 'none': `we-iframe` is a product
     // feature, and what makes an embed safe is the origin gate in `appBridge`, not this.
     "frame-src 'self' https: http://localhost:*",

@@ -18,14 +18,13 @@
 import type { DatasetHandle } from './dataSource';
 
 export interface DatasetRef {
-  /** Backend-local id (AD4M: the perspective uuid). Stable within this backend. */
+  /** Backend-local id. Stable within this backend, and meaningless on another agent's machine. */
   id: string;
   name: string;
-  /** Global shared URI once published/joined (AD4M: `neighbourhood://<cid>`). Absent when local. */
+  /** Global shared URI once published/joined, scheme included. Absent when local. */
   sharedUri?: string;
   /**
-   * The scheme-less global id (AD4M: the neighbourhood CID) — what shared records store and
-   * compare. Minted by the adapter alongside `sharedUri` so no consumer ever parses a URI.
+   * The scheme-less global id — what shared records store and compare. Minted by the adapter alongside `sharedUri` so no consumer ever parses a URI.
    */
   sharedId?: string;
   /** The opaque handle query/model calls consume. See `DatasetHandle`. */
@@ -41,6 +40,20 @@ export interface DatasetChangeHandlers {
   onRemoved?: (id: string) => void;
 }
 
+/** A template a shared dataset's sync layer can be instantiated from, as `publish` accepts it. */
+export interface LinkLanguageTemplate {
+  address: string;
+  /** The backend's own name for it — technical, for a detail line rather than a label. */
+  name: string;
+  /**
+   * How a dataset published with it syncs: directly between members' devices, or through a server.
+   * What a person choosing between templates actually needs to know, so it is what a picker labels.
+   */
+  kind: 'peer-to-peer' | 'server';
+  /** The server it syncs through, for `kind: 'server'`. */
+  serverUrl?: string;
+}
+
 /**
  * Dataset lifecycle — list/create/remove/share the containers themselves.
  *
@@ -52,8 +65,12 @@ export interface DatasetLifecyclePort {
   get(id: string): Promise<DatasetRef | null>;
   create(name: string): Promise<DatasetRef>;
   remove(id: string): Promise<void>;
-  /** Publish an existing local dataset for sharing. Returns its shared URI and scheme-less id. */
-  publish?(id: string): Promise<{ uri: string; sharedId: string }>;
+  /**
+   * Publish an existing local dataset for sharing. Pass `linkLanguageTemplate` to choose
+   * which link language backs the shared dataset; omit (or pass '') to use the first of
+   * `linkLanguageTemplates`.
+   */
+  publish?(id: string, linkLanguageTemplate?: string): Promise<{ uri: string; sharedId: string }>;
   /**
    * Join a shared dataset. Accepts the backend's full URI or a bare shared id — normalization is
    * the adapter's dialect, not the caller's.
@@ -61,6 +78,12 @@ export interface DatasetLifecyclePort {
   join?(idOrUri: string): Promise<DatasetRef>;
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
+  /**
+   * The templates `publish` can use, default first — the first is what `publish` picks when given
+   * none. Templates needing parameters `publish` cannot supply are
+   * left out.
+   */
+  linkLanguageTemplates?(): Promise<LinkLanguageTemplate[]>;
   /** Subscribe to change events. Returns an unsubscribe function. */
   subscribe(handlers: DatasetChangeHandlers): () => void;
 }

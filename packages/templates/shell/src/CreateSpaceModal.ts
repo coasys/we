@@ -40,6 +40,7 @@ export const createSpaceModal = {
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },
     location: { type: 'object', initial: null },
+    linkLanguage: { type: 'string', initial: '' },
     submitting: { type: 'boolean', initial: false },
     ...guard.localState,
   },
@@ -278,6 +279,60 @@ export const createSpaceModal = {
       ],
     },
 
+    /*
+      How the space syncs (its link language) — shown when creating a shared space and there is a
+      choice to make. Until somebody picks, it shows the store's default live rather than a copy
+      taken when the switch flipped, which would stay empty if the templates had not loaded by then.
+      The description follows the selection, so what each choice means is read where it is made —
+      a hover tooltip would be missed, and absent on a touchscreen.
+
+      Titled like the toggles beside it rather than as a we-form-field: these rows are choices about
+      the space, not fields of it, and a form-field's label is the smaller size the name and
+      description above use. The select carries the title as its accessible name, which the
+      form-field would otherwise have given it.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: "local.access == 'shared' && count(spaceStore.linkLanguageTemplateOptions) > 1" },
+        then: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'body', fontWeight: 'medium' },
+                  children: ['How this space syncs'],
+                },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [
+                    {
+                      $: 'find(spaceStore.linkLanguageTemplateOptions, { value: local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate }).description',
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'we-select',
+              props: {
+                label: 'How this space syncs',
+                value: { $: 'local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate' },
+                options: { $: 'spaceStore.linkLanguageTemplateOptions' },
+                onChange: { $setLocal: 'linkLanguage', value: { $: 'event.detail' } },
+              },
+            },
+          ],
+        },
+      },
+    },
+
     // Discovery toggle (Hidden vs Listed)
     {
       type: 'Column',
@@ -292,20 +347,9 @@ export const createSpaceModal = {
               props: { gap: '100', flex: '1' },
               children: [
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $: "local.access == 'shared' && datasetStore.globalDataset" },
-                    then: {
-                      type: 'we-text',
-                      props: { variant: 'body', fontWeight: 'medium' },
-                      children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
-                    },
-                    else: {
-                      type: 'we-text',
-                      props: { variant: 'body', fontWeight: 'medium' },
-                      children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
-                    },
-                  },
+                  type: 'we-text',
+                  props: { variant: 'body', fontWeight: 'medium' },
+                  children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
                 },
                 {
                   type: 'we-text',
@@ -411,6 +455,7 @@ export const createSpaceModal = {
                       { $: 'local.avatar' },
                       { $: 'local.coverImage' },
                       { $: 'local.location' },
+                      { $: 'local.linkLanguage' },
                     ],
                     onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],

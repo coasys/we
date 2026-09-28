@@ -1,4 +1,4 @@
-import { discardGuard } from '@we/schema-kit';
+import { backButton, discardGuard, iconDisc } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -30,27 +30,48 @@ import { expr } from '@we/schema-shared';
 interface ControlSpec {
   tag: string;
   event: string;
-  /** Prop the current value is bound to. `we-switch` calls it `checked`. */
-  valueProp?: string;
+  /**
+   * Prop the current value is bound to. `we-switch` calls it `checked`; `null` for a control that
+   * holds its own value and takes none back, as a file picker does.
+   */
+  valueProp?: string | null;
   props?: Record<string, SchemaProp>;
+  /**
+   * How much of the row the control takes. The full width for text, which fills it; its own width,
+   * at the row's start, for a control whose value is short — a number stretched across the modal and
+   * a select whose three words sat at one end of a bar both read as something that went wrong.
+   */
+  size?: Record<string, SchemaProp>;
 }
+
+/** A short value's control, at the start of its row rather than across it. */
+const COMPACT = { width: '12rem', maxWidth: '100%', alignSelf: 'start' };
 
 /** Passed only to controls that have one — a switch and a colour swatch have nothing to hint at. */
 const PLACEHOLDER = { placeholder: { $: 'field.placeholder' } };
 
 const CONTROLS: Record<string, ControlSpec> = {
   text: { tag: 'we-input', event: 'onInput', props: PLACEHOLDER },
+  url: { tag: 'we-input', event: 'onInput', props: { type: 'url', ...PLACEHOLDER } },
   textarea: { tag: 'we-textarea', event: 'onInput', props: { rows: 3, ...PLACEHOLDER } },
-  number: { tag: 'we-number-input', event: 'onChange', props: PLACEHOLDER },
+  number: { tag: 'we-number-input', event: 'onChange', props: PLACEHOLDER, size: COMPACT },
   switch: { tag: 'we-switch', event: 'onChange', valueProp: 'checked' },
-  select: { tag: 'we-select', event: 'onChange', props: { options: { $: 'field.options' } } },
+  select: { tag: 'we-select', event: 'onChange', props: { options: { $: 'field.options' } }, size: COMPACT },
   date: { tag: 'we-date-picker', event: 'onChange', props: PLACEHOLDER },
   datetime: { tag: 'we-date-picker', event: 'onChange', props: { showTime: true, ...PLACEHOLDER } },
   color: { tag: 'we-color-picker', event: 'onChange' },
+  icon: { tag: 'we-icon-picker', event: 'onChange' },
+  // A file is read into the draft when it is chosen, and uploaded only when the form saves.
+  file: { tag: 'we-file-upload', event: 'onChange', valueProp: null, props: { accept: { $: 'field.accept' } } },
 };
 
-/** One row of the form: the label, and whichever control the field's `control` names. */
-function controlRow(control: string, spec: ControlSpec): SchemaNode {
+/**
+ * One row of the form: the label, and whichever control the field's `control` names.
+ *
+ * `setter` is the store action the value is written through — the outer form's, or the nested
+ * form's for a record being made inline — so both forms are the same rows.
+ */
+function controlRow(control: string, spec: ControlSpec, setter = 'recordStore.setRecordField'): SchemaNode {
   return {
     type: '$if',
     props: {
@@ -62,12 +83,12 @@ function controlRow(control: string, spec: ControlSpec): SchemaNode {
           {
             type: spec.tag,
             props: {
-              [spec.valueProp ?? 'value']: { $: 'field.value' },
-              width: '100%',
+              ...(spec.valueProp === null ? {} : { [spec.valueProp ?? 'value']: { $: 'field.value' } }),
+              ...(spec.size ?? { width: '100%' }),
               // One action for every control, taking the field's name — the only shape that works
               // when the fields are data and no handler can be written per field.
               [spec.event]: {
-                $action: 'recordStore.setRecordField',
+                $action: setter,
                 args: [{ $: 'field.name' }, { $: 'event.detail' }],
               },
               ...spec.props,
@@ -79,6 +100,376 @@ function controlRow(control: string, spec: ControlSpec): SchemaNode {
   };
 }
 
+/** A picked place's name or address, typed over what the map reverse-geocoded. */
+function placeInput(property: string, label: string): SchemaNode {
+  return {
+    type: 'we-form-field',
+    props: { label, flex: '1 1 12rem', minWidth: '0' },
+    children: [
+      {
+        type: 'we-input',
+        props: {
+          size: 'sm',
+          value: { $: `first(field.entries).fields.${property} ?? ''` },
+          onInput: {
+            $action: 'recordStore.setRelationEntryField',
+            args: [{ $: 'field.name' }, { $: 'first(field.entries).key' }, property, { $: 'event.detail' }],
+          },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * A place, picked on the map where the relation is — not a form of latitude and longitude boxes.
+ * The same shape as the profile page: the picker, then the words beneath it for the person to
+ * correct. A to-many relation adds a place per pick and lists them as chips.
+ */
+const locationEditor: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '100%' },
+  children: [
+    {
+      type: 'we-location-picker',
+      props: {
+        width: '100%',
+        latitude: { $: 'field.many ? null : first(field.entries).fields.latitude' },
+        longitude: { $: 'field.many ? null : first(field.entries).fields.longitude' },
+        placeholder: { $: '`Pin ${lower(field.label)} on the map…`' },
+        onChange: { $action: 'recordStore.setRelationLocation', args: [{ $: 'field.name' }, { $: 'arg.detail' }] },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: '!field.many && count(field.entries)' },
+        then: {
+          type: 'Row',
+          props: { gap: '300', wrap: true, width: '100%' },
+          children: [placeInput('name', 'Name'), placeInput('address', 'Address')],
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * A picture, chosen and cropped where the relation is, and shown once chosen. One editor for a
+ * to-one — change it or take it away in place — and a tile per picture plus one to add for a to-many.
+ */
+const imageEditor: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'field.many' },
+    then: {
+      type: 'Row',
+      props: { gap: '200', wrap: true, width: '100%' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'field.entries' }, as: 'entry' },
+          children: [
+            {
+              type: 'Column',
+              props: { position: 'relative', width: '96px', height: '96px', r: 'surface', overflow: 'hidden' },
+              children: [
+                {
+                  type: 'we-image',
+                  props: {
+                    src: { $: 'entry.preview' },
+                    alt: { $: 'entry.label' },
+                    fit: 'cover',
+                    width: '96px',
+                    height: '96px',
+                  },
+                },
+                {
+                  type: 'Row',
+                  props: { position: 'absolute', top: '100', right: '100' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'secondary',
+                        size: 'xs',
+                        square: true,
+                        label: { $: '`Remove ${entry.label}`' },
+                        onClick: {
+                          $action: 'recordStore.removeRelationEntry',
+                          args: [{ $: 'field.name' }, { $: 'entry.key' }],
+                        },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'x' } }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'EditableImage',
+          props: {
+            fit: 'cover',
+            width: '96px',
+            height: '96px',
+            r: 'surface',
+            placeholderIcon: 'image',
+            uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
+            onImageChange: { $action: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
+          },
+        },
+      ],
+    },
+    else: {
+      type: 'EditableImage',
+      props: {
+        src: { $: 'first(field.entries).preview' },
+        alt: { $: 'field.label' },
+        fit: 'cover',
+        width: '100%',
+        height: '200px',
+        r: 'surface',
+        placeholderIcon: 'image',
+        uploadLabel: { $: '`Add ${lower(field.targetLabel)}`' },
+        editLabel: { $: '`Change ${lower(field.targetLabel)}`' },
+        onImageChange: { $action: 'recordStore.addRelationImage', args: [{ $: 'field.name' }, { $: 'event' }] },
+        onImageRemove: {
+          $action: 'recordStore.removeRelationEntry',
+          args: [{ $: 'field.name' }, { $: 'first(field.entries).key' }],
+        },
+      },
+    },
+  },
+};
+
+/** Chips, a picker and "Add" — for a target with no control of its own. */
+const genericRelationEditor: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '100%' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(field.entries)' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', wrap: true, width: '100%' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'field.entries' }, as: 'entry' },
+              children: [
+                {
+                  type: 'Row',
+                  props: {
+                    gap: '100',
+                    ay: 'center',
+                    bg: 'surface-sunken',
+                    r: 'control',
+                    pl: '300',
+                    pr: '100',
+                    py: '100',
+                    maxWidth: '100%',
+                  },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: { $: "recordStore.displays[entry.entity].icon ?? 'cube'" },
+                        size: 'xs',
+                        color: 'text-muted',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'label', truncate: true, minWidth: '0' },
+                      children: [{ $: 'entry.label' }],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'xs',
+                        square: true,
+                        label: { $: '`Remove ${entry.label}`' },
+                        onClick: {
+                          $action: 'recordStore.removeRelationEntry',
+                          args: [{ $: 'field.name' }, { $: 'entry.key' }],
+                        },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'x' } }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'field.many || !count(field.entries)' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%', wrap: true },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'field.canPick' },
+                then: {
+                  type: 'Row',
+                  props: { flex: '1 1 12rem', minWidth: '0' },
+                  // One subscription per picker, mounted only where there is a picker.
+                  $queries: { candidates: { entity: { $: 'field.target' }, limit: 200 } },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        width: '100%',
+                        searchable: true,
+                        placeholder: { $: '`Choose ${lower(field.targetLabel)}…`' },
+                        options: {
+                          $: 'local.candidates.map(row, { label: row[recordStore.displays[field.target].title] ?? row.id, value: row.id })',
+                        },
+                        value: '',
+                        onChange: {
+                          $action: 'recordStore.pickRelation',
+                          args: [{ $: 'field.name' }, { $: 'event.detail' }],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'field.canCreate' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'secondary',
+                    size: 'sm',
+                    onClick: { $action: 'recordStore.openRelationForm', args: [{ $: 'field.name' }] },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'plus' } }, { $: '`Add ${lower(field.targetLabel)}`' }],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * A relation: what it will point at, as chips, and the ways to give it something.
+ *
+ * Two ways, offered by what the target is. A record that stands on its own — a species, a person —
+ * can be **picked** from those the space already holds. Anything with a form of its own can be
+ * **made** here, in a small form over this one; that is the only way for a block, since an image
+ * belongs to the sighting it was added to. Nothing is written until the outer form saves.
+ *
+ * A to-one relation with something in it offers neither: the chip's remove is how it is changed.
+ */
+const relationRow: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "field.control == 'relation'" },
+    then: {
+      type: 'we-form-field',
+      props: { label: { $: 'field.label' }, width: '100%' },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: "field.inline == 'location'" },
+            then: locationEditor,
+            else: {
+              type: '$if',
+              props: { condition: { $: "field.inline == 'image'" }, then: imageEditor, else: genericRelationEditor },
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * The small form a relation's record is made in — the same rows as the outer form, over the nested
+ * draft, and nothing written until the outer form saves.
+ */
+const relationFormModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'recordStore.relationDraft' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'sm', close: { $action: 'recordStore.cancelRelationForm' } },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center', width: '100%' },
+          slot: 'header',
+          children: [
+            { type: 'we-icon', props: { name: { $: 'recordStore.relationDraft.icon' } } },
+            {
+              type: 'we-text',
+              props: { variant: 'heading-md' },
+              children: [{ $: '`New ${lower(recordStore.relationDraft.label)}`' }],
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'recordStore.relationDraft.fields' }, as: 'field' },
+          children: [
+            {
+              type: 'Column',
+              props: { width: '100%' },
+              children: Object.entries(CONTROLS).map(([control, spec]) =>
+                controlRow(control, spec, 'recordStore.setRelationField'),
+              ),
+            },
+          ],
+        },
+        {
+          type: '$each',
+          props: { items: { $: 'recordStore.relationErrors' }, as: 'problem' },
+          children: [
+            { type: 'we-text', props: { variant: 'footnote', color: 'danger-text' }, children: [{ $: 'problem' }] },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '300', ax: 'end', width: '100%' },
+          slot: 'footer',
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'secondary', onClick: { $action: 'recordStore.cancelRelationForm' } },
+              children: ['Cancel'],
+            },
+            {
+              type: 'we-button',
+              props: { variant: 'primary', onClick: { $action: 'recordStore.saveRelationForm' } },
+              children: ['Add'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 export interface RecordFormModalOptions {
   /**
    * Extra actions to run after a record is created — bumping a graph's `revision`, usually.
@@ -89,7 +480,62 @@ export interface RecordFormModalOptions {
   onCreated?: SchemaProp[];
   /** Heading text. Defaults to naming the model being created. */
   title?: SchemaProp;
+  /**
+   * Where "Back" goes, as actions run after the form closes — reopening the type chooser it was picked
+   * from. Omit for no Back button. Not offered for a connection being drawn, which was not picked from
+   * anything. With fields filled in it asks first, and a discard closes without going back.
+   */
+  back?: SchemaProp[];
+  /**
+   * Whether to offer a model picker above the fields. On by default, for a form opened with nothing
+   * chosen yet. Off where the model was just picked on the screen before — the chooser — where a
+   * second picker asks again what has already been answered.
+   */
+  entityPicker?: boolean;
+  /**
+   * The colour of the model's icon, as an expression over an expression naming the entity — the colour
+   * the chooser drew it in. Omit for the ordinary text colour.
+   */
+  iconColor?: (entity: string) => string;
 }
+
+/** Whether the draft has a place: a latitude and a longitude, which the form asks for as a pin. */
+const HAS_PLACE =
+  "recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')";
+
+/**
+ * A pin on the map for a model with a latitude and a longitude — a location, or a community's type
+ * that has a where — in place of two number boxes nobody knows the values for. Reverse geocoding fills
+ * the address, and a name nobody typed. Any model with both fields gets it, not only `LocationBlock`.
+ */
+const placePicker: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: HAS_PLACE },
+    then: {
+      type: 'we-form-field',
+      props: { label: 'Location', width: '100%' },
+      children: [
+        {
+          type: 'we-location-picker',
+          props: {
+            width: '100%',
+            // Nothing until a pin is placed — an empty field is not a coordinate, and the map opening
+            // on 0, 0 put everybody in the ocean.
+            latitude: {
+              $: "find(recordStore.recordDraft.fields, { name: 'latitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'latitude' }).value",
+            },
+            longitude: {
+              $: "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value",
+            },
+            placeholder: 'Pin it on the map…',
+            onChange: { $action: 'recordStore.setRecordPlace', args: [{ $: 'arg.detail' }] },
+          },
+        },
+      ],
+    },
+  },
+};
 
 export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
   const save: SchemaProp = {
@@ -106,6 +552,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
   const guard = discardGuard({
     dirty: { $: 'recordStore.recordDraftDirty' },
     close: { $action: 'recordStore.cancelRecordForm' },
+    ...(opts.back && { back: opts.back }),
     title: 'Discard this entry?',
     body: 'What you have filled in will be lost. Nothing has been saved to the space yet.',
   });
@@ -130,12 +577,33 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
         // The guard's flag has to live on the modal so it is destroyed with the draft it guards.
         $localState: guard.localState,
         children: [
+          // Back, in the modal's top-left corner — the close button's mirror, out of the title's line.
+          ...(opts.back
+            ? [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: '!recordStore.pendingLink' },
+                    then: {
+                      // Through the guard, so Discard finishes going back rather than only closing.
+                      ...backButton(guard.back!),
+                      slot: 'start-button',
+                    },
+                  },
+                } as SchemaNode,
+              ]
+            : []),
           {
             type: 'Row',
             props: { gap: '300', ay: 'center', width: '100%' },
             slot: 'header',
             children: [
-              { type: 'we-icon', props: { name: { $: 'recordStore.recordDraft.icon' } } },
+              // The disc the chooser drew this model with, so the form reads as the thing picked.
+              iconDisc({
+                icon: { $: 'recordStore.recordDraft.icon' },
+                size: '56px',
+                ...(opts.iconColor && { color: { $: opts.iconColor('recordStore.recordDraft.entity') } }),
+              }),
               {
                 type: 'we-text',
                 props: { variant: 'heading-md' },
@@ -278,36 +746,53 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
             A space with one vocabulary has one answer, and offering a select with a single option
             asks a question whose answer is already on screen.
           */
-          {
-            type: '$if',
-            props: {
-              condition: { $: '!recordStore.pendingLink && count(recordStore.creatableEntities) > 1' },
-              then: {
-                type: 'we-form-field',
-                props: { label: 'Entity', width: '100%' },
-                children: [
-                  {
-                    type: 'we-select',
-                    props: {
-                      width: '100%',
-                      options: { $: 'recordStore.creatableEntities' },
-                      value: { $: 'recordStore.recordDraft.entity' },
-                      onChange: { $action: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
+          ...(opts.entityPicker === false
+            ? []
+            : [
+                {
+                  type: '$if',
+                  props: {
+                    // The form-made ones: a note or a post is written in the composer, not picked here.
+                    condition: {
+                      $: "!recordStore.pendingLink && count(recordStore.creatableEntities.filter(k, k.via == 'form')) > 1",
+                    },
+                    then: {
+                      type: 'we-form-field',
+                      props: { label: 'Entity', width: '100%' },
+                      children: [
+                        {
+                          type: 'we-select',
+                          props: {
+                            width: '100%',
+                            options: { $: "recordStore.creatableEntities.filter(k, k.via == 'form')" },
+                            value: { $: 'recordStore.recordDraft.entity' },
+                            onChange: { $action: 'recordStore.setRecordEntity', args: [{ $: 'event.detail' }] },
+                          },
+                        },
+                      ],
                     },
                   },
-                ],
-              },
-            },
-          },
+                },
+              ]),
 
+          placePicker,
           {
             type: '$each',
-            props: { items: { $: 'recordStore.recordDraft.fields' }, as: 'field' },
+            // The latitude and longitude are the pin above, where there is one.
+            props: {
+              items: {
+                $: `recordStore.recordDraft.fields.filter(f, !(${HAS_PLACE}) || !(f.name in ['latitude', 'longitude']))`,
+              },
+              as: 'field',
+            },
             children: [
               {
                 type: 'Column',
                 props: { width: '100%' },
-                children: Object.entries(CONTROLS).map(([control, spec]) => controlRow(control, spec)),
+                children: [
+                  ...Object.entries(CONTROLS).map(([control, spec]) => controlRow(control, spec)),
+                  relationRow,
+                ],
               },
             ],
           },
@@ -369,6 +854,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               },
             ],
           },
+          relationFormModal,
           guard.node,
         ],
       },

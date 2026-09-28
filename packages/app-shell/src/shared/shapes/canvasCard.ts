@@ -48,6 +48,18 @@ export interface CanvasCard {
    * canvas too rather than by its fade and dashed edge alone.
    */
   pending: boolean;
+  /**
+   * How many reactions and replies this card has collected — the seed's `counts`, or 0.
+   *
+   * Two numbers rather than a count per signal type, which is what the board and the calendar draw.
+   * The difference is what the surface can pay for: those two hold their rows in a query the
+   * template owns, so a card can filter them by type for free, where a canvas holds nodes whose data
+   * is scalars only and would need the type breakdown fetched per card. A canvas card is also the
+   * most clipped preview in WE — the reader is looking at an arrangement, not a record — so "there
+   * is a conversation here" is the whole of what it owes, and one press opens the rest.
+   */
+  signals: number;
+  comments: number;
 }
 
 /** A state as a card needs it: its slug, what the community calls it, and the colour it is drawn in. */
@@ -99,6 +111,12 @@ function formatDate(value: unknown, kind: 'date' | 'datetime', locale: string | 
   const options: Intl.DateTimeFormatOptions =
     kind === 'date' ? { dateStyle: 'medium', timeZone: 'UTC' } : { dateStyle: 'medium', timeStyle: 'short' };
   return new Intl.DateTimeFormat(locale, options).format(date);
+}
+
+/** A seeded count, as a number a card can compare against 0. Anything else is nothing to say. */
+function count(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
 export function canvasCard(input: CanvasCardInput): CanvasCard {
@@ -162,6 +180,8 @@ export function canvasCard(input: CanvasCardInput): CanvasCard {
     lines,
     prose,
     pending: data.pending === true,
+    signals: count(data.signalsCount),
+    comments: count(data.commentsCount),
   };
 }
 
@@ -272,6 +292,53 @@ export const CANVAS_RECORD_CARD: SchemaNode = {
           children: [
             { type: 'span', props: { style: { $: CAPTION } }, children: [{ $: 'line.label' }] },
             { type: 'span', children: [{ $: 'line.text' }] },
+          ],
+        },
+      ],
+    },
+    /*
+      What people have made of this card, last — reactions and replies, as two numbers.
+
+      Last because it is about the card rather than in it, and because it is the first thing a clip
+      should take: a card too small to show its own fields has nothing to gain from a footnote. The
+      whole line is `display: none` with nothing to count, so a canvas of untouched cards gains no
+      furniture at all — the same rule the board and calendar summaries follow, expressed the way
+      this file has to express it (see the note above on `$if`).
+
+      A generic glyph rather than one per signal type: a node's data is scalars, so the breakdown by
+      type is not here to draw, and the fetch that would bring it is a query per card. `smiley` is
+      the glyph the feed's "react" affordance uses, so the two say the same thing in one vocabulary.
+    */
+    {
+      type: 'div',
+      props: {
+        style: {
+          $: "card.signals || card.comments ? 'margin-top: 0.4em; font-size: 0.8em; opacity: 0.7;' : 'display: none;'",
+        },
+      },
+      children: [
+        {
+          type: 'span',
+          props: { style: { $: "card.signals ? 'margin-inline-end: 0.7em;' : 'display: none;'" } },
+          children: [
+            {
+              type: 'span',
+              props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.25em;' },
+              children: [{ type: 'we-icon', props: { name: 'smiley', size: '1.1em' } }],
+            },
+            { $: 'card.signals' },
+          ],
+        },
+        {
+          type: 'span',
+          props: { style: { $: "card.comments ? '' : 'display: none;'" } },
+          children: [
+            {
+              type: 'span',
+              props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.25em;' },
+              children: [{ type: 'we-icon', props: { name: 'chat-circle', size: '1.1em' } }],
+            },
+            { $: 'card.comments' },
           ],
         },
       ],

@@ -16,6 +16,11 @@
  *
  * With both lenses on, state wins for a task and kind answers for the rest.
  *
+ * - **By order.** A heat map of whatever the tree is ordered by — a reaction's score, or when the card
+ *   was made — shaded continuously between two colours the community picks. It colours every card, so
+ *   it is exclusive: turning it on turns kind and state off, and either of those turns it off. A card
+ *   with no score takes a colour of its own, outside the scale, which the section lets a community set.
+ *
  * Underneath all three, and not a lens at all: **the canvas itself** — what a card with no other
  * colour is drawn in, and the ground behind them. Both were constants in the template, which made
  * the one colour every canvas certainly shows the only colour nobody could change. They are the
@@ -52,7 +57,7 @@ import {
   UNCONFIRMED,
 } from '@we/template-kit';
 
-/** The query parameter the lenses ride in — `kind`, `state`, `kind,state` or `none`. */
+/** The query parameter the lenses ride in — `kind`, `state`, `kind,state`, `order` or `none`. */
 export const LENS_PARAM = 'colour';
 
 /**
@@ -64,7 +69,8 @@ const LENS = `(routeStore.params.${LENS_PARAM} ? routeStore.params.${LENS_PARAM}
 /** Whether each lens is on — expressions, readable wherever the address is. */
 export const BY_KIND = `contains(${LENS}, 'kind')`;
 export const BY_STATE = `contains(${LENS}, 'state')`;
-export const NO_LENS = `!(${BY_KIND} || ${BY_STATE})`;
+export const BY_ORDER = `contains(${LENS}, 'order')`;
+export const NO_LENS = `!(${BY_KIND} || ${BY_STATE} || ${BY_ORDER})`;
 
 /**
  * The lens parameter, ready to append to a query string the template builds — empty when the
@@ -75,6 +81,83 @@ export const NO_LENS = `!(${BY_KIND} || ${BY_STATE})`;
 export const LENS_QUERY = `\${routeStore.params.${LENS_PARAM} ? '&${LENS_PARAM}=' + routeStore.params.${LENS_PARAM} : ''}`;
 
 /**
+ * The kinds a reader has put away from the canvas, held in the address beside the lenses — a panel
+ * and a route cannot share a local, and what is shown is view state somebody may want to send.
+ * Comma-separated entity names; absent shows everything.
+ */
+export const HIDE_PARAM = 'hide';
+
+/** The hidden kinds, as a list. */
+export const HIDDEN_KINDS = `split(routeStore.params.${HIDE_PARAM})`;
+
+/** Put one kind away, or bring it back. Showing the last hidden kind writes nothing at all. */
+export function toggleKindShown(kind: string): SchemaProp {
+  const hidden = `(${kind} in ${HIDDEN_KINDS})`;
+  return {
+    $action: 'routeStore.setParam',
+    args: [
+      HIDE_PARAM,
+      {
+        $: `join(${hidden} ? ${HIDDEN_KINDS}.filter(k, k != ${kind}) : distinct(${HIDDEN_KINDS}, [${kind}]), ',')`,
+      },
+    ],
+  };
+}
+
+/**
+ * The cards a reader has **folded** — what hangs off each of them is off the canvas until it is
+ * unfolded. Held in the address for the reasons the lenses are, and one more: a fold is an
+ * arrangement of what you are reading, so a canvas you tidied and sent somebody should arrive
+ * tidied. Comma-separated record ids; absent folds nothing.
+ *
+ * Record ids carry colons and slashes and no commas, which is what makes a comma-joined list safe —
+ * the same reason `?card=` can hold one.
+ */
+export const FOLD_PARAM = 'fold';
+
+/** The folded cards, as a list — what the canvas hands to the graph. */
+export const FOLDED_CARDS = `split(routeStore.params.${FOLD_PARAM})`;
+
+/** How many cards are folded, for a reader who has lost track of one. */
+export const FOLD_COUNT = `count(${FOLDED_CARDS})`;
+
+/**
+ * Fold a card, or unfold it — from the graph's own report, which says which way it is going.
+ *
+ * `event.folded` rather than a test of the list here: the graph knows whether the control that was
+ * pressed said fold or unfold, and re-deriving it would be a second answer able to disagree with the
+ * one the reader saw on the button. Unfolding the last fold writes nothing at all, so a canvas
+ * nobody has folded has a clean address.
+ */
+export const FOLD_FROM_GRAPH: SchemaProp = {
+  $action: 'routeStore.setParam',
+  args: [
+    FOLD_PARAM,
+    {
+      $:
+        `join(event.folded ? distinct(${FOLDED_CARDS}, [event.recordId])` +
+        ` : ${FOLDED_CARDS}.filter(k, k != event.recordId), ',')`,
+    },
+  ],
+};
+
+/**
+ * The fold, ready to append to a query string the template builds — empty when nothing is folded.
+ *
+ * The same job `LENS_QUERY` does, for the same reason: every navigation this template makes spells
+ * its query out in full, and an explicit `?` drops whatever the address held. Without this, going to
+ * the board to look something up and coming back would quietly unfold everything — which is most of
+ * the value of holding the fold in the address in the first place.
+ *
+ * Ids from another call are no trouble: a fold naming a card this canvas does not hold is ignored,
+ * so carrying the parameter across a change of call costs a long address and nothing else.
+ */
+export const FOLD_QUERY = `\${routeStore.params.${FOLD_PARAM} ? '&${FOLD_PARAM}=' + routeStore.params.${FOLD_PARAM} : ''}`;
+
+/** Bring every folded card back — see `foldSection` for why this exists at all. */
+export const UNFOLD_ALL: SchemaProp = { $action: 'routeStore.setParam', args: [FOLD_PARAM, null] };
+
+/**
  * Turn one lens on or off, leaving the other as it is.
  *
  * Writes the parameter rather than a local, for the reason above. The result that equals the default
@@ -82,7 +165,15 @@ export const LENS_QUERY = `\${routeStore.params.${LENS_PARAM} ? '&${LENS_PARAM}=
  * they started with — and `none` is the one value that has to be spelt, since absent already means
  * something.
  */
-export function toggleLens(lens: 'kind' | 'state'): SchemaProp {
+export function toggleLens(lens: 'kind' | 'state' | 'order'): SchemaProp {
+  /*
+    The heat map colours every card, so it is on alone: turning it on replaces whatever was on, and
+    turning it off goes back to the default. Kind and state combine, and turning either on from here
+    replaces the heat map — which the arithmetic below already does, since neither is in `order`.
+  */
+  if (lens === 'order') {
+    return { $action: 'routeStore.setParam', args: [LENS_PARAM, { $: `${BY_ORDER} ? '' : 'order'` }] };
+  }
   const other = lens === 'kind' ? 'state' : 'kind';
   const on = `contains(${LENS}, '${lens}')`;
   const otherOn = `contains(${LENS}, '${other}')`;
@@ -144,6 +235,22 @@ export function placementsQuery(call: Record<string, unknown>) {
 export const KIND_DEFAULTS: Record<string, string> = {
   TaskBlock: '#86c2ff',
   EventBlock: '#ff94f7',
+  /*
+    The blocks that stand on a canvas by themselves — dropped from a post or the Pocket, or put down
+    from the chooser. Pale and distinct from the three above, so a picture is not mistaken for a task.
+    A quote (`EmbedBlock`) is somebody else's thing brought in, and reads as its own kind.
+  */
+  TextBlock: '#ffd0a6',
+  ImageBlock: '#a9ecc6',
+  VideoBlock: '#cdbcff',
+  AudioBlock: '#f7b9c4',
+  FileBlock: '#d9d3c4',
+  LinkBlock: '#a3e4ea',
+  EmbedBlock: '#c8d7ec',
+  LocationBlock: '#d4ef9a',
+  CodeBlock: '#cdb89c',
+  TagBlock: '#ff9f8f',
+  CalloutBlock: '#ffc75f',
   // The post-it. A literal rather than a role on purpose: a note is yellow in a dark theme too, and
   // the card's ink follows the fill's lightness rather than the theme's, so it stays readable.
   CollectionBlock: '#ffea9f',
@@ -206,6 +313,19 @@ export const LINK_DEFAULT = 'var(--we-color-primary-300)';
 export const CARD_KEY = '@card';
 export const CANVAS_KEY = '@canvas';
 export const LINK_KEY = '@link';
+/** The two ends of the heat map's scale — see `BY_ORDER`. Stored like the three above. */
+export const HEAT_LOW_KEY = '@heatLow';
+export const HEAT_HIGH_KEY = '@heatHigh';
+/** And what a card nobody has answered is drawn in under it — outside the scale, and the community's to set. */
+export const HEAT_NONE_KEY = '@heatNone';
+
+/**
+ * The heat map's ends before the community picks its own: a pale tint of the theme's hue to the accent
+ * itself. Neither is the plain card colour, deliberately — a card with no score keeps the plain colour,
+ * and an end of the scale drawn in it would make "nobody has answered" read as "the lowest answer".
+ */
+export const HEAT_LOW_DEFAULT = 'var(--we-color-primary-100)';
+export const HEAT_HIGH_DEFAULT = 'var(--we-role-accent)';
 
 /**
  * The one kind that is never a card.
@@ -224,6 +344,9 @@ const spaceColor = (key: string) => `find(local.typeStyles, { nodeType: '${key}'
 export const cardColorChosen = spaceColor(CARD_KEY);
 export const canvasColorChosen = spaceColor(CANVAS_KEY);
 export const linkColorChosen = spaceColor(LINK_KEY);
+export const heatLowChosen = spaceColor(HEAT_LOW_KEY);
+export const heatHighChosen = spaceColor(HEAT_HIGH_KEY);
+export const heatNoneChosen = spaceColor(HEAT_NONE_KEY);
 
 /**
  * What a card with no other colour is drawn in: the community's choice, else the template's.
@@ -239,15 +362,33 @@ export const CANVAS_FILL = `(${canvasColorChosen} ? ${canvasColorChosen} : '${CA
 /** And for a connection, which the graph takes as an `edgeStyle` colour — the line and its head. */
 export const LINK_FILL = `(${linkColorChosen} ? ${linkColorChosen} : '${LINK_DEFAULT}')`;
 
+/** The heat map's two ends: the community's, else the template's. */
+export const HEAT_LOW_FILL = `(${heatLowChosen} ? ${heatLowChosen} : '${HEAT_LOW_DEFAULT}')`;
+export const HEAT_HIGH_FILL = `(${heatHighChosen} ? ${heatHighChosen} : '${HEAT_HIGH_DEFAULT}')`;
+/**
+ * A card with no score under the heat map: the community's choice, else the plain card colour — which is
+ * what it means by default, a card nothing has been said about yet. Kept apart from the scale's two ends
+ * either way, so an unanswered card never reads as the lowest answer.
+ */
+export const HEAT_NONE_FILL = `(${heatNoneChosen} ? ${heatNoneChosen} : ${CARD_FILL})`;
+
 /** The key's rows that are not kinds, for the per-kind rules to skip. */
-const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']`;
+const KEY_RESERVED = `['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}', '${HEAT_NONE_KEY}']`;
+
+/**
+ * `KIND_DEFAULTS` as an object literal the expression grammar can index.
+ *
+ * A lookup rather than a chain of `kind == 'X' ? … :` — the chain nested one level per kind, and the
+ * parser's depth limit refused it once the blocks that stand on a canvas by themselves joined.
+ */
+const KIND_DEFAULTS_LOOKUP = `{ ${Object.entries(KIND_DEFAULTS)
+  .map(([name, color]) => `${name}: '${color}'`)
+  .join(', ')} }`;
 
 /** The default fill for a kind, as an expression over `kind`. */
 export function kindDefaultFill(kind: string): string {
-  return Object.entries(KIND_DEFAULTS).reduceRight(
-    (rest, [name, color]) => `(${kind} == '${name}' ? '${color}' : ${rest})`,
-    CARD_FILL,
-  );
+  const hit = `${KIND_DEFAULTS_LOOKUP}[${kind}]`;
+  return `(${hit} ? ${hit} : ${CARD_FILL})`;
 }
 
 /** The community's colour for a kind, else the template's default. Reads `local.typeStyles`. */
@@ -388,6 +529,11 @@ export interface KeyRowOptions {
   label: string | ExpressionToken;
   /** Shown at the end of the row — the reset, where there is something to reset. */
   trailing?: SchemaNode;
+  /**
+   * An expression that is true while the row's thing is put away from the canvas — its glyph and name
+   * are drawn faint then, as its eye is, so a hidden kind reads as switched off across the whole row.
+   */
+  dimmed?: string;
 }
 
 /**
@@ -398,23 +544,53 @@ export interface KeyRowOptions {
  * below rather than the lists spacing them, so a list is a plain column whatever it is built from.
  */
 export function keyRow(opts: KeyRowOptions): SchemaNode {
-  const glyph: SchemaNode = { type: 'we-icon', props: { size: 'xs', color: 'text-muted', name: opts.icon } };
+  const faint = opts.dimmed;
+  const glyph: SchemaNode = {
+    type: 'we-icon',
+    props: {
+      size: 'xs',
+      color: faint ? { $: `${faint} ? 'text-faint' : 'text-muted'` } : 'text-muted',
+      name: opts.icon,
+    },
+  };
   return {
     type: 'Row',
     props: { gap: '300', ay: 'center', width: '100%', py: '100' },
     children: [
       opts.mark,
-      // A literal glyph is always there; one read from data is drawn only where there is one, since
-      // a model that declares no icon would otherwise leave a gap the size of one in every row.
-      ...(!opts.icon
-        ? []
-        : typeof opts.icon === 'string'
-          ? [glyph]
-          : [{ type: '$if', props: { condition: opts.icon, then: glyph } } as SchemaNode]),
       {
-        type: 'we-text',
-        props: { variant: 'label', truncate: true, flex: '1', minWidth: '0' },
-        children: [opts.label],
+        /*
+          The glyph and the name, together — so a hidden kind can fade both at once, the same step its
+          eye takes. An icon has no visual layer of its own to fade, so the row around it does.
+        */
+        type: 'Row',
+        props: {
+          gap: '300',
+          ay: 'center',
+          flex: '1',
+          minWidth: '0',
+          ...(faint && { opacity: { $: `${faint} ? 0.5 : 1` } }),
+        },
+        children: [
+          // A literal glyph is always there; one read from data is drawn only where there is one, since
+          // a model that declares no icon would otherwise leave a gap the size of one in every row.
+          ...(!opts.icon
+            ? []
+            : typeof opts.icon === 'string'
+              ? [glyph]
+              : [{ type: '$if', props: { condition: opts.icon, then: glyph } } as SchemaNode]),
+          {
+            type: 'we-text',
+            props: {
+              variant: 'label',
+              truncate: true,
+              flex: '1',
+              minWidth: '0',
+              ...(faint && { color: { $: `${faint} ? 'text-faint' : 'text'` } }),
+            },
+            children: [opts.label],
+          },
+        ],
       },
       ...(opts.trailing ? [opts.trailing] : []),
     ],
@@ -432,8 +608,10 @@ export function keyRow(opts: KeyRowOptions): SchemaNode {
  * Still the address, not a local: a panel and a route cannot share one, and a lens is view state —
  * see `toggleLens`. A switch reports only that it was flicked, which is all `toggleLens` needs.
  */
-function lensSwitch(lens: 'kind' | 'state', label: string): SchemaNode {
-  const on = lens === 'kind' ? BY_KIND : BY_STATE;
+const LENS_ON = { kind: BY_KIND, state: BY_STATE, order: BY_ORDER };
+
+function lensSwitch(lens: 'kind' | 'state' | 'order', label: string): SchemaNode {
+  const on = LENS_ON[lens];
   return {
     type: 'we-tooltip',
     props: { content: `Colour cards by ${label}` },
@@ -459,14 +637,14 @@ function lensSwitch(lens: 'kind' | 'state', label: string): SchemaNode {
  * left in the DOM at zero height is a scroll region pretending to be shorter than it is.
  */
 function lensSection(opts: {
-  lens: 'kind' | 'state';
+  lens: 'kind' | 'state' | 'order';
   label: string;
   /** What this lens colours and how far the colours reach, behind the heading's info glyph. */
   help?: string;
   aside?: SchemaNode;
   body: SchemaNode;
 }): SchemaNode {
-  const on = opts.lens === 'kind' ? BY_KIND : BY_STATE;
+  const on = LENS_ON[opts.lens];
   return {
     type: 'Column',
     props: { gap: '300', width: '100%' },
@@ -507,7 +685,13 @@ function lensSection(opts: {
  * certainly shows the only one nobody could change.
  */
 /** One of the canvas's own colours: the picker, the name, and the way back to the default. */
-function canvasRow(opts: { key: string; chosen: string; fill: string; icon: string; label: string }): SchemaNode {
+function canvasRow(opts: {
+  key: string;
+  chosen: string;
+  fill: string;
+  icon: string;
+  label: string | ExpressionToken;
+}): SchemaNode {
   const write = (color: SchemaProp): SchemaProp => ({
     $action: 'recordStore.setSpaceTypeColor',
     args: [{ $: 'spaceStore.currentSpace.id' }, opts.key, color],
@@ -545,6 +729,105 @@ const canvasRows: SchemaNode = {
 };
 
 /**
+ * What the tree is ordered by, from the address — the canvas's own `order`, which it keeps there so a
+ * panel can read it. Absent is the canvas's default, as arranged.
+ */
+const TREE_ORDER = `(routeStore.params.order ? routeStore.params.order : 'manual')`;
+const BY_DATE = `(${TREE_ORDER} == 'date' || ${TREE_ORDER} == 'newest')`;
+
+/** What the two ends of the scale are, in words — dates run old to new, a reaction least to most. */
+const HEAT_LOW_LABEL = `${BY_DATE} ? 'Oldest' : 'Least'`;
+const HEAT_HIGH_LABEL = `${BY_DATE} ? 'Newest' : 'Most'`;
+
+/**
+ * The heat map's legend and its colours.
+ *
+ * The bar is the scale as the cards are shaded by it — blended in OKLCH, the same way the graph blends
+ * them — with its two ends named, so a card's shade can be read against it. Under it, a picker for
+ * each end, and for a reaction a third row: the plain colour, for cards nobody has answered yet, which
+ * are outside the scale rather than at its bottom.
+ *
+ * Nothing to show while the tree is as arranged: there a card's place is its order already, and
+ * shading by it would repeat what the row says.
+ */
+const heatBody: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${TREE_ORDER} == 'manual'` },
+    then: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: [
+        'Order the tree oldest first, newest first or by a signal, and the cards are shaded by it. As arranged, a card’s place is its order already.',
+      ],
+    },
+    else: {
+      type: 'Column',
+      props: { gap: '200', width: '100%' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: HEAT_LOW_LABEL }] },
+            {
+              type: 'Column',
+              props: {
+                flex: '1',
+                height: '10px',
+                r: 'pill',
+                border: '1px solid border',
+                bgImage: {
+                  $: `'linear-gradient(to right in oklch, ' + ${HEAT_LOW_FILL} + ', ' + ${HEAT_HIGH_FILL} + ')'`,
+                },
+              },
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: [{ $: HEAT_HIGH_LABEL }],
+            },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { width: '100%' },
+          children: [
+            canvasRow({
+              key: HEAT_LOW_KEY,
+              chosen: heatLowChosen,
+              fill: HEAT_LOW_FILL,
+              icon: 'thermometer-cold',
+              label: { $: HEAT_LOW_LABEL },
+            }),
+            canvasRow({
+              key: HEAT_HIGH_KEY,
+              chosen: heatHighChosen,
+              fill: HEAT_HIGH_FILL,
+              icon: 'thermometer-hot',
+              label: { $: HEAT_HIGH_LABEL },
+            }),
+            {
+              type: '$if',
+              props: {
+                condition: { $: `${TREE_ORDER} == 'signal'` },
+                then: canvasRow({
+                  key: HEAT_NONE_KEY,
+                  chosen: heatNoneChosen,
+                  fill: HEAT_NONE_FILL,
+                  icon: 'minus-circle',
+                  label: 'No answers yet',
+                }),
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * One kind, with the picker that sets its colour for the whole space.
  *
  * `kind` is an expression naming the kind — the name the list of kinds binds, in `kindRows`.
@@ -560,14 +843,68 @@ function kindRow(kind: string): SchemaNode {
     ),
     icon: { $: kindIcon(kind) },
     label: { $: kindLabel(kind) },
-    trailing: resetButton(
-      { $: `find(local.typeStyles, { nodeType: ${kind} }).color` },
-      {
-        $action: 'recordStore.setSpaceTypeColor',
-        args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
-      },
-    ),
+    dimmed: `(${kind} in ${HIDDEN_KINDS})`,
+    trailing: {
+      type: 'Row',
+      props: { gap: '100', ay: 'center' },
+      children: [
+        resetButton(
+          /*
+            Only for a kind with a default to go back to. A community's own type has none, so "back to
+            the default" turned its colour off — a reset that removed the thing it was resetting.
+          */
+          { $: `find(local.typeStyles, { nodeType: ${kind} }).color && ${KIND_DEFAULTS_LOOKUP}[${kind}]` },
+          {
+            $action: 'recordStore.setSpaceTypeColor',
+            args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
+          },
+        ),
+        shownToggle(kind),
+      ],
+    },
   });
+}
+
+/**
+ * Show or put away every card of a kind on the canvas — an open eye while shown, a closed one while
+ * hidden. Held in the address (see `HIDE_PARAM`), so it is this reader's view, not the space's.
+ */
+function shownToggle(kind: string): SchemaNode {
+  const hidden = `(${kind} in ${HIDDEN_KINDS})`;
+  return {
+    type: 'we-tooltip',
+    props: { content: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` } },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          variant: 'ghost',
+          square: true,
+          label: { $: `${hidden} ? 'Show on the canvas' : 'Hide from the canvas'` },
+          // `text-faint` is the faintest text role, and beside `text-muted` it barely showed, so a hidden
+          // kind's eye goes one step further. On the button: an icon has no visual layer to fade.
+          opacity: { $: `${hidden} ? 0.5 : 1` },
+          onClick: toggleKindShown(kind),
+        },
+        /*
+          A step up from the glyph an `xs` button gives (`xxs`), so the state reads at a glance; and set on
+          the icon, which does not take the button's colour. Faint while hidden, so a put-away kind reads
+          as switched off.
+        */
+        children: [
+          {
+            type: 'we-icon',
+            props: {
+              name: { $: `${hidden} ? 'eye-slash' : 'eye'` },
+              size: 'xs',
+              color: { $: `${hidden} ? 'text-faint' : 'text-muted'` },
+            },
+          },
+        ],
+      },
+    ],
+  };
 }
 
 /**
@@ -755,6 +1092,56 @@ const suggestionsSection: SchemaNode = {
   ],
 };
 
+/**
+ * What is folded, and the way out of all of it at once.
+ *
+ * The one thing a fold needs that the card cannot provide. A folded card says what it is holding,
+ * which is enough when you can see the card — and a canvas is pannable, so the card you folded is
+ * routinely off screen, and then the only evidence is cards that are not there. Somebody who folded
+ * something ten minutes ago and cannot find a task should not have to hunt for the fold it went
+ * into. So the count is here too, where what-is-on-this-canvas is already explained, with one press
+ * that brings everything back.
+ *
+ * Absent when nothing is folded, rather than reading "0 folded": a row explaining a state nobody is
+ * in is a row every reader has to learn to ignore.
+ */
+const foldSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: FOLD_COUNT },
+    enterTransition: [
+      { type: 'reveal', duration: 200 },
+      { type: 'fade', duration: 150 },
+    ],
+    then: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      children: [
+        sectionLabel({
+          label: 'Folded',
+          help: 'A card can be folded from its header, which takes everything connected out from it off the canvas until it is unfolded. The card keeps a count of what it is holding, and the connections it hid come back as one line each, labelled with how many they stand for.',
+        }),
+        {
+          type: 'Row',
+          props: { ay: 'center', ax: 'between', gap: '300', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: [{ $: `${FOLD_COUNT} + ' ' + plural(${FOLD_COUNT}, 'card', 'cards') + ' folded'` }],
+            },
+            {
+              type: 'we-button',
+              props: { size: 'xs', variant: 'ghost', flexShrink: '0', onClick: UNFOLD_ALL },
+              children: ['Unfold all'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string; extracted: string }): SchemaNode {
   /*
     Two things have to be true for the key to mean anything: the canvas is the page on screen, and
@@ -839,6 +1226,9 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                     ],
                   },
                   suggestionsSection,
+                  // Beside the suggestions, because both sections answer "why can I not see
+                  // something" — one about drafts nobody has kept, one about cards a fold is holding.
+                  foldSection,
                   lensSection({
                     lens: 'kind',
                     label: 'Kinds',
@@ -881,6 +1271,12 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                       props: { items: { $: 'spaceStore.offeredTaskStates' }, as: 'state' },
                       children: [stateRow],
                     },
+                  }),
+                  lensSection({
+                    lens: 'order',
+                    label: 'Order',
+                    help: 'Shade every card by what the tree is ordered by — its score for the signal, or when it was made — between two colours kept on the space. A card nobody has answered yet takes a colour of its own, outside the scale — the plain card colour until you pick one. Colours every card, so it takes over from kinds and states while it is on.',
+                    body: heatBody,
                   }),
                 ],
               },

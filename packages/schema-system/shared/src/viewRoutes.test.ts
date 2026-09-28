@@ -30,12 +30,14 @@ describe('expandViewRoutes', () => {
   it('replaces the marker with one route per view', () => {
     const out = expandViewRoutes([marker], [view('about', 'about'), view('cards', 'cards')]);
 
-    expect(out.map((r) => r.path)).toEqual(['/about', '/cards']);
+    // Plus the space's own address, which is not a section — see the index-route tests below.
+    expect(out.map((r) => r.path)).toEqual(['/about', '/cards', '/']);
   });
 
   it('emits no index redirect, because that would have to be rebuilt to change', () => {
     // A redirect baked into the table can only follow the enabled list by rebuilding the table —
     // which remounts the Router, and everything mounted under it. The host does it in an effect.
+    // The index route below names no section, so it is stable in a way a redirect could not be.
     const out = expandViewRoutes([marker], [view('cards', 'cards'), view('about', 'about')]);
 
     expect(out.some((r) => r.redirect)).toBe(false);
@@ -57,7 +59,7 @@ describe('expandViewRoutes', () => {
       extraRoutes: [extra],
     });
 
-    expect(out.map((r) => r.path)).toEqual(['/about', '/record/:entity']);
+    expect(out.map((r) => r.path)).toEqual(['/about', '/record/:entity', '/']);
   });
 
   it('uses the resolved segment, not the one the template suggested', () => {
@@ -65,7 +67,7 @@ describe('expandViewRoutes', () => {
     const feed = view('feed', 'cards', { segment: 'feed' });
     const out = expandViewRoutes([marker], [feed]);
 
-    expect(out.map((r) => r.path)).toEqual(['/cards']);
+    expect(out.map((r) => r.path)).toEqual(['/cards', '/']);
   });
 
   it('carries the view body through and drops the template-only keys', () => {
@@ -144,7 +146,7 @@ describe('expandViewRoutes', () => {
 
     const out = expandViewRoutes(routes, [view('about', 'about')]);
 
-    expect(out[1].routes?.map((r) => r.path)).toEqual(['/about']);
+    expect(out[1].routes?.map((r) => r.path)).toEqual(['/about', '/']);
   });
 
   it('leaves routes the shell declared alongside the marker in place, in order', () => {
@@ -156,13 +158,17 @@ describe('expandViewRoutes', () => {
 
     const out = expandViewRoutes(routes, [view('about', 'about')]);
 
-    expect(out.map((r) => r.path)).toEqual(['/invite', '/about', '/*']);
+    expect(out.map((r) => r.path)).toEqual(['/invite', '/about', '/', '/*']);
   });
 
-  it('expands to nothing when there are no views, rather than inventing a placeholder', () => {
+  it('invents no placeholder section when there are no views', () => {
     // Nothing here knows what an empty space should say, and a pure function answering it would put
-    // UI text where no template can restyle it.
-    expect(expandViewRoutes([marker], [])).toEqual([]);
+    // UI text where no template can restyle it. The index route is the space's own address rather
+    // than a section, and with no gate to draw it carries no text either.
+    const out = expandViewRoutes([marker], []);
+
+    expect(out.map((r) => r.path)).toEqual(['/']);
+    expect(out[0].children).toBeUndefined();
   });
 
   it('does not mutate the routes it was given', () => {
@@ -244,5 +250,55 @@ describe('expandViewRoutes with a gate', () => {
     const [route] = expandViewRoutes([marker], [view('about', 'about')]);
 
     expect(route.type).toBe('Column');
+  });
+});
+
+describe("expandViewRoutes — the space's own address", () => {
+  const gate: ViewGate = {
+    activeIds: 'spaceStore.enabledViewIds',
+    notInSpace: { type: 'we-text', children: ['nothing here'] },
+  };
+
+  /*
+    A layout route renders only when one of its children matches, so without a route at `/` the bare
+    `/space/<id>` fell past the whole table onto the host's not-found — and the join prompt lives
+    inside that layout. Every share link carries exactly that address, so a stranger following one saw
+    "Page not found" with no way in, while a member never did: the host's redirect moves anyone whose
+    space is already open onto its first section.
+  */
+  it('matches the space itself, not only its sections', () => {
+    const out = expandViewRoutes([marker], [view('about', 'about')], gate);
+
+    expect(out.map((r) => r.path)).toContain('/');
+  });
+
+  it('is there even for a space with no sections, which is when it is the only thing to match', () => {
+    const out = expandViewRoutes([marker], [], gate);
+
+    expect(out.map((r) => r.path)).toEqual(['/']);
+  });
+
+  it("draws the host's own node for a section that is not here, rather than text of its own", () => {
+    const [index] = expandViewRoutes([marker], [], gate);
+
+    // Which says "this space has no sections yet" when there are none, and deliberately nothing while
+    // a redirect to the first section is on its way.
+    expect(index.type).toBe(gate.notInSpace.type);
+    expect(index.children).toEqual(gate.notInSpace.children);
+  });
+
+  it('is a route rather than a redirect, so switching a section on cannot rebuild the table', () => {
+    const out = expandViewRoutes([marker], [view('about', 'about')], gate);
+    const index = out.find((r) => r.path === '/');
+
+    expect(index?.redirect).toBeUndefined();
+  });
+
+  it('is nested with the sections when the marker is', () => {
+    const routes: RouteSchema[] = [{ path: '/space/:spaceId', type: 'Row', routes: [marker] } as RouteSchema];
+
+    const out = expandViewRoutes(routes, [view('about', 'about')], gate);
+
+    expect(out[0].routes?.map((r) => r.path)).toEqual(['/about', '/']);
   });
 });

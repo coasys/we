@@ -7,36 +7,39 @@
  * it actually has.
  */
 import { callModule } from '@we/module-call';
-import { checkModuleCompatibility } from '@we/module-shared';
+import { checkModuleCompatibility, moduleCapabilities } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { dockRegistry } from '../src/shared/registries/dockRegistry';
+import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
 const host = { backend: 'ad4m', framework: 'solid' };
-const storeDeps = {
+const storeDeps = createModuleStoreDeps({
   signal: <T>(initial: T): [() => T, (next: T) => void] => {
     let value = initial;
-    return [() => value, (next: T) => (value = next)];
+    return [() => value, (next: T) => void (value = next)];
   },
   effect: (fn: () => void) => fn(),
-};
+});
+
+const launcher = () => callModule.contributes!.launchers![0];
+const stage = () => callModule.contributes!.panels!.find((panel) => panel.name === 'stage')!;
 
 beforeEach(() => {
   for (const entry of slotRegistry.ordered()) slotRegistry.remove(entry.id);
-  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
+  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
   registerCoreSlots();
 });
 
 describe('call module — declared coupling', () => {
   it('declares neither a backend nor a framework', () => {
-    // The point of the module. Signalling goes through the ephemeral port, so any backend
-    // implementing one will do; every piece of UI is a fragment, so any renderer will do. The
-    // imperative part — binding a MediaStream to a <video> — lives in the `we-video` primitive.
-    expect(callModule.backends).toBeUndefined();
-    expect(callModule.frameworks).toBeUndefined();
-    expect(callModule.components).toBeUndefined();
+    // Signalling goes through the ephemeral kernel, so any backend implementing one will do; every
+    // piece of UI is a fragment, so any renderer will do.
+    expect(callModule.manifest.requires?.backends).toBeUndefined();
+    expect(callModule.manifest.requires?.frameworks).toBeUndefined();
+    expect(callModule.contributes?.components).toBeUndefined();
   });
 
   it('runs on a host with a different backend and framework', () => {
@@ -46,36 +49,46 @@ describe('call module — declared coupling', () => {
     });
   });
 
-  it('declares the capabilities a user should think twice about', () => {
-    // Declared, never enforced — they exist to be shown at install. A call module is the clearest
-    // case for why that matters.
-    expect(callModule.capabilities).toContain('microphone');
-    expect(callModule.capabilities).toContain('camera');
-    expect(callModule.capabilities).toContain('screen-share');
+  it('names the kernels it reaches, so a host without them refuses it with a reason', () => {
+    const kernels = callModule.manifest.requires?.kernels ?? [];
+    expect(kernels).toEqual(expect.arrayContaining(['presence', 'ephemeral', 'peerConnection', 'media']));
+    const plan = checkModuleCompatibility(callModule, { ...host, kernels: ['records'] });
+    expect(plan.compatible).toBe(false);
+    expect(plan.problems[0]).toContain('kernel');
+  });
+
+  it('is described to a person by the permissions it asks for', () => {
+    // A call module is the clearest case for why an install screen should say something.
+    const caps = moduleCapabilities(callModule);
+    expect(caps).toEqual(expect.arrayContaining(['microphone', 'camera', 'screen-share', 'dock']));
   });
 
   it('owns no durable entities', () => {
     // A call is entirely ephemeral: membership is a presence activity that expires on TTL, and
     // signalling is transport. Nothing is worth writing down, so nothing is.
-    expect(callModule.models).toBeUndefined();
+    expect(callModule.contributes?.entities).toBeUndefined();
+  });
+
+  it('declares the shape of the activity it publishes', () => {
+    // Transcribe reads `record` and `continued` off a call's activity. The second module to
+    // cooperate with the call reads them from this declaration rather than from a test.
+    const shape = callModule.contributes?.activities?.call ?? {};
+    expect(Object.keys(shape)).toEqual(expect.arrayContaining(['id', 'record', 'continued']));
   });
 });
 
 describe('call module — contributions', () => {
-  it('registers a store and docks its chrome at the bottom', () => {
+  it('registers a store and docks its bar at the bottom', () => {
     const result = moduleRegistry.register(callModule, host, storeDeps);
     expect(result.registered).toBe(true);
-
     expect(moduleStores.call).toBeDefined();
     expect(slotRegistry.get('call:0')?.anchor).toBe('dock-bottom');
   });
 
-  it('is reachable without any template cooperating', () => {
-    // The same bug the notes module shipped one PR ago: chrome that only renders once somebody is
-    // already using the feature leaves no way to start using it. Both modules first solved it by
-    // drawing their own floating button, in different corners — so the entry point is now declared
-    // and the host's rail draws it.
-    expect(callModule.launcher).toEqual({
+  it('is reachable without any template cooperating, through a launcher that is not a panel’s', () => {
+    // The rail button means "start a call" before there is one and "go to the call" after — two acts
+    // one panel button could not carry, which is why this is a declared launcher.
+    expect(launcher()).toEqual({
       icon: 'phone-call',
       label: 'Start call',
       activeLabel: 'Go to the call',
@@ -86,211 +99,147 @@ describe('call module — contributions', () => {
   });
 
   it('never points the rail at an action that could end a call', () => {
-    /*
-      The reason `goToCall` exists rather than the rail calling `joinCall`/`startCall` directly. `join`
-      returns early on a matching id and tears the current call down on any other, so wiring the rail
-      to it made one button silently dead in the space call and a silent hang-up in every other —
-      including a call running in a different space, reached by a button the user pressed to *look*
-      at it.
-
-      Asserted on the declaration because that is the whole of the coupling: it is a string, and
-      nothing else would notice it being changed back.
-    */
-    expect(callModule.launcher!.action).not.toBe('joinCall');
-    expect(callModule.launcher!.action).not.toBe('startCall');
-    expect(callModule.launcher!.action).not.toBe('joinAnchoredCall');
-  });
-
-  it('lights the rail while a call is running, and renames itself when it does', () => {
-    // The rail is the only chrome that is always on screen, so it is where "am I in a call" belongs.
-    // `activeLabel` goes with it: the tooltip is the button's only name, and "Start call" on a button
-    // that no longer starts one is worse than no tooltip.
-    expect(callModule.launcher!.activeWhen).toBe('active');
-    expect(callModule.launcher!.activeLabel).toBeTruthy();
+    expect(launcher().action).not.toBe('joinCall');
+    expect(launcher().action).not.toBe('startCall');
+    expect(launcher().action).not.toBe('joinAnchoredCall');
   });
 
   it('names launcher store keys its own store actually has', () => {
-    // The declaration is a string, so nothing but a test connects it to the method. Getting it wrong
-    // would produce a rail tab that silently does nothing — the `$action` depth bug again, one layer up.
     moduleRegistry.register(callModule, host, storeDeps);
     const store = moduleStores.call as Record<string, unknown>;
+    expect(typeof store[launcher().action]).toBe('function');
+    expect(typeof store[launcher().availableWhen!]).toBe('function');
+    expect(typeof store[launcher().activeWhen!]).toBe('function');
+  });
 
-    expect(typeof store[callModule.launcher!.action]).toBe('function');
-    expect(typeof store[callModule.launcher!.availableWhen!]).toBe('function');
-    // `activeWhen` is read the same way, and a rename here fails silently in the same direction: the
-    // tab simply never lights, which looks exactly like not being in a call.
-    expect(typeof store[callModule.launcher!.activeWhen!]).toBe('function');
+  it('holds its chrome on screen while a call runs, by a key that goes false when it ends', () => {
+    moduleRegistry.register(callModule, host, storeDeps);
+    const store = moduleStores.call as Record<string, () => unknown>;
+    expect(callModule.contributes?.holds).toBe('active');
+    expect(store.active()).toBe(false);
   });
 
   it('reports the band its bar occupies, so panels can keep clear of it', () => {
-    /*
-      The contract behind `ShellStore.floatChrome`, and it is a string on both ends: the shell reads
-      `chromeReserve` off every module store by name, so a rename here does not fail a build — it
-      makes the reserved band silently zero, and a panel snapped to the top centre lands under the
-      call bar with its own grip underneath it.
-
-      Zero with no call running, since the bar is not drawn then. The shell used to reserve this
-      band unconditionally, as a constant, whether or not anything was up there.
-    */
+    // Declared as `reserve`, so the shell reads a key the module named rather than scanning for one.
     moduleRegistry.register(callModule, host, storeDeps);
     const store = moduleStores.call as Record<string, unknown>;
-
-    expect(typeof store.chromeReserve).toBe('function');
-    expect((store.chromeReserve as () => { bottom: number })()).toEqual({ bottom: 0 });
+    const key = callModule.contributes?.reserve;
+    expect(key).toBeTruthy();
+    expect(typeof store[key!]).toBe('function');
+    // Zero with no call running, since the bar is not drawn then.
+    expect((store[key!] as () => { bottom: number })()).toEqual({ bottom: 0 });
   });
 
   it('keeps volatile state off the tile, so a mute cannot remount the video', () => {
-    // `$each` renders through a reference-keyed `<For>`, so any change to a tile object remounts that
-    // row — and a remounted row builds a new `<video>`, dropping and re-attaching `srcObject`. Muting
-    // your microphone blanked your own video.
-    //
-    // Volatile flags are therefore looked up with `find()` over `modules.call.tileStates` rather than
-    // read off `tile`. Asserted on the serialised fragment because nothing else would catch someone
-    // reasonably "simplifying" a `find()` back into a row read.
-    const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
-
-    // Never off `tile`, for every volatile flag — the invariant that matters, and the one a
-    // well-meaning simplification breaks.
+    const tile = JSON.stringify(moduleRegistry.parts()['call.tile'] ?? callModule.contributes?.parts?.tile);
     for (const volatile of ['audioEnabled', 'videoEnabled', 'isScreen', 'connection', 'hasPicture']) {
       expect(tile).not.toContain(`tile.${volatile}`);
     }
-    // Looked up for the ones the fragment reads. `videoEnabled` is deliberately absent: deciding
-    // whether there is a picture needs the live track as well as the sender's flag, so the store
-    // combines them into `hasPicture` and the fragment asks that one question instead.
     for (const looked of ['audioEnabled', 'isScreen', 'connection', 'hasPicture']) {
       expect(tile).toContain(`find(modules.call.tileStates, { id: tile.id }).${looked}`);
     }
-    // Identity and stream stay on the tile: both genuinely require a remount when they change.
     expect(tile).toContain('tile.stream');
   });
 
-  it('contributes the stage as a dock rather than as chrome that places itself', () => {
-    // The bar overlays and the stage insets, and that difference is the whole reason `docks` exists
-    // alongside `slots`. Asserted because the previous stage was a `position: fixed` overlay carrying
-    // `right: '72px'` — a hardcoded copy of the module rail's width that nothing kept in step.
+  it('contributes the stage as a panel that owns its own openness', () => {
+    // Whether the stage is up is a fact about the call, not about the screen — so this is the one
+    // bundled panel that claims the flag, and it therefore has to say how it is shown and closed.
     moduleRegistry.register(callModule, host, storeDeps);
-
-    expect(callModule.docks).toHaveLength(1);
-    expect(dockRegistry.get('call:0')?.moduleId).toBe('call');
-    // The frame the host wraps it in is ordinary chrome once built, so it renders through the slot
-    // registry under its own namespace.
-    expect(slotRegistry.get('dock:call:0')).toBeDefined();
+    const panel = stage();
+    expect(panel.open).toBeTruthy();
+    expect(panel.show).toBeTruthy();
+    expect(panel.close).toBeTruthy();
+    expect(dockRegistry.get('call:stage')?.moduleId).toBe('call');
+    expect(slotRegistry.get('dock:call:stage')).toBeDefined();
+    expect(moduleRegistry.panel('call:stage')?.hostOwned).toBe(false);
   });
 
-  it('names dock state keys its own store actually has', () => {
-    // Same class of bug as the launcher action above, and invisible in the same way: these are
-    // strings the host reads off the store, so a rename would silently produce a panel that never
-    // appears rather than an error anyone could trace.
+  it('names panel keys its own store actually has, and starts closed', () => {
     moduleRegistry.register(callModule, host, storeDeps);
     const store = moduleStores.call as Record<string, unknown>;
-    const dock = callModule.docks![0];
-
-    for (const key of [dock.edge, dock.size, dock.float]) {
-      expect(typeof store[key!]).toBe('function');
+    const panel = stage();
+    for (const key of [panel.open, panel.show, panel.close, typeof panel.bid === 'string' ? panel.bid : undefined]) {
+      if (key) expect(typeof store[key], key).toBe('function');
     }
     // Closed until asked for: a call you have just joined must not shrink the app on its own.
-    expect((store[dock.edge] as () => unknown)()).toBeNull();
+    const entry = dockRegistry.get('call:stage')!;
+    expect((entry.store!.edge as () => unknown)()).toBeNull();
+  });
+
+  it('publishes what templates read, and keeps its plumbing private', () => {
+    moduleRegistry.register(callModule, host, storeDeps);
+    const surface = moduleRegistry.storeSurface('call');
+    for (const name of ['canCall', 'active', 'callRecordId', 'liveCalls', 'tiles', 'tileStates']) {
+      expect(surface[name]?.kind, name).toBe('state');
+    }
+    for (const name of ['goToCall', 'startCall', 'continueCall', 'leave']) {
+      expect(surface[name]?.kind, name).toBe('action');
+    }
+    expect(surface[stage().bid as string]).toBeUndefined();
   });
 
   it('distinguishes waiting for a connection from a camera that is off', () => {
     // Both render as a bare avatar, so without this the first seconds of a working call look exactly
-    // like a broken one. `connecting` is derived from the absence of a stream rather than from the
-    // connection state, because `peerStates` is empty until the first negotiation — which is the
-    // very window that showed nothing.
-    const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
-
+    // like a broken one.
+    const tile = JSON.stringify(moduleRegistry.parts()['call.tile'] ?? callModule.contributes?.parts?.tile);
     expect(tile).toContain('find(modules.call.tileStates, { id: tile.id }).connecting');
     expect(tile).toContain('find(modules.call.tileStates, { id: tile.id }).failed');
-    // A failure must not animate like progress.
     expect(tile).toContain('we-spinner');
     expect(tile).toContain("Couldn't connect");
   });
 
   it('looks a participant up by id for their face, so a profile arriving cannot remount their video', () => {
-    // The same hazard as the volatile flags above, with a stranger symptom: a profile is fetched
-    // after the tile exists, so folding it onto the tile object would blank that person's video at
-    // the exact moment their avatar loaded. `tile.name` and `tile.avatar` used to be declared on
-    // `CallTile`, were never set by anything, and were read here — an invitation to "fix" it the
-    // wrong way.
-    const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
-
-    for (const late of ['name', 'avatar']) {
-      expect(tile).not.toContain(`tile.${late}`);
-    }
+    const tile = JSON.stringify(moduleRegistry.parts()['call.tile'] ?? callModule.contributes?.parts?.tile);
+    for (const late of ['name', 'avatar']) expect(tile).not.toContain(`tile.${late}`);
     for (const field of ['image', 'hash', 'name']) {
       expect(tile).toContain(`find(modules.call.tileFaces, { id: tile.id }).${field}`);
     }
-    // Identity that cannot change is still read straight off the tile — nothing to gain by hiding it.
     expect(tile).toContain('tile.isSelf');
   });
 
   it('exposes a launcher a template can place on any node', () => {
     moduleRegistry.register(callModule, host, storeDeps);
-    // Anchored calls need a per-node trigger, and only a template knows what a node is.
-    expect(moduleRegistry.schemas()['call.anchoredCallButton']).toBeDefined();
-    expect(moduleRegistry.schemas()['call.startCallButton']).toBeDefined();
+    expect(moduleRegistry.parts()['call.anchoredCallButton']).toBeDefined();
+    expect(moduleRegistry.parts()['call.startCallButton']).toBeDefined();
   });
 
-  it('degrades to a problem message rather than throwing without any ports', () => {
-    // `ModuleStoreDeps` past `signal` is all optional, so a host with no transport must still be
-    // able to construct the store — the module simply cannot do anything.
-    moduleRegistry.register(callModule, host, { signal: storeDeps.signal });
+  it('degrades to a problem message rather than throwing without any kernels', () => {
+    // Everything past `signal`, `state` and `action` is optional, so a host with no transport must
+    // still be able to construct the store — the module simply cannot do anything.
+    moduleRegistry.register(callModule, host, { ...storeDeps, kernels: {} });
     const store = moduleStores.call as { active: () => boolean; startCall: () => Promise<void> };
-
     expect(store.active()).toBe(false);
     expect(() => store.startCall()).not.toThrow();
   });
 });
 
 describe('per-space module gate', () => {
-  it('wraps module chrome in a condition on the space enabled set', () => {
+  it('wraps module chrome in a condition on the space enabled set, or the call running', () => {
     moduleRegistry.register(callModule, host, storeDeps);
-    const node = slotRegistry.get('call:0')?.node as {
-      type?: string;
-      props?: { condition?: unknown; then?: unknown };
-    };
-
+    const node = slotRegistry.get('call:0')?.node as { type?: string; props?: { condition?: unknown; then?: unknown } };
     expect(node.type).toBe('$if');
-    /*
-      `activeModules`, not `enabledModules`: what the space turned on is only one of the three
-      layers. A module the community enabled but this agent has not installed, or has muted here,
-      must not render — and only the intersection knows that.
-
-      Or the call is running, in which case its chrome follows the user out of the space it started
-      in — see `holdsWhen`. That disjunct is this module's alone: the space's decision is still the
-      whole condition for every module that is not holding something live.
-    */
+    // `activeModules`, not `enabledModules`: the intersection of the layers. Or the call is running,
+    // in which case its chrome follows the user out of the space it started in — see `holds`.
     expect(node.props?.condition).toEqual({ $: "'call' in spaceStore.activeModules || modules.call.active" });
-    // The module's own node survives underneath, so gating composes with whatever visibility rules
-    // the module already had rather than replacing them.
     expect(node.props?.then).toBeDefined();
   });
 
   it('leaves core chrome ungated', () => {
-    // The sidebar and boot screen are the host's, not a module's — a space cannot switch them off.
-    //
-    // Asserted on the *condition*, not on the node type: the sidebar's own node is already an `$if`
-    // (it hides itself on the boot screen), so "is it an $if" would pass whether or not it had been
-    // gated. Every core slot is checked, because the gate is applied per registration and a partial
-    // application is exactly the bug worth catching.
     for (const id of ['core:sidebar', 'core:bootScreen', 'core:templateEditor']) {
       const node = slotRegistry.get(id)?.node as { props?: { condition?: unknown } };
-      expect(node.props?.condition).not.toEqual({ $in: [expect.anything(), { $: 'spaceStore.enabledModules' }] });
+      expect(JSON.stringify(node.props?.condition ?? null)).not.toContain('activeModules');
     }
   });
 
-  it('removes every gated slot on unregister', () => {
+  it('removes every gated slot and the panel on unregister', () => {
     moduleRegistry.register(callModule, host, storeDeps);
     expect(slotRegistry.get('call:0')).toBeDefined();
-
     moduleRegistry.unregister('call');
-
     expect(slotRegistry.get('call:0')).toBeUndefined();
     expect(slotRegistry.get('call:1')).toBeUndefined();
     expect(slotRegistry.get('call:2')).toBeUndefined();
-    // Docks too, from both registries. A dock left in `dockRegistry` after its module withdrew would
-    // keep contributing an inset — the app would stay shrunk around a panel that no longer exists.
-    expect(slotRegistry.get('dock:call:0')).toBeUndefined();
-    expect(dockRegistry.get('call:0')).toBeUndefined();
+    // A panel left in `dockRegistry` after its module withdrew would keep contributing an inset.
+    expect(slotRegistry.get('dock:call:stage')).toBeUndefined();
+    expect(dockRegistry.get('call:stage')).toBeUndefined();
   });
 });

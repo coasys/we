@@ -112,3 +112,126 @@ describe('the other ways a colour is chosen', () => {
     expect(changes).toHaveLength(0);
   });
 });
+
+/**
+ * `confirm` — deciding on a button rather than on every touch.
+ *
+ * For a consumer whose commit is expensive. A canvas recolouring nine selected cards writes a
+ * record each, every one a round trip: browsing five colours that way is forty-five writes and five
+ * undo entries for one decision. What is asserted here is the split — everything is a preview until
+ * Apply, and every other way out puts the value back.
+ */
+describe('a picker that confirms', () => {
+  async function makeConfirming() {
+    const el = document.createElement('we-color-picker') as PickerEl & { confirm: boolean; clearable: boolean };
+    el.value = '#336699';
+    el.confirm = true;
+    el.clearable = true;
+    document.body.appendChild(el);
+    await el.updateComplete;
+
+    const changes: string[] = [];
+    const previews: string[] = [];
+    el.addEventListener('change', (e) => changes.push((e as CustomEvent<string>).detail));
+    el.addEventListener('preview', (e) => previews.push((e as CustomEvent<string>).detail));
+
+    el.shadowRoot?.querySelector<HTMLElement>('[part="preview"]')?.click();
+    await el.updateComplete;
+    const part = (name: string) => el.shadowRoot?.querySelector<HTMLElement>(`[part="${name}"]`);
+    return { el, changes, previews, part };
+  }
+
+  it('previews a swatch rather than deciding on it', async () => {
+    const { changes, previews, part } = await makeConfirming();
+
+    part('swatch')?.click();
+
+    expect(changes).toEqual([]);
+    expect(previews).toHaveLength(1);
+  });
+
+  it('decides on Apply, once', async () => {
+    const { el, changes, part } = await makeConfirming();
+    part('swatch')?.click();
+    await el.updateComplete;
+
+    part('apply')?.click();
+
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toBe(el.value);
+  });
+
+  it('puts the value back on Cancel, and says so', async () => {
+    const { el, changes, previews, part } = await makeConfirming();
+    part('swatch')?.click();
+    await el.updateComplete;
+    previews.length = 0;
+
+    part('cancel')?.click();
+
+    // The consumer has been drawing each preview as it arrived and has no other way to learn the
+    // last one was withdrawn.
+    expect(previews).toEqual(['#336699']);
+    expect(el.value).toBe('#336699');
+    expect(changes).toEqual([]);
+  });
+
+  it('cancels on a press elsewhere and on Escape', async () => {
+    const outside = await makeConfirming();
+    outside.part('swatch')?.click();
+    await outside.el.updateComplete;
+    outside.previews.length = 0;
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    expect(outside.previews).toEqual(['#336699']);
+    expect(outside.changes).toEqual([]);
+
+    const escaped = await makeConfirming();
+    escaped.part('swatch')?.click();
+    await escaped.el.updateComplete;
+    escaped.previews.length = 0;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(escaped.previews).toEqual(['#336699']);
+    expect(escaped.changes).toEqual([]);
+  });
+
+  it('says nothing when a popover somebody only looked at is dismissed', async () => {
+    const { changes, previews, part } = await makeConfirming();
+
+    part('cancel')?.click();
+
+    expect(previews).toEqual([]);
+    expect(changes).toEqual([]);
+  });
+
+  it('keeps Default waiting for Apply like any other choice', async () => {
+    // Without `confirm` it is the decision and closes the popover; with it, it is a choice among
+    // choices and the footer is what ends the interaction.
+    const { el, changes, previews, part } = await makeConfirming();
+
+    part('clear')?.click();
+    await el.updateComplete;
+
+    expect(changes).toEqual([]);
+    expect(previews).toEqual(['']);
+    expect(part('apply')).not.toBeNull();
+  });
+
+  it('leaves a picker without it deciding as it always did', async () => {
+    const { changes, part } = await (async () => {
+      const el = document.createElement('we-color-picker') as PickerEl;
+      el.value = '#336699';
+      document.body.appendChild(el);
+      await el.updateComplete;
+      const seen: string[] = [];
+      el.addEventListener('change', (e) => seen.push((e as CustomEvent<string>).detail));
+      el.shadowRoot?.querySelector<HTMLElement>('[part="preview"]')?.click();
+      await el.updateComplete;
+      return { changes: seen, part: (n: string) => el.shadowRoot?.querySelector<HTMLElement>(`[part="${n}"]`) };
+    })();
+
+    part('swatch')?.click();
+
+    expect(changes).toHaveLength(1);
+    expect(part('apply')).toBeNull();
+  });
+});

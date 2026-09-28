@@ -28,15 +28,36 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { iconDisc } from '../layout/iconDisc.ts';
 import { discardGuard } from './discardGuard.ts';
 
 export interface ComposerModalOptions {
+  /**
+   * Where "Back" goes, as actions run after the modal closes — reopening the chooser this was picked
+   * from. Omit for no Back button. Guarded like every other way out: with a draft written, it asks
+   * first, and a discard closes without going back.
+   */
+  back?: SchemaProp[];
+  /**
+   * A disc beside the title saying what kind of thing is being written — the same disc the chooser
+   * drew it with. Omit for a title alone.
+   */
+  icon?: { name: SchemaProp; color?: SchemaProp };
   /**
    * `$localState` boolean controlling visibility, declared on an ancestor of the **button that
    * opens it** — not merely of this modal. Undeclared, `$setLocal` warns and no-ops: the button
    * renders, takes the click, and does nothing.
    */
   openLocal: string;
+  /**
+   * What closing writes back to `openLocal`. Defaults to `false`.
+   *
+   * For a composer whose open flag is not a flag but an **answer**: a thread holds the id of the
+   * reply being answered, so one modal serves every level of it — `''` closes it, and any id opens
+   * it on that reply. Written as `false` into a string local, the modal would close and the field
+   * would hold a boolean, which the next read has to be careful about for no reason.
+   */
+  clearTo?: SchemaProp;
   /** Modal heading — "New post", "Edit post", "Reply". */
   title: string;
   /**
@@ -84,16 +105,35 @@ export interface ComposerModalOptions {
   collaborate?: SchemaProp;
 }
 
+/** A ghost arrow that goes back to wherever this modal was opened from. */
+export function backButton(onClick: SchemaProp): SchemaNode {
+  return {
+    type: 'we-tooltip',
+    props: { content: 'Back' },
+    children: [
+      {
+        type: 'we-button',
+        props: { variant: 'ghost', size: 'sm', square: true, label: 'Back', onClick },
+        children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
+      },
+    ],
+  };
+}
+
 export function composerModal(opts: ComposerModalOptions): SchemaNode {
+  const clearTo = opts.clearTo ?? false;
   const close: SchemaProp = opts.onClose?.length
-    ? [{ $setLocal: opts.openLocal, value: false }, ...opts.onClose]
-    : { $setLocal: opts.openLocal, value: false };
+    ? [{ $setLocal: opts.openLocal, value: clearTo }, ...opts.onClose]
+    : { $setLocal: opts.openLocal, value: clearTo };
   /*
     `draftDirty` is written by the composer, not by the schema. It is the one piece of modal state
     in the kit whose source is a component rather than a control, because the editor's document is not
     reachable from `$local` — see `BlockComposer.onDirtyChange`.
   */
-  const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $: 'local.draftDirty' }, close });
+  const guard =
+    opts.guardDraft === false
+      ? null
+      : discardGuard({ dirty: { $: 'local.draftDirty' }, close, ...(opts.back && { back: opts.back }) });
 
   return {
     /*
@@ -122,7 +162,26 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
           }),
         },
         children: [
-          { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
+          // Back, in the modal's top-left corner — the close button's mirror, out of the title's line.
+          ...(opts.back
+            ? [
+                {
+                  // Through the guard, so Discard finishes going back rather than only closing.
+                  ...backButton(guard?.back ?? [...(Array.isArray(close) ? close : [close]), ...opts.back]),
+                  slot: 'start-button',
+                },
+              ]
+            : []),
+          opts.icon
+            ? {
+                type: 'Row',
+                props: { gap: '300', ay: 'center', width: '100%' },
+                children: [
+                  iconDisc({ icon: opts.icon.name, color: opts.icon.color, size: '56px' }),
+                  { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
+                ],
+              }
+            : { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
           {
             type: 'Column',
             // `pl` clears the composer's own left gutter, where the slash-command affordance sits.
@@ -143,7 +202,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                       // The close first, so anything the caller adds runs against a modal that has
                       // already gone — a refresh it triggers repaints what is behind, not under it.
                       onSuccess: [
-                        { $setLocal: opts.openLocal, value: false },
+                        { $setLocal: opts.openLocal, value: clearTo },
                         ...(opts.onClose ?? []),
                         ...(opts.onSaved ?? []),
                       ],

@@ -230,6 +230,9 @@ export const kanbanTemplate: TemplateSchema = {
     name: 'Boards',
     description: 'Kanban boards where a card’s column is its status — coordination on the same substrate.',
     icon: 'kanban',
+    // The board's suggestion controls name `modules.transcribe.*` — see `taskBoard`. Declared so a
+    // deployment without extraction sees the dependency in `missingModules` rather than dead buttons.
+    requires: { modules: ['transcribe'] },
     // Light: a board is read at a glance, and it sets coordination apart from the social three.
     themeId: 'light',
   },

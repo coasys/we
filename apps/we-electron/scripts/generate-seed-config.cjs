@@ -149,6 +149,16 @@ function main() {
             : path.join(WORKSPACE_ROOT, seed.ad4m.executorPath),
         }
       : {}),
+    // Development only, like the executor path: the main process hands the renderer the local
+    // server link language build from this checkout, so it can be tried before the node's seed
+    // ships one. See `get-dev-link-language-bundle` in main.js.
+    ...(seed.ad4m?.repoPath
+      ? {
+          ad4mRepoPath: path.isAbsolute(seed.ad4m.repoPath)
+            ? seed.ad4m.repoPath
+            : path.join(WORKSPACE_ROOT, seed.ad4m.repoPath),
+        }
+      : {}),
   };
   fs.writeFileSync(RUNTIME_FILE, JSON.stringify(runtime, null, 2) + '\n', 'utf8');
   console.log(`✅ Runtime settings written to: ${path.relative(process.cwd(), RUNTIME_FILE)}`);

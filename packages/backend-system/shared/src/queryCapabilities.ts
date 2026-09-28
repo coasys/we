@@ -19,19 +19,48 @@
  * template using that feature renders nothing at all. Choose it for a feature whose absence should
  * stop the page, not for one whose absence merely makes the page different.
  */
-import type { Aggregation, Filter, IncludeMap, Op, Page, QueryIR, SortKey } from './queryIR';
+import type { Aggregation, Filter, IncludeMap, Op, Page, QueryIR, Scope, SortKey } from './queryIR';
+import { isRangeOp } from './rangeCompare';
 
 export type AggregateFn = Aggregation['fn'];
 
 export interface AdapterCapabilities {
   /** Filter operators supported natively. */
   operators: Op[];
+  /**
+   * The kinds of bound `lt`/`lte`/`gt`/`gte` compare natively. Absent means both.
+   *
+   * An operator list cannot say this, and it matters: a backend that takes a range bound only as a
+   * number may not reject a string bound — which is how a date is written — but reread it as a
+   * nested clause that matches no row. Declaring it turns that silence into a refusal.
+   */
+  rangeBounds?: ('number' | 'string')[];
   /** and / or / not nesting in filters. */
   booleanCombinators: boolean;
   /** `{ rel, some/none/exists }` relation-scoped filters. */
   relationFilters: boolean;
-  /** Native drill-down from an anchor instance (the IR's `scope`; e.g. AD4M's `parent`). */
+  /** Native drill-down from an anchor instance (the IR's `scope`). */
   scope: boolean;
+  /**
+   * The parts of `scope` beyond "one anchor, one step out".
+   *
+   * Separate flags because they are separately implementable and separately degradable: a backend
+   * can answer several anchors by asking once per anchor, but there is no compute-up for a
+   * per-anchor limit that is worth having — fetching every row in order to keep five of each is the
+   * cost the flag exists to avoid.
+   */
+  boundedTraversal?: {
+    /** `anchorId` may be a list — one query for a whole level rather than one per parent. */
+    multiAnchor: boolean;
+    /** `transitive` — follow the relation all the way down. */
+    transitive: boolean;
+    /** `direction: 'in'` — search among what points at the anchor. */
+    inbound: boolean;
+    /** `limitPerAnchor` — top N under each anchor, applied before hydration. */
+    perAnchorLimit: boolean;
+    /** `levels` — the backend walks the relation depth by depth and answers once. */
+    levelWalk: boolean;
+  };
   include: { supported: boolean; maxDepth?: number };
   /** Aggregate functions supported natively. */
   aggregate: AggregateFn[];
@@ -52,7 +81,7 @@ export interface AdapterCapabilities {
  *
  * **`degraded` is deliberately narrow — do not reach for it to make a query "work".** It exists
  * because the other three cannot express "runs, but lies about one thing", which is what a backend
- * *bug* looks like (AD4M dropping its sort pushdown under an explicit OR, for instance). Use it only
+ * *bug* looks like (a sort pushdown silently dropped under an explicit OR, for instance). Use it only
  * when every row returned is correct apart from the named feature. It is **not** a substitute for
  * `compute-up` on a real capability gap, and the standing expectation is that it is removed once the
  * backend is fixed — so keep the `feature` string greppable.
@@ -102,6 +131,18 @@ function analyzeFilter(filter: Filter, cap: AdapterCapabilities, path: string, g
       disposition: 'compute-up',
       note: `operator "${filter.op}" not native`,
     });
+    return;
+  }
+  if (isRangeOp(filter.op) && cap.rangeBounds) {
+    const kind = typeof filter.value;
+    if ((kind === 'number' || kind === 'string') && !cap.rangeBounds.includes(kind)) {
+      gaps.push({
+        feature: `operator:${filter.op}:${kind}`,
+        path: `${path}.value`,
+        disposition: 'compute-up',
+        note: `"${filter.op}" compares only ${cap.rangeBounds.join(' or ')} bounds natively`,
+      });
+    }
   }
 }
 
@@ -163,6 +204,65 @@ function analyzeSort(
   });
 }
 
+/**
+ * The parts of a bounded traversal a backend may not have.
+ *
+ * `multiAnchor` and `inbound` degrade: the first by asking once per anchor, the second by reading
+ * the relation the other way and filtering. `transitive` degrades too, expensively — walking level
+ * by level until nothing comes back.
+ *
+ * `perAnchorLimit` is the one that does not. Computing it up means fetching every row under every
+ * anchor and discarding most of them, which is precisely the cost the limit exists to avoid, so a
+ * caller that silently got that would have asked for an optimisation and received a pessimisation.
+ * Better to say the backend cannot do it and let the caller decide.
+ */
+function analyzeTraversal(scope: Scope, cap: AdapterCapabilities, path: string, gaps: CapabilityGap[]): void {
+  const bounded = cap.boundedTraversal;
+  if (Array.isArray(scope.anchorId) && !bounded?.multiAnchor) {
+    gaps.push({
+      feature: 'scope.multiAnchor',
+      path: `${path}.anchorId`,
+      disposition: 'compute-up',
+      note: 'several anchors — one query per anchor',
+    });
+  }
+  if (scope.transitive && !bounded?.transitive) {
+    gaps.push({
+      feature: 'scope.transitive',
+      path: `${path}.transitive`,
+      disposition: 'compute-up',
+      note: 'no path traversal — walk one level at a time',
+    });
+  }
+  if (scope.direction === 'in' && !bounded?.inbound) {
+    gaps.push({
+      feature: 'scope.inbound',
+      path: `${path}.direction`,
+      disposition: 'compute-up',
+      note: 'no inverse traversal — read the relation forwards and filter',
+    });
+  }
+  if (scope.levels && !bounded?.levelWalk) {
+    // Degradable in principle — ask level by level and use each answer as the next level's anchors —
+    // but that is the client-driven walk this exists to replace, so it is the caller's decision to
+    // make knowingly rather than something to fall back into silently.
+    gaps.push({
+      feature: 'scope.levels',
+      path: `${path}.levels`,
+      disposition: 'unsupported',
+      note: 'no level walk — the caller would have to drive it, one round trip per level',
+    });
+  }
+  if (scope.limitPerAnchor !== undefined && !bounded?.perAnchorLimit) {
+    gaps.push({
+      feature: 'scope.perAnchorLimit',
+      path: `${path}.limitPerAnchor`,
+      disposition: 'unsupported',
+      note: 'computing it up would fetch everything the limit exists to avoid fetching',
+    });
+  }
+}
+
 function analyzePage(page: Page, cap: AdapterCapabilities, path: string, gaps: CapabilityGap[]): void {
   if ('after' in page && page.after !== undefined) {
     if (!cap.pagination.includes('cursor')) {
@@ -221,6 +321,17 @@ export function planQuery(query: QueryIR, cap: AdapterCapabilities): QueryPlan {
         note: `aggregate "${agg.fn}" not native`,
       });
     }
+    // Refused rather than answered one level deep: a count that silently means "direct children"
+    // where the caller asked for "everything below" is a plausible wrong number, and those are the
+    // ones nobody checks.
+    if (agg.transitive && !cap.boundedTraversal?.transitive) {
+      gaps.push({
+        feature: 'aggregate:transitive',
+        path: `aggregate.${i}.transitive`,
+        disposition: 'unsupported',
+        note: 'no path traversal — a one-level count would answer a different question',
+      });
+    }
     if (agg.filter) analyzeFilter(agg.filter, cap, `aggregate.${i}.filter`, gaps);
   });
   if (query.sort) analyzeSort(query.sort, aggregateAliases, cap, 'sort', gaps);
@@ -230,6 +341,7 @@ export function planQuery(query: QueryIR, cap: AdapterCapabilities): QueryPlan {
     // the anchor's foreign key.
     gaps.push({ feature: 'scope', path: 'scope', disposition: 'compute-up', note: 'drill-down not native' });
   }
+  if (query.scope) analyzeTraversal(query.scope, cap, 'scope', gaps);
   if (query.live) analyzeLive(cap, gaps);
 
   return { runnable: !gaps.some((g) => g.disposition === 'unsupported'), gaps };

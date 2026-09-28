@@ -19,7 +19,10 @@ export function resolveQueryProp(value: unknown): QueryDescriptor {
     // layer, which is the only place a row's bindings exist — see `QueryDescriptor.entity`.
     entity,
     params,
-    subscribe: sub !== false,
+    // Left as authored, like `entity` and `when`: a literal passes through, and an expression is
+    // resolved by the framework layer — the only place stores and a row's bindings exist. Absent
+    // still means live, which is what every query written before this could say.
+    subscribe: sub === undefined ? true : sub,
     dataset: dataset as string | undefined,
     ...(include !== undefined && { include: include as Record<string, boolean | Record<string, unknown>> }),
     // Not a param: the backend never sees it. The framework layer reads it before asking.
@@ -106,5 +109,12 @@ export function pruneUnresolvedWhere(where: Record<string, unknown>): Record<str
 export function scopeIsAnchored(scope: unknown): boolean {
   if (!scope || typeof scope !== 'object') return false;
   const anchorId = (scope as { anchorId?: unknown }).anchorId;
+  // A LIST of anchors is anchored even when empty, which is the opposite of the rule above and
+  // deliberately so. An empty list is a resolved answer — "the children of these zero records" —
+  // where an absent anchor is an unresolved one. It arises the moment a level of a tree reads the
+  // level above it (`local.replies.map(r, r.id)`) and that level is empty or has not arrived, and
+  // in both readings the right answer is no rows. Widening there would draw the entire space under
+  // a comment.
+  if (Array.isArray(anchorId)) return true;
   return anchorId !== undefined && anchorId !== null && anchorId !== '';
 }

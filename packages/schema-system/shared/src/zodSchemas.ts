@@ -1,6 +1,7 @@
+import { role } from '@we/tokens';
 import { z } from 'zod';
 
-import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema } from './types';
+import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
 
 // Zod's JIT probe trips Electron's production CSP — see the note in @we/backend-shared's
 // queryIR.ts. Repeated per module because the probe fires on the first `z.object()`.
@@ -10,22 +11,78 @@ const lazySchemaNode = z.lazy(() => zSchemaNode);
 const lazySchemaProp = z.lazy(() => zSchemaProp);
 const lazyRouteSchema = z.lazy(() => zRouteSchema);
 
-const zThemeOverrides = z
-  .object({
-    themeName: z.string().optional(),
-    primaryHue: z.number().optional(),
-    successHue: z.number().optional(),
-    warningHue: z.number().optional(),
-    dangerHue: z.number().optional(),
-    neutralHue: z.number().optional(),
-    // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
-    saturation: z.number().optional(),
-    neutralSaturation: z.number().optional(),
-    multiplier: z.number().optional(),
-    subtractor: z.string().optional(),
-    fontFamily: z.string().optional(),
-  })
-  .strict();
+/*
+  `ThemeOverrides`, key for key.
+
+  A key missing here is refused on every template that sets it, while the renderer applies it
+  happily: that is how `polarity`, the lightness range, `roles` and every radius, typography and
+  density key came to fail `acceptTemplate` and the editor's validation. The `satisfies` makes the
+  drift a type error that names the key, in either direction.
+
+  `multiplier` and `subtractor` predate `polarity` and the lightness range (see @we/themes
+  `migrate.ts`). They stay accepted so a template saved before then is not newly refused.
+*/
+type LegacyThemeKey = 'multiplier' | 'subtractor';
+
+// Role names come from the token table the runtime resolves them against, not from a restated list.
+const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typeof role)[]]);
+
+const themeOverridesShape = {
+  schemaVersion: z.number().int().positive().optional(),
+  themeName: z.string().optional(),
+  primaryHue: z.number().optional(),
+  successHue: z.number().optional(),
+  warningHue: z.number().optional(),
+  dangerHue: z.number().optional(),
+  neutralHue: z.number().optional(),
+  // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
+  saturation: z.number().optional(),
+  neutralSaturation: z.number().optional(),
+  accentLightness: z.number().optional(),
+  dangerLightness: z.number().optional(),
+  successLightness: z.number().optional(),
+  warningLightness: z.number().optional(),
+  polarity: z.enum(['light', 'dark']).optional(),
+  lightnessFloor: z.string().optional(),
+  lightnessCeiling: z.string().optional(),
+  roles: z.partialRecord(zThemeRole, z.string()).optional(),
+  fontFamily: z.string().optional(),
+  headingFontFamily: z.string().optional(),
+  monoFontFamily: z.string().optional(),
+  letterSpacing: z.string().optional(),
+  lineHeight: z.string().optional(),
+  fontScale: z.number().optional(),
+  controlRadius: z.string().optional(),
+  surfaceRadius: z.string().optional(),
+  inputRadius: z.string().optional(),
+  avatarRadius: z.string().optional(),
+  borderWidth: z.string().optional(),
+  stateDuration: z.string().optional(),
+  focusRingWidth: z.string().optional(),
+  controlPaddingX: z.string().optional(),
+  controlGap: z.string().optional(),
+  controlHeightOffset: z.string().optional(),
+  surfacePadding: z.string().optional(),
+  surfaceGap: z.string().optional(),
+  inputPadding: z.string().optional(),
+  spacingScale: z.number().optional(),
+  disabledOpacity: z.number().optional(),
+  shadowIntensity: z.enum(['flat', 'subtle', 'elevated', 'dramatic']).optional(),
+  surfaceOpacity: z.number().optional(),
+  surfaceBlur: z.number().optional(),
+  animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),
+  multiplier: z.number().optional(),
+  subtractor: z.string().optional(),
+} satisfies {
+  [K in keyof ThemeOverrides | LegacyThemeKey]-?: z.ZodType<(ThemeOverrides & Record<LegacyThemeKey, unknown>)[K]>;
+};
+
+const zThemeOverrides = z.object(themeOverridesShape).strict();
+
+// `satisfies` checks each schema is no wider than its key's type. This checks the reverse, so a value
+// added to a union there (a fifth `shadowIntensity`) is a type error here rather than a refused theme.
+type _EveryThemeParses = Accepts<z.input<typeof zThemeOverrides>, ThemeOverrides>;
+type Accepts<Schema, T extends Schema> = T;
 
 // --- Token shape Zod schemas ---
 // Each matches the corresponding TypeScript type in types.ts.
@@ -76,11 +133,24 @@ const zQuery = z.object({
   scope: z
     .object({
       via: z.string().min(1),
-      anchorId: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]),
+      anchorId: z.union([
+        z.string(),
+        z.number(),
+        z.array(z.union([z.string(), z.number()])),
+        z.record(z.string(), z.unknown()),
+      ]),
       anchor: z.string().optional(),
+      transitive: z.boolean().optional(),
+      direction: z.enum(['out', 'in']).optional(),
+      limitPerAnchor: z.number().int().positive().optional(),
+      // A level's breadth may be a token, so "show more" is a local the template raises rather than
+      // a second query shape. Resolved before the IR is built, like every other operand.
+      levels: z.array(z.union([z.number().int().positive(), z.record(z.string(), z.unknown())])).optional(),
     })
     .optional(),
-  subscribe: z.boolean().optional(),
+  // A literal, or an expression — a surface that is live only while its subject is. See
+  // `QueryToken.subscribe`.
+  subscribe: z.union([z.boolean(), z.record(z.string(), z.unknown())]).optional(),
   dataset: z.string().optional(),
   // Run only while this expression is truthy — a query that waits for another's answer.
   when: z.record(z.string(), z.unknown()).optional(),
@@ -246,6 +316,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
     keepAlive: z.boolean().optional(),
+    /** The modules this interface reaches by name. See `TemplateMeta.requires`. */
+    requires: z.object({ modules: z.array(z.string()).optional() }).optional(),
     /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
     chromeReserve: z
       .object({

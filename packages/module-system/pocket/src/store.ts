@@ -17,6 +17,8 @@ export interface PocketRow {
   /** The DID of whoever made the thing, taken from the source's card. Empty where it had none. */
   sourceAuthor: string;
   gatheredAt: string;
+  withinEntity?: string;
+  withinId?: string;
 }
 
 export interface PocketFolderRow {
@@ -43,6 +45,8 @@ export interface GatherInput {
   preview?: DragPreviewLike;
   /** Set only when the drag began on a row already in the Pocket — see {@link PocketOrigin}. */
   origin?: PocketOrigin;
+  /** The post a block sits in. See `PocketItem.withinEntity`. */
+  within?: { entity?: string; id?: string };
 }
 
 /**
@@ -77,6 +81,8 @@ interface DragPreviewLike {
   content?: string;
   author?: string;
   date?: string;
+  /** The space it was in, by name, where the source knew. */
+  source?: string;
 }
 
 /** What a `we-drop-zone` hands over. Narrowed here so the module needs no dependency on @we/drag. */
@@ -87,6 +93,7 @@ interface DroppedPayload {
     icon?: string;
     preview?: DragPreviewLike;
     origin?: PocketOrigin;
+    within?: { entity?: string; id?: string };
   }[];
 }
 
@@ -145,8 +152,8 @@ function thumbnailFrom(content: string | undefined): string {
  *    fallback between a CID and a local uuid, which is a decision. `@we/schema-kit`'s card
  *    fragments name no store by construction, so the source carries `{ entity, id }` and this
  *    stamps the rest.
- * 2. **Reading across the boundary.** The panel's rows live in the root dataset and a template can
- *    read those with `dataset: 'datasetStore.rootDataset'` — but "have I already gathered this"
+ * 2. **Reading across the boundary.** The panel's rows live in the personal space and a template can
+ *    read those with `dataset: 'datasetStore.personalDataset'` — but "have I already gathered this"
  *    has to be answerable from a *card*, inside whatever space it is in, which is a second dataset
  *    in the same expression. `$query`'s `dataset` is a store path, not something a row can name.
  * 3. **Opening one.** Going to a gathered thing means joining the space first when it is not
@@ -155,7 +162,7 @@ function thumbnailFrom(content: string | undefined): string {
  *    reason every docked module has a store at all.
  *
  * Folder creation, deletion and the listing itself stay in the fragments, through `record.create`
- * and `$query`. This module ships no CRUD wrapper for them, for the reason notes ships none.
+ * and `$query`. This module ships no CRUD wrapper for them: those two already are one.
  */
 export function createPocketStore(deps: ModuleStoreDeps) {
   const { signal, effect } = deps;
@@ -187,14 +194,14 @@ export function createPocketStore(deps: ModuleStoreDeps) {
   const [busy, setBusy] = signal(false);
   const [lastError, setLastError] = signal('');
 
-  const agentData = () => deps.agentData;
+  // The kernel this module asked for in its manifest. Absent on a host that has no agent dataset.
+  const agentData = () => deps.kernels.agentData;
 
   /**
    * The root folder's id, creating it on first use.
    *
-   * Resolved every time rather than held, for the reason the notes module resolves its collection
-   * every time: a cached id is a value that has to be invalidated, and the failure mode of getting
-   * that wrong is writing into the wrong container.
+   * Resolved every time rather than held: a cached id is a value that has to be invalidated, and the
+   * failure mode of getting that wrong is writing into the wrong container.
    */
   async function rootFolder(): Promise<PocketFolderRow | null> {
     const data = agentData();
@@ -217,7 +224,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     and gathering it again was the obvious thing to do. The panel is not what the answer depends on;
     the agent's dataset is.
 
-    An effect rather than a call at construction, because the root dataset arrives well after the
+    An effect rather than a call at construction, because the personal space arrives well after the
     module store is built — `agentData.ready()` is false for the first frames of every boot, which
     is exactly why the read has to be able to re-run.
   */
@@ -350,6 +357,8 @@ export function createPocketStore(deps: ModuleStoreDeps) {
         sourceAuthor: row.sourceAuthor,
         sourceName: row.sourceName,
         gatheredAt: row.gatheredAt,
+        withinEntity: row.withinEntity ?? '',
+        withinId: row.withinId ?? '',
       },
       { parent: { id: target, predicate: POCKET_PREDICATES.items } },
     );
@@ -384,7 +393,11 @@ export function createPocketStore(deps: ModuleStoreDeps) {
         // An explicit picture wins; a post has none, so one is taken out of the document it carried.
         thumbnail: input.preview?.thumbnail || thumbnailFrom(input.preview?.content),
         sourceAuthor: input.preview?.author ?? '',
-        sourceName: sourceName(),
+        // Where the source says it was, when it was not the space on screen — a block out of a note is
+        // from the personal space, which has no name worth showing; one out of a feed is from here.
+        sourceName: input.preview?.source ?? (input.datasetKey ? '' : sourceName()),
+        withinEntity: input.within?.entity ?? '',
+        withinId: input.within?.id ?? '',
         // Stamped here rather than left to the backend's createdAt: this is when *you* kept it,
         // which is not when the thing was made and not when the record happened to sync.
         gatheredAt: new Date().toISOString(),
@@ -446,6 +459,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
             datasetKey: item.ref?.dataset,
             preview: item.preview,
             origin: item.origin,
+            within: item.within,
           }))
         : [payload as GatherInput];
 
@@ -481,14 +495,21 @@ export function createPocketStore(deps: ModuleStoreDeps) {
 
   return {
     // ── The panel, as chrome ─────────────────────────────────────────────────
-    open,
-    /** Where the panel would like to open. `null` while closed — one key, so the two cannot disagree. */
-    dockEdge: () => (open() ? 'right' : null),
-    dockSize: () => 'md',
-    dockFloat: () => false,
-    toggle: () => (open() ? setOpen(false) : openPanel()),
-    close: () => setOpen(false),
-    show: openPanel,
+    /*
+      The Pocket owns whether its panel is open, where most modules leave that to the host: opening
+      it is what resolves the root folder (`openPanel`), so the flag is a fact about the Pocket and
+      not only about the screen. These four are the public half — a template offering "put this in
+      your Pocket" wants a button that opens the panel, and the person then drops the thing in
+      themselves. Everything below them stays private: the contents and the folder names are the
+      same private thing seen from the other side, and the writes go to the agent's own dataset.
+    */
+    open: deps.state(open, 'Whether the Pocket panel is open.'),
+    toggle: deps.action(
+      () => (open() ? setOpen(false) : openPanel()),
+      'Opens the Pocket panel, or closes it if it is open.',
+    ),
+    close: deps.action(() => setOpen(false), 'Closes the Pocket panel.'),
+    show: deps.action(openPanel, 'Opens the Pocket panel and resolves the folder it was last looking at.'),
 
     // ── Where in the Pocket you are ──────────────────────────────────────────
     /** The folder being looked at. Empty only until the root has been resolved. */

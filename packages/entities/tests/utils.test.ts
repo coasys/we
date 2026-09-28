@@ -5,8 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { Signal } from '../src/entities/Signal';
-import type { SignalType } from '../src/entities/SignalType';
+import type { Signal, SignalType } from '../src/index';
 import { decodeFileAsJson, decodeFileAsString } from '../src/utils/fileTransforms';
 import { aggregateSignals } from '../src/utils/signalAggregate';
 import { denormalizeSignal, normalizeSignal } from '../src/utils/signalNormalize';

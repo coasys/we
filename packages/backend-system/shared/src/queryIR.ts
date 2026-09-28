@@ -77,10 +77,52 @@ export type IncludeMap = Record<string, IncludeSpec | true>;
 export interface Scope {
   /** Relation on the anchor entity whose targets are this query's `entity` (inbound traversal). */
   via: string;
-  /** The anchor instance's id. */
-  anchorId: string | number;
+  /**
+   * The anchor instance's id, or several of them.
+   *
+   * A list asks the same question of every anchor at once, which is what keeps one level of a tree
+   * to one round trip — and, under `live`, to one subscription — instead of one per parent. Twenty
+   * comments asked for their replies separately is twenty of each.
+   */
+  anchorId: string | number | Array<string | number>;
   /** Optional anchor entity type — when present, enables manifest validation of `via`. */
   anchor?: string;
+  /**
+   * Follow `via` as far as it goes rather than one step — every descendant, not every child.
+   *
+   * The result is flat and says nothing about the shape it came from: a backend walking a path
+   * reports which rows are under the anchor and not where any of them sits. Rebuilding a tree needs
+   * the inverse relation included alongside, so each row names its own parent.
+   */
+  transitive?: boolean;
+  /**
+   * `'out'` (the default) reads `anchor --via--> result`. `'in'` reads `result --via--> anchor`:
+   * searching among the things that point *at* the anchor, which `include` of an inverse relation
+   * cannot do because it only hydrates for rows already in hand.
+   */
+  direction?: 'out' | 'in';
+  /**
+   * Keep at most this many results per anchor — "the top five replies under each of these twenty".
+   *
+   * Distinct from `page.limit`, which caps the whole result: a limit of 100 across twenty anchors
+   * can legitimately return all 100 from one of them. Pair it with `sort`, or "top" means whichever
+   * the backend happened to return first.
+   */
+  limitPerAnchor?: number;
+  /**
+   * Walk `via` level by level, keeping this many results per anchor at each depth — `[10, 5, 3]` is
+   * "ten replies, five under each of those, three under each of *those*".
+   *
+   * One request, whatever the depth: a backend that supports this does the walk itself, so the
+   * levels cost it local queries rather than costing the caller round trips. Driven from the client
+   * instead, each level is a hop and the tree assembles itself on screen a level at a time.
+   *
+   * Results are flat and breadth-first, as with `transitive` — include the inverse relation to
+   * rebuild the tree. Not combinable with `transitive`, which is the same walk unbounded, and not
+   * expressible with `limitPerAnchor`, which has a single group when the walk starts from one
+   * anchor and so caps the total rather than the breadth at each depth.
+   */
+  levels?: number[];
 }
 
 export interface Aggregation {
@@ -93,6 +135,17 @@ export interface Aggregation {
   field?: string;
   /** Filter the related set before aggregating. */
   filter?: Filter;
+  /**
+   * Aggregate over everything reachable through `over`, not just one step.
+   *
+   * What "42 replies" on a collapsed branch means: a reader takes it for the conversation below,
+   * and the direct-child count says 3. A backend that walks the relation as a path answers this in
+   * the read it is already making, grouped per row, so it costs no extra round trip.
+   *
+   * Needs `boundedTraversal.transitive`. Where a backend lacks it the aggregate is refused rather
+   * than answered one level deep, since a plausible wrong number is worse than a missing one.
+   */
+  transitive?: boolean;
 }
 
 // ─── Query ───────────────────────────────────────────────────────────────────────
@@ -167,12 +220,17 @@ const aggregationSchema = z.object({
   fn: z.enum(['count', 'sum', 'min', 'max', 'avg']),
   field: z.string().optional(),
   filter: filterSchema.optional(),
+  transitive: z.boolean().optional(),
 });
 
 const scopeSchema = z.object({
   via: z.string(),
-  anchorId: z.union([z.string(), z.number()]),
+  anchorId: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]),
   anchor: z.string().optional(),
+  transitive: z.boolean().optional(),
+  direction: z.enum(['out', 'in']).optional(),
+  limitPerAnchor: z.number().int().positive().optional(),
+  levels: z.array(z.number().int().positive()).optional(),
 });
 
 export const queryIRSchema: z.ZodType<QueryIR> = z.object({

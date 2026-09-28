@@ -96,3 +96,30 @@ function copyViaSelection(text: string): boolean {
     previous?.focus();
   }
 }
+
+/**
+ * Hold a subscription that may start after its owner has gone, and return the owner's release.
+ *
+ * A subscription that takes a round trip to start can resolve after the owner's cleanup ran. Its
+ * stop function then arrives with nobody left to call it, and the subscription — with whatever it
+ * keeps alive on the other end — runs for the life of the app. A stop that arrives after release
+ * runs at once.
+ */
+export function holdSubscription(
+  pending: Promise<() => void> | undefined,
+  onError: (error: unknown) => void,
+): () => void {
+  let stop: (() => void) | undefined;
+  let released = false;
+  void pending
+    ?.then((off) => {
+      if (released) off();
+      else stop = off;
+    })
+    .catch(onError);
+  return () => {
+    released = true;
+    stop?.();
+    stop = undefined;
+  };
+}

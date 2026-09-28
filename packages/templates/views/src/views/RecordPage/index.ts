@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
+import { linkedRecords, loadMore, pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
 
 /**
  * A page for one record.
@@ -75,31 +75,38 @@ const idExpr = { $: 'routeStore.params.id' };
 const detailValue: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
-    then: { type: 'we-timestamp', props: { value: { $: 'row[field.name]' }, relative: true } },
+    condition: { $: "field.kind == 'relation' && field.target" },
+    then: linkedRecords({ record: 'row', field: 'field' }),
     else: {
       type: '$if',
       props: {
-        condition: { $: "field.kind == 'boolean'" },
-        then: { type: 'we-badge', children: [{ $: "row[field.name] ? 'Yes' : 'No'" }] },
+        condition: { $: "field.kind == 'datetime' || field.kind == 'date'" },
+        then: { type: 'we-timestamp', props: { value: { $: 'row[field.name]' }, relative: true } },
         else: {
           type: '$if',
           props: {
-            condition: { $: "field.kind == 'image'" },
-            then: {
-              type: 'we-image',
-              props: { src: { $: 'row[field.name]' }, fit: 'cover', r: 'media', maxWidth: '100%' },
-            },
+            condition: { $: "field.kind == 'boolean'" },
+            then: { type: 'we-badge', children: [{ $: "row[field.name] ? 'Yes' : 'No'" }] },
             else: {
               type: '$if',
               props: {
-                condition: { $: "field.kind == 'url'" },
+                condition: { $: "field.kind == 'image'" },
                 then: {
-                  type: 'we-link',
-                  props: { href: { $: 'row[field.name]' }, target: '_blank' },
-                  children: [{ $: 'row[field.name]' }],
+                  type: 'we-image',
+                  props: { src: { $: 'row[field.name]' }, fit: 'cover', r: 'media', maxWidth: '100%' },
                 },
-                else: { type: 'we-text', children: [{ $: 'row[field.name]' }] },
+                else: {
+                  type: '$if',
+                  props: {
+                    condition: { $: "field.kind == 'url'" },
+                    then: {
+                      type: 'we-link',
+                      props: { href: { $: 'row[field.name]' }, target: '_blank' },
+                      children: [{ $: 'row[field.name]' }],
+                    },
+                    else: { type: 'we-text', children: [{ $: 'row[field.name]' }] },
+                  },
+                },
               },
             },
           },
@@ -158,6 +165,46 @@ const genericBody: SchemaNode = {
         then: {
           type: 'we-image',
           props: { src: { $: 'row[local.display.media]' }, fit: 'cover', r: 'media', width: '100%' },
+        },
+      },
+    },
+    /*
+      The picture a record points at rather than holds — a community model's photo is an ImageBlock,
+      related. Looked up by the id the relation holds; the first, where there are several.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.display.mediaRelation && row[local.display.mediaRelation]' },
+        then: {
+          type: 'Column',
+          props: { width: '100%' },
+          $queries: {
+            pictures: {
+              entity: 'ImageBlock',
+              where: { id: { $: 'row[local.display.mediaRelation]' } },
+              when: { $: 'row[local.display.mediaRelation]' },
+              limit: 1,
+            },
+          },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'count(local.pictures)' },
+                then: {
+                  type: 'we-image',
+                  props: {
+                    src: { $: 'first(local.pictures).src' },
+                    alt: { $: "first(local.pictures).altText ?? ''" },
+                    fit: 'cover',
+                    r: 'media',
+                    width: '100%',
+                  },
+                },
+              },
+            },
+          ],
         },
       },
     },
@@ -220,15 +267,28 @@ const genericBody: SchemaNode = {
  * the children extraction and transcription wrote. The generic body would render a heading and an
  * empty box, so calls get a branch. This is the per-type override the page is designed around, and
  * the shape any other type would follow.
+ *
+ * ## The transcript is read a page at a time
+ *
+ * This is the one place in the app that draws a whole conversation as a document, and an hour of
+ * six people talking is a few thousand lines — each of which is an `$agent` lookup and three nodes.
+ * Unbounded it was the page's entire cost, paid before anything appeared, to render something
+ * nobody has scrolled to. From the top and forwards, because that is how a finished conversation is
+ * read; the live panel anchors at the other end, for the opposite reason.
  */
+const TRANSCRIPT_PAGE = 100;
+const TRANSCRIPT_FIELD = 'transcriptShown';
+
 const callBody: SchemaNode = {
   type: 'Column',
   props: { gap: '400', width: '100%' },
+  $localState: { [TRANSCRIPT_FIELD]: { type: 'number', initial: TRANSCRIPT_PAGE } },
   $queries: {
     utterances: {
       entity: 'TextBlock',
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: idExpr },
       order: { createdAt: 'asc' },
+      limit: { $: `local.${TRANSCRIPT_FIELD}` },
     },
   },
   children: [
@@ -252,8 +312,15 @@ const callBody: SchemaNode = {
         {
           type: 'we-text',
           props: { color: 'text-muted' },
+          // A count of a page is not a count of the call, so a full page says so rather than
+          // reporting the window as the total — the same reason the calls list says "200+".
           children: [
-            { $: "`· ${count(local.utterances)} ${plural(count(local.utterances), 'utterance', 'utterances')}`" },
+            {
+              $:
+                `count(local.utterances) >= local.${TRANSCRIPT_FIELD}` +
+                ' ? `· ${count(local.utterances)}+ utterances`' +
+                " : `· ${count(local.utterances)} ${plural(count(local.utterances), 'utterance', 'utterances')}`",
+            },
           ],
         },
       ],
@@ -335,6 +402,7 @@ const callBody: SchemaNode = {
         },
       },
     },
+    loadMore({ field: TRANSCRIPT_FIELD, rowsLocal: 'utterances', pageSize: TRANSCRIPT_PAGE, label: 'Read on' }),
   ],
 };
 

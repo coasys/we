@@ -62,9 +62,11 @@ describe('draftToManifest', () => {
     const result = draftToManifest(sightingDraft(), UUID);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(validateManifest(result.manifest, { externalEntities: ['LocationBlock'] }).valid).toBe(true);
+    expect(validateManifest(result.manifest, { externalEntities: ['LocationBlock', 'WeNode'] }).valid).toBe(true);
 
     const entity = result.manifest.entities.Sighting;
+    // A community's model is a node, so it can be commented on and reacted to like any post.
+    expect(entity.extends).toBe('WeNode');
     expect(entity.flag).toEqual({ predicate: 'we://flag', value: 'we://shape/abc-123/sighting' });
     expect(entity.interpretationHint).toBe('A specific observation of a bird.');
     expect(entity.properties.species).toMatchObject({
@@ -494,5 +496,37 @@ describe('a new draft', () => {
     const result = draftToManifest({ ...emptyShapeDraft(), name: 'Note' }, UUID);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.join(' ')).toMatch(/at least one property/);
+  });
+});
+
+describe('link and paragraph properties', () => {
+  it('store as text with the control that edits and draws them, and read back as the same type', () => {
+    const draft = {
+      ...emptyShapeDraft(),
+      name: 'Recipe',
+      members: [draftMember({ name: 'method', type: 'paragraph' }), draftMember({ name: 'source', type: 'link' })],
+    };
+    const result = draftToManifest(draft, UUID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const { properties } = result.manifest.entities.Recipe;
+    expect(properties.method).toMatchObject({ type: 'string', control: 'textarea' });
+    expect(properties.source).toMatchObject({ type: 'string', control: 'url' });
+
+    const back = manifestToDraft('Recipe', result.manifest);
+    expect(back.members.map((m) => m.type)).toEqual(['paragraph', 'link']);
+  });
+
+  it('may be switched to and from text, since the stored meaning is unchanged', () => {
+    const asText = draftToManifest(
+      { ...emptyShapeDraft(), name: 'Recipe', members: [draftMember({ name: 'source', type: 'text' })] },
+      UUID,
+    );
+    const asLink = draftToManifest(
+      { ...emptyShapeDraft(), name: 'Recipe', members: [draftMember({ name: 'source', type: 'link' })] },
+      UUID,
+    );
+    if (!asText.ok || !asLink.ok) throw new Error('both drafts should lower');
+    expect(additiveViolations(asText.manifest, asLink.manifest)).toEqual([]);
   });
 });

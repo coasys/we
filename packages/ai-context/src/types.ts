@@ -16,6 +16,8 @@ export type {
   PluginCatalog,
   PluginEntry,
   SourceEntry,
+  ModuleCatalogEntry,
+  ForeignElementEntry,
 } from '@we/schema-shared';
 
 import type { ContextData } from '@we/schema-shared';

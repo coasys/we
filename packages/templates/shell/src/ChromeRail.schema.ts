@@ -8,9 +8,10 @@
  * and a third module would have made it three. A module knows what its launcher *means*; only the
  * host knows where launchers go and can keep them from colliding.
  *
- * So a module declares `launcher: { icon, label, action }` and contributes no chrome for it. This
- * renders them all, in registration order with the same id tiebreak the slot registry uses, so the
- * rail cannot reshuffle depending on which module loaded first.
+ * So a module gives a panel an `icon` — or declares a `launchers` entry for a verb that is not a
+ * panel — and contributes no chrome for it. `spaceStore.moduleLaunchers` lists them all, in
+ * registration order with the same id tiebreak the slot registry uses, so the rail cannot reshuffle
+ * depending on which module loaded first.
  *
  * ## Why it is no longer only about modules
  *

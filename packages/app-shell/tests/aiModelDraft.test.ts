@@ -11,10 +11,12 @@ import type { AiModel } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 import {
+  AI_API_PRESETS,
   describeModel,
   draftFrom,
   EMPTY_FORM,
   formComplete,
+  matchingApiPreset,
   toDraft,
 } from '../src/frameworks/solid/stores/aiModelDraft';
 
@@ -32,7 +34,25 @@ function model(overrides: Partial<AiModel>): AiModel {
 describe('round-tripping a model through the form', () => {
   const cases: AiModel[] = [
     model({ source: { kind: 'preset', name: 'llama_8b' } }),
-    model({ source: { kind: 'api', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-x', model: 'gpt-4o' } }),
+    model({
+      source: {
+        kind: 'api',
+        protocol: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: 'sk-x',
+        model: 'gpt-4o',
+      },
+    }),
+    // The case that used to come back as OpenAI: the protocol was not on the form at all.
+    model({
+      source: {
+        kind: 'api',
+        protocol: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        apiKey: 'sk-ant',
+        model: 'claude-sonnet-5',
+      },
+    }),
     model({
       kind: 'transcription',
       source: { kind: 'huggingface', repo: 'openai/whisper', revision: 'v2', fileName: 'model.bin' },
@@ -100,7 +120,9 @@ describe('formComplete', () => {
 
 describe('describeModel', () => {
   it('says nothing about progress for a remote model, which has nothing to download', () => {
-    const view = describeModel(model({ source: { kind: 'api', baseUrl: 'u', apiKey: 'k', model: 'gpt-4o' } }));
+    const view = describeModel(
+      model({ source: { kind: 'api', protocol: 'openai', baseUrl: 'u', apiKey: 'k', model: 'gpt-4o' } }),
+    );
     expect(view.statusText).toBe('');
     expect(view.ready).toBe(true);
     expect(view.detail).toBe('gpt-4o');
@@ -128,5 +150,42 @@ describe('describeModel', () => {
     const status = { downloaded: true, loaded: false, progress: 100, status: 'Loaded' };
     expect(describeModel(model({ kind: 'transcription' }), status).ready).toBe(true);
     expect(describeModel(model({ kind: 'llm' }), status).ready).toBe(false);
+  });
+});
+
+describe('remote API presets', () => {
+  it('opens a model on the service its endpoint matches, or custom for one none describes', () => {
+    const anthropic = draftFrom(
+      model({
+        source: { kind: 'api', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'k', model: 'm' },
+      }),
+    );
+    const gateway = draftFrom(
+      model({
+        source: { kind: 'api', protocol: 'anthropic', baseUrl: 'https://llm.corp.example', apiKey: 'k', model: 'm' },
+      }),
+    );
+    expect(anthropic.apiService).toBe('anthropic');
+    expect(gateway.apiService).toBe('custom');
+  });
+
+  it('recognises an endpoint as the preset it matches, trailing slash or not', () => {
+    expect(matchingApiPreset({ apiProtocol: 'anthropic', apiBaseUrl: 'https://api.anthropic.com/' })).toBe('anthropic');
+    expect(matchingApiPreset({ apiProtocol: 'openai', apiBaseUrl: 'https://openrouter.ai/api/v1' })).toBe('openrouter');
+  });
+
+  it('does not match an endpoint spoken to in a different protocol from the preset', () => {
+    expect(matchingApiPreset({ apiProtocol: 'openai', apiBaseUrl: 'https://api.anthropic.com' })).toBe('');
+  });
+
+  it('has an id per preset, since the select keys on it', () => {
+    expect(new Set(AI_API_PRESETS.map((p) => p.id)).size).toBe(AI_API_PRESETS.length);
+  });
+
+  it('labels an Anthropic model as such in the list', () => {
+    const view = describeModel(
+      model({ source: { kind: 'api', protocol: 'anthropic', baseUrl: 'u', apiKey: 'k', model: 'claude-sonnet-5' } }),
+    );
+    expect(view.sourceLabel).toBe('Anthropic API');
   });
 });

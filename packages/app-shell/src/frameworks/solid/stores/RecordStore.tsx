@@ -22,28 +22,63 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import { datasetKey, type EntitySchema, HERE } from '@we/backend-shared';
-import { createBlocks } from '@we/block-shared';
+import {
+  datasetIdOf,
+  datasetKey,
+  datasetKindOf,
+  type EntitySchema,
+  formatRef,
+  HERE,
+  namePropertyOf,
+} from '@we/backend-shared';
+import { type ContentInput, copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { EdgeRoute, getEntity, Placement, PREDICATES, runEntityTransaction, TypeStyle } from '@we/entities';
+import {
+  CollectionBlock,
+  compressImageToFileData,
+  dataURIToFileData,
+  EdgeRoute,
+  getEntity,
+  getEntityForDataset,
+  Placement,
+  PREDICATES,
+  runEntityTransaction,
+  TypeStyle,
+} from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
+import { createHistory, type HistoryState } from '@we/history';
+import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
+import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
 import { hostSlot } from '../../../shared/hostSlot';
-import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
+import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
 import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
   asEntityName,
+  type CreationPath,
+  creationPath,
   emptyRecordDraft,
-  offeredForCreation,
+  entryLabel,
+  fieldsFor,
   type RecordDraft,
+  recordDraftChanged,
   recordDraftErrors,
   recordDraftFields,
+  type RecordField,
+  type RecordFieldValue,
+  type RelationEntry,
+  type RelationTargetAbilities,
+  withoutRelationEntry,
+  withPlace,
+  withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
-import { useDatasetStore } from './DatasetStore';
+import { isRank, seatInRow } from '../../../shared/treeOrder';
+import { type AppDataset, useDatasetStore } from './DatasetStore';
+import { useSessionStore } from './SessionStore';
 import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
 
 /** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */
@@ -52,6 +87,13 @@ export interface CreatableEntity {
   value: string;
   icon: string;
   group: string;
+  /** What this kind of thing is, in a line — the manifest's `description`, or the shape's. Empty when neither says. */
+  description: string;
+  /**
+   * How it is made. A surface that can only host a form — the record form's type selector — lists
+   * the `form` ones; a surface that can open the composer too (a canvas) lists them all.
+   */
+  via: CreationPath;
 }
 
 /** The two records a connection joins, exactly as the graph's `onEdgeCreate` reports them. */
@@ -69,15 +111,14 @@ export interface PendingLink {
 const RELATIONSHIP = 'Relationship';
 
 /**
- * Models that can be *shown* but never *made from a form* — see {@link displayableEntities}.
+ * Models that can be *shown* but are not content anybody creates from a picker — see
+ * {@link displayableEntities}. Every core block is shown as well, whether or not it can be made.
  *
- * `Relationship` is drawn between two things rather than filled in from a picker. `CollectionBlock`
- * is composed: a note, a post, a call record are documents, and a generated form over their fields
- * would be asking somebody to type a structural `type` and a `kind` label instead of writing
- * anything. Both are read constantly all the same — a line on a canvas is one, a sticky note is the
- * other — and clicking either is exactly the moment somebody wants to read it.
+ * `Relationship` is drawn between two things rather than filled in from a picker, and it is read
+ * constantly all the same: a line on a canvas is one, and clicking it is exactly the moment somebody
+ * wants to read it.
  */
-const DISPLAY_ONLY = [RELATIONSHIP, 'CollectionBlock'] as const;
+const DISPLAY_ONLY = [RELATIONSHIP] as const;
 
 /**
  * Write one placement, node reference included, inside whatever write group the caller is in.
@@ -104,6 +145,38 @@ async function createPlacement(
 }
 
 /**
+ * A connection between two records, written as ONE commit — answering with its id.
+ *
+ * Its ends go in as one-element arrays for the reason `createPlacement` gives: a plain value is
+ * skipped, and the generated `setSource`/`setTarget` each commit on their own. The line used to be
+ * made that way — create, then one end, then the other — which was three round trips before it could
+ * be drawn, and a moment in between where a peer could read a connection with one end or none.
+ */
+async function createConnection(
+  dataset: unknown,
+  fields: Record<string, unknown>,
+  sourceId: string,
+  targetId: string,
+): Promise<string> {
+  const created = (await getEntity(RELATIONSHIP).create(
+    dataset as never,
+    { ...fields, source: [sourceId], target: [targetId] } as never,
+  )) as { id?: string } | null;
+  return String(created?.id ?? '');
+}
+
+/**
+ * A stored placement, as this file reads one back.
+ *
+ * Loose beyond the three fields anything here names, because the interesting use is putting a
+ * *whole* placement back: undoing "take these cards off the canvas" has to restore the size, colour,
+ * shape and stacking they were wearing, and a type listing those by name would have to be extended
+ * every time a placement grows a field — which is precisely the day it would be forgotten and the
+ * undo would quietly restore a card stripped of its presentation.
+ */
+type PlacementRow = { id: string; node?: string; tier?: string } & Record<string, unknown>;
+
+/**
  * The placement a canvas draws for one node — the row a write to that card has to land on.
  *
  * Chosen by `resolvePlacement`, the canvas seed's own rule, rather than by `find`. Two people placing
@@ -120,12 +193,11 @@ async function drawnPlacement(
   dataset: unknown,
   parent: { id: string; predicate: string },
   nodeId: string,
-): Promise<{ id: string } | undefined> {
-  const existing = (await Placement.findAll(dataset as never, { parent } as Record<string, unknown>)) as {
-    id: string;
-    node?: string;
-    tier?: string;
-  }[];
+): Promise<PlacementRow | undefined> {
+  const existing = (await Placement.findAll(
+    dataset as never,
+    { parent } as Record<string, unknown>,
+  )) as unknown as PlacementRow[];
   const rows = existing.filter((row) => row.node === nodeId);
   const drawn = resolvePlacement(rows);
   if (!drawn) return undefined;
@@ -134,6 +206,23 @@ async function drawnPlacement(
   }
   return drawn;
 }
+
+/** Connections held ahead of the data — see `RecordStore.pendingConnections`. Record ids throughout. */
+export interface PendingConnectionWrites {
+  added: { key: string; source: string; target: string; data?: Record<string, string> }[];
+  moved: { id: string; end: 'source' | 'target'; to: string }[];
+  removed: string[];
+}
+
+/**
+ * Field patches waiting to be seen in a read, keyed by the record they were written to.
+ *
+ * The shape a DRAWER takes, which is all this is now: the holds themselves live per field in
+ * `@we/optimism` (a card's colour and its size are written by different gestures and settle at
+ * different times, so holding them together means one retires the other). This is assembled from
+ * them for the graph host, which draws a node from one patch.
+ */
+export type PendingWrites = Record<string, Record<string, unknown>>;
 
 export interface RecordStore {
   /**
@@ -237,8 +326,46 @@ export interface RecordStore {
   connectNodesNow: (link: PendingLink) => Promise<string>;
   /** Switch which model is being created, discarding the values typed against the last one. */
   setRecordEntity: (entity: string) => void;
-  /** Set one field's value. Takes the field name, so one action serves every control. */
-  setRecordField: (name: string, value: string | number | boolean) => void;
+  /**
+   * Set one field's value. Takes the field name, so one action serves every control — a file
+   * control's `File` included, which is read into the draft as the payload storage takes.
+   */
+  setRecordField: (name: string, value: unknown) => void;
+  /**
+   * Pin the draft's place — pass a `we-location-picker`'s `arg.detail`. Writes the latitude, longitude
+   * and address the draft asks for, and a name where nobody typed one.
+   */
+  setRecordPlace: (detail: unknown) => void;
+  /**
+   * The record being made inline for a relation field — an image for a sighting's `photo` — or null.
+   * Its non-nullness mounts the nested form, over the one it belongs to.
+   */
+  relationDraft: Accessor<RecordDraft | null>;
+  /** Validation errors from the nested form's last "Add". */
+  relationErrors: Accessor<string[]>;
+  /** Open the nested form on a relation field's target model. */
+  openRelationForm: (field: string) => void;
+  /** Set one field of the nested form. The same shape as `setRecordField`. */
+  setRelationField: (name: string, value: unknown) => void;
+  /**
+   * Add what the nested form holds to its relation field, and close it. Nothing is written yet: the
+   * record is made when the outer form saves, so abandoning the outer form leaves nothing behind.
+   */
+  saveRelationForm: () => void;
+  cancelRelationForm: () => void;
+  /** Point a relation field at an existing record, by id — what its picker's `onChange` passes. */
+  pickRelation: (field: string, id: unknown) => Promise<void>;
+  /** Take one entry off a relation field, by its `key`. */
+  removeRelationEntry: (field: string, key: string) => void;
+  /**
+   * Point a location relation at the place a `we-location-picker` reports — pass its `arg.detail`.
+   * The place is made when the form saves; its name follows the city unless one was typed.
+   */
+  setRelationLocation: (field: string, detail: unknown) => void;
+  /** Edit one field of a relation entry still to be made — the name or address under a picked place. */
+  setRelationEntryField: (field: string, key: string, name: string, value: unknown) => void;
+  /** Add a chosen, cropped image to an image relation — pass an `EditableImage`'s `onImageChange` event. */
+  addRelationImage: (field: string, file: unknown) => Promise<void>;
   /**
    * Which named kind the pending connection is, or empty for one carrying only a label.
    *
@@ -261,6 +388,28 @@ export interface RecordStore {
    */
   placeOnCanvas: (canvas: string, nodeId: string, nodeType: string, x: number, y: number) => Promise<void>;
   /**
+   * Write where a drag left a card — and everything a **folded** card carried with it.
+   *
+   * Takes the graph's `onNodeDragEnd` payload whole, the way `resizeOnCanvas` takes `onNodeResize`'s,
+   * which is what lets one action cover both cases: an ordinary card is `placeOnCanvas` spelt
+   * differently, and a fold is that plus a placement per card hidden under it.
+   *
+   * It exists because a schema cannot loop. The carried cards arrive as a list whose length nothing
+   * knows in advance, and `$action` calls a method once — so "place this, and each of those" has to
+   * be one call. Without it, carrying a fold into a corner and unfolding it there scatters the
+   * contents back to where they were, which makes a fold a way of hiding rather than of tidying.
+   */
+  dragOnCanvas: (
+    canvas: string,
+    payload: {
+      recordId?: string;
+      recordType?: string;
+      x: number;
+      y: number;
+      carried?: { recordId: string; recordType: string; x: number; y: number }[];
+    },
+  ) => Promise<void>;
+  /**
    * Put something dragged in from elsewhere onto a canvas, where it landed.
    *
    * Takes the graph's `onDrop` payload as it arrives, the way `resizeOnCanvas` takes `onNodeResize`'s.
@@ -271,8 +420,25 @@ export interface RecordStore {
    */
   dropOnCanvas: (
     canvas: string,
-    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
+    payload: {
+      entity: string;
+      id: string;
+      dataset?: string;
+      x: number;
+      y: number;
+      label?: string;
+      within?: BringInItem['within'];
+      preview?: BringInItem['preview'];
+    },
   ) => Promise<void>;
+  /**
+   * Take whatever a drop carried into the space on screen, as posts — the `dropped` event's detail
+   * straight from a `we-drop-zone` around a feed.
+   *
+   * A copy for the author's own things, a quote for anybody else's — see `shared/bringIn.ts`, which
+   * holds the table. Things already in this space are left alone. Each new post offers an undo.
+   */
+  bringIn: (payload: { items?: BringInItem[] } | undefined) => Promise<void>;
   /**
    * Change one property of one record, from a control bound to it.
    *
@@ -284,15 +450,74 @@ export interface RecordStore {
    */
   updateRecordField: (entity: string, id: string, field: string, value: unknown) => Promise<void>;
   /**
-   * Take a record off a canvas, leaving the record itself alone.
+   * Take a record — or a whole selection — off a canvas, leaving the records themselves alone.
    *
-   * Deleting the placement and nothing else — which is the whole payoff of placement being
+   * Deleting the placement and nothing else, which is the whole payoff of placement being
    * membership. Being on a canvas was never what made a record exist, so coming off one cannot be
    * what ends it: a task removed from a canvas is still owned by the call it came out of, and a card
    * the canvas owns survives as an unplaced one in the tray, where it can be dragged back or deleted
    * outright.
+   *
+   * Takes one id or a list of them; a selection is not a special case, and it is undoable.
+   *
+   * ## It is not "get this off my screen", and the difference is not visible from here
+   *
+   * This deletes the *placement*. Whether that removes the card depends on something this action
+   * cannot see: how the record got onto the canvas in the first place.
+   *
+   * - A record **placed** on a canvas it does not belong to — something dragged in from elsewhere in
+   *   the space — really does come off. This is the action for that.
+   * - A record the canvas **owns** does not. The canvas seed reads owned-but-unplaced records back
+   *   as *the tray* (see `canvas.ts`), so the card returns on the next read and the `manual` layout
+   *   parks it in the corner of the view. On the workshop's canvas, where almost every card is
+   *   extraction output owned by the call, that is every card: erasing one teleports it to the
+   *   top-left rather than removing it.
+   *
+   * So do **not** offer this as a general "remove" control beside a delete — it was, briefly, and it
+   * read as cards vanishing to somewhere nobody could find. A surface that can tell the two cases
+   * apart (the inspector knows the record) may reasonably offer it for the first.
    */
-  removeFromCanvas: (canvas: string, nodeId: string) => Promise<void>;
+  removeFromCanvas: (canvas: string, node: string | string[]) => Promise<void>;
+  /**
+   * Delete several records, for everyone in the space, asking **once**.
+   *
+   * Takes the graph's `onDeleteSelection` or `onSelectionAction` records as they arrive. The host
+   * raises its own confirmation, as it does for every destructive action a template can name, and
+   * that confirmation counts the list — a template looping `record.delete` instead would stack one
+   * dialog per card, which is why this exists.
+   *
+   * Irreversible, and outside the undo history on purpose: an AD4M delete drops the links, and a
+   * re-create earns a new id that nothing pointing at the old one would follow. That is also why it
+   * is safe to bind to the Delete key despite being irreversible — the host's dialog is in front of
+   * it, and there is no reversible neighbour to offer instead (see `removeFromCanvas`).
+   */
+  deleteRecords: (records: { recordId?: string; recordType?: string }[] | undefined) => Promise<void>;
+  /**
+   * Whether the canvas on screen has anything to undo or redo, and what — `{ canUndo, canRedo,
+   * undoLabel, redoLabel }`.
+   *
+   * Gate a control on `canUndo` rather than hiding it: a greyed key with a tooltip naming what it
+   * would put back says more about the state of the canvas than an absence does.
+   */
+  canvasHistory: Accessor<HistoryState>;
+  /**
+   * Put back the last thing this agent did to the arrangement of **this** canvas.
+   *
+   * Arrangement only — a move, a resize, a colour, a card taken off. It is replayed as a **new
+   * write** rather than as a rollback, so a peer's changes in between are not discarded, and a card
+   * a peer has moved since is skipped rather than dragged back out from under them. See
+   * `@we/history` for why that is the only honest shape on shared data.
+   *
+   * **The canvas is an argument rather than something the store is told about separately**, and
+   * that is the whole of the scoping. Undo is about what the reader can see, so replaying a move
+   * onto a canvas they navigated away from is the most confusing thing the key could do — and a
+   * separate "point the stack here" action is one a template can forget to wire, with no symptom
+   * until somebody switches canvas and presses the key. Passing it at the point of use cannot be
+   * forgotten, because there is nothing else to pass.
+   */
+  undoCanvas: (canvas: string) => Promise<void>;
+  /** Do again what `undoCanvas` put back, on the same terms and with the same argument. */
+  redoCanvas: (canvas: string) => Promise<void>;
   /**
    * Resize a card on a canvas. Takes the graph's `onNodeResize` payload as it arrives.
    *
@@ -331,14 +556,34 @@ export interface RecordStore {
    */
   retargetOnCanvas: (canvas: string, payload: unknown) => Promise<void>;
   /**
-   * Set one presentation property of one card on one canvas — colour, shape, content scale,
-   * rotation, stacking.
+   * Move a card to another place in a tree, from the graph's `onNodeArrange` payload.
+   *
+   * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy: there a drag writes a
+   * coordinate, and here it writes the structure the layout reads. `relationshipTypeId` says which kind
+   * of connection the tree follows — the community's own vocabulary, and the reader's current choice of
+   * spine, neither of which the store can know.
+   *
+   * Dropping a card ON another makes it a child of it; dropping it BESIDE one reorders it there, which
+   * writes a rank on the placement; dropping it in the unconnected area takes it out of its tree.
+   *
+   * Three things it refuses, each with a toast saying why: a drop that would put a card inside itself,
+   * a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is
+   * where that is explicit), and taking out a connection people have commented on or reacted to, since
+   * removing a parental claim means deleting the record and there is no reversible spelling of that.
+   */
+  arrangeOnTree: (canvas: string, relationshipTypeId: string, payload: unknown) => Promise<void>;
+  /**
+   * Set one presentation property of one card — or of a whole selection — on one canvas: colour,
+   * shape, content scale, rotation, stacking.
    *
    * Takes the property name, so one action serves every control, which is the only shape that works
-   * when a swatch, a picker and a slider all write to the same record. Nothing here touches the
-   * record being displayed: every one of these is undone by taking the card off the canvas.
+   * when a swatch, a picker and a slider all write to the same record. Takes one node id or a list
+   * of them, so a selection is not a special case. Nothing here touches the record being displayed.
+   *
+   * Undoable, and each card keeps its own baseline — so putting back a colour applied to nine cards
+   * restores nine different colours rather than one.
    */
-  setCardStyle: (canvas: string, nodeId: string, field: string, value: unknown) => Promise<void>;
+  setCardStyle: (canvas: string, node: string | string[], field: string, value: unknown) => Promise<void>;
   /**
    * Placement fields written but not yet read back, keyed by the placed record's id.
    *
@@ -364,6 +609,16 @@ export interface RecordStore {
    */
   confirmPending: (recordIds: readonly string[]) => void;
   /**
+   * Connections written and not yet seen come back — a line just drawn, one just deleted, an end just
+   * moved — in records, for the graph to draw ahead of the data. See `holdConnection`.
+   */
+  pendingConnections: Accessor<PendingConnectionWrites>;
+  /**
+   * What the graph is drawing from its own data, in records, so each pending connection can be judged
+   * against it and dropped once the data has caught up. Called by whoever draws on the store's behalf.
+   */
+  observeConnections: (connections: readonly { id: string; source: string; target: string }[]) => void;
+  /**
    * Show a presentation change without writing it — for a control that reports while it is moving.
    *
    * The half of `setCardStyle` that costs nothing: a slider emits continuously as it is dragged and
@@ -371,7 +626,7 @@ export interface RecordStore {
    * a size blind. So the drag previews and the release writes, and because both go through the same
    * pending map the card never jumps between them.
    */
-  previewCardStyle: (nodeId: string, field: string, value: unknown) => void;
+  previewCardStyle: (node: string | string[], field: string, value: unknown) => void;
   /**
    * Set the colour every card of one type is drawn in, on one canvas.
    *
@@ -426,30 +681,51 @@ const RecordStoreContext = createContext<RecordStore>();
 
 export function RecordStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
+  const session = useSessionStore();
   const shapeStore = useShapeStore();
 
   const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
   const [recordErrors, setRecordErrors] = createSignal<string[]>([]);
+  /*
+    Counts writes into a draft's fields, for whatever has to notice them.
+
+    A field is written in place (see `writeFieldValue`) so the control being typed into keeps its row
+    and its focus — which also means the draft signal never changes while somebody types. Anything
+    derived from the draft saw the form as it opened: `recordDraftDirty` stayed false through a whole
+    paragraph, so closing or going Back threw the work away without asking, while a location pin, which
+    replaces the draft, did ask. Reading this beside the draft is what makes the two agree.
+  */
+  const [draftEdits, setDraftEdits] = createSignal(0);
   const [savingRecord, setSavingRecord] = createSignal(false);
   const [lastCreatedId, setLastCreatedId] = createSignal('');
   const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
   const [pendingBoard, setPendingBoard] = createSignal('');
   const [relationshipKind, setKind] = createSignal('');
   const [pendingPoint, setPendingPoint] = createSignal<{ x: number; y: number } | null>(null);
+  const [relationDraft, setRelationDraft] = createSignal<RecordDraft | null>(null);
+  const [relationFieldName, setRelationFieldName] = createSignal('');
+  const [relationErrors, setRelationErrors] = createSignal<string[]>([]);
+  let entrySeq = 0;
 
   /**
-   * WE's own authorable models, read straight off the core manifest.
+   * WE's own content a person can make, read straight off the core manifest — every block there is a
+   * way to make, and how. See `creationPath`.
    *
-   * Derived rather than listed, so a model that gains an `authoring` declaration appears here with
-   * no second edit in a different package — the failure mode a hardcoded table has is that it is
-   * correct on the day it is written and silently stale afterwards.
+   * Derived rather than listed, so a block that gains a form appears here with no second edit in a
+   * different package — the failure mode a hardcoded table has is that it is correct on the day it is
+   * written and silently stale afterwards. And by declaration rather than by name: nothing that is not
+   * content needs a flag to stay out.
    */
   const coreEntities = createMemo<CreatableEntity[]>(() =>
     Object.entries(CORE_MANIFEST.entities)
-      // By declaration rather than by name — `Relationship` was the one name, and `RelationshipType`
-      // the one it missed. See `authoring.offered`.
-      .filter(([, entity]) => offeredForCreation(entity))
-      .map(([name]) => ({ label: modelLabel(name), value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Built in' }))
+      .flatMap(([name, entity]) => {
+        const via = creationPath(entity);
+        if (!via) return [];
+        const icon = BLOCK_ICONS[name] ?? 'cube';
+        return [
+          { label: modelLabel(name), value: name, icon, group: 'Built in', description: entity.description ?? '', via },
+        ];
+      })
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
 
@@ -463,6 +739,8 @@ export function RecordStoreProvider(props: ParentProps) {
         value: shape.name,
         icon: shape.icon || 'cube',
         group: 'This space',
+        description: shape.description ?? '',
+        via: 'form' as const,
       }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
@@ -479,14 +757,48 @@ export function RecordStoreProvider(props: ParentProps) {
    * of WE's own gets its own, which is the same precedence the graph host uses in reverse and for
    * the same reason — whichever is more local should win where the two can collide.
    */
-  function schemaFor(entity: string): { schema: EntitySchema; authorable: boolean; icon: string } | undefined {
+  function schemaFor(
+    entity: string,
+  ): { schema: EntitySchema; authorable: boolean; icon: string; label: string } | undefined {
     const shape = shapeStore.spaceShapes().find((row) => row.name === entity && row.manifest);
     const fromShape = shape?.manifest?.entities[entity];
-    if (fromShape) return { schema: fromShape, authorable: true, icon: shape?.icon || 'cube' };
+    if (fromShape) return { schema: fromShape, authorable: true, icon: shape?.icon || 'cube', label: entity };
 
     const core = CORE_MANIFEST.entities[entity];
-    if (core) return { schema: core, authorable: false, icon: BLOCK_ICONS[entity] ?? 'cube' };
+    if (core)
+      return { schema: core, authorable: false, icon: BLOCK_ICONS[entity] ?? 'cube', label: modelLabel(entity) };
     return undefined;
+  }
+
+  /**
+   * The class a record of `entity` is written through, in the dataset on screen.
+   *
+   * `getEntity` alone reads the global registry, which holds WE's own models and the modules'. A
+   * model a community defined is registered *per dataset* on AD4M — that is how two spaces can each
+   * have a `Sighting` — so saving one through this form failed with "Model "UfoSighting" not found in
+   * registry" while the model sat listed in the space's settings. The per-dataset lookup prefers the
+   * global class and falls back to the space's own, so every caller here goes through it.
+   */
+  function entityClass(entity: string, handle: unknown): ReturnType<typeof getEntity> {
+    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
+  }
+
+  /**
+   * What a relation field pointing at `target` may do.
+   *
+   * Make one when the target has a form of its own. Pick an existing one when the target is not a
+   * block: an image in a sighting belongs to that sighting, where the species it names is a record
+   * many sightings share.
+   */
+  function relationTarget(target: string): RelationTargetAbilities | undefined {
+    const found = schemaFor(target);
+    if (!found) return undefined;
+    return {
+      canCreate: fieldsFor(found.schema, found.authorable).length > 0,
+      canPick: !found.schema.blockable,
+      label: found.label,
+      inline: inlineEditorFor(target, found.schema),
+    };
   }
 
   /*
@@ -515,14 +827,24 @@ export function RecordStoreProvider(props: ParentProps) {
    * with its own icon and label, and a display derived from the community's shape is the one that
    * should win.
    */
-  const displayableEntities = createMemo<CreatableEntity[]>(() => {
+  const displayableEntities = createMemo<Omit<CreatableEntity, 'via' | 'description'>[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
-    const extra = DISPLAY_ONLY.filter((name) => !named.has(name) && CORE_MANIFEST.entities[name]).map((name) => ({
-      label: modelLabel(name),
-      value: name,
-      icon: BLOCK_ICONS[name] ?? 'cube',
-      group: 'Built in',
-    }));
+    /*
+      Every core block too, including the ones there is no way to make — a divider still appears in a
+      post, and a quote dropped on a canvas is an embed. The key and the inspector read a kind's name
+      and glyph from here.
+    */
+    const blocks = Object.entries(CORE_MANIFEST.entities)
+      .filter(([, entity]) => entity.blockable)
+      .map(([name]) => name);
+    const extra = [...new Set([...DISPLAY_ONLY, ...blocks])]
+      .filter((name) => !named.has(name) && CORE_MANIFEST.entities[name])
+      .map((name) => ({
+        label: modelLabel(name),
+        value: name,
+        icon: BLOCK_ICONS[name] ?? 'cube',
+        group: 'Built in',
+      }));
     return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
   });
 
@@ -572,10 +894,10 @@ export function RecordStoreProvider(props: ParentProps) {
       setKind('');
       setPendingPoint(null);
     });
-    // Opening on the first offered model rather than on an empty picker: in a space with one
+    // Opening on the first model with a form rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
-    // than a form with nothing in it.
-    const target = named || creatableEntities()[0]?.value;
+    // than a form with nothing in it. A composed one has no form to open on.
+    const target = named || creatableEntities().find((entity) => entity.via === 'form')?.value;
     if (target) setRecordEntity(target);
   }
 
@@ -587,10 +909,24 @@ export function RecordStoreProvider(props: ParentProps) {
       toastService.error(`No model named "${entity}" in this space.`);
       return;
     }
+    // A composed kind has no form to open — a note is written in the composer. Every picker that
+    // offers one opens that instead; this is the guard for one that did not.
+    if (!found.authorable && creationPath(found.schema) === 'composer') {
+      toastService.error(`A ${found.label.toLowerCase()} is written in the composer, not a form.`);
+      return;
+    }
     batch(() => {
       setRecordErrors([]);
       setRecordDraft(
-        emptyRecordDraft({ entity, schema: found.schema, authorable: found.authorable, icon: found.icon }),
+        emptyRecordDraft({
+          entity,
+          // The model's name as a person reads it — "Location", not `LocationBlock`.
+          label: found.label,
+          schema: found.schema,
+          authorable: found.authorable,
+          icon: found.icon,
+          relationTarget,
+        }),
       );
     });
   }
@@ -613,8 +949,279 @@ export function RecordStoreProvider(props: ParentProps) {
    * text is already in the DOM. The wizard needs `commitDraft` because its rows *do* derive things
    * from what is typed; this one has nothing to keep in step.
    */
-  function setRecordField(name: string, value: string | number | boolean): void {
-    writeFieldValue(recordDraft(), name, value);
+  function setRecordField(name: string, value: unknown): void {
+    writeInto(recordDraft, name, value);
+  }
+
+  function setRecordPlace(detail: unknown): void {
+    const current = recordDraft();
+    const next = current ? withPlace(current, detail) : null;
+    if (next) setRecordDraft(next);
+  }
+
+  /**
+   * Write a control's value into whichever draft it belongs to.
+   *
+   * A file control reports a `File` (or a list of one), which is read here into the payload the
+   * file-storage language takes — compressed first when it is a picture, as every other upload in
+   * WE is. Asynchronous, and written into the draft that is open when it finishes, so a form closed
+   * in the meantime is not written into. A file-backed model that also asks for a `name` has it
+   * filled from the file when nobody has typed one.
+   */
+  function writeInto(draft: Accessor<RecordDraft | null>, name: string, value: unknown): void {
+    const file = Array.isArray(value) ? value[0] : value;
+    if (typeof File === 'undefined' || !(file instanceof File)) {
+      writeFieldValue(draft(), name, value === null || value === undefined ? '' : (value as RecordFieldValue));
+      setDraftEdits((n) => n + 1);
+      return;
+    }
+    const opened = draft();
+    void readFile(file)
+      .then((payload) => {
+        if (draft() !== opened) return;
+        writeFieldValue(opened, name, payload);
+        setDraftEdits((n) => n + 1);
+        const named = opened?.fields.find((field) => field.name === 'name' && field.control === 'text');
+        if (named && typeof named.value === 'string' && !named.value.trim()) named.value = file.name;
+      })
+      .catch((error) => {
+        console.error('RecordStore: reading a file failed', error);
+        toastService.error('Could not read that file.');
+      });
+  }
+
+  async function readFile(file: File): Promise<RecordFieldValue> {
+    if (file.type.startsWith('image/')) return compressImageToFileData(file, file.name);
+    const uri = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    return dataURIToFileData(uri, file.name);
+  }
+
+  /**
+   * Whether a relation's target is better made where the relation is than in a form of its own.
+   *
+   * A place is picked on a map, and a picture is chosen and cropped — neither is a list of fields.
+   * The generic nested form asked for a location as two number boxes and showed nothing of an image
+   * once it was chosen. So those two targets get the controls WE already has for them, inline: the
+   * location picker (with its name and address beneath, as the profile page has) and the image
+   * editor with its cropper and a preview.
+   */
+  function inlineEditorFor(target: string, schema: EntitySchema): RelationTargetAbilities['inline'] {
+    if (target === 'LocationBlock') return 'location';
+    const properties = schema.properties;
+    const picture = imagePropertyOf(schema);
+    return picture && properties[picture]?.required ? 'image' : '';
+  }
+
+  /** The property that holds a target's picture — a file whose name reads as one. */
+  function imagePropertyOf(schema: EntitySchema): string {
+    return (
+      Object.keys(schema.properties).find(
+        (name) =>
+          schema.properties[name].format === 'file' &&
+          /image|avatar|photo|picture|thumbnail|cover|poster|src/i.test(name),
+      ) ?? ''
+    );
+  }
+
+  function setRelationLocation(field: string, detail: unknown): void {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    const current = recordDraft();
+    if (!relation || !found || !current || !detail || typeof detail !== 'object') return;
+    const picked = detail as Record<string, unknown>;
+    if (typeof picked.latitude !== 'number' || typeof picked.longitude !== 'number') return;
+
+    const existing = relation.many ? undefined : relation.entries[0];
+    // Only what the target declares: a picker reporting a field the model lacks is not a write.
+    const fields: Record<string, unknown> = { ...(existing?.fields ?? {}) };
+    for (const key of ['latitude', 'longitude', 'city', 'country', 'countryCode', 'address']) {
+      if (found.schema.properties[key] && picked[key] !== undefined) fields[key] = picked[key];
+    }
+    // A name the author typed survives moving the pin; otherwise the place names itself.
+    if (found.schema.properties.name && !(typeof fields.name === 'string' && fields.name.trim())) {
+      const named = picked.city ?? picked.address;
+      if (typeof named === 'string' && named) fields.name = named;
+    }
+    const label =
+      (typeof fields.name === 'string' && fields.name) ||
+      `${(picked.latitude as number).toFixed(4)}, ${(picked.longitude as number).toFixed(4)}`;
+    setRecordDraft(
+      withRelationEntry(current, field, {
+        key: existing?.key ?? `new-${++entrySeq}`,
+        label,
+        entity: relation.target,
+        fields,
+      }),
+    );
+  }
+
+  /**
+   * Edit one field of an entry still to be made — the name under a picked place.
+   *
+   * In place, as a typed form field is, so the input keeps focus; the chip's label follows the name.
+   */
+  function setRelationEntryField(field: string, key: string, name: string, value: unknown): void {
+    const entry = relationFieldOf(field)?.entries.find((candidate) => candidate.key === key);
+    if (!entry?.fields) return;
+    entry.fields[name] = value;
+    if (name === 'name' && typeof value === 'string' && value.trim()) entry.label = value.trim();
+  }
+
+  async function addRelationImage(field: string, file: unknown): Promise<void> {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    const property = found ? imagePropertyOf(found.schema) : '';
+    const picked = Array.isArray(file) ? file[0] : file;
+    if (!relation || !property || typeof File === 'undefined' || !(picked instanceof File)) return;
+    try {
+      const payload = (await readFile(picked)) as { data_base64: string; file_type: string; name: string };
+      const current = recordDraft();
+      if (!current) return;
+      setRecordDraft(
+        withRelationEntry(current, field, {
+          key: `new-${++entrySeq}`,
+          label: picked.name,
+          entity: relation.target,
+          fields: { [property]: payload },
+          preview: `data:${payload.file_type};base64,${payload.data_base64}`,
+        }),
+      );
+    } catch (error) {
+      console.error('RecordStore: reading an image failed', error);
+      toastService.error('Could not read that image.');
+    }
+  }
+
+  function relationFieldOf(name: string): RecordField | undefined {
+    return recordDraft()?.fields.find((field) => field.name === name && field.control === 'relation');
+  }
+
+  function openRelationForm(field: string): void {
+    const relation = relationFieldOf(field);
+    const found = relation ? schemaFor(relation.target) : undefined;
+    if (!relation || !found) return;
+    batch(() => {
+      setRelationErrors([]);
+      setRelationFieldName(field);
+      // No `relationTarget`: a nested form offers no relations of its own. One level is a form
+      // inside a form; two is a maze, and nothing a community models needs it to say what it means.
+      setRelationDraft(
+        emptyRecordDraft({
+          entity: relation.target,
+          label: relation.targetLabel,
+          schema: found.schema,
+          authorable: found.authorable,
+          icon: found.icon,
+        }),
+      );
+    });
+  }
+
+  function setRelationField(name: string, value: unknown): void {
+    writeInto(relationDraft, name, value);
+  }
+
+  function saveRelationForm(): void {
+    const nested = relationDraft();
+    const parent = recordDraft();
+    if (!nested || !parent) return;
+    const errors = recordDraftErrors(nested);
+    if (errors.length) {
+      setRelationErrors(errors);
+      return;
+    }
+    const found = schemaFor(nested.entity);
+    const entry: RelationEntry = {
+      key: `new-${++entrySeq}`,
+      label: entryLabel(nested, found ? namePropertyOf(found.schema) : '', nested.label),
+      entity: nested.entity,
+      fields: recordDraftFields(nested),
+    };
+    batch(() => {
+      setRecordDraft(withRelationEntry(parent, relationFieldName(), entry));
+      setRelationDraft(null);
+      setRelationErrors([]);
+    });
+  }
+
+  function cancelRelationForm(): void {
+    batch(() => {
+      setRelationDraft(null);
+      setRelationErrors([]);
+    });
+  }
+
+  async function pickRelation(field: string, id: unknown): Promise<void> {
+    const picked = asEntityName(id);
+    const relation = relationFieldOf(field);
+    const dataset = datasetStore.currentDataset();
+    if (!picked || !relation) return;
+    // Named as it is everywhere else, read off the record — a picker's `onChange` carries only the id.
+    let label = picked;
+    const found = schemaFor(relation.target);
+    const nameProperty = found ? namePropertyOf(found.schema) : '';
+    if (dataset && nameProperty) {
+      try {
+        const row = (await entityClass(relation.target, dataset.handle).findOne(dataset.handle, {
+          where: { id: picked },
+        })) as Record<string, unknown> | null;
+        const name = row?.[nameProperty];
+        if (typeof name === 'string' && name.trim()) label = name.trim();
+      } catch (error) {
+        console.warn('RecordStore: could not read the picked record for its name', error);
+      }
+    }
+    const current = recordDraft();
+    if (current)
+      setRecordDraft(withRelationEntry(current, field, { key: picked, id: picked, label, entity: relation.target }));
+  }
+
+  function removeRelationEntry(field: string, key: string): void {
+    const current = recordDraft();
+    if (current) setRecordDraft(withoutRelationEntry(current, field, key));
+  }
+
+  /**
+   * Point a saved record's relations at what the form chose — making the records that were filled in
+   * inline first. After the create because a relation in a create payload is skipped by the ORM.
+   *
+   * A to-many is written through the contract's `setRelation`. A to-one has no neutral write yet —
+   * the contract refuses to guess between "point at" and "membership" — so it goes through the
+   * instance's own accessor, the way a relationship's endpoints do above.
+   */
+  async function linkRelations(
+    draft: RecordDraft,
+    created: { id?: string } & Record<string, unknown>,
+    handle: unknown,
+  ): Promise<void> {
+    if (!created.id) return;
+    const Model = entityClass(draft.entity, handle);
+    for (const field of draft.fields) {
+      if (field.control !== 'relation' || !field.entries.length) continue;
+      const ids: string[] = [];
+      for (const entry of field.entries) {
+        if (entry.id) {
+          ids.push(entry.id);
+          continue;
+        }
+        const made = (await entityClass(entry.entity, handle).create(handle, entry.fields ?? {})) as { id?: string };
+        if (made?.id) ids.push(made.id);
+      }
+      if (!ids.length) continue;
+      if (field.many) {
+        await Model.setRelation(handle, created.id, field.name, ids);
+        continue;
+      }
+      const suffix = field.name.charAt(0).toUpperCase() + field.name.slice(1);
+      const setter = (created[`set${suffix}`] ?? created[`add${suffix}`]) as
+        ((id: string) => Promise<unknown>) | undefined;
+      if (setter) await setter.call(created, ids[0]);
+    }
   }
 
   /** Takes `unknown` for the reason `openRecordForm` does — a picker's event can arrive here. */
@@ -649,17 +1256,15 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !link?.sourceId || !link?.targetId) return '';
     try {
-      const created = (await getEntity(RELATIONSHIP).create(dataset.handle, {
-        sourceType: link.sourceType,
-        targetType: link.targetType,
-      })) as {
-        id?: string;
-        setSource?: (value: string) => Promise<unknown>;
-        setTarget?: (value: string) => Promise<unknown>;
-      };
-      await created.setSource?.(link.sourceId);
-      await created.setTarget?.(link.targetId);
-      const id = created?.id ?? '';
+      // Drawn from the moment of the gesture rather than a round trip later — see `holdConnection`.
+      const id = await withConnectionHold({ kind: 'added', source: link.sourceId, target: link.targetId }, () =>
+        createConnection(
+          dataset.handle,
+          { sourceType: link.sourceType, targetType: link.targetType },
+          link.sourceId,
+          link.targetId,
+        ),
+      );
       setLastCreatedId(id);
       return id;
     } catch (error) {
@@ -681,6 +1286,8 @@ export function RecordStoreProvider(props: ParentProps) {
    */
   const recordDraftDirty = createMemo(() => {
     const draft = recordDraft();
+    // Tracked, not used: a field written in place changes nothing the memo would otherwise see.
+    draftEdits();
     if (!draft) return false;
     /*
       Changed from what it started as — not "holds something".
@@ -693,16 +1300,14 @@ export function RecordStoreProvider(props: ParentProps) {
       Strings are trimmed on both sides so typing a space and deleting it is not work; other kinds
       compare directly, since a boolean or a number is only ever set deliberately.
     */
-    return draft.fields.some((f) =>
-      typeof f.value === 'string' && typeof f.initial === 'string'
-        ? f.value.trim() !== f.initial.trim()
-        : f.value !== f.initial,
-    );
+    return recordDraftChanged(draft);
   });
 
   function cancelRecordForm(): void {
     batch(() => {
       setRecordDraft(null);
+      setRelationDraft(null);
+      setRelationErrors([]);
       setRecordErrors([]);
       setPendingLink(null);
       setPendingBoard('');
@@ -766,37 +1371,735 @@ export function RecordStoreProvider(props: ParentProps) {
    * the space: the parent link is what makes a placement belong to a canvas, so asking the canvas is
    * both cheaper and the only phrasing that stays correct when the same record sits on two.
    */
-  async function placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): Promise<void> {
+  /**
+   * One card moved, with the coordinate it had before — which is what makes the move undoable.
+   *
+   * The baseline costs nothing. This is a read-then-write already (a card dragged twice must not
+   * leave two placements), so the value an undo would put back is in hand at the moment of writing
+   * and no extra round trip is paid for keeping it.
+   *
+   * `expect` is the concurrency guard, and it is *here* rather than in `@we/history` because this is
+   * the only place that reads the current value. An undo says "put it back, if it is still where I
+   * left it"; a peer who has moved the card since means the answer is no, and the press does nothing
+   * rather than teleporting the card out from under them. Folding the check into the write is what
+   * keeps an undo one round trip instead of two.
+   *
+   * Answers with the move it made, or null when it made none.
+   */
+  async function writePlacement(
+    canvas: string,
+    nodeId: string,
+    nodeType: string,
+    x: number,
+    y: number,
+    expect?: { x: number; y: number } | null,
+  ): Promise<{ from: { x: number; y: number } | null; to: { x: number; y: number } } | null> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !nodeId) return;
+    if (!dataset || !canvas || !nodeId) return null;
     const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
 
+    /*
+      Held before the read, not after it.
+
+      The whole value of this on an undo is that the card moves on the keystroke; holding after the
+      read would put a round trip in front of the very thing the hold exists to hide. Dropped again
+      below if the guard refuses or the write fails, so the only cost of being eager is that a
+      refused undo shows the card moving and coming back — which is the honest drawing of what
+      happened.
+    */
+    hold(nodeId, { x, y });
     try {
       const already = await drawnPlacement(dataset.handle, parent, nodeId);
-      if (already) {
-        await Placement.update(dataset.handle, already.id, { x, y });
+      const from = already ? { x: Number(already.x) || 0, y: Number(already.y) || 0 } : null;
+
+      if (expect !== undefined) {
+        const matches = expect === null ? already === undefined : from !== null && sameSpot(from, expect);
+        if (!matches) {
+          drop(nodeId, { x, y });
+          return null;
+        }
+      }
+
+      if (already) await Placement.update(dataset.handle, already.id, { x, y });
+      else await createPlacement(dataset.handle, parent, nodeId, nodeType, { x, y });
+      done(nodeId, { x, y });
+      return { from, to: { x, y } };
+    } catch (error) {
+      drop(nodeId, { x, y });
+      console.error('RecordStore: placing a record on a canvas failed', error);
+      toastService.error('Could not save that position.');
+      return null;
+    }
+  }
+
+  async function placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): Promise<void> {
+    const moved = await writePlacement(canvas, nodeId, nodeType, x, y);
+    if (moved) rememberMoves(canvas, [{ recordId: nodeId, recordType: nodeType, ...moved }]);
+  }
+
+  /**
+   * One drag, written: every card that travelled, and whatever a fold was holding.
+   *
+   * Sequential rather than in parallel, and that is deliberate. Each placement is a read-then-write
+   * against the same canvas's children, so issuing them together would have every one of them read
+   * the state before any of the others wrote — which is exactly how a canvas ends up with two
+   * placements for one card. A drag holds a handful of cards, so the cost is a handful of round
+   * trips on a gesture that happens when somebody lets go of a mouse.
+   *
+   * A carried card whose write fails leaves the rest where they were dropped and that card where it
+   * was; `writePlacement` says so once per failure. Better than the alternative of unwinding the
+   * lot, which would move cards back out from under the reader's cursor.
+   *
+   * **One history entry for the whole gesture.** Twelve cards dragged as one have to come back as
+   * one press — a stack that recorded them separately would need twelve, which is not undo, it is
+   * counting.
+   */
+  async function dragOnCanvas(
+    canvas: string,
+    payload: {
+      recordId?: string;
+      recordType?: string;
+      x: number;
+      y: number;
+      carried?: { recordId: string; recordType: string; x: number; y: number }[];
+    },
+  ): Promise<void> {
+    if (!payload?.recordId || !payload.recordType) return;
+    const cards = [
+      { recordId: payload.recordId, recordType: payload.recordType, x: payload.x, y: payload.y },
+      ...(payload.carried ?? []).filter((card) => card?.recordId && card.recordType),
+    ];
+
+    const moves: CardMove[] = [];
+    for (const card of cards) {
+      const moved = await writePlacement(canvas, card.recordId, card.recordType, card.x, card.y);
+      if (moved) moves.push({ recordId: card.recordId, recordType: card.recordType, ...moved });
+    }
+    rememberMoves(canvas, moves);
+  }
+
+  /** A connection of the spine kind, as this file reads one back. */
+  interface SpineLink {
+    id: string;
+    source?: string;
+    target?: string;
+    /** The parent's entity name, which a new connection beside this one needs and cannot derive. */
+    sourceType?: string;
+  }
+
+  /**
+   * Every connection of one community-named kind.
+   *
+   * One query rather than three. An arrange has to know the card's own parent, its prospective
+   * parent's children, and where the target sits among them — and asking separately is three round
+   * trips on a gesture that happens when somebody lets go of a mouse.
+   */
+  async function spineLinks(handle: unknown, relationshipTypeId: string): Promise<SpineLink[]> {
+    const rows = (await getEntity(RELATIONSHIP).findAll(
+      handle as never,
+      {
+        where: { relationshipTypeId },
+      } as never,
+    )) as unknown as SpineLink[];
+    return rows.filter((row) => row && typeof row.id === 'string');
+  }
+
+  /**
+   * Whether `candidate` is `card` itself or somewhere under it, walking up the spine.
+   *
+   * The one check the gesture cannot make. `arrange-nodes` reports geometry, and whether one card is
+   * inside another is a question about which relation the hierarchy is — which only this knows. The
+   * `seen` set is not defensive: the connections are shared, last-write-wins data, so a loop is a
+   * state the space can genuinely be in and a walk without one would hang the tab.
+   */
+  function isUnder(candidate: string, card: string, parentOf: Map<string, SpineLink>): boolean {
+    const seen = new Set<string>();
+    let at: string | undefined = candidate;
+    while (at && !seen.has(at)) {
+      if (at === card) return true;
+      seen.add(at);
+      at = parentOf.get(at)?.source;
+    }
+    return false;
+  }
+
+  /**
+   * Take a card out of its tree, unless that would throw away something somebody said.
+   *
+   * Removing the claim means deleting the record, and a deleted record's links go with it: re-creating
+   * one earns a new id that nothing pointing at the old one can follow. So the line is drawn at whether
+   * anything would be lost — and where nothing would, an undo re-creating the connection loses nothing
+   * either, which is why a tree drop that detached a card can still be taken back.
+   *
+   * A connection is a `WeNode`, so it carries comments and reactions — an argument about the very claim
+   * being rearranged — and one that carries either is refused, with a toast naming the reason and the way
+   * to do it deliberately. A connection nobody has said anything about is deleted, which is the
+   * overwhelmingly common case and exactly what the gesture means. The workshop's tree tells its gesture
+   * the same rule, so the preview refuses before the drop rather than this after it.
+   */
+  async function detachSpine(handle: unknown, linkId: string): Promise<boolean> {
+    const Model = getEntity(RELATIONSHIP);
+    const row = (await Model.findOne(
+      handle as never,
+      {
+        where: { id: linkId },
+        include: { $comments: { from: 'comments', count: true }, $signals: { from: 'signals', count: true } },
+      } as never,
+    )) as unknown as { $comments?: number; $signals?: number } | null;
+    if (!row) return false;
+
+    if (Number(row.$comments ?? 0) > 0 || Number(row.$signals ?? 0) > 0) {
+      toastService.info('People have discussed that connection. Select the line itself to remove it.');
+      return false;
+    }
+    await withConnectionHold({ kind: 'removed', id: linkId }, () => Model.delete(handle as never, linkId));
+    return true;
+  }
+
+  /**
+   * A new connection of the spine kind, from `parent` to `card` — answering with its id.
+   *
+   * Written here rather than through `connectNodesNow`, which mints a connection carrying no kind at all —
+   * right for a line somebody draws and then labels, and wrong for this: a connection that is not of the
+   * spine kind is invisible to the tree it was just dragged into, so the card would snap straight back to
+   * the unconnected zone.
+   */
+  async function createSpine(
+    handle: unknown,
+    relationshipTypeId: string,
+    parent: { id: string; type: string },
+    card: { id: string; type: string },
+    /*
+      Whether to draw the new line ahead of the write. Not for a drop: the graph is already drawing that
+      one from the card it is holding, and a second promise between the same two cards would be drawn
+      beside it. An undo or a redo has nobody holding anything, so it holds its own.
+    */
+    hold = true,
+  ): Promise<string> {
+    const write = () =>
+      createConnection(
+        handle,
+        { relationshipTypeId, sourceType: parent.type, targetType: card.type },
+        parent.id,
+        card.id,
+      );
+    if (!hold) return write();
+    return withConnectionHold(
+      {
+        kind: 'added',
+        source: parent.id,
+        target: card.id,
+        ...(relationshipTypeId ? { data: { relationshipTypeId } } : {}),
+      },
+      write,
+    );
+  }
+
+  /**
+   * What a tree drop did to the spine, for an undo to put back.
+   *
+   * `link` is the connection concerned, and changes on a replay that re-creates it — a re-created
+   * connection is a new record, so the entry keeps up with it rather than holding an id nothing answers to.
+   */
+  type TreeStep =
+    | { kind: 'moved'; link: string; from: { id: string; type: string }; to: { id: string; type: string } }
+    | { kind: 'created'; link: string; parent: { id: string; type: string } }
+    | { kind: 'detached'; link: string; parent: { id: string; type: string } }
+    | { kind: 'none' };
+
+  /**
+   * Record a tree drop as one undoable act: the change to the spine, and the ranks it wrote.
+   *
+   * Each replay reads the spine first and applies its half only if the card's connection is still where
+   * this entry left it. `HistoryEntry.stale` cannot ask — it is synchronous, and the spine is a query — so
+   * the check is made inside, and a card a peer has moved since is left where they put it rather than
+   * pulled back. The ranks go through `stylePlacement` with what they are expected to hold, which makes the
+   * same check for each card.
+   */
+  function rememberTreeDrop(
+    canvas: string,
+    handle: unknown,
+    relationshipTypeId: string,
+    card: { id: string; type: string },
+    step: TreeStep,
+    ranks: StyleChange[],
+  ): void {
+    if (!canvas || (step.kind === 'none' && !ranks.length)) return;
+    const connection = async () =>
+      (await spineLinks(handle, relationshipTypeId)).find((link) => link.target === card.id);
+    const retarget = (link: string, to: { id: string; type: string }) =>
+      retargetOnCanvas(canvas, {
+        recordId: link,
+        recordType: RELATIONSHIP,
+        end: 'source',
+        nodeId: to.id,
+        nodeType: to.type,
+      });
+    history.push({
+      scope: canvas,
+      label: step.kind === 'detached' ? 'take card out of tree' : 'move card in tree',
+      undo: async () => {
+        const now = await connection();
+        if (step.kind === 'moved' && now?.id === step.link && now.source === step.to.id)
+          await retarget(step.link, step.from);
+        if (step.kind === 'created' && now?.id === step.link && now.source === step.parent.id) {
+          await detachSpine(handle, step.link);
+        }
+        if (step.kind === 'detached' && !now)
+          step.link = await createSpine(handle, relationshipTypeId, step.parent, card);
+        for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.before, change.after);
+      },
+      redo: async () => {
+        const now = await connection();
+        if (step.kind === 'moved' && now?.id === step.link && now.source === step.from.id)
+          await retarget(step.link, step.to);
+        if (step.kind === 'created' && !now)
+          step.link = await createSpine(handle, relationshipTypeId, step.parent, card);
+        if (step.kind === 'detached' && now?.id === step.link && now.source === step.parent.id) {
+          await detachSpine(handle, step.link);
+        }
+        for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.after, change.before);
+      },
+    });
+  }
+
+  /**
+   * Drag a card to another place in a tree, and write what that meant.
+   *
+   * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy. There the position *is*
+   * the data, so a drag writes a coordinate; here the layout derives the position, so a drag writes
+   * the structure the layout reads. `relationshipTypeId` says which kind of connection the tree
+   * follows, which the store cannot know: what makes a parent a parent is the community's own
+   * vocabulary and the reader's current choice of spine.
+   *
+   * ## Reparenting moves the connection rather than replacing it
+   *
+   * A card already under a parent keeps the same `Relationship`, with its source moved — which is
+   * exactly what `retargetOnCanvas` does when somebody drags a connection's end, and it is what keeps
+   * whatever has been said about the connection rather than deleting an argument about the very claim
+   * being rearranged.
+   *
+   * The cost, stated because it is real: the record keeps its original author, so the claim now reads
+   * as that person having connected two things, one of which they did not choose. That is the tradeoff
+   * dragging a connection's end already makes here, and the alternative loses the thread.
+   *
+   * ## Reordering beside a root is not a detach
+   *
+   * Dropping a card beside a tree's own root would make it a root too, which means taking it out of
+   * its tree — and that is the one thing a drop must not do as a side effect. It is refused, with a
+   * toast pointing at the unconnected zone, where the same act is explicit.
+   */
+  async function arrangeOnTree(canvas: string, relationshipTypeId: string, payload: unknown): Promise<void> {
+    const event = (payload ?? {}) as {
+      recordId?: string;
+      recordType?: string;
+      into?: 'child' | 'sibling' | 'loose';
+      targetId?: string;
+      targetType?: string;
+      before?: boolean;
+      order?: string[];
+    };
+    const dataset = datasetStore.currentDataset();
+    /*
+      `relationshipTypeId` may be empty, and that is an answer rather than a missing argument: the tree is
+      following every kind of connection, so this follows every kind too and mints a kindless one where it
+      has to create a parent. A connection with no kind is what the canvas's own connect gesture already
+      writes, and the layout draws it like any other — so refusing here would make the two disagree about
+      what the tree is, which is what the toast about the unconnected area was really reporting.
+    */
+    if (!dataset || !canvas || !event.recordId || !event.recordType) return;
+    if (event.into !== 'loose' && !event.targetId) return;
+    // A card dropped on itself is a gesture that went nowhere, not a claim about anything.
+    if (event.targetId === event.recordId) return;
+
+    const handle = dataset.handle;
+    const cardId = event.recordId;
+
+    try {
+      const links = await spineLinks(handle, relationshipTypeId);
+      const parentOf = new Map<string, SpineLink>();
+      const childrenOf = new Map<string, string[]>();
+      for (const link of links) {
+        if (typeof link.source !== 'string' || typeof link.target !== 'string') continue;
+        parentOf.set(link.target, link);
+        (childrenOf.get(link.source) ?? childrenOf.set(link.source, []).get(link.source)!).push(link.target);
+      }
+
+      const card = { id: cardId, type: event.recordType };
+      if (event.into === 'loose') {
+        const held = parentOf.get(cardId);
+        // A card dragged around the zone it is already in has nothing to write.
+        if (held?.source && (await detachSpine(handle, held.id))) {
+          const parent = { id: held.source, type: held.sourceType ?? '' };
+          rememberTreeDrop(canvas, handle, relationshipTypeId, card, { kind: 'detached', link: held.id, parent }, []);
+        }
         return;
       }
 
-      await createPlacement(dataset.handle, parent, nodeId, nodeType, { x, y });
+      const targetId = event.targetId!;
+      const parentId = event.into === 'child' ? targetId : (parentOf.get(targetId)?.source ?? '');
+      if (!parentId) {
+        toastService.info('Drop a card in the unconnected area to take it out of its tree.');
+        return;
+      }
+      if (parentId === cardId) return;
+      if (isUnder(parentId, cardId, parentOf)) {
+        toastService.info('That would put a card inside itself.');
+        return;
+      }
+
+      /** The parent's entity name — named by the drop for a `child`, and read off the spine otherwise. */
+      const parentType = event.into === 'child' ? (event.targetType ?? '') : (parentOf.get(targetId)?.sourceType ?? '');
+
+      const held = parentOf.get(cardId);
+      const parent = { id: parentId, type: parentType };
+      let step: TreeStep = { kind: 'none' };
+      if (held) {
+        if (held.source !== parentId) {
+          // Where it was, read before the write that moves it.
+          const from = { id: held.source ?? '', type: held.sourceType ?? '' };
+          await retargetOnCanvas(canvas, {
+            recordId: held.id,
+            recordType: RELATIONSHIP,
+            end: 'source',
+            nodeId: parentId,
+            nodeType: parentType,
+          });
+          step = { kind: 'moved', link: held.id, from, to: parent };
+        }
+      } else {
+        step = { kind: 'created', link: await createSpine(handle, relationshipTypeId, parent, card, false), parent };
+      }
+
+      const placements = (await Placement.findAll(handle, {
+        parent: { id: canvas, predicate: PREDICATES.CHILDREN },
+      } as Record<string, unknown>)) as unknown as { node?: string; rank?: number }[];
+      const rankOf = new Map<string, number>();
+      for (const row of placements) {
+        const rank = Number(row.rank);
+        if (typeof row.node === 'string' && isRank(rank)) rankOf.set(row.node, rank);
+      }
+      const siblings = (childrenOf.get(parentId) ?? []).filter((id) => id !== cardId);
+
+      /*
+        The row as the reader saw the card land in it, when the drop says — see `order` on the event.
+
+        Taken from the drop rather than worked out again here, because the two orders are made by different
+        rules wherever the data leaves a choice: the tree puts cards nobody has ranked after the ranked ones
+        and in the order they were made, and nothing in this store knows when that was. Ordered here instead,
+        a row nobody had arranged was written in some other order than the one on screen — which the tree
+        then showed, a moment after showing the drop. Only the parent's real children are kept, and any the
+        drop did not mention follow, so a stale or partial order cannot write a rank onto a stranger.
+      */
+      const byRank = (a: string, b: string) => {
+        const [one, two] = [rankOf.get(a), rankOf.get(b)];
+        if (one !== undefined && two !== undefined) return one - two || a.localeCompare(b);
+        return one !== undefined ? -1 : two !== undefined ? 1 : a.localeCompare(b);
+      };
+      const shown = event.order?.filter((id) => id === cardId || siblings.includes(id));
+      let row: string[];
+      let index: number;
+      if (shown?.includes(cardId)) {
+        const seen = shown.filter((id) => id !== cardId);
+        row = [...seen, ...siblings.filter((id) => !seen.includes(id)).sort(byRank)];
+        index = shown.indexOf(cardId);
+      } else {
+        // No order said: a drop ON a parent goes last, one BESIDE a sibling goes on the side it named.
+        row = [...siblings].sort(byRank);
+        const beside = row.indexOf(targetId);
+        index = event.into === 'child' || beside < 0 ? row.length : beside + (event.before ? 0 : 1);
+      }
+
+      const writes = seatInRow(
+        row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
+        cardId,
+        index,
+      );
+      /*
+        Every rank held before any is written, so the tree reads the whole new order at once. Written one by
+        one, a row being renumbered would pass through each half-written order on its way, and would take a
+        round trip per card to get there.
+      */
+      for (const [id, rank] of writes) hold(id, { rank });
+      for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
+      rememberTreeDrop(
+        canvas,
+        handle,
+        relationshipTypeId,
+        card,
+        step,
+        [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: rankOf.get(nodeId) ?? 0 }, after: { rank } })),
+      );
     } catch (error) {
-      console.error('RecordStore: placing a record on a canvas failed', error);
-      toastService.error('Could not save that position.');
+      console.error('RecordStore: arranging a card in a tree failed', error);
+      toastService.error('Could not move that card.');
     }
   }
 
   /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
   const CARD_STYLE_FIELDS = ['width', 'height', 'contentScale', 'rotation', 'z', 'color', 'cardShape'] as const;
 
-  const [pendingCardStyle, setPendingCardStyle] = createSignal<PendingWrites>({});
+  /*
+    A card's presentation, held per FIELD rather than per record.
 
-  const hold = (nodeId: string, patch: Record<string, unknown>) =>
-    setPendingCardStyle((current) => holdPending(current, nodeId, patch));
-  const drop = (nodeId: string) => setPendingCardStyle((current) => dropPending(current, nodeId));
+    A card's colour and its size are written by different gestures that land at different times, so
+    holding them together means one settling retires the other — the key is `<nodeId>\0<field>`, and
+    each answers for itself. The patch-per-record shape survives only as {@link pendingCardStyle},
+    which is what the graph host draws from.
+  */
+  const cardStyle = createOptimism<unknown>(createSignal, { same: sameValue });
 
+  const hold = (nodeId: string, patch: Record<string, unknown>) => {
+    for (const [field, value] of Object.entries(patch)) cardStyle.hold(keyOf(nodeId, field), value);
+  };
+  const done = (nodeId: string, patch: Record<string, unknown>) => {
+    for (const field of Object.keys(patch)) cardStyle.done(keyOf(nodeId, field));
+  };
+  const drop = (nodeId: string, patch?: Record<string, unknown>) => {
+    const fields = patch ? Object.keys(patch) : fieldsHeldFor(nodeId);
+    for (const field of fields) cardStyle.release(keyOf(nodeId, field));
+  };
+
+  const fieldsHeldFor = (nodeId: string): string[] =>
+    Object.keys(cardStyle.holds())
+      .filter((key) => key.startsWith(`${nodeId}\u0000`))
+      .map((key) => key.slice(nodeId.length + 1));
+
+  // ─── Undo, for a canvas ──────────────────────────────────────────────────────
+
+  /**
+   * What this agent has done to the canvas on screen, so it can be put back.
+   *
+   * Scoped to one canvas and cleared when that changes — see `@we/history` for why undo on shared,
+   * last-write-wins data is a stack of forward writes rather than a set of snapshots, and why it is
+   * private to this agent rather than shared with the space.
+   *
+   * **Arrangement only.** A move, a resize, a colour, a card taken off the canvas: all of these are
+   * scalar upserts on a `Placement`, which the write path already reads before it writes, so the
+   * value an undo needs is in hand for nothing. Deleting a *record* is not here and will not be —
+   * an AD4M delete drops the links, a re-create earns a new id, and everything pointing at the old
+   * one breaks silently. `deleteRecords` says as much in the host's own confirmation.
+   */
+  const history = createHistory(createSignal);
+
+  /** One card's move, with where it came from — `from` is null for a card that was not on the canvas. */
+  type CardMove = {
+    recordId: string;
+    recordType: string;
+    from: { x: number; y: number } | null;
+    to: { x: number; y: number };
+  };
+
+  /**
+   * Two coordinates within a pixel of each other.
+   *
+   * Exact equality is the wrong test against a value that has been through a float, a JSON encode
+   * and a peer: a card that came back as 400.00000000000006 is a card nobody moved, and an undo
+   * that refused because of it would be refusing for a reason no person could see.
+   */
+  const sameSpot = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1;
+
+  /**
+   * Whether a stored presentation value is the one a replay expects to find.
+   *
+   * Normalised the same way `stylePlacement` records a baseline, because the two have to agree: a
+   * field that holds nothing is recorded as the value the canvas seed reads as *absent* — the
+   * sentinel for text, `0` for a number — so a redo expecting "it was unset" has to match a row
+   * where the field is genuinely missing.
+   *
+   * Numbers compare with a pixel of tolerance, for the reason `sameSpot` does: a width that came
+   * back as 300.00000000000006 is a width nobody changed, and refusing on that is refusing for a
+   * reason no person could see.
+   */
+  const sameStored = (held: unknown, want: unknown): boolean => {
+    const normalised = held === undefined || held === '' ? (typeof want === 'number' ? 0 : PLACEMENT_UNSET) : held;
+    if (typeof want === 'number' && typeof normalised === 'number') return Math.abs(want - normalised) < 1;
+    return String(normalised) === String(want);
+  };
+
+  /** Replay a set of moves in one direction, skipping any card a peer has moved since. */
+  async function replayMoves(canvas: string, moves: CardMove[], direction: 'undo' | 'redo'): Promise<void> {
+    for (const move of moves) {
+      const [expect, at] = direction === 'undo' ? [move.to, move.from] : [move.from, move.to];
+      // A card that was not on the canvas before goes back to not being on it — the undo of
+      // "something was dropped here" is not a placement at the origin.
+      if (at) await writePlacement(canvas, move.recordId, move.recordType, at.x, at.y, expect);
+      else await clearPlacement(canvas, move.recordId, expect ?? undefined);
+    }
+  }
+
+  /**
+   * Record a gesture's moves as one undoable act.
+   *
+   * One entry however many cards moved: twelve dragged together have to come back on one press.
+   * Nothing is recorded for a gesture that moved nothing, so a drag the data refused does not leave
+   * an entry whose undo would do nothing either.
+   */
+  /** One card's presentation before and after a gesture — what an undo of it replays. */
+  type StyleChange = { nodeId: string; before: Record<string, unknown>; after: Record<string, unknown> };
+
+  /**
+   * Record a presentation gesture as one undoable act.
+   *
+   * Shared by every write that lands on a placement's *look* rather than its position — a colour, a
+   * shape, a content scale, a resize — so each of them is undoable by existing rather than by
+   * remembering to say so. `resizeOnCanvas` was the one that had not.
+   */
+  function rememberStyle(canvas: string, changes: StyleChange[], label: string): void {
+    if (!canvas || !changes.length) return;
+    history.push({
+      scope: canvas,
+      label,
+      undo: async () => {
+        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.before, change.after);
+      },
+      redo: async () => {
+        for (const change of changes) await stylePlacement(canvas, change.nodeId, change.after, change.before);
+      },
+    });
+  }
+
+  function rememberMoves(canvas: string, moves: CardMove[]): void {
+    if (!canvas || !moves.length) return;
+    history.push({
+      scope: canvas,
+      label: moves.length > 1 ? `move ${moves.length} cards` : 'move card',
+      undo: () => replayMoves(canvas, moves, 'undo'),
+      redo: () => replayMoves(canvas, moves, 'redo'),
+    });
+  }
+
+  /** The holds a drawer takes: record → field → value, with anything expired already gone. */
+  const pendingCardStyle: Accessor<PendingWrites> = () => {
+    const out: PendingWrites = {};
+    for (const key of Object.keys(cardStyle.holds())) {
+      const split = key.indexOf('\u0000');
+      const nodeId = key.slice(0, split);
+      const field = key.slice(split + 1);
+      // `toDraw` needs what the data says, and the caller here has no view of it — passing the held
+      // value asks only "is this still live", which is the backstop and the in-flight rule.
+      const held = cardStyle.holds()[key];
+      const live = cardStyle.toDraw(key, held.before ?? held.value);
+      if (live === undefined) continue;
+      out[nodeId] = { ...out[nodeId], [field]: live };
+    }
+    return out;
+  };
+
+  /*
+    What the graph reports is AGREEMENT — the records whose own data already says what was written —
+    because that comparison happens in the graph's own field space, where both halves are mapped
+    already. So a reported record is one whose observed value equals the held one, which is the rule
+    the core drops an entry on.
+
+    What is not reported, and so is not covered, is a peer moving a card's colour to a THIRD value:
+    the graph never says "this disagrees", only "this agrees". Such a hold stands until the backstop
+    rather than retiring on the push that overtook it. That is exactly what it did before, so nothing
+    regresses — but it is the one place the canvas is still short of what the board and involvements
+    get, and closing it means the graph reporting observed values rather than a verdict.
+  */
   function confirmPending(recordIds: readonly string[]): void {
-    if (!Object.keys(pendingCardStyle()).length) return;
-    setPendingCardStyle((current) => dropAllPending(current, recordIds));
+    if (!cardStyle.inFlight()) return;
+    const agreed = new Set(recordIds);
+    cardStyle.settle((key, entry) => (agreed.has(key.slice(0, key.indexOf('\u0000'))) ? entry.value : undefined));
+  }
+
+  // ─── Connections written and not yet seen ────────────────────────────────────
+
+  /*
+    A connection is a record like any other, and every gesture that makes, moves or deletes one waited a
+    round trip for the line to change — the line somebody drew appeared a second later, the one they
+    deleted lingered, the end they moved snapped back first. Held here and drawn at once, on the same
+    rules as every other hold in the app (`@we/optimism`): kept until the data has moved, released on a
+    failed write, disbelieved after the backstop.
+
+    What each hold draws, and what it waits to see, is kept beside the value — the optimism package holds
+    one comparable value per key, and a line needs its two ends to be drawn at all:
+    - **added** — a line between two records. Waits for the connection's own id to appear, which it
+      learns when the create returns; until then there is nothing to recognise it by, and the write is
+      still in flight anyway, so the hold stands regardless.
+    - **moved** — one end re-attached. Waits for the connection to say the new end.
+    - **removed** — a connection being deleted. Waits for it to be gone.
+  */
+  type ConnectionHold =
+    | { kind: 'added'; source: string; target: string; id?: string; data?: Record<string, string> }
+    | { kind: 'moved'; id: string; end: 'source' | 'target'; to: string }
+    | { kind: 'removed'; id: string };
+  const connections = createOptimism<string | number>(createSignal, { same: sameValue });
+  const connectionHolds = new Map<string, ConnectionHold>();
+  let addedSerial = 0;
+
+  /** Draw this connection change from now on; answers the key its write reports back under. */
+  function holdConnection(change: ConnectionHold): string {
+    const key =
+      change.kind === 'added'
+        ? keyOf('added', String(++addedSerial))
+        : change.kind === 'moved'
+          ? keyOf('moved', change.id, change.end)
+          : keyOf('removed', change.id);
+    connectionHolds.set(key, change);
+    connections.hold(key, change.kind === 'moved' ? change.to : change.kind === 'added' ? 1 : 0);
+    return key;
+  }
+
+  const pendingConnections = createMemo((): PendingConnectionWrites => {
+    const held = connections.holds();
+    const out: PendingConnectionWrites = { added: [], moved: [], removed: [] };
+    const now = Date.now();
+    for (const [key, entry] of Object.entries(held)) {
+      const change = connectionHolds.get(key);
+      if (!change || now - entry.at > DEFAULT_TTL_MS) continue;
+      if (change.kind === 'added') {
+        out.added.push({
+          key,
+          source: change.source,
+          target: change.target,
+          ...(change.data ? { data: change.data } : {}),
+        });
+      } else if (change.kind === 'moved') {
+        out.moved.push({ id: change.id, end: change.end, to: change.to });
+      } else {
+        out.removed.push(change.id);
+      }
+    }
+    return out;
+  });
+
+  function observeConnections(drawn: readonly { id: string; source: string; target: string }[]): void {
+    if (!connections.inFlight()) return;
+    const byId = new Map(drawn.map((line) => [line.id, line]));
+    connections.settle((key) => {
+      const change = connectionHolds.get(key);
+      if (!change) return undefined;
+      if (change.kind === 'added') return change.id ? (byId.has(change.id) ? 1 : 0) : undefined;
+      if (change.kind === 'removed') return byId.has(change.id) ? 1 : 0;
+      return byId.get(change.id)?.[change.end];
+    });
+    // What the holder let go of needs nothing kept about what it drew.
+    const live = connections.holds();
+    for (const key of [...connectionHolds.keys()]) if (!(key in live)) connectionHolds.delete(key);
+  }
+
+  /**
+   * Hold a connection change around the write that makes it: drawn at once, released if the write fails,
+   * and otherwise left for the data to overtake. `write` answers the new connection's id for an added
+   * line, so the hold knows what to wait for.
+   */
+  async function withConnectionHold<T>(change: ConnectionHold, write: () => Promise<T>): Promise<T> {
+    const key = holdConnection(change);
+    try {
+      const result = await write();
+      if (change.kind === 'added' && typeof result === 'string') {
+        if (result) change.id = result;
+        else connections.release(key);
+      }
+      connections.done(key);
+      return result;
+    } catch (error) {
+      connections.release(key);
+      throw error;
+    }
   }
 
   /**
@@ -806,24 +2109,72 @@ export function RecordStoreProvider(props: ParentProps) {
    * the tray, and a placement minted here would have to invent a position — putting the card at the
    * canvas's origin as a side effect of choosing a colour.
    */
-  async function stylePlacement(canvas: string, nodeId: string, patch: Record<string, unknown>): Promise<void> {
+  async function stylePlacement(
+    canvas: string,
+    nodeId: string,
+    patch: Record<string, unknown>,
+    expect?: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | undefined> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !nodeId || !Object.keys(patch).length) return;
+    if (!dataset || !canvas || !nodeId || !Object.keys(patch).length) return undefined;
     // Before the write, not after it: the point is that the card changes on the gesture rather than
     // on the round trip. Dropped again below if the write turns out not to be possible.
     hold(nodeId, patch);
     try {
       const already = await drawnPlacement(dataset.handle, { id: canvas, predicate: PREDICATES.CHILDREN }, nodeId);
       if (!already) {
-        drop(nodeId);
+        drop(nodeId, patch);
         toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
-        return;
+        return undefined;
       }
+      /*
+        What every field in the patch held before, read off the row this write is about to land on —
+        the baseline an undo puts back, costing nothing because the read has already happened.
+
+        **All of them, not the first.** A resize writes a width, a height and both coordinates as one
+        act, and a baseline that carried only the width could put back a card of the right size in
+        the wrong place.
+
+        A field that held nothing goes back as the value the canvas seed reads as *absent*, because
+        undoing "give these cards a colour" has to be able to say "back to no colour of its own" —
+        and an empty string is exactly what `Ad4mModel`'s update skips, so it cannot be stored. For
+        text that is `PLACEMENT_UNSET`; for a number it is `0`, which `placementStyle` drops the same
+        way.
+      */
+      const before = Object.fromEntries(
+        Object.keys(patch).map((field) => {
+          const held = already[field];
+          if (held !== undefined && held !== '') return [field, held];
+          return [field, typeof patch[field] === 'number' ? 0 : PLACEMENT_UNSET];
+        }),
+      );
+
+      /*
+        The concurrency guard, and the same bargain `writePlacement` strikes for a position.
+
+        A replay says "put this back, if it is still what I left"; a peer who has recoloured the
+        card since means the answer is no, and the press leaves their colour alone rather than
+        overwriting it. Only a *replay* passes `expect` — a fresh gesture is somebody deciding now,
+        and deciding now beats whatever was there.
+
+        All or nothing per card, because a resize writes four fields as one act: putting half of it
+        back would leave a card at the old size in the new place.
+      */
+      if (expect && !Object.entries(expect).every(([field, want]) => sameStored(already[field], want))) {
+        drop(nodeId, patch);
+        return undefined;
+      }
+
       await Placement.update(dataset.handle, already.id, patch);
+      // The write is back, so the hold stops being exempt from what the next draw says — see
+      // `BoardDeps.done` for why that is not the same as releasing it.
+      done(nodeId, patch);
+      return before;
     } catch (error) {
-      drop(nodeId);
+      drop(nodeId, patch);
       console.error('RecordStore: styling a card on a canvas failed', error);
       toastService.error('Could not save that.');
+      return undefined;
     }
   }
 
@@ -926,13 +2277,18 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !event.recordId || !event.end || !event.nodeId || !event.nodeType) return;
 
+    // The end drawn at its new card from now, not when the write comes back — see `holdConnection`.
+    const held = holdConnection({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
     try {
       const Model = getEntity(event.recordType || RELATIONSHIP);
       const record = (await Model.findOne(dataset.handle, { where: { id: event.recordId } })) as Record<
         string,
         unknown
       > | null;
-      if (!record) return;
+      if (!record) {
+        connections.release(held);
+        return;
+      }
 
       await Model.update(dataset.handle, event.recordId, {
         [event.end === 'source' ? 'sourceType' : 'targetType']: event.nodeType,
@@ -955,7 +2311,9 @@ export function RecordStoreProvider(props: ParentProps) {
       // The anchor for the end that moved, dropped — see the note above. Reusing the same action a
       // person's own clear goes through, so there is one path that knows how to unset one.
       if (canvas) await anchorOnCanvas(canvas, { recordId: event.recordId, end: event.end, side: '' });
+      connections.done(held);
     } catch (error) {
+      connections.release(held);
       console.error('RecordStore: re-attaching a connection failed', error);
       toastService.error('Could not move that connection.');
     }
@@ -1005,12 +2363,16 @@ export function RecordStoreProvider(props: ParentProps) {
     // Position travels with the size. Resizing from one edge anchors the other, and a card drawn
     // from its centre has to move that centre to hold an edge still — so writing only the size would
     // slide the card sideways by half the change every time.
-    await stylePlacement(canvas, event.recordId, {
+    const after = {
       width: Math.round(event.width),
       height: Math.round(event.height),
       ...(typeof event.x === 'number' ? { x: Math.round(event.x) } : {}),
       ...(typeof event.y === 'number' ? { y: Math.round(event.y) } : {}),
-    });
+    };
+    const before = await stylePlacement(canvas, event.recordId, after);
+    // Undoable like every other placement write. It was not, which is the sort of gap that only
+    // shows up as "undo does not cover the thing I just did" — the four fields go back together.
+    if (before) rememberStyle(canvas, [{ nodeId: event.recordId, before, after }], 'resize card');
   }
 
   /**
@@ -1036,16 +2398,40 @@ export function RecordStoreProvider(props: ParentProps) {
     return typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
   }
 
-  function previewCardStyle(nodeId: string, field: string, value: unknown): void {
-    const scalar = cardStyleValue(field, value);
-    if (scalar === undefined || !nodeId) return;
-    hold(nodeId, { [field]: scalar });
-  }
-
-  async function setCardStyle(canvas: string, nodeId: string, field: string, value: unknown): Promise<void> {
+  function previewCardStyle(node: string | string[], field: string, value: unknown): void {
     const scalar = cardStyleValue(field, value);
     if (scalar === undefined) return;
-    await stylePlacement(canvas, nodeId, { [field]: scalar });
+    for (const nodeId of (Array.isArray(node) ? node : [node]).filter(Boolean)) {
+      // A preview, not a write — nothing is coming back for it, so counting one would leave the hold
+      // exempt from judgement until the backstop. See `preview` in `@we/optimism`.
+      cardStyle.preview(keyOf(nodeId, field), scalar);
+    }
+  }
+
+  /**
+   * Set one presentation property on one card — or on a whole selection.
+   *
+   * A list rather than a second action named for the plural, the same choice `removeFromCanvas`
+   * makes: one card is not a special case of several, and a template holding a selection should not
+   * have to find a different action to hand it to.
+   *
+   * One history entry for the gesture, holding each card's own previous value — so undoing a colour
+   * applied to nine cards puts nine different colours back rather than one.
+   */
+  async function setCardStyle(canvas: string, node: string | string[], field: string, value: unknown): Promise<void> {
+    const scalar = cardStyleValue(field, value);
+    if (scalar === undefined) return;
+    const nodeIds = (Array.isArray(node) ? node : [node]).filter(Boolean);
+    if (!nodeIds.length) return;
+
+    const after = { [field]: scalar };
+    const changed: StyleChange[] = [];
+    for (const nodeId of nodeIds) {
+      const before = await stylePlacement(canvas, nodeId, after);
+      // `undefined` is a write that did not happen — an unplaced card, or one the write failed for.
+      if (before) changed.push({ nodeId, before, after });
+    }
+    rememberStyle(canvas, changed, changed.length > 1 ? `restyle ${changed.length} cards` : 'restyle card');
   }
 
   async function setTypeColor(canvas: string, nodeType: string, color: unknown): Promise<void> {
@@ -1091,14 +2477,111 @@ export function RecordStoreProvider(props: ParentProps) {
     const here = datasetKey({ cid: dataset.sharedUri, uuid: dataset.id });
     const from = payload.dataset ?? '';
     if (from && from !== HERE && from !== here) {
-      toastService.error('Only things from this space can be put on its canvas.');
+      /*
+        Something from elsewhere becomes a post here first — a copy or a quote, the rule every drop
+        into a space follows — and that post is what goes on the canvas. A canvas can only draw this
+        space's records, and placing a coordinate for a record in another dataset drew nothing.
+
+        A single block is brought in *alone* — a copy of the picture, or a lone embed — and belongs to
+        the canvas the way a card composed on it does. A post holding one picture was a card around
+        nothing. A whole post or note still arrives as a post.
+      */
+      const brought = await bringOne(
+        { ...payload, ref: { entity: payload.entity, id: payload.id, dataset: from } },
+        { canvas },
+      );
+      /*
+        `writePlacement` rather than `placeOnCanvas`, so this leaves no undo entry.
+
+        Bringing something in from another space *creates* a record here, and the canvas history is
+        arrangement only — an entry for it would undo by removing the placement, which leaves the new
+        record behind, loose and usually parked back in the corner by the tray. The act already has
+        its own way back: `bringOne` raises a toast with Undo that deletes what it made.
+      */
+      if (brought) await writePlacement(canvas, brought.id, brought.entity, payload.x, payload.y);
       return;
     }
     if (!schemaFor(payload.entity)) {
       toastService.error('That is not something a canvas can hold.');
       return;
     }
+    // A record that is already in this space is only being *placed*, which is an arrangement act
+    // like a drag — so it is undoable, and undoing it takes the card off the canvas again.
     await placeOnCanvas(canvas, payload.id, payload.entity, payload.x, payload.y);
+  }
+
+  /** The dataset a reference's key names, if this agent holds it. */
+  function heldDataset(key: string): AppDataset | undefined {
+    const id = datasetIdOf(key);
+    if (datasetKindOf(key) === 'personal') return datasetStore.datasets().find((d) => d.id === id);
+    return datasetStore.datasets().find((d) => d.sharedId === id || d.sharedUri === `neighbourhood://${id}`);
+  }
+
+  /**
+   * One dropped thing into the space on screen, with its undo and its announcement.
+   *
+   * The decision is `shared/bringIn.ts`; this is the store's half — reading and writing through the
+   * datasets it holds, and telling modules, since a note shared by dragging is shared as surely as
+   * one shared with the button.
+   */
+  async function bringOne(item: BringInItem, into: { canvas?: string } = {}): Promise<BroughtIn | null> {
+    const here = datasetStore.currentDataset();
+    if (!here) return null;
+    const hereKey = datasetKey({ cid: here.sharedUri, uuid: here.id });
+    try {
+      const result = await decideBringIn(
+        item,
+        {
+          hereKey,
+          me: session.me()?.did,
+          held: (key) => {
+            const ds = heldDataset(key);
+            return ds ? { handle: ds.handle, name: ds.name } : null;
+          },
+          readPost: async (handle, id) => {
+            const post = await CollectionBlock.findOne(handle as never, { where: { id } });
+            return post ? { author: post.author, editorState: post.editorState } : null;
+          },
+          copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
+          write: async (blocks, fields) => {
+            const root = await createBlocks(here.handle, blocks as ContentInput, { kind: 'post', fields });
+            return root?.id ? { id: root.id } : null;
+          },
+          // Owned by the canvas, as a card composed on it is — deleting the canvas takes it.
+          writeBlock: into.canvas
+            ? async (block) =>
+                (await createBlock(here.handle, block, {
+                  anchor: { id: into.canvas!, predicate: PREDICATES.CHILDREN },
+                })) ?? null
+            : undefined,
+        },
+        { alone: !!into.canvas },
+      );
+      if (!result) return null;
+
+      // Posts only: a block written alone is not a post that arrived, and a note's share is the note.
+      if (result.entity === 'CollectionBlock') {
+        const to = formatRef({ datasetKey: hereKey, entity: 'CollectionBlock', id: result.id });
+        notifyCopiedIn({ from: result.from, to, mode: result.mode, spaceName: here.name });
+      }
+      const message =
+        result.mode === 'quote' ? 'Quoted here' : result.entity === 'CollectionBlock' ? 'Posted here' : 'Added here';
+      toastService.success(message, 8000, {
+        label: 'Undo',
+        run: () => void deleteBlocks(here.handle, result.id).catch(() => toastService.error('Could not undo that.')),
+      });
+      return result;
+    } catch (error) {
+      console.error('RecordStore: bringing something into the space failed', error);
+      toastService.error('Could not add that here.');
+      return null;
+    }
+  }
+
+  async function bringIn(payload: { items?: BringInItem[] } | undefined): Promise<void> {
+    for (const item of payload?.items ?? []) {
+      if (item?.ref?.entity && item.ref.id) await bringOne(item);
+    }
   }
 
   async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {
@@ -1113,7 +2596,7 @@ export function RecordStoreProvider(props: ParentProps) {
     else if (raw !== null && raw !== undefined && typeof raw !== 'string') next = String(raw);
     if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
     try {
-      await getEntity(entity).update(dataset.handle, id, { [field]: next });
+      await entityClass(entity, dataset.handle).update(dataset.handle, id, { [field]: next });
     } catch (error) {
       console.error('RecordStore: updating a record field failed', error);
       toastService.error('Could not save that change.');
@@ -1156,21 +2639,162 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
-  async function removeFromCanvas(canvas: string, nodeId: string): Promise<void> {
+  /**
+   * Take one card off a canvas, answering with everything it was wearing.
+   *
+   * The whole row rather than its coordinate, because the undo has to put the card back as it was —
+   * its size, colour, shape and stacking live on the placement too, and a restore that returned a
+   * card to the right spot stripped of its presentation is a worse outcome than not offering the
+   * undo at all.
+   *
+   * `expect` refuses where the card has moved since, the same guard `writePlacement` carries.
+   */
+  async function clearPlacement(
+    canvas: string,
+    nodeId: string,
+    expect?: { x: number; y: number },
+  ): Promise<PlacementRow | null> {
     const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !nodeId) return;
+    if (!dataset || !canvas || !nodeId) return null;
     try {
       const existing = (await Placement.findAll(dataset.handle, {
         parent: { id: canvas, predicate: PREDICATES.CHILDREN },
-      } as Record<string, unknown>)) as { id: string; node?: string }[];
+      } as Record<string, unknown>)) as unknown as PlacementRow[];
+      const rows = existing.filter((placement) => placement.node === nodeId);
+      if (!rows.length) return null;
+
+      const drawn = resolvePlacement(rows) ?? rows[0];
+      if (expect && !sameSpot({ x: Number(drawn.x) || 0, y: Number(drawn.y) || 0 }, expect)) return null;
+
       // Every placement for this node, not the first: a duplicate should not survive the removal and
       // silently put the thing back on the canvas at the next refresh.
-      for (const row of existing.filter((placement) => placement.node === nodeId)) {
-        await Placement.delete(dataset.handle, row.id);
-      }
+      for (const row of rows) await Placement.delete(dataset.handle, row.id);
+      return drawn;
     } catch (error) {
       console.error('RecordStore: removing a record from a canvas failed', error);
       toastService.error('Could not remove that.');
+      return null;
+    }
+  }
+
+  /**
+   * Put a card back exactly as it came off — position, size, colour, shape, stacking.
+   *
+   * Built from the row `clearPlacement` answered with, minus the two fields that identify the row
+   * rather than describe it. A fresh record, so it carries a new id: nothing points at a placement,
+   * so there is nothing for that to break — which is exactly why *this* is reversible where deleting
+   * a record is not.
+   */
+  async function restorePlacement(canvas: string, nodeId: string, row: PlacementRow): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
+    const { id: _id, node: _node, ...fields } = row;
+    try {
+      /*
+        Not if somebody has already put it back.
+
+        The guard the other replays make, in the only shape this one can take: there is no stored
+        value to compare against, so the question is whether a placement exists at all. A peer who
+        dragged the card back on has a position of their own, and a second placement beside it would
+        be two rows disagreeing about where the card is.
+      */
+      if (await drawnPlacement(dataset.handle, parent, nodeId)) return;
+      await Placement.create(dataset.handle as never, { ...fields, node: [nodeId] } as never, { parent } as never);
+    } catch (error) {
+      console.error('RecordStore: putting a card back on a canvas failed', error);
+      toastService.error('Could not put that back.');
+    }
+  }
+
+  /**
+   * Take a card — or a whole selection — off a canvas, leaving the records themselves alone.
+   *
+   * One action for one and for many rather than a second named for the plural: the argument is the
+   * only thing that differs, a selection of one is not a special case, and a template that has a
+   * list in hand should not have to find a different action to pass it to.
+   *
+   * Reversible, and deliberately the thing the Delete key does. Tidying a canvas is what a
+   * rubber-band selection is nearly always for, and "remove these from here" is a decision about an
+   * arrangement that somebody can take back — where deleting the records is a decision about a
+   * community's content that nobody can.
+   */
+  async function removeFromCanvas(canvas: string, node: string | string[]): Promise<void> {
+    const nodeIds = (Array.isArray(node) ? node : [node]).filter(Boolean);
+    if (!canvas || !nodeIds.length) return;
+
+    const removed: { nodeId: string; row: PlacementRow }[] = [];
+    for (const nodeId of nodeIds) {
+      const row = await clearPlacement(canvas, nodeId);
+      if (row) removed.push({ nodeId, row });
+    }
+    if (!removed.length) return;
+
+    history.push({
+      scope: canvas,
+      label: removed.length > 1 ? `remove ${removed.length} cards` : 'remove card',
+      undo: async () => {
+        for (const { nodeId, row } of removed) await restorePlacement(canvas, nodeId, row);
+      },
+      redo: async () => {
+        // Where the undo put it back, so a card a peer has since moved is left where they put it.
+        for (const { nodeId, row } of removed) {
+          await clearPlacement(canvas, nodeId, { x: Number(row.x) || 0, y: Number(row.y) || 0 });
+        }
+      },
+    });
+  }
+
+  /**
+   * Delete several records, for everyone, as one act.
+   *
+   * The whole reason this exists rather than a template looping `record.delete`: the host's
+   * confirmation is modal and phrased per record, so a loop stacks one dialog per card. This is
+   * marked `destructive` like any other delete, so the host raises **one** question — and
+   * `describeDestructive` counts what is in the list, which is the number somebody about to answer
+   * it actually needs.
+   *
+   * **Not undoable, and deliberately outside the history.** An AD4M delete removes the links; a
+   * re-create earns a new id, so every relation pointing at the old record breaks with nothing to
+   * say it did. Taking a card *off a canvas* is the reversible neighbour of this and is what the
+   * Delete key does; this is the one a person has to ask for.
+   *
+   * One write group, so a canvas of peers sees the set go at once rather than thinning out over a
+   * second — and so a failure part-way leaves nothing half-done.
+   */
+  async function deleteRecords(records: { recordId?: string; recordType?: string }[] | undefined): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    const rows = (records ?? []).filter((row) => row?.recordId && row.recordType);
+    if (!dataset || !rows.length) return;
+
+    // Connections among them stop being drawn now rather than when the delete comes back.
+    const held = rows
+      .filter((row) => row.recordType === RELATIONSHIP)
+      .map((row) => holdConnection({ kind: 'removed', id: row.recordId! }));
+    try {
+      await runEntityTransaction(dataset.handle, async (tx) => {
+        for (const row of rows) {
+          const Model = entityClass(row.recordType!, dataset.handle);
+          if (!Model) continue;
+          const found = (await Model.findOne(dataset.handle as never, { where: { id: row.recordId } } as never)) as
+            { delete?: (batch?: string) => Promise<unknown> } | undefined;
+          await found?.delete?.(tx.batchId);
+        }
+      });
+      /*
+        Anything undone-able that mentioned these is now a lie.
+
+        A move entry naming a record that no longer exists would replay into nothing — or worse,
+        write a placement for a deleted record and put a card nobody can open back on the canvas. The
+        cheap, correct answer is to forget the arrangement history rather than to filter it: a delete
+        is rare, and a lost undo stack is a smaller surprise than an undo that resurrects a ghost.
+      */
+      history.clear();
+      for (const key of held) connections.done(key);
+    } catch (error) {
+      for (const key of held) connections.release(key);
+      console.error('RecordStore: deleting records failed', error);
+      toastService.error('Could not delete those.');
     }
   }
 
@@ -1187,7 +2811,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     setSavingRecord(true);
     try {
-      const Model = getEntity(draft.entity);
+      const Model = entityClass(draft.entity, dataset.handle);
       const link = pendingLink();
       /*
         The endpoint *types* go in with the fields; the endpoints themselves are linked after.
@@ -1232,6 +2856,18 @@ export function RecordStoreProvider(props: ParentProps) {
       }
 
       /*
+        The relations, once the record exists — and reported separately if they fail, because by then
+        the record *has* been made. Leaving the form open on an error here would invite saving it again
+        and making a second one.
+      */
+      try {
+        await linkRelations(draft, created as { id?: string } & Record<string, unknown>, dataset.handle);
+      } catch (error) {
+        console.error('RecordStore: attaching related records failed', error);
+        toastService.error(`${draft.label} created, but what was attached to it could not be saved.`);
+      }
+
+      /*
         Placed only where somebody chose a point, and after the record exists.
 
         After, because a placement points at something and placing first would leave a coordinate for
@@ -1240,7 +2876,9 @@ export function RecordStoreProvider(props: ParentProps) {
         instead dressed "nobody said" up as an answer, and put the card at the world origin.
       */
       const at = pendingPoint();
-      if (canvas && at && created?.id) await placeOnCanvas(canvas, created.id, draft.entity, at.x, at.y);
+      // No undo entry, for `dropOnCanvas`'s reason: this is a record being *made*, and undoing it by
+      // unplacing would leave the new record behind rather than putting anything back.
+      if (canvas && at && created?.id) await writePlacement(canvas, created.id, draft.entity, at.x, at.y);
 
       batch(() => {
         setLastCreatedId(created?.id ?? '');
@@ -1279,21 +2917,55 @@ export function RecordStoreProvider(props: ParentProps) {
     createOnCanvas,
     createCardOnCanvas,
     placeOnCanvas,
+    dragOnCanvas,
     removeFromCanvas,
+    deleteRecords,
+    canvasHistory: history.state,
+    /*
+      Scoped on the way in, every time.
+
+      A canvas passes its own id with the press, so the stack cannot be replaying somewhere the
+      reader has left — and `scopeTo` is idempotent, so the overwhelmingly common case (pressing
+      undo twice on the same canvas) costs a string comparison.
+    */
+    undoCanvas: async (canvas: string) => {
+      history.scopeTo(canvas);
+      await history.undo();
+    },
+    redoCanvas: async (canvas: string) => {
+      history.scopeTo(canvas);
+      await history.redo();
+    },
     pendingCardStyle,
     confirmPending,
+    pendingConnections,
+    observeConnections,
     previewCardStyle,
     resizeOnCanvas,
     anchorOnCanvas,
     rerouteOnCanvas,
     retargetOnCanvas,
+    arrangeOnTree,
     setCardStyle,
     setTypeColor,
     setSpaceTypeColor,
     dropOnCanvas,
+    bringIn,
     updateRecordField,
     setRecordEntity,
     setRecordField,
+    setRecordPlace,
+    relationDraft,
+    relationErrors,
+    openRelationForm,
+    setRelationField,
+    saveRelationForm,
+    cancelRelationForm,
+    pickRelation,
+    removeRelationEntry,
+    setRelationLocation,
+    setRelationEntryField,
+    addRelationImage,
     relationshipKind,
     setRelationshipKind,
     cancelRecordForm,

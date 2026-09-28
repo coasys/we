@@ -31,6 +31,25 @@ import type { EntitySchema } from '@we/backend-shared';
  */
 export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
   comments: { target: '', cardinality: 'many', predicate: 'we://comment' },
+  /**
+   * What this node is a comment on — `comments` read backwards.
+   *
+   * The first relation here that a node does not own: the link lives on the parent, and this reads
+   * it from the other end. It earns its place because a thread cannot be drawn without it. Asking
+   * for every descendant of a post answers with a flat bag of replies, since the traversal that
+   * found them reports only its endpoints — so the shape has to come from each reply naming its
+   * own parent, and one batched query answers that for a whole page of them.
+   *
+   * Untyped for the same reason `comments` is, and the inverse of a heterogeneous relation is
+   * heterogeneous in both directions: whatever was linked is whatever somebody linked. A reply's
+   * parent is a post, a task or another reply.
+   *
+   * To-one because a comment is written under one thing. Nothing stops a peer writing a second
+   * `we://comment` link at the same target — a neighbourhood is writable by every member — and the
+   * read then picks one. That is the ordinary last-write-wins shape of every scalar here, not a
+   * case this relation is special in.
+   */
+  inReplyTo: { target: '', cardinality: 'one', predicate: 'we://comment', reverseOf: 'comments' },
   signals: { target: 'Signal', cardinality: 'many', predicate: 'we://signal' },
   participants: { target: '', cardinality: 'many', predicate: 'we://participants', polymorphic: false },
   calls: { target: '', cardinality: 'many', predicate: 'we://call' },

@@ -38,4 +38,9 @@ export interface WeNodeRecord
   participants: string[];
   calls: string[];
   mentions: string[];
+  /**
+   * The node this one is a comment on, when it is one. Read-only: the link belongs to the parent,
+   * so this side gets no accessors — `addComments` on the parent is how it is written.
+   */
+  inReplyTo?: string;
 }

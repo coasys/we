@@ -8,7 +8,7 @@
  * hops, on both agents, with timestamps.
  *
  * A sink rather than `console.log` because the packages that need to emit are backend-agnostic and
- * DOM-free: `presence.ts` is consumed by a Node CLI, and the AD4M adapter has no business deciding
+ * DOM-free: `presence.ts` is consumed by a Node CLI, and a backend adapter has no business deciding
  * what a log line looks like. The host installs a sink and picks the switch — see
  * `installConsoleTrace` in the app shell.
  */

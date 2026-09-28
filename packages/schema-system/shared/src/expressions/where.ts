@@ -14,8 +14,11 @@
  *   { field: { startsWith: 'x' } }   — anchored, case-sensitive
  *   { field: { endsWith: 'x' } }     — anchored, case-sensitive
  *   { field: { exists: true } }      — non-null presence
+ *   { field: { gte: a, lt: b } }     — a range: numbers numerically, strings (ISO dates) as text
  *   { OR: [ … ] } / { AND: [ … ] } / { NOT: { … } }
  */
+import { RANGE_OPS, rangeCompare } from '@we/backend-shared';
+
 export function matchesWhere(item: unknown, where: Record<string, unknown>): boolean {
   const record = item as Record<string, unknown> | null | undefined;
 
@@ -51,6 +54,11 @@ export function matchesWhere(item: unknown, where: Record<string, unknown>): boo
             .includes(String(expected.contains ?? '').toLowerCase())
         )
           return false;
+        continue;
+      }
+      const bounds = RANGE_OPS.filter((op) => op in expected);
+      if (bounds.length) {
+        if (!bounds.every((op) => rangeCompare(actual, op, expected[op]))) return false;
         continue;
       }
       let anchored = false;

@@ -8,9 +8,13 @@
  * they go wrong.
  */
 import type {
+  ArrangeState,
   BehaviourContext,
+  Bounds,
   CardShape,
+  EdgeAnchors,
   EdgeGeometry,
+  EdgeStyle,
   ExpandDirection,
   ExpanderContext,
   GraphEdge,
@@ -20,18 +24,23 @@ import type {
   GraphSpec,
   GraphValue,
   Layout,
+  LayoutHierarchy,
+  LayoutRegion,
+  NodeVisual,
   Placement,
   Point,
   StyleRules,
   WatchQuery,
 } from '@we/graph-protocol';
-import { addressKind } from '@we/graph-protocol';
+import { addressKind, metricKey } from '@we/graph-protocol';
 
 import { connectionTarget } from './connect';
 import { ExpansionState, SEED_OPENER } from './expansion';
-import type { EdgeClearance } from './geometry';
+import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, wouldFold } from './fold';
+import type { EdgeClearance, EdgeWaypoint } from './geometry';
 import {
   anchorsOf,
+  blendRoutes,
   bowOffsets,
   distanceToEdge,
   edgeBounds,
@@ -46,6 +55,7 @@ import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
 import { flattenRules, nodeVisual, resolveStyle } from './style';
+import { planRoute, type RoutePlan, Travel } from './travel';
 import { boundsOf, Viewport } from './viewport';
 
 /**
@@ -56,6 +66,82 @@ import { boundsOf, Viewport } from './viewport';
  * accidentally claim a line that stands for nothing yet.
  */
 const PENDING_EDGE_ID = '__pending__';
+
+/**
+ * How long a fold takes, and the tick it advances on.
+ *
+ * Short enough to read as one movement rather than as a wait — a fold is punctuation between two
+ * things somebody is doing, not an event — and long enough for the eye to follow where the cards
+ * went, which is the whole reason they travel instead of blinking out. The tick matches the layout's.
+ */
+const FOLD_MS = 200;
+
+/**
+ * The frame both of the engine's own animations advance on.
+ *
+ * One constant because it is one fact — how often a position that is being interpolated is rewritten
+ * — and because a fold and a layout travel can be in flight at the same time. Two timers at two
+ * rates rewriting one positions map is a card that judders, and the cause is invisible: each
+ * mechanism looks correct on its own.
+ *
+ * Driven by a timer rather than by the layout's tick, because the layouts that most want to animate
+ * are the ones that do not tick at all: `manual` and `forest` compute once and report nothing
+ * running, so there would be no frames to ride on.
+ */
+const ANIM_TICK = 16;
+
+/**
+ * How long the tree takes to make room while a card is dragged through it, and to take the card in when it is
+ * let go. Short, because it answers the pointer: a reshuffle that lagged the hand would read as the tree
+ * arguing with it. Never longer than the switch between arrangements, so reduced motion makes it instant too.
+ */
+const ARRANGE_TRAVEL_MS = 180;
+
+/**
+ * How long a dropped card is held where the drop put it, waiting for the write to come back. The data
+ * agreeing ends the hold at once; this is only for a write that failed or was refused, after which the tree
+ * travels back to what the data says.
+ */
+const ARRANGE_SETTLE_MS = 5000;
+
+/** The id the line to a held card's ghost is routed under — see {@link PENDING_EDGE_ID}. */
+const ARRANGE_EDGE_ID = '__arranging__';
+
+/** Whether two answers to "where would this drop put the card" are the same answer. */
+/**
+ * How a relayout moves the camera: not at all, framing the graph (`true`), or keeping it in view
+ * without zooming in (`'contain'`) — see `Viewport.contain`.
+ */
+export type Fit = boolean | 'contain';
+
+/**
+ * Connections a host has written and not yet seen come back, drawn as if they had.
+ *
+ * `added` are lines with no record yet, each with a node id at both ends; `patches` move an end or
+ * change a field of a line that exists, by edge id — `source`/`target` re-attach it, as a gesture's
+ * draft does; `removed` are edge ids to stop drawing. Presentation only: the layout never sees them,
+ * and nothing about the stored graph changes.
+ */
+export interface PendingEdges {
+  added: readonly GraphEdge[];
+  patches: ReadonlyMap<string, Record<string, GraphValue>>;
+  removed: ReadonlySet<string>;
+}
+
+export const NO_PENDING_EDGES: PendingEdges = { added: [], patches: new Map(), removed: new Set() };
+
+/** How a line with no record behind it yet is marked, so rules and pickers can tell. */
+export const PENDING_EDGE_TYPE = 'pending-edge';
+/** And how its id begins, so it cannot collide with a node address. */
+export const PENDING_EDGE_PREFIX = 'pending-edge:';
+
+function sameArrangeTo(a: ArrangeState['to'], b: ArrangeState['to']): boolean {
+  if (!a || !b) return a === b;
+  return a.parent === b.parent && a.index === b.index;
+}
+
+/** Nothing folded: the shape {@link GraphEngine.setFolded} starts from and returns to. */
+const NO_FOLD: FoldResult = { hidden: new Set(), counts: new Map(), owners: new Map(), bundles: [] };
 
 export interface EngineOptions {
   spec: GraphSpec;
@@ -82,7 +168,16 @@ export type ChangeReason =
    * make dragging a connection across a settled graph re-derive the whole scene on every pointer
    * move, which is the most expensive way to draw a line anybody has thought of.
    */
-  | 'connection';
+  | 'connection'
+  /**
+   * The rectangle a marquee is sweeping out moved.
+   *
+   * Its own reason for exactly the argument above, and a sharper case of it: a selection sweep runs
+   * across a whole canvas, fires on every pointer move, and changes one rectangle while nothing else
+   * on the graph moves at all. It is kept apart from `connection` as well as from `positions` so a
+   * renderer can hold the marquee in a signal of its own and leave the connect preview alone.
+   */
+  | 'marquee';
 
 export interface EngineStatus {
   loading: boolean;
@@ -120,18 +215,23 @@ const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
  * Computed metrics are cheap but not free, and a graph whose rules mention none should pay nothing —
  * so the engine runs exactly the metrics the style asks for and no others.
  */
-function referencedMetrics(rules: StyleRules<Record<string, unknown>> | undefined): string[] {
-  const found = new Set<string>();
+function referencedMetrics(
+  rules: StyleRules<Record<string, unknown>> | undefined,
+): { metric: string; options?: Record<string, unknown> }[] {
+  const found: { metric: string; options?: Record<string, unknown> }[] = [];
   // Through the nesting, so a metric named by a rule a `$map` produced is still computed. Missing it
   // would leave that rule resolving to its fallback — a graph that draws, plainly, for no visible reason.
   for (const rule of flattenRules(rules)) {
     for (const value of Object.values(rule.style ?? {})) {
       if (value && typeof value === 'object' && 'metric' in value) {
-        found.add(String((value as { metric: unknown }).metric));
+        const ref = value as { metric: unknown; options?: unknown };
+        const options =
+          ref.options && typeof ref.options === 'object' ? (ref.options as Record<string, unknown>) : undefined;
+        found.push({ metric: String(ref.metric), ...(options ? { options } : {}) });
       }
     }
   }
-  return [...found];
+  return found;
 }
 
 const DEFAULT_MAX_NODES = 2000;
@@ -211,6 +311,10 @@ export class GraphEngine {
   private inFlight = 0;
   /** Of those, how many cover the whole graph. See {@link EngineStatus.reloading}. */
   private reloadsInFlight = 0;
+  /** Aborts the reads of a load that has been replaced — see `loadSeeds`. */
+  private loadAbort?: AbortController;
+  /** Which load is current. Anything finishing on an older one drops what it found. */
+  private loadGeneration = 0;
   private disposed = false;
   /** What the layout last complained about, so a new arrangement can retire it. */
   private layoutWarnings: string[] = [];
@@ -222,6 +326,13 @@ export class GraphEngine {
   private watchTimer?: ReturnType<typeof setTimeout>;
   /** What the last seed load read, so watches can be re-synced without re-running the queries. */
   private lastSeedReads: ReadonlyMap<string, WatchTarget> = new Map();
+  /**
+   * What each seed last fetched, before `derive` — by its place in the spec, so a derive-only change can
+   * be applied again with no read. See {@link rederive}.
+   */
+  private fetchedSeeds: ({ source: string; fragment: GraphFragment } | null)[] = [];
+  /** The last summary each seed's `derive` reported, as JSON — so an unchanged one is not re-announced. */
+  private seedSummaries = new Map<string, string>();
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
   /** Whether the user may move nodes. See `isLocked`. */
@@ -243,7 +354,11 @@ export class GraphEngine {
    * off into a corner. Following it until it settles costs nothing for a layout that computes in one
    * pass, since those never report themselves as running.
    */
-  private fitUntilSettled = false;
+  private fitUntilSettled: Fit = false;
+  /** What is keeping the cards still, by reason — see {@link keepStill}. */
+  private readonly stillBy = new Set<string>();
+  /** A re-arrangement a refresh wanted while the cards were being kept still. */
+  private relayoutHeld = false;
   /** Computed metric values, by metric id then node id. Recomputed when the graph changes. */
   private metrics: Map<string, ReadonlyMap<string, number>> = new Map();
   /** Where every edge runs, recomputed with positions. Read by the renderer and by edge picking. */
@@ -252,6 +367,72 @@ export class GraphEngine {
   private edgeBoxes = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
   /** The connect gesture in progress — see {@link getPendingConnection}. */
   private pendingConnection: { from: string; to: Point } | null = null;
+  /** The marquee being swept out, in world units — see {@link getPendingMarquee}. */
+  private pendingMarquee: Bounds | null = null;
+  /** Cards the reader has folded, by node id — see {@link setFolded}. */
+  private foldedIds = new Set<string>();
+  /** What that fold works out to: what is hidden, how much under each, and the lines standing in. */
+  private fold: FoldResult = NO_FOLD;
+  /**
+   * Which cards are worth offering a fold on, worked out on demand and kept until the graph moves.
+   *
+   * Lazily, because the answer is exact — folding a card whose only child a second parent is holding
+   * would take nothing away, and a control that promises to fold and then does nothing is worse than
+   * no control — and exact means a recomputation per candidate. Nobody pays for it unless something
+   * is selected, since the fold control is drawn on the selection.
+   */
+  private foldableIds?: Set<string>;
+  /**
+   * How far each hidden card sat from the fold holding it, captured as it went away.
+   *
+   * Kept because a fold is a thing you tidy *with*: fold a cluster, carry it into a corner, unfold it
+   * there. An offset rather than a position, so it stays true however the fold moves and whoever
+   * moves it — a delta would need the drag's start, and a remembered coordinate would have to be
+   * re-remembered on every frame of one. Captured once and only once: the layout goes on reporting
+   * the card's stored place, which does not move when the fold does, so recomputing this would
+   * shrink the offset by exactly the distance the fold had travelled. See {@link foldedUnder}.
+   */
+  private foldedOffset = new Map<string, Point>();
+  /** Cards travelling between the two states, and how far along each is. See {@link stepFold}. */
+  private foldAnim = new Map<string, { from: Point; to: Point; started: number; at: number; out: boolean }>();
+  private foldTimer?: ReturnType<typeof setTimeout>;
+  private foldDuration = FOLD_MS;
+  /** How the graph moves from one arrangement to the next — see `Travel`. */
+  private readonly travel = new Travel();
+  private travelTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * A card held by a rearranging gesture — see `ArrangeState`.
+   *
+   * While `at` is set the card is drawn under the pointer and the layout places it at `to`; `slot` is where
+   * that put it, which is the ghost, and `ghostFrom` is where the ghost was drawn when the slot last moved, so
+   * it travels with the cards making room rather than jumping ahead of them. Once let go, `at` is null and the
+   * layout goes on placing it at `to` until the data agrees — see {@link arrangementSettled}.
+   */
+  private arrangement: {
+    id: string;
+    at: Point | null;
+    to: ArrangeState['to'];
+    refused?: string;
+    slot?: Point;
+    ghostFrom?: Point;
+  } | null = null;
+  private arrangeTimer?: ReturnType<typeof setTimeout>;
+  /** The tree the layout last read out of the graph — see `LayoutHierarchy`. */
+  private hierarchy: LayoutHierarchy | null = null;
+  /** Areas the current layout asked to have drawn behind the nodes — see {@link getLayoutRegions}. */
+  private layoutRegions: LayoutRegion[] = [];
+  /**
+   * How long a rearrangement the **engine itself** decides on should take.
+   *
+   * Every travel so far has been asked for by a caller, which is right: the renderer is the only thing
+   * that can ask the browser about reduced motion, and the engine has no business knowing there is one.
+   * But some rearrangements are the engine's own — a card released back to a layout that computes once
+   * has to be drawn into place, and nobody is there to name a duration for it.
+   *
+   * So the renderer states it once and the engine spends it. Zero until told, which keeps a graph with
+   * no renderer at all behaving exactly as it did: instant.
+   */
+  private selfTravel = 0;
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -342,6 +523,8 @@ export class GraphEngine {
    * where drift means clicking an edge that is not the one under the cursor.
    */
   getEdgeGeometry(): ReadonlyMap<string, EdgeGeometry> {
+    // Reading it is drawing it, and a line's next travel starts from what was drawn.
+    this.travel.drewRoutes();
     return this.edgeGeometry;
   }
 
@@ -367,23 +550,32 @@ export class GraphEngine {
     }
 
     const snapshot = {
-      nodes: [...this.store.nodes()].map((node) => ({ id: node.id })),
+      /*
+        Overlaid, for the reason the layout's input is: a metric reading a node's own data must see the
+        value that is on screen. Without it a card whose weight has just been written optimistically is
+        coloured from the number it had before the round trip, so the fill and the order disagree for
+        the second it takes to land.
+      */
+      nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
       edges: [...this.store.edges()].map((edge) => ({ source: edge.source, target: edge.target })),
     };
 
+    // Filed by id and options together — see `metricKey` — and computed with the options it was asked with.
     const next = new Map<string, ReadonlyMap<string, number>>();
-    for (const id of new Set(wanted)) {
-      const metric = this.registry.metric(id);
+    for (const ref of wanted) {
+      const key = metricKey(ref);
+      if (next.has(key)) continue;
+      const metric = this.registry.metric(ref.metric);
       if (!metric) {
-        this.warn(`no metric registered as "${id}"`);
+        this.warn(`no metric registered as "${ref.metric}"`);
         continue;
       }
       try {
-        next.set(id, metric.compute(snapshot));
+        next.set(key, metric.compute(snapshot, ref.options));
       } catch (error) {
         // A metric that throws must not take the graph down with it — the map still draws, just
         // without that dimension.
-        this.warn(`metric "${id}" failed: ${describe(error)}`);
+        this.warn(`metric "${ref.metric}" failed: ${describe(error)}`);
       }
     }
     this.metrics = next;
@@ -397,6 +589,9 @@ export class GraphEngine {
    * Does not restart on its own — the caller decides whether the change warrants re-running the
    * queries. Changing a colour rule must not re-fetch a graph, and an adapter that could only swap the
    * whole spec would have no way to express that difference.
+   *
+   * Nothing about the styling being replaced is recorded here: a travel starts from what was drawn, so the
+   * outgoing rules are never needed and the order of calls around a switch cannot matter. See `Travel`.
    */
   setSpec(spec: GraphSpec): void {
     this.spec = spec;
@@ -410,6 +605,7 @@ export class GraphEngine {
    * seed set would leave nodes on screen that nothing can account for.
    */
   async start(): Promise<void> {
+    this.context.trace?.('reload', { nodes: this.store.nodeCount });
     /*
       Held across the whole method, not just the seed load.
 
@@ -424,7 +620,9 @@ export class GraphEngine {
     this.beginLoading('reload');
     try {
       const fragment = await this.loadSeeds();
-      if (this.disposed) return;
+      // Disposed, or replaced by a later load — either way this one has nothing to say about what
+      // is on screen now. See `loadSeeds`.
+      if (this.disposed || !fragment) return;
 
       /*
         The same graph, asked for again, keeps its arrangement.
@@ -449,7 +647,18 @@ export class GraphEngine {
       this.positions = new Map();
       // A different graph cannot inherit holds on nodes it does not contain.
       this.pinnedIds.clear();
+      this.droppedPins.clear();
       this.selected.clear();
+      /*
+        A fold in mid-travel is abandoned, and the fold *set* is not.
+
+        The animation belongs to the graph that is going away — carrying it over would tween a card
+        towards a fold that is no longer on screen. The set belongs to the reader, who has not
+        changed their mind; on a canvas it lives in the address, so it outlives the graph by
+        construction and is simply re-derived against whatever arrives.
+      */
+      this.foldAnim.clear();
+      this.foldedOffset.clear();
       this.status = { ...this.status, budgetReached: false };
       this.layoutWarnings = [];
 
@@ -509,7 +718,9 @@ export class GraphEngine {
 
   private async refreshOnce(): Promise<void> {
     const fragment = await this.loadSeeds();
-    if (this.disposed) return;
+    // As in `start`: a load that was replaced must not reconcile its rows into the graph that
+    // replaced it.
+    if (this.disposed || !fragment) return;
     await this.reconcile(fragment);
   }
 
@@ -518,6 +729,26 @@ export class GraphEngine {
    * it. The body of a refresh, and of a restart that turned out to be the same graph — see `start`.
    */
   private async reconcile(fragment: { nodes: GraphNode[]; edges: GraphEdge[] }): Promise<void> {
+    /*
+      A graph arriving on an empty screen is framed, whichever path brought it.
+
+      `start` frames what it loads and `refresh` deliberately does not — a viewport that jumped
+      whenever a peer wrote something would make a shared graph unusable. That reads as a rule about
+      the two methods, and it is really a rule about the graph: there is nothing to disturb when
+      nothing is on screen, and nothing else will ever frame it either. `resize` only re-frames on
+      the FIRST measurement, which on a cold boot happens seconds before any row arrives, with no
+      positions to find bounds in.
+
+      Which matters because `start` can end up doing nothing at all. A load that has been replaced
+      returns null and `start` gives up before its fit — so a refresh landing while the first load
+      was still in flight left the whole canvas at the origin, the reader seeing whichever cards
+      happened to be placed near it and no sign of the rest. On the workshop's canvas that is the
+      ordinary case on a reload mid-call: the transcriber's `pending` list arrives a moment after
+      mount, and a marker moving goes down `refresh`.
+
+      Measured before the merge, so this is "the screen was empty", not "the seeds found nothing".
+    */
+    const wasEmpty = this.store.nodeCount === 0;
     const nodes = this.trimToBudget(fragment.nodes);
     const seedNodes = new Set(nodes.map((n) => n.id));
     const seedEdges = new Set(fragment.edges.map((e) => e.id));
@@ -553,7 +784,31 @@ export class GraphEngine {
     }
 
     this.recomputeMetrics();
-    this.relayout();
+    /*
+      Held back while something is keeping the graph still — see {@link keepStill} — when all this read
+      changed is what the cards say rather than which cards there are. The cards redraw with their new
+      data where they stand, and the re-arrangement runs when the hold is let go.
+    */
+    const structural =
+      change.addedNodes.length ||
+      change.removedNodes.length ||
+      change.addedEdges.length ||
+      change.removedEdges.length ||
+      released.nodes.length ||
+      released.edges.length;
+    if (this.stillBy.size && !wasEmpty && !structural && this.layout?.derivesPositions !== false) {
+      this.relayoutHeld = true;
+      this.notify('graph');
+      return;
+    }
+    /*
+      Travelled where the layout derives the positions. There a refresh can reorder things by itself —
+      a vote landing, a card's reactions read for the first time, a peer's drop — and that is the engine
+      rearranging the graph, which should read as the cards moving rather than as a new picture. On a
+      canvas the positions are the data and a refresh moves nothing the data did not already say.
+    */
+    const derived = this.layout?.derivesPositions !== false;
+    this.relayout({ fit: wasEmpty, travel: derived ? this.selfTravel : 0 });
     this.notify('graph');
   }
 
@@ -569,11 +824,37 @@ export class GraphEngine {
    * becomes live for free; the alternative — the engine parsing `options.entity` — would work for
    * exactly the sources that happen to spell it that way and silently fail for the rest.
    */
-  private async loadSeeds(): Promise<GraphFragment> {
+  /** What the seeds found, or `null` when this load was replaced before it finished. */
+  private async loadSeeds(): Promise<GraphFragment | null> {
     const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
     const read = new Map<string, WatchTarget>();
+
+    /*
+      The load that is happening now, and the one it replaces.
+
+      Two things were wrong without this, and the second is the serious one.
+
+      Every seed here takes an `AbortSignal` and threads it through each of its reads — the canvas
+      seed has done so since it was written — and nothing ever passed one, so the whole of that
+      plumbing was dead and a superseded load's queries all ran to completion. On a canvas that is
+      eleven reads nobody is waiting for.
+
+      Worse, they were not merely wasted. `refresh` serialises itself, but nothing serialised a
+      `refresh` against a `start`: switching canvases while a refresh was in flight left the older
+      load to finish afterwards and reconcile its rows into the graph that had replaced it. Rare,
+      silent, and indistinguishable from the backend having answered with the wrong canvas.
+
+      So a load takes a generation, and anything that finishes holding a stale one drops what it
+      found instead of applying it — the same shape as the `disposed` checks after every await here.
+    */
+    this.loadAbort?.abort();
+    const controller = new AbortController();
+    this.loadAbort = controller;
+    const generation = ++this.loadGeneration;
+    /** This load has been replaced, so whatever it found is about a graph nobody is looking at. */
+    const superseded = () => generation !== this.loadGeneration;
 
     const recording: ExpanderContext = {
       ...this.context,
@@ -586,6 +867,7 @@ export class GraphEngine {
       },
     };
 
+    const fetched: ({ source: string; fragment: GraphFragment } | null)[] = [];
     this.beginLoading('partial');
     try {
       for (const seed of specs) {
@@ -594,27 +876,93 @@ export class GraphEngine {
             ? { nodes: seed.nodes, edges: seed.edges }
             : await this.registry
                 .seed(seed.source)
-                ?.seed(seed.options ?? {}, recording)
+                ?.seed(seed.options ?? {}, recording, controller.signal)
                 .catch((error: unknown) => {
-                  this.warn(`seed "${seed.source}" failed: ${describe(error)}`);
+                  // A load that was replaced did not fail. Reporting the abort would put a warning
+                  // on screen naming the seed, for a load whose results were never wanted.
+                  if (!superseded()) this.warn(`seed "${seed.source}" failed: ${describe(error)}`);
                   return undefined;
                 });
+        if (superseded()) return null;
         if (!fragment) {
           if (!('literal' in seed) && !this.registry.seed(seed.source)) {
             this.warn(`no seed source registered as "${seed.source}"`);
           }
+          fetched.push(null);
           continue;
         }
-        nodes.push(...fragment.nodes);
-        edges.push(...fragment.edges);
+        const source = 'literal' in seed ? '' : seed.source;
+        fetched.push(source ? { source, fragment } : null);
+        const finished = 'literal' in seed ? fragment : this.derived(seed.source, fragment, seed.options);
+        nodes.push(...finished.nodes);
+        edges.push(...finished.edges);
       }
     } finally {
       this.endLoading('partial');
     }
 
+    /*
+      The watches belong to the load that is current, never to one that was replaced.
+
+      Registering a superseded load's reads would tear down the live graph's subscriptions and put
+      back the old graph's — `syncWatchers` reconciles against exactly the set it is handed.
+    */
+    if (superseded()) return null;
+    this.fetchedSeeds = fetched;
     this.lastSeedReads = read;
     this.syncWatchers(read);
     return { nodes, edges };
+  }
+
+  /**
+   * A fetched fragment finished by its seed's `derive`, with the summary it gave announced if it changed.
+   * A seed with no `derive` is its fragment as fetched.
+   */
+  private derived(source: string, fragment: GraphFragment, options: unknown): GraphFragment {
+    const derive = this.registry.seed(source)?.derive;
+    if (!derive) return fragment;
+    try {
+      const { summary, ...finished } = derive(fragment, options ?? {});
+      if (summary) {
+        const said = JSON.stringify(summary);
+        if (this.seedSummaries.get(source) !== said) {
+          this.seedSummaries.set(source, said);
+          this.emit({ type: 'seedSummary', source, summary });
+        }
+      }
+      return finished;
+    } catch (error) {
+      // A derive that throws leaves the rows as fetched rather than taking the graph down with it.
+      this.warn(`seed "${source}" could not finish what it read: ${describe(error)}`);
+      return fragment;
+    }
+  }
+
+  /**
+   * Apply the seeds' `derive` again to what they last fetched, with the options as they are now — for a
+   * change to a {@link SeedSource.deriveOptions} option, which needs no read. Merged into the graph the way
+   * a refresh is, so a card whose place changes travels there, and nothing re-arranges while something
+   * is keeping the cards still.
+   */
+  async rederive(): Promise<void> {
+    if (this.disposed || !this.fetchedSeeds.length) return;
+    const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    specs.forEach((seed, index) => {
+      if ('literal' in seed) {
+        nodes.push(...seed.nodes);
+        edges.push(...seed.edges);
+        return;
+      }
+      const held = this.fetchedSeeds[index];
+      // A seed the spec now names differently was not what was fetched; its rows wait for the next read.
+      if (!held || held.source !== seed.source) return;
+      const finished = this.derived(held.source, held.fragment, seed.options);
+      nodes.push(...finished.nodes);
+      edges.push(...finished.edges);
+    });
+    await this.reconcile({ nodes, edges });
   }
 
   // ─── Following the data ──────────────────────────────────────────────────────
@@ -680,6 +1028,10 @@ export class GraphEngine {
     this.disposed = true;
     if (this.layoutTimer) clearTimeout(this.layoutTimer);
     if (this.watchTimer) clearTimeout(this.watchTimer);
+    if (this.foldTimer) clearTimeout(this.foldTimer);
+    if (this.travelTimer) clearTimeout(this.travelTimer);
+    if (this.arrangeTimer) clearTimeout(this.arrangeTimer);
+    this.travel.settle();
     // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
     // from a backend subscription, which is the shape of leak that only shows up as a slow app.
     for (const stop of this.watchers.values()) stop();
@@ -803,6 +1155,311 @@ export class GraphEngine {
     else void this.expand(id, direction);
   }
 
+  // ─── Folding ─────────────────────────────────────────────────────────────────
+
+  /**
+   * The cards the reader has folded — everything under them goes away.
+   *
+   * The scene-layer sibling of {@link collapse}, and deliberately not the same thing. Collapsing is
+   * about *resolution*: an explorer drops what it fetched, and the nodes are gone from the store.
+   * Folding is about *reading*: everything stays loaded and the reader is hiding part of it, so
+   * nothing is re-queried, nothing is re-laid-out, and unfolding puts every card back exactly where
+   * it was rather than wherever a layout would now put it. Which is also why this is a setter over a
+   * whole set rather than a fold/unfold pair: the set is view state somebody else owns — on WE's
+   * canvas it rides in the address — and an engine that kept its own copy would be a second answer to
+   * the same question, out of step the moment a link was pasted.
+   *
+   * Hidden is spelled *no position*, which the three things downstream of a position already read as
+   * absent: {@link reindex} gives it no hit area, {@link routeEdges} drops the lines that reached it,
+   * and the renderer draws only what is placed. One fact, three consequences, no flag to keep in step.
+   *
+   * `durationMs` is the travel — cards slide into the fold rather than blinking out, so it is legible
+   * where they went. Zero is instant, which is what a caller passes under `prefers-reduced-motion`;
+   * the engine cannot ask the browser that question and should not try.
+   */
+  setFolded(ids: readonly string[], durationMs = FOLD_MS): void {
+    const next = new Set(ids.filter((id) => typeof id === 'string' && id));
+    const same = next.size === this.foldedIds.size && [...next].every((id) => this.foldedIds.has(id));
+    if (same) return;
+
+    /*
+      Where everything was standing before the fold set changed — the start of every card's travel,
+      and the only moment it is knowable. A card about to be hidden loses its position in the
+      relayout below, and by then "where did it come from" is gone.
+    */
+    const before = new Map(this.positions);
+    const wasHidden = this.fold.hidden;
+    const wasOwners = this.fold.owners;
+    /*
+      The offsets as they stand, because `recomputeFold` below forgets the ones it no longer needs —
+      and the cards being *unfolded* are exactly the ones it forgets. Those offsets are where they
+      are going: see the correction after the relayout.
+    */
+    const wasOffsets = new Map(this.foldedOffset);
+
+    this.foldedIds = next;
+    this.foldDuration = Math.max(0, durationMs);
+    this.recomputeFold();
+
+    // A selection nobody can see is a ring on a card that is not on screen — and an inspector
+    // beside the canvas reading from it would be describing something invisible.
+    for (const id of this.fold.hidden) this.selected.delete(id);
+
+    if (this.foldDuration > 0) {
+      const now = Date.now();
+      for (const id of this.fold.hidden) {
+        if (wasHidden.has(id) || this.foldAnim.has(id)) continue;
+        const from = before.get(id);
+        const to = before.get(this.fold.owners.get(id) ?? '');
+        if (!from || !to) continue;
+        this.foldAnim.set(id, { from, to, started: now, at: 0, out: true });
+      }
+      /*
+        The way back in: a card returns *from* the fold it was in rather than fading up where it
+        belongs, so unfolding reads as the same movement run backwards. Where it is going is settled
+        after the relayout below.
+      */
+      for (const id of wasHidden) {
+        if (this.fold.hidden.has(id)) continue;
+        const from = before.get(wasOwners.get(id) ?? '');
+        if (from) this.foldAnim.set(id, { from, to: from, started: now, at: 0, out: false });
+      }
+    } else {
+      this.foldAnim.clear();
+    }
+
+    /*
+      Re-laid-out rather than patched, because unfolding has to put cards back and only the layout
+      knows where they go. For the canvas this is exact and cheap: `manual` reads each card's stored
+      coordinates, so it answers with the arrangement somebody made, unchanged.
+    */
+    this.relayout();
+
+    /*
+      Where the arriving cards are going — beside the fold they came out of, not where the layout
+      says they live.
+
+      The layout is right about a fold that has not moved and stale about one that has. A canvas
+      reads each card's coordinates from its stored placement, and a fold carried across the canvas
+      writes new placements for its contents (see `foldedUnder`) which take a round trip to the data
+      layer and a re-read to arrive. Unfolding in that window sent every card back to where it was
+      before the fold was moved, and then the re-read landed and moved them all again — two jumps,
+      the first of them to a place nobody had put anything.
+
+      The offset is the answer to both: it is what the drag wrote, and it is what the placement will
+      say once it comes back, so the card goes straight where it belongs and the re-read agrees with
+      what is already on screen. A card with no offset — one that arrived under the fold from a live
+      query and was never measured — falls back to the layout, which is all anybody knows about it.
+    */
+    let corrected = false;
+    for (const id of wasHidden) {
+      if (this.fold.hidden.has(id)) continue;
+      const offset = wasOffsets.get(id);
+      const root = this.positions.get(wasOwners.get(id) ?? '');
+      const home = offset && root ? { x: root.x + offset.x, y: root.y + offset.y } : this.positions.get(id);
+      const anim = this.foldAnim.get(id);
+      if (!home) {
+        // Nowhere to go and nothing to animate — the card is not placed at all.
+        this.foldAnim.delete(id);
+        continue;
+      }
+      if (anim) {
+        anim.to = { x: home.x, y: home.y };
+        continue;
+      }
+      // No travel (reduced motion, or the fold arrived with the canvas): put it in the right place
+      // at once rather than letting the stale coordinate paint a frame.
+      this.positions.set(id, { ...this.positions.get(id), x: home.x, y: home.y });
+      corrected = true;
+    }
+
+    if (this.foldAnim.size) this.stepFold();
+    else {
+      // The positions were written after the relayout had already indexed and routed them.
+      if (corrected) {
+        this.reindex();
+        this.routeEdges();
+      }
+      this.notify('graph');
+    }
+  }
+
+  /** The cards the reader has folded, as given. */
+  foldedNodes(): string[] {
+    return [...this.foldedIds];
+  }
+
+  isFolded(id: string): boolean {
+    return this.foldedIds.has(id);
+  }
+
+  /** How many cards went away under this fold — the count a folded card wears. */
+  foldedCount(id: string): number {
+    return this.fold.counts.get(id) ?? 0;
+  }
+
+  /** How many connections the fold is standing in for, so it can say so as well as count cards. */
+  foldedLinks(id: string): number {
+    let weight = 0;
+    for (const bundle of this.fold.bundles) {
+      if (bundle.source === id || bundle.target === id) weight += bundle.weight ?? 1;
+    }
+    return weight;
+  }
+
+  /**
+   * How many cards a press on this card's fold control is about to hide — or, on a folded card,
+   * bring back.
+   *
+   * What the control says it will do, rather than what the graph looks like: a fold whose tooltip
+   * promised three cards and took two would be describing a computation nobody can check.
+   */
+  foldImpact(id: string): number {
+    return this.foldedIds.has(id) ? this.foldedCount(id) : wouldFold(id, this.foldedIds, this.store);
+  }
+
+  /**
+   * How many cards under this one a fold has to **leave**, because something outside it is also
+   * pointing at them.
+   *
+   * The counterpart to {@link foldImpact}, and the reason it exists is that the rule behind it is
+   * invisible otherwise. A fold never takes a card another card still points at — it would leave
+   * that one with a line running to nothing — so folding a card with four things under it sometimes
+   * takes two, and the two that stayed look like a fold that half worked. This is the number an
+   * interface needs to say which it was.
+   */
+  foldHeldElsewhere(id: string): number {
+    const under = downstreamOf(id, this.store);
+    if (!under.size) return 0;
+    const hidden = this.foldedIds.has(id) ? this.fold.hidden : foldGraph([...this.foldedIds, id], this.store).hidden;
+    let held = 0;
+    for (const nodeId of under) if (!hidden.has(nodeId)) held += 1;
+    return held;
+  }
+
+  /** Whether folding this card would take anything away — see {@link foldableIds}. */
+  canFold(id: string): boolean {
+    if (this.foldedIds.has(id)) return true;
+    this.foldableIds ??= foldableIn(this.foldedIds, this.store);
+    return this.foldableIds.has(id);
+  }
+
+  /** The lines standing in for connections that crossed a fold's boundary. */
+  foldBundles(): readonly GraphEdge[] {
+    return this.fold.bundles;
+  }
+
+  /**
+   * The fold holding this card, if a fold is what put it out of sight.
+   *
+   * So that something *beside* the graph asking for a card — an inspector opening one end of a
+   * connection, a link somebody sent — can be answered by revealing it rather than by selecting
+   * nothing. The outermost fold where several are nested, which is one step rather than the whole
+   * path: unfolding it leaves the card held by the next fold down, and asking again walks the rest.
+   */
+  foldHiding(id: string): string | undefined {
+    return this.fold.hidden.has(id) ? this.fold.owners.get(id) : undefined;
+  }
+
+  /**
+   * How much of a card is left, while it travels — 1 at full size, 0 folded away.
+   *
+   * Read by the renderer to scale and fade the card, and by {@link clearanceFor} so the line to it
+   * keeps meeting its edge as it shrinks. Without the second one the line stops where the card used
+   * to be and the last frames read as a card detaching from its own connection.
+   */
+  foldScale(id: string): number {
+    const anim = this.foldAnim.get(id);
+    if (!anim) return 1;
+    return anim.out ? 1 - anim.at : anim.at;
+  }
+
+  /**
+   * What is hidden under a fold and where it was standing, so a drag can carry it.
+   *
+   * Offsets rather than positions, because the caller is writing to a data layer and has to say
+   * *where* each card now is: a fold dragged across the canvas and then unfolded must find its
+   * contents around it, not back where they were. Cards with no remembered position are left out —
+   * nothing useful can be said about where they should land.
+   */
+  foldedUnder(id: string): { id: string; x: number; y: number }[] {
+    const root = this.positions.get(id);
+    if (!root) return [];
+    const carried: { id: string; x: number; y: number }[] = [];
+    for (const [nodeId, owner] of this.fold.owners) {
+      if (owner !== id) continue;
+      const offset = this.foldedOffset.get(nodeId);
+      // No offset means the card was never on screen to measure one from — it arrived from a live
+      // query already under the fold. Left out rather than guessed at: it keeps the place it has.
+      if (!offset) continue;
+      carried.push({ id: nodeId, x: root.x + offset.x, y: root.y + offset.y });
+    }
+    return carried;
+  }
+
+  /**
+   * Work the fold out again, and forget what was derived from the last one.
+   *
+   * Called wherever the *graph* changes as well as when the fold set does — a refresh that brings a
+   * card back would otherwise show it despite its parent being folded, since nothing about the fold
+   * is stored on a node.
+   */
+  private recomputeFold(): void {
+    this.fold = this.foldedIds.size ? foldGraph(this.foldedIds, this.store) : NO_FOLD;
+    this.foldableIds = undefined;
+    for (const id of this.foldedOffset.keys()) if (!this.fold.hidden.has(id)) this.foldedOffset.delete(id);
+  }
+
+  /**
+   * One frame of the travel: move what is moving, and drop what has arrived.
+   *
+   * Eased out rather than linear — a card leaves briskly and settles — and driven by a timer rather
+   * than by the layout's tick, because a canvas's layout does not tick at all: `manual` computes once
+   * and reports nothing running, so there would be no frames to ride on.
+   */
+  private stepFold(): void {
+    if (this.foldTimer) {
+      clearTimeout(this.foldTimer);
+      this.foldTimer = undefined;
+    }
+    const now = Date.now();
+    let running = false;
+
+    for (const [id, anim] of this.foldAnim) {
+      const elapsed = now - anim.started;
+      const t = this.foldDuration > 0 ? Math.min(1, elapsed / this.foldDuration) : 1;
+      // Cubic ease-out: most of the distance early, so the eye catches the direction of travel.
+      const eased = 1 - (1 - t) ** 3;
+      anim.at = eased;
+      /*
+        One interpolation for both directions. A fold travels from where the card stood to the card
+        that swallowed it, and an unfold travels from that card to where this one belongs — the same
+        line, walked the other way, which is what makes the two read as one movement and its reverse.
+        Only the size differs, and that is {@link foldScale}'s business rather than this one's.
+      */
+      const x = anim.from.x + (anim.to.x - anim.from.x) * eased;
+      const y = anim.from.y + (anim.to.y - anim.from.y) * eased;
+      if (t >= 1) {
+        this.foldAnim.delete(id);
+        // Gone for good: no position is what makes it undrawn, unroutable and unhittable. A card that
+        // has arrived keeps whatever else its placement said — pinned, most of all.
+        if (anim.out) this.positions.delete(id);
+        else this.positions.set(id, { ...this.positions.get(id), x: anim.to.x, y: anim.to.y });
+        continue;
+      }
+      running = true;
+      this.positions.set(id, { ...this.positions.get(id), x, y });
+    }
+
+    this.reindex();
+    this.routeEdges();
+    this.notify('positions');
+    if (running) this.foldTimer = setTimeout(() => this.stepFold(), ANIM_TICK);
+    // The last frame changed what the graph *holds*, not only where it is — a fold that has finished
+    // has cards and lines that are no longer there, which is a different kind of news.
+    else this.notify('graph');
+  }
+
   /**
    * Open what the depth and the auto rules ask for.
    *
@@ -882,8 +1539,40 @@ export class GraphEngine {
    * Warm start is not an optimisation. Nodes arrive continuously — from expansion, and from live
    * queries while the user watches — and a layout that restarts from scratch each time makes the
    * whole map jump every few seconds.
+   *
+   * `travel` is how long the cards take to get there, and it is what makes swapping layouts legible:
+   * the same set of cards rearranging is one movement a reader can follow, where the same swap
+   * applied instantly is a new picture they have to find their card in again. See
+   * {@link beginTravel}. Omitted means instant, which is right for every path that is not a reader
+   * changing how the graph is arranged — an expansion, a subscription, a first load.
    */
-  relayout(options?: { fit?: boolean }): void {
+  /**
+   * Keep the cards where they are while something needs them there — or let them go.
+   *
+   * A reader pressing a card's reaction mark changes the card's score, and in a tree ordered by that
+   * reaction the card's place along with it. The re-sort arrives when the write comes back, a second
+   * later, and would slide the card out from under the pointer that just pressed it — or from under the
+   * popover somebody is still choosing a rating in. So while a hold is on, a refresh that changes only
+   * what the cards say redraws them where they stand, and the re-arrangement it would have made waits
+   * until every hold is released; then the cards travel to their new places, while the reader is
+   * watching rather than under their hand.
+   *
+   * Keyed by reason, so a pointer over the mark and a popover opened from it are two holds, released
+   * separately. Anything that re-arranges the graph for another reason — a new layout, cards arriving —
+   * runs as it would, and takes the held re-arrangement with it.
+   */
+  keepStill(reason: string, on: boolean): void {
+    if (on) {
+      this.stillBy.add(reason);
+      return;
+    }
+    if (!this.stillBy.delete(reason) || this.stillBy.size || !this.relayoutHeld) return;
+    this.relayoutHeld = false;
+    this.relayout({ travel: this.selfTravel });
+  }
+
+  relayout(options?: { fit?: Fit; travel?: number }): void {
+    this.relayoutHeld = false;
     const spec = this.spec.layout ?? { type: 'force' };
     /*
       Keyed on the options as well as the type.
@@ -897,6 +1586,33 @@ export class GraphEngine {
       `columns` on its own.
     */
     const key = `${spec.type}:${JSON.stringify(spec.options ?? null)}`;
+    /*
+      A different KIND of layout frames what it lays out, whoever asked for the relayout.
+
+      The renderer asks with a fit when its layout changes — but the spec reaches the engine through
+      every effect that sets it, and a seed option changed by the same click (a re-derive, a refresh)
+      can relay out first, synchronously, with the new layout already in the spec and no fit asked for.
+      The cards then travelled to where the tree goes while the camera stayed on the freeform view,
+      which emptied the screen until the renderer's own fit caught up and slid the tree back in. The
+      camera moves when the layout does, so it is decided here, where the layout actually changes.
+    */
+    const was = this.layoutKey ?? '';
+    const swapping = !!this.layout && was.slice(0, was.indexOf(':')) !== spec.type;
+    // And travels, for the same reason: a caller that did not know it was swapping asked for none.
+    if (swapping) options = { fit: options?.fit || true, travel: options?.travel || this.selfTravel };
+    /*
+      Pins made where a pin means nothing are not carried into a layout where it means everything.
+
+      A canvas's drag pins the card it drops (`drag-node` with `pin`), and on a layout that places
+      nothing itself that is inert — every card already stays where its data says. Carried into a tree,
+      the same pin told the tree to leave that one card where it was dropped on the canvas, so a card
+      moved moments before the switch sat outside the tree until a reload cleared the pins. A pin the
+      reader asked for (`setPinned`, the pin control) is theirs, and survives.
+    */
+    if (swapping && this.layout?.derivesPositions === false) {
+      for (const id of this.droppedPins) this.pinnedIds.delete(id);
+      this.droppedPins.clear();
+    }
     if (!this.layout || this.layoutKey !== key) {
       this.layout?.stop?.();
       this.layout = this.registry.layout(spec.type, spec.options);
@@ -907,18 +1623,58 @@ export class GraphEngine {
       this.layoutKey = key;
     }
 
+    /*
+      The fold, worked out again before anything is placed.
+
+      Every path that changes the graph ends here — a seed load, a refresh arriving from a
+      subscription, an expansion — and nothing about a fold is stored on a node, so this is the one
+      choke point where a card that has just arrived under a folded parent can be caught. Without it
+      a live canvas leaks its contents back onto the screen a few seconds after being folded, which
+      reads as the fold not having worked.
+    */
+    this.recomputeFold();
+
     const { width, height } = this.viewport.get();
     const result = this.layout.init({
-      nodes: [...this.store.nodes()],
+      /*
+        Overlaid, which is the layout being treated as downstream of an optimistic edit like
+        everything else is.
+
+        `overlaid` calls itself "a node as everything downstream should see it", and the layout was
+        the one consumer not getting it. That was invisible while the overlay only carried a card's
+        colour and shape — nothing about those moves a node — and load-bearing the moment it carries
+        a coordinate: `manual` reads `x`/`y` off node data, so a position written and drawn before
+        the round trip has no way to reach the screen without this. It also quietly fixes a smaller
+        case that was always wrong, since `manual` sizes its tray slots from `canvasWidth`: a card
+        optimistically resized was parked around by its old size until the write came back.
+      */
+      nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
       edges: [...this.store.edges()],
-      previous: this.positions,
+      previous: this.warmStart(),
       containment: this.containment(),
       viewport: { width: width || 800, height: height || 600 },
       ...(width && height ? { visible: this.visibleWorldRect() } : {}),
+      // Where a card being dragged through a hierarchy would go — see `LayoutArranging`.
+      ...(this.arrangement?.to
+        ? {
+            arranging: {
+              id: this.arrangement.id,
+              parent: this.arrangement.to.parent,
+              ...(this.arrangement.to.index === undefined ? {} : { index: this.arrangement.to.index }),
+            },
+          }
+        : {}),
     });
     this.setLayoutWarnings(result.warnings ?? []);
-    this.fitUntilSettled = !!options?.fit && !!result.running;
-    this.applyPositions(result.positions, options?.fit);
+    this.hierarchy = result.hierarchy ?? null;
+    // Areas the layout named — see `LayoutRegion`. Replaced wholesale rather than merged: a region is
+    // a fact about *this* arrangement, so one kept from the previous run would be drawn around cards
+    // that have since moved out of it.
+    this.layoutRegions = result.regions ?? [];
+    this.fitUntilSettled = result.running ? (options?.fit ?? false) : false;
+    this.applyPositions(result.positions, options?.fit, options?.travel);
+    // A dropped card whose write has come back needs holding no longer: the data now says what the hold did.
+    if (this.arrangement && !this.arrangement.at && this.arrangementSettled()) this.endArrangement();
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
@@ -932,6 +1688,10 @@ export class GraphEngine {
     */
     this.context.trace?.('layout', {
       layout: spec.type,
+      // What moves the camera: whether this fitted, travelled, and swapped the kind of layout.
+      fit: options?.fit ?? false,
+      travel: options?.travel ?? 0,
+      swapping,
       nodes: this.store.nodeCount,
       edges: [...this.store.edges()].length,
       positioned: this.positions.size,
@@ -957,15 +1717,7 @@ export class GraphEngine {
    * `Viewport.setObscured`.
    */
   private visibleWorldRect(): { x: number; y: number; width: number; height: number } {
-    const rect = this.viewport.visibleRect();
-    const topLeft = this.viewport.toWorld({ x: rect.x, y: rect.y });
-    const bottomRight = this.viewport.toWorld({ x: rect.x + rect.width, y: rect.y + rect.height });
-    return {
-      x: topLeft.x,
-      y: topLeft.y,
-      width: bottomRight.x - topLeft.x,
-      height: bottomRight.y - topLeft.y,
-    };
+    return this.viewport.visibleWorldRect();
   }
 
   private scheduleTick(): void {
@@ -983,17 +1735,305 @@ export class GraphEngine {
     }, 16);
   }
 
-  private applyPositions(positions: Map<string, Placement>, fit?: boolean): void {
+  private applyPositions(positions: Map<string, Placement>, fit?: Fit, travel?: number): void {
     // Re-asserted over whatever the layout returned — see `pinnedIds`.
     for (const id of this.pinnedIds) {
       const at = positions.get(id);
       if (at && !at.fixed) positions.set(id, { ...at, fixed: true });
     }
+    /*
+      Folded-away cards lose the position the layout just gave them — see {@link setFolded}.
+
+      Here rather than by asking the layout for less, because a layout is handed the whole graph on
+      purpose: `manual` has to know what is on the canvas to park a new card clear of it, and a card
+      that is merely hidden still occupies the space it will come back to. One left in mid-travel
+      keeps the position {@link stepFold} is writing, or a fold would snap the moment anything else
+      moved.
+    */
+    for (const id of this.fold.hidden) {
+      /*
+        Measured on the way out, where both the card and the fold that swallowed it still have a
+        place — see `foldedOffset`. The only moment it is knowable, and only the first time.
+
+        Measured for a card in mid-travel as well, which is why this comes before the `continue`: the
+        travel ends in `stepFold`, which deletes the position without coming back through here, so a
+        card that animated out would never have been measured at all — and then dragging the fold
+        carried nothing, on the one path every real fold takes.
+      */
+      if (!this.foldedOffset.has(id)) {
+        const at = positions.get(id);
+        const owner = this.fold.owners.get(id);
+        const root = owner ? positions.get(owner) : undefined;
+        if (at && root) this.foldedOffset.set(id, { x: at.x - root.x, y: at.y - root.y });
+      }
+      if (this.foldAnim.has(id)) continue;
+      positions.delete(id);
+    }
+
+    /*
+      Where every card was standing a moment ago, which is the start of a travel and is knowable only
+      here. One line below, the layout's answer has replaced it and "where did this come from" is gone
+      — the same reason `setFolded` captures the positions before it recomputes the fold.
+    */
+    const before = this.positions;
     this.positions = positions;
+    // A card that has gone — deleted, or folded away — takes its record of how it was drawn with it.
+    this.travel.keepVisuals(this.positions);
+    /*
+      A card held by a rearranging drag is drawn under the pointer, and the place the layout just gave it is
+      its ghost. Where the ghost is drawn right now is taken first, while the previous travel's clock still
+      answers for it, so a ghost whose slot has moved travels there with the cards making room.
+    */
+    const held = this.arrangement?.at ? this.arrangement : null;
+    const slot = held ? this.positions.get(held.id) : undefined;
+    if (held && slot) {
+      held.ghostFrom = this.ghostAt() ?? { x: slot.x, y: slot.y };
+      held.slot = { x: slot.x, y: slot.y };
+      this.positions.set(held.id, { ...slot, x: held.at!.x, y: held.at!.y });
+    }
+
+    /*
+      The camera before the travel, and against where the layout actually put things.
+
+      A fit computed from a travel's first frame frames the arrangement the cards are *leaving*, so a
+      switch into a layout that needs more room would settle with half the graph off screen — and the
+      reader would have watched it go there.
+    */
+    // Where the camera was before the fit, so it can travel with the cards. Captured whether or not a fit
+    // happens, since that is only known after it.
+    const cameraFrom = { ...this.viewport.get() };
+    const fitted = fit ? this.fitToContent(fit) : false;
+    if (fit && !fitted) this.pendingFit = true;
+
+    /*
+      Then the travel, which rewinds the moving cards to where they stood. Everything below derives from
+      what is drawn, so it comes after: an index built from the destinations would leave every card
+      pickable at a place it has not reached yet.
+    */
+    this.travel.start({
+      before,
+      positions: this.positions,
+      asked: Math.max(0, travel ?? 0),
+      now: Date.now(),
+      // A folding card is moving on the fold's own clock, and a held one is where the pointer holds it.
+      skip: (id) => this.foldAnim.has(id) || (id === this.arrangement?.id && !!this.arrangement.at),
+      plan: () => this.planRoutes(),
+    });
+    // The camera goes with the cards, and a fit with no travel lands at once.
+    if (fitted && this.travel.running) this.beginCameraTravel(cameraFrom);
     this.reindex();
     this.routeEdges();
-    if (fit && !this.fitToContent()) this.pendingFit = true;
     this.notify('positions');
+    if (this.travel.running && !this.travelTimer && !this.disposed) {
+      this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
+    }
+  }
+
+  /**
+   * The positions handed to a layout as its warm start — with `fixed` meaning what the protocol says.
+   *
+   * `Placement.fixed` is documented as "the user pinned it and the layout must not move it", and every
+   * deriving layout honours it: the deterministic ones through `keepFixed`, force through `fx`/`fy`.
+   * But `manual` marks **every** position fixed, and is right to — on a canvas a coordinate *is* the
+   * data, and a ticking layout must not move it.
+   *
+   * Those are two different meanings of one flag, and they collide the moment a reader switches from a
+   * canvas to a tree: every card counted as pinned, so the new layout kept all of them and the switch
+   * did nothing at all. Nothing about that is visible from inside either layout — each behaves exactly
+   * as documented — so it can only be answered here, at the boundary that is the engine's.
+   *
+   * A pin is {@link pinnedIds}, written by `pin` and `setPinned` and by nothing else. The coordinate a
+   * layout read out of the data is still handed over, because a warm start is the whole point of
+   * `previous`; it simply stops claiming to be an instruction.
+   */
+  private warmStart(): ReadonlyMap<string, Placement> {
+    const warm = new Map<string, Placement>();
+    for (const [id, at] of this.positions) {
+      warm.set(id, this.pinnedIds.has(id) ? { x: at.x, y: at.y, fixed: true } : { x: at.x, y: at.y });
+    }
+    return warm;
+  }
+
+  /**
+   * How every line's route parameters travel across this rearrangement — see `planRoute`.
+   *
+   * The start is what each line was last drawn with. The destination is the line routed for real against
+   * where the layout has put the cards and the rules now in force, so the plan lands exactly on what the
+   * ordinary routing answers once the travel ends. A line never drawn — one that has only just appeared —
+   * belongs where it is put, and gets no plan.
+   */
+  private planRoutes(): Map<string, RoutePlan> {
+    const plans = new Map<string, RoutePlan>();
+    for (const edge of this.drawnEdges()) {
+      const drawn = this.travel.drawnRoute(edge.id);
+      if (!drawn) continue;
+      const patch = this.edgePatch(edge.id);
+      const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
+      const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
+      // A held card's lines run from its ghost, which travels on its own — see `ghostAt` — and need no plan.
+      const held = this.arrangement?.at ? this.arrangement.id : null;
+      if (held && (sourceId === held || targetId === held)) continue;
+      const from = this.positions.get(sourceId);
+      const to = this.positions.get(targetId);
+      if (!from || !to) continue;
+      const style = resolveStyle(edge, this.spec.edgeStyle);
+      const route = this.routeOf(edge, patch, style);
+      const destination = routeEdge(
+        edge.id,
+        from,
+        to,
+        normaliseCurve(style.curve as string | undefined),
+        0,
+        looseTo ? 0 : this.clearanceFor(this.store.node(targetId)),
+        looseFrom ? 0 : this.clearanceFor(this.store.node(sourceId), 0),
+        route.anchors,
+        route.bend > 0 ? route.waypoints.map((point) => waypointToWorld(point, from, to)) : [],
+      );
+      const plan = planRoute({
+        drawn,
+        destination,
+        centres: { source: from, target: to },
+        loose: { source: !!looseFrom, target: !!looseTo },
+        bend: { stored: route.waypoints.length > 0, wanted: route.bend },
+      });
+      if (plan) plans.set(edge.id, plan);
+    }
+    return plans;
+  }
+
+  /**
+   * Send the camera back where it was, so it can travel to the fit rather than jumping to it.
+   *
+   * The fit has already been applied, which is what makes this possible at all: the viewport's own
+   * `fit` answers with a camera rather than a number, so the only way to know where it lands is to let
+   * it land and read it back.
+   *
+   * Nothing to do when the fit did not actually move the camera — switching between two arrangements
+   * that happen to frame identically, which is common on a small graph.
+   */
+  private beginCameraTravel(from: { x: number; y: number; zoom: number }): void {
+    const now = this.viewport.get();
+    if (!this.travel.startCamera(from, { x: now.x, y: now.y, zoom: now.zoom })) return;
+    this.context.trace?.('camera:travel', { from, to: { x: now.x, y: now.y, zoom: now.zoom } });
+    this.lastTravelStep = Date.now();
+    this.viewport.set({ x: from.x, y: from.y, zoom: from.zoom });
+    this.notify('viewport');
+  }
+
+  /**
+   * Stop the camera travelling, and leave it where it is.
+   *
+   * Called wherever the reader takes hold of the view — a pan, a zoom. Without it the tween keeps
+   * writing the camera every frame and the gesture is fought for the rest of the travel, which reads as
+   * a canvas that will not be moved rather than as two writers.
+   */
+  private stopCameraTravel(): void {
+    if (this.travel.running) this.context.trace?.('camera:stop', {});
+    this.travel.stopCamera();
+  }
+
+  /** For the trace's alarms only: when the last travel frame ran, and whether this travel has alarmed. */
+  private lastTravelStep = 0;
+  private travelAlarmed = false;
+
+  /** How many placed cards have their centre inside the viewport — for the trace's alarms only. */
+  private onScreenCount(): number {
+    const { x, y, zoom, width, height } = this.viewport.get();
+    let count = 0;
+    for (const at of this.positions.values()) {
+      const sx = at.x * zoom + x;
+      const sy = at.y * zoom + y;
+      if (sx > 0 && sx < width && sy > 0 && sy < height) count += 1;
+    }
+    return count;
+  }
+
+  /** One frame of the travel: cards, camera, shapes and lines, all on its one clock. */
+  private stepTravel(): void {
+    if (this.travelTimer) {
+      clearTimeout(this.travelTimer);
+      this.travelTimer = undefined;
+    }
+    const running = this.travel.step(Date.now(), this.positions);
+    const camera = this.travel.cameraNow();
+    if (camera) {
+      const before = this.viewport.get();
+      // An alarm for the trace: a camera that moves a third of the screen in one frame is a cut, not a travel.
+      if (this.context.trace && Math.abs(camera.x - before.x) > before.width / 3) {
+        this.context.trace('camera:jump', { from: { x: before.x, y: before.y }, to: camera });
+      }
+      this.viewport.set(camera);
+      this.notify('viewport');
+    }
+    if (this.context.trace && this.positions.size) {
+      /*
+        Alarms for the trace, each once per travel. Most of the cards off screen is what a reader sees as the
+        graph vanishing, whether or not one card is still in view; and a long gap between two frames is the
+        main thread stalling, which a reader sees as the travel cut short, since the clock is the wall's.
+      */
+      const now = Date.now();
+      const gap = this.lastTravelStep ? now - this.lastTravelStep : 0;
+      this.lastTravelStep = now;
+      if (gap > 120) this.context.trace('travel:stall', { gap, progress: this.travel.progress });
+      const onScreen = this.onScreenCount();
+      if (onScreen * 2 < this.positions.size && !this.travelAlarmed) {
+        this.travelAlarmed = true;
+        this.context.trace('travel:offscreen', {
+          onScreen,
+          of: this.positions.size,
+          progress: this.travel.progress,
+          camera: this.viewport.get(),
+        });
+      }
+      if (!running) {
+        this.context.trace('travel:done', { onScreen, of: this.positions.size });
+        this.lastTravelStep = 0;
+        this.travelAlarmed = false;
+      }
+    }
+    // Before the reindex, because a card's hit area resolves from the same blended visual that is painted.
+    this.reindex();
+    this.routeEdges();
+    this.notify('positions');
+    if (running && !this.disposed) this.travelTimer = setTimeout(() => this.stepTravel(), ANIM_TICK);
+    else this.travel.settle();
+  }
+
+  /**
+   * Stop one card travelling, and leave it exactly where the hand is.
+   *
+   * Called wherever something *else* takes ownership of a position — a drag, a pin. Without it the
+   * travel goes on rewriting the card every frame and the drag is fought for as long as it lasts,
+   * which reads as a card that will not be picked up rather than as two writers.
+   */
+  private stopTravel(id: string): void {
+    this.travel.release(id);
+  }
+
+  /**
+   * How long the engine's own rearrangements take — see {@link selfTravel}.
+   *
+   * Set by the renderer, which is the only thing that can ask the browser whether the reader wants less
+   * movement. Zero is the honest answer for both "nobody said" and "the reader asked for none".
+   */
+  setSelfTravel(ms: number): void {
+    this.selfTravel = Math.max(0, ms || 0);
+  }
+
+  /** Whether a travel is running — for a caller that should wait for the arrangement to settle. */
+  isTravelling(): boolean {
+    return this.travel.running;
+  }
+
+  /**
+   * Areas of the arrangement the layout named, for the renderer to draw behind the nodes.
+   *
+   * Empty for every layout where a position says the whole of what was decided, which is most of them.
+   * See `LayoutRegion`: a region is a caption on a part of the arrangement, not a node, so nothing
+   * here is picked, selected, dragged or counted against the budget.
+   */
+  getLayoutRegions(): readonly LayoutRegion[] {
+    return this.layoutRegions;
   }
 
   /** Recompute routes after a style change — `curve` decides the shape, so it decides the geometry. */
@@ -1014,7 +2054,11 @@ export class GraphEngine {
     this.index.rebuild(
       [...this.store.nodes()].flatMap((node) => {
         const position = this.positions.get(node.id);
-        return position ? [{ id: node.id, x: position.x, y: position.y, ...this.hitArea(node) }] : [];
+        // A card in mid-fold is drawn and not picked. It is moving, it is on its way out or in, and a
+        // press landing on it would grab a card that is not going to be there — or, worse, drag one
+        // out of a fold it is halfway into.
+        if (!position || this.foldAnim.has(node.id)) return [];
+        return [{ id: node.id, x: position.x, y: position.y, ...this.hitArea(node) }];
       }),
     );
   }
@@ -1051,10 +2095,22 @@ export class GraphEngine {
    */
   setDataOverlay(overlay: ReadonlyMap<string, Record<string, GraphValue>>): void {
     this.overlay = overlay;
-    this.reindex();
-    this.routeEdges();
-    // `graph` rather than `positions`: nothing moved, but a node's size, colour and shape can all
-    // have changed, and those are read off the node projection rather than off the placements.
+    /*
+      Laid out again where position *is* the data, and only there.
+
+      `manual` reads a node's coordinate off its own fields, so an overlay carrying one has moved the
+      layout's input and nothing will draw it until the layout is asked again. Every other layout
+      derives positions from the graph's shape instead, and re-running one on an overlay change would
+      reheat a force simulation every frame somebody drags a colour slider — so `derivesPositions` is
+      the question, which is the same flag that already decides whether pinning means anything here.
+    */
+    if (this.layout?.derivesPositions === false) this.relayout();
+    else {
+      this.reindex();
+      this.routeEdges();
+    }
+    // `graph` rather than `positions`: a node's size, colour and shape can all have changed, and
+    // those are read off the node projection rather than off the placements.
     this.notify('graph');
   }
 
@@ -1084,9 +2140,99 @@ export class GraphEngine {
     this.notify('graph');
   }
 
-  /** The fields laid over this edge, if any. Read by a renderer so it draws from the same values. */
+  /**
+   * The fields a gesture's own draft lays over this edge, if any — the draft alone, which is what a
+   * renderer compares against its draft to know whether to hand it over again.
+   */
   edgeOverlayFor(id: string): Record<string, GraphValue> | undefined {
     return this.edgeOverlay.get(id);
+  }
+
+  /**
+   * Connections written and not yet seen come back — see {@link PendingEdges}.
+   *
+   * The host's to say, because only it knows what it wrote: a line somebody just drew, a connection
+   * just deleted, an end just moved. Drawn at once rather than a round trip later, and dropped the
+   * moment the host decides the data has caught up.
+   */
+  private pendingEdges: PendingEdges = NO_PENDING_EDGES;
+  private pendingEdgesKey = '';
+
+  setPendingEdges(pending: PendingEdges): void {
+    // Compared by value: the renderer hands this over on every redraw, and each one notifies.
+    const key = JSON.stringify([pending.added, [...pending.patches], [...pending.removed]]);
+    if (key === this.pendingEdgesKey) return;
+    this.pendingEdgesKey = key;
+    this.pendingEdges = pending;
+    this.routeEdges();
+    this.notify('graph');
+  }
+
+  /**
+   * Everything laid over one edge: the host's pending write, then a dropped tree card's new parent,
+   * then a gesture's draft — the nearest to the reader's hand winning.
+   */
+  private edgePatch(id: string): Record<string, GraphValue> | undefined {
+    const pending = this.pendingEdges.patches.get(id);
+    const arranged = this.arrangedLines();
+    const tree = arranged.patch?.[0] === id ? arranged.patch[1] : undefined;
+    const draft = this.edgeOverlay.get(id);
+    if (!pending && !tree && !draft) return undefined;
+    return { ...pending, ...tree, ...draft };
+  }
+
+  /**
+   * What a dropped tree card's line should be while the layout holds the card in its new place.
+   *
+   * The engine already holds the CARD there until the data agrees — see {@link arrangementSettled} —
+   * but its line read its ends from the stored connection, so it ran from the old parent to the new
+   * place for the whole round trip. The engine knows the answer the moment of the drop, which the
+   * store cannot: the store learns what the card's connection is only by reading the tree, itself a
+   * round trip. So the line is drawn from here — re-attached to the new parent, taken away for a card
+   * dropped out of its tree, or made up for a card that had no parent before.
+   */
+  private arrangedLines(): { patch?: [string, Record<string, GraphValue>]; added?: GraphEdge; removed?: string } {
+    const held = this.arrangement;
+    const tree = this.hierarchy;
+    if (!held || held.at || !held.to || !tree || this.arrangementSettled()) return {};
+    const parentEdge = tree.parentEdges.get(held.id);
+    const parent = held.to.parent;
+    if (!parent) return parentEdge ? { removed: parentEdge } : {};
+    if (parentEdge) return { patch: [parentEdge, { source: parent }] };
+    return {
+      added: {
+        id: `${PENDING_EDGE_PREFIX}arranged:${held.id}`,
+        source: parent,
+        target: held.id,
+        type: PENDING_EDGE_TYPE,
+        data: this.spineData(),
+      },
+    };
+  }
+
+  /** The field a made-up tree line carries so the rules draw it as the spine the tree follows. */
+  private spineData(): Record<string, GraphValue> {
+    const spine = (this.spec.layout?.options as { spine?: { field?: unknown; value?: unknown } } | undefined)?.spine;
+    const field = typeof spine?.field === 'string' && spine.field.startsWith('data.') ? spine.field.slice(5) : '';
+    return field && spine?.value !== undefined ? { [field]: spine.value as GraphValue } : {};
+  }
+
+  /**
+   * The lines to draw: the stored ones less any pending removal, plus lines written and not yet seen,
+   * plus what a fold stands in with. What routing, travel planning and a renderer all walk, so they
+   * cannot disagree about which lines exist. The layout does not — it reads the data, since a line
+   * that is only a promise must not move cards.
+   */
+  drawnEdges(): GraphEdge[] {
+    const arranged = this.arrangedLines();
+    const hidden = this.pendingEdges.removed;
+    const present = (edge: GraphEdge) => !!this.store.node(edge.source) && !!this.store.node(edge.target);
+    return [
+      ...[...this.store.edges()].filter((edge) => !hidden.has(edge.id) && edge.id !== arranged.removed),
+      ...this.pendingEdges.added.filter(present),
+      ...(arranged.added ? [arranged.added] : []),
+      ...this.fold.bundles,
+    ];
   }
 
   /** The fields laid over this node, if any. Read by a renderer so it draws from the same values. */
@@ -1101,14 +2247,47 @@ export class GraphEngine {
     return { ...node, data: { ...node.data, ...patch } };
   }
 
+  /**
+   * How a node is drawn — and, mid-rearrangement, how far between two answers it is.
+   *
+   * **Geometry comes from one function.** `nodeVisual` produces what is painted and what is picked, so
+   * anything that changes the one has to change the other or a card is clicked where it no longer is.
+   * The blend belongs here for the same reason: CSS cannot interpolate a polygon against a border
+   * radius, nor two polygons of different point counts, so a card becoming a note cannot be eased by
+   * the browser — and a renderer that eased it on its own would be easing the drawing away from the hit
+   * area.
+   *
+   * One resolution per node per frame, blended mid-travel with how the card was drawn when the travel
+   * started. Deliberately uncached: the rules are a handful of comparisons, and a cache keyed by node would
+   * have to be invalidated by every overlay, metric and marker that can change what a card looks like.
+   */
+  private resolvedVisual(rawNode: GraphNode, metrics: ReadonlyMap<string, ReadonlyMap<string, number>>) {
+    const node = this.overlaid(rawNode);
+    return this.travel.visual(node.id, nodeVisual(node, resolveStyle(node, this.spec.nodeStyle, metrics), metrics));
+  }
+
+  /**
+   * How a node should be drawn right now, blended if the arrangement is mid-change.
+   *
+   * What a renderer paints from. It resolves nothing about styling itself — see {@link resolvedVisual}
+   * for why the engine owns this rather than the renderer.
+   */
+  visualOf(node: GraphNode): NodeVisual {
+    const visual = this.resolvedVisual(node, this.metrics);
+    // Recorded here rather than in `resolvedVisual`, because this is the drawing path: the hit area
+    // resolves from the same blend without metrics, and is not what anybody saw.
+    this.travel.drewVisual(node.id, visual);
+    return visual;
+  }
+
   private hitArea(rawNode: GraphNode): {
     radius: number;
     halfWidth?: number;
     halfHeight?: number;
     shape?: CardShape;
+    outline?: readonly (readonly [number, number])[];
     z?: number;
   } {
-    const node = this.overlaid(rawNode);
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
     // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
     // the middle of a 170px box: a card sets `width`, never `size`, so the rule-reading version fell
@@ -1116,7 +2295,7 @@ export class GraphEngine {
     //
     // Metrics are deliberately not resolved here: they change what a node *means*, not where it is,
     // and a hit area that moved when a metric finished computing would be worse than a stale one.
-    const visual = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), NO_METRICS);
+    const visual = this.resolvedVisual(rawNode, NO_METRICS);
     // Stacking travels with the hit area so picking agrees with what is drawn in front.
     const z = visual.z !== undefined ? { z: visual.z } : {};
     if (visual.shape === 'card' && visual.width && visual.height) {
@@ -1128,6 +2307,9 @@ export class GraphEngine {
         halfWidth: visual.width / 2,
         halfHeight: visual.height / 2,
         shape: visual.cardShape,
+        // Mid-morph the name is the shape the card is *becoming*, so the blend has to travel with it or
+        // a line meets the note a triangle has not turned into yet. See `EdgeClearance.outline`.
+        ...(visual.morph ? { outline: visual.morph.outline } : {}),
         ...z,
       };
     }
@@ -1153,10 +2335,24 @@ export class GraphEngine {
   private clearanceFor(node: GraphNode | undefined, gap = 6): number | EdgeClearance {
     if (!node) return 14 + gap;
     const area = this.hitArea(node);
-    if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius + gap;
+    /*
+      Shrunk with a card that is folding away, so the line keeps meeting its edge all the way in.
+
+      Held at full size the line stops where the card *used* to reach and the last frames read as a
+      connection detaching from the thing it connects — the one part of the movement that would look
+      broken rather than quick.
+    */
+    const scale = this.foldScale(node.id);
+    if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius * scale + gap;
     // The standoff travels with the box rather than inside it: a shape cannot be inflated by adding
     // to its half-extents, since that moves its sides and its corners by different amounts.
-    return { halfWidth: area.halfWidth, halfHeight: area.halfHeight, shape: area.shape, gap };
+    return {
+      halfWidth: area.halfWidth * scale,
+      halfHeight: area.halfHeight * scale,
+      shape: area.shape,
+      outline: area.outline,
+      gap,
+    };
   }
 
   /**
@@ -1168,11 +2364,19 @@ export class GraphEngine {
   private routeEdges(): void {
     this.edgeGeometry = new Map();
     this.edgeBoxes = new Map();
+    this.travel.beginRouting();
 
-    for (const group of groupByEndpoints([...this.store.edges()]).values()) {
+    /*
+      The real lines, plus the ones standing in for what a fold hid.
+
+      Routed together so a bundle fans apart from a real line between the same pair exactly as two
+      real lines do, and stops short of a card the same way. Grouped with them rather than drawn on
+      top, because a summary line that overlapped a claim would be indistinguishable from it.
+    */
+    for (const group of groupByEndpoints(this.drawnEdges()).values()) {
       const offsets = bowOffsets(group.length);
       group.forEach((edge, index) => {
-        const patch = this.edgeOverlay.get(edge.id);
+        const patch = this.edgePatch(edge.id);
         /*
           An endpoint the overlay has moved — what a drag from one card to another previews with.
 
@@ -1192,14 +2396,24 @@ export class GraphEngine {
         */
         const { node: sourceId, loose: looseFrom } = endOf(patch, 'source', edge.source);
         const { node: targetId, loose: looseTo } = endOf(patch, 'target', edge.target);
-        const from = looseFrom ?? this.positions.get(sourceId);
-        const to = looseTo ?? this.positions.get(targetId);
+        /*
+          A card held by a rearranging drag is in two places: under the pointer, and in the gap the tree has
+          made for it. Its lines belong to the second — they are what the drop will draw — so they run from the
+          ghost, and its line to its present parent is not drawn at all: the ghost carries the line it would
+          have instead, from whichever parent the drop would give it. See `getArrangePreview`.
+        */
+        const held = this.arrangement?.at ? this.arrangement.id : null;
+        if (held && edge.id === this.hierarchy?.parentEdges.get(held)) return;
+        const placed = (id: string) => (id === held ? (this.ghostAt() ?? undefined) : this.positions.get(id));
+        const from = looseFrom ?? placed(sourceId);
+        const to = looseTo ?? placed(targetId);
         if (!from || !to) return;
         const style = resolveStyle(edge, this.spec.edgeStyle);
-        // Where a connection leaves and arrives, when somebody has said. Off the edge's own data, so
-        // whatever loaded it decides — the canvas seed reads them from an `EdgeRoute` — with any
-        // overlay in front, which is how a drag previews and how a write holds until it lands.
-        const anchors = anchorsOf({ ...edge.data, ...patch });
+        // Where a connection leaves and arrives, and what it is bent through, when somebody has said. Off
+        // the edge's own data, so whatever loaded it decides — the canvas seed reads them from an
+        // `EdgeRoute` — with any overlay in front, which is how a drag previews and how a write holds until
+        // it lands. See `routeOf` for what the rules may override.
+        const route = this.routeOf(edge, patch, style);
         // No node at a loose end, so nothing to stand off from: the line reaches the pointer itself.
         const targetNode = looseTo ? undefined : this.store.node(targetId);
         const sourceNode = looseFrom ? undefined : this.store.node(sourceId);
@@ -1220,28 +2434,86 @@ export class GraphEngine {
           card and wrong under everything else — a translucent one has a line running through its
           text, and a round node has one crossing it.
         */
-        const geometry = routeEdge(
-          edge.id,
-          from,
-          to,
-          normaliseCurve(style.curve),
-          offsets[index],
-          // A loose end stands off nothing — the point IS the end, so any clearance would leave the
-          // line trailing the cursor by a gap that reads as lag.
-          looseTo ? 0 : this.clearanceFor(targetNode),
-          // No standoff where the line leaves: it should touch the card it comes from.
-          looseFrom ? 0 : this.clearanceFor(sourceNode, 0),
-          // A loose end has no side, whatever the fields still say: the end is a point, and pinning
-          // it to an axis would send the line off north from wherever the cursor happens to be.
-          { source: looseFrom ? undefined : anchors.source, target: looseTo ? undefined : anchors.target },
-          // Stored in the edge's own frame, so a bend keeps its proportions when either card moves —
-          // see `EdgeWaypoint`. Converted here, where both centres are in hand.
-          waypointsOf({ ...edge.data, ...patch }).map((point) => waypointToWorld(point, from, to)),
-        );
-        this.edgeGeometry.set(edge.id, geometry);
-        this.edgeBoxes.set(edge.id, edgeBounds(geometry));
+        const routeThrough = (waypoints: Point[]) =>
+          routeEdge(
+            edge.id,
+            from,
+            to,
+            normaliseCurve(style.curve),
+            offsets[index],
+            // A loose end stands off nothing — the point IS the end, so any clearance would leave the
+            // line trailing the cursor by a gap that reads as lag.
+            looseTo ? 0 : this.clearanceFor(targetNode),
+            // No standoff where the line leaves: it should touch the card it comes from.
+            looseFrom ? 0 : this.clearanceFor(sourceNode, 0),
+            // A loose end has no side, whatever the fields still say: the end is a point, and pinning
+            // it to an axis would send the line off north from wherever the cursor happens to be.
+            {
+              source: looseFrom ? undefined : route.anchors.source,
+              target: looseTo ? undefined : route.anchors.target,
+            },
+            waypoints,
+            // Mid-travel, how far round each end has swept. A direction rather than a side, so the attach
+            // point walks the card's outline and the arrowhead keeps pointing at its centre.
+            this.travel.facing(edge.id),
+          );
+        /*
+          How much of the stored bend to draw. All or none is one route — every edge nobody bent, and every
+          bent one at rest. Part of it, mid-travel, blends the edge's two routes, with and without its
+          points, both routed against this frame's positions and facings — see `blendRoutes`.
+        */
+        const bend = route.waypoints.length ? this.travel.bend(edge.id, route.bend) : 0;
+        // Stored in the edge's own frame, so a bend keeps its proportions when either card moves — see
+        // `EdgeWaypoint`. Converted here, where both centres are in hand.
+        const bentThrough = () => route.waypoints.map((point) => waypointToWorld(point, from, to));
+        const drawn =
+          bend >= 1
+            ? routeThrough(bentThrough())
+            : bend <= 0
+              ? routeThrough([])
+              : blendRoutes(routeThrough([]), routeThrough(bentThrough()), bend);
+        this.edgeGeometry.set(edge.id, drawn);
+        // What this line was routed with, which its next travel starts from once it has been drawn.
+        this.travel.routed(edge.id, {
+          source: looseFrom ? undefined : Math.atan2(drawn.from.y - from.y, drawn.from.x - from.x),
+          target: looseTo ? undefined : Math.atan2(drawn.to.y - to.y, drawn.to.x - to.x),
+          bend,
+        });
+        /*
+          A bundle is drawn and not picked.
+
+          It stands for several connections at once, so there is nothing for a click to open: picking
+          one would have to answer "which claim is this?" with one of them, which is a lie an
+          interface would then act on. No bounds means no hit, and the cards at either end are still
+          there to be clicked.
+        */
+        // A line with no record behind it yet has nothing a press could open, so it is not pickable.
+        if (edge.type !== FOLD_BUNDLE && edge.type !== PENDING_EDGE_TYPE)
+          this.edgeBoxes.set(edge.id, edgeBounds(drawn));
       });
     }
+  }
+
+  /**
+   * What an edge carries about its own route, and how much of it the rules let through.
+   *
+   * The anchors are the edge's own unless `ignoreRoute` says to use the rules' instead. The stored bend is
+   * always read, and the rules decide only how much of it to draw — all or none — because a bend going
+   * away has to be drawn going away. Shared by routing and {@link planRoutes}, so the two cannot disagree
+   * about a line's destination.
+   */
+  private routeOf(
+    edge: GraphEdge,
+    patch: Record<string, GraphValue> | undefined,
+    style: EdgeStyle,
+  ): { anchors: EdgeAnchors; waypoints: EdgeWaypoint[]; bend: number } {
+    const data = { ...edge.data, ...patch };
+    const ignore = style.ignoreRoute === true;
+    return {
+      anchors: anchorsOf(ignore ? undefined : data, { source: style.sourceAnchor, target: style.targetAnchor }),
+      waypoints: waypointsOf(data),
+      bend: ignore ? 0 : 1,
+    };
   }
 
   /**
@@ -1277,13 +2549,17 @@ export class GraphEngine {
     return nearestId;
   }
 
-  /** Frame everything currently placed. Nothing to frame is not a failure — it is an empty graph. */
-  private fitToContent(): boolean {
+  /**
+   * Frame everything currently placed — or, with `'contain'`, centre it without zooming in. Nothing to
+   * frame is not a failure — it is an empty graph.
+   */
+  private fitToContent(mode: Fit = true): boolean {
     const bounds = boundsOf([...this.positions.values()].map((p) => ({ ...p, radius: 30 })));
     if (!bounds) return false;
     const { width, height } = this.viewport.get();
     if (!width || !height) return false;
-    this.viewport.fit(bounds);
+    if (mode === 'contain') this.viewport.contain(bounds);
+    else this.viewport.fit(bounds);
     return true;
   }
 
@@ -1298,6 +2574,7 @@ export class GraphEngine {
    */
   resize(width: number, height: number): void {
     const previous = this.viewport.get();
+    this.context.trace?.('resize', { width, height, pendingFit: this.pendingFit, travelling: this.travel.running });
     this.viewport.resize(width, height);
     if (!width || !height) return;
 
@@ -1319,6 +2596,8 @@ export class GraphEngine {
    *
    * Public because the radius comes from `nodeStyle`, and a renderer may change styling without
    * anything moving — at which point the index is holding areas sized by the old rules.
+   *
+   * Either order with `relayout` is fine: a travel starts from what was drawn, which neither call changes.
    */
   refreshHitAreas(): void {
     this.recomputeMetrics();
@@ -1336,6 +2615,26 @@ export class GraphEngine {
   fit(): void {
     if (!this.fitToContent()) this.pendingFit = true;
     else this.notify('viewport');
+  }
+
+  /**
+   * Frame one world rectangle — what following somebody else's view does.
+   *
+   * Distinct from {@link fit}, which frames the *content*: this frames a region somebody named, which
+   * may be empty canvas, and does so with no margin. A margin here would be a follower seeing
+   * slightly less than the driver at every hop, and the region is already what the driver could see
+   * rather than the extent of anything.
+   *
+   * Does nothing before there is a surface to frame into, and deliberately does not remember the
+   * request the way `fit` does: a view somebody was sharing a moment ago is not worth applying once a
+   * box finally exists, by which time they have moved.
+   */
+  frame(region: { x: number; y: number; width: number; height: number }): void {
+    const { width, height } = this.viewport.get();
+    if (!width || !height) return;
+    this.context.trace?.('camera:frame', { region, travelling: this.travel.running });
+    this.viewport.frameRegion(region);
+    this.notify('viewport');
   }
 
   /**
@@ -1397,14 +2696,22 @@ export class GraphEngine {
     for (const id of ids) {
       const at = this.positions.get(id);
       if (!at) continue;
+      // Held or released, the layout's travel is no longer the authority on where this card is.
+      this.stopTravel(id);
       if (pinned) {
-        if (this.isPinned(id)) continue;
+        // Pinned by a drop already: now the reader's own, which is kept through a change of layout. Asked
+        // of the pins themselves rather than `isPinned`, which a canvas answers yes for every card.
+        if (this.pinnedIds.has(id)) {
+          this.droppedPins.delete(id);
+          continue;
+        }
         this.pinnedIds.add(id);
         this.positions.set(id, { x: at.x, y: at.y, fixed: true });
         this.layout?.fix?.(id, { x: at.x, y: at.y });
       } else {
         if (!this.isPinned(id)) continue;
         this.pinnedIds.delete(id);
+        this.droppedPins.delete(id);
         this.positions.set(id, { x: at.x, y: at.y });
         this.layout?.fix?.(id, null);
       }
@@ -1413,22 +2720,33 @@ export class GraphEngine {
     if (!changed) return;
     this.positionsChanged();
     // Releasing especially: a node handed back to the layout should be drawn into place, not left
-    // sitting where it was let go.
-    this.resumeLayout();
+    // sitting where it was let go — which for a layout that computes once means running it again.
+    this.resumeLayout(!pinned);
   }
 
+  /**
+   * Pins a gesture left behind — a card dropped where it was dragged — as opposed to pins the reader
+   * asked for through `setPinned`. Kept apart because only these are inert on a canvas and wrong in a
+   * tree; see the note where a layout swap lets them go.
+   */
+  private droppedPins = new Set<string>();
+
   pin(id: string, at: Point | null): void {
+    // Whoever is pinning owns this card's position now — see {@link stopTravel}.
+    this.stopTravel(id);
     if (at) {
+      if (!this.pinnedIds.has(id)) this.droppedPins.add(id);
       this.pinnedIds.add(id);
       this.positions.set(id, { ...at, fixed: true });
     } else {
       this.pinnedIds.delete(id);
+      this.droppedPins.delete(id);
       const existing = this.positions.get(id);
       if (existing) this.positions.set(id, { x: existing.x, y: existing.y });
     }
     this.layout?.fix?.(id, at);
     this.positionsChanged();
-    this.resumeLayout();
+    this.resumeLayout(at === null);
   }
 
   /**
@@ -1443,9 +2761,26 @@ export class GraphEngine {
    * Costs nothing for a layout that computes in one pass — `tick` is absent, the first poll returns
    * undefined, and polling stops again.
    */
-  private resumeLayout(): void {
-    if (!this.layout?.tick) return;
-    this.scheduleTick();
+  private resumeLayout(released = false): void {
+    if (this.layout?.tick) {
+      this.scheduleTick();
+      return;
+    }
+    /*
+      A layout that computes once has no frames to resume into, so a node handed back to it stays
+      exactly where the hand let go — which on a tree is a card sitting in open space with the
+      arrangement broken around it, and is precisely what "released back to the layout" must not mean.
+      The comment on `setPinned` has always claimed this happens; for a deterministic layout it did not.
+
+      Only on a **release**. `pin` is called on every frame of a drag, so re-deriving there would lay the
+      whole graph out per pointer move — and worse, the siblings would shuffle under the card being
+      dragged, which is a feature to build deliberately rather than a side effect to discover.
+
+      And only where the layout derives positions at all: on a canvas a coordinate is the data, so
+      re-running `manual` would put the card back where its placement still says it is and undo the drop
+      a frame before the write lands.
+    */
+    if (released && this.layout?.derivesPositions !== false) this.relayout({ travel: this.selfTravel });
   }
 
   /**
@@ -1465,17 +2800,47 @@ export class GraphEngine {
 
   // ─── Selection ───────────────────────────────────────────────────────────────
 
+  /**
+   * What is selected now.
+   *
+   * **Silent when nothing changed**, which stopped being a nicety the moment a marquee existed. A
+   * sweep recomputes the selection on every pointer move — that is what makes rings appear under the
+   * rectangle as it grows — so a hundred moves over empty canvas used to be a hundred
+   * `selectionChange` events carrying the same empty list. The workshop's canvas mirrors its
+   * selection into the address, so those were a hundred `replaceState` calls a frame apart for a
+   * selection that never moved.
+   *
+   * Compared by membership rather than by order: the set is unordered, and a comparison that read
+   * the two arrays positionally would call an unchanged selection changed whenever the same ids came
+   * back in a different sequence.
+   */
   select(ids: string[], mode: 'replace' | 'add' | 'toggle' = 'replace'): void {
-    // Selecting anything — including selecting *nothing*, which is what a background click does —
-    // closes an open route. See `selectEdge`.
-    this.selectedEdge = null;
-    if (mode === 'replace') this.selected = new Set(ids);
-    else {
+    const before = this.selected;
+    const next = mode === 'replace' ? new Set(ids) : new Set(before);
+    if (mode !== 'replace') {
       for (const id of ids) {
-        if (mode === 'toggle' && this.selected.has(id)) this.selected.delete(id);
-        else this.selected.add(id);
+        if (mode === 'toggle' && next.has(id)) next.delete(id);
+        else next.add(id);
       }
     }
+
+    /*
+      An open route closes whatever the selection does, so this is decided before the early return:
+      clicking a card that is already the only one selected still has to put a line's handles away.
+      See `selectEdge`.
+    */
+    const closedRoute = this.selectedEdge !== null;
+    this.selectedEdge = null;
+
+    const same = next.size === before.size && [...next].every((id) => before.has(id));
+    if (same) {
+      // The set is unchanged, so there is no `selectionChange` to report — but a route that just
+      // closed is a visible change and the renderer has to hear about it.
+      if (closedRoute) this.notify('selection');
+      return;
+    }
+
+    this.selected = next;
     this.emit({ type: 'selectionChange', ids: [...this.selected] });
     this.notify('selection');
   }
@@ -1487,6 +2852,16 @@ export class GraphEngine {
     return {
       hitTest: (at) => this.index.hitTest(at),
       hitTestEdge: (at, tolerance) => this.hitTestEdge(at, tolerance),
+      regionAt: (at) => {
+        // Last one wins, so a region declared later sits in front — the same rule a style rule cascade
+        // follows, and the only sensible answer for a point two regions both claim.
+        let found: string | null = null;
+        for (const region of this.layoutRegions) {
+          const { minX, minY, maxX, maxY } = region.bounds;
+          if (at.x >= minX && at.x <= maxX && at.y >= minY && at.y <= maxY) found = region.id;
+        }
+        return found;
+      },
       select: (ids, mode) => this.select(ids, mode),
       selection: () => this.getSelection(),
       locked: () => this.locked,
@@ -1498,16 +2873,39 @@ export class GraphEngine {
         return at ? { x: at.x, y: at.y } : null;
       },
       pan: (dx, dy) => {
+        // The reader owns the view now — see {@link stopCameraTravel}.
+        this.stopCameraTravel();
         this.viewport.pan(dx, dy);
         this.notify('viewport');
       },
       zoomAt: (at, factor) => {
+        this.stopCameraTravel();
         this.viewport.zoomAt(at, factor);
         this.notify('viewport');
       },
       toWorld: (at) => this.viewport.toWorld(at),
       toScreen: (at) => this.viewport.toScreen(at),
       drawConnection: (from, to) => this.drawConnection(from, to),
+      drawMarquee: (bounds) => this.drawMarquee(bounds),
+      hierarchy: () => this.hierarchy,
+      boundsOf: (id) => {
+        const node = this.store.node(id);
+        const at = this.positions.get(id);
+        if (!node || !at) return null;
+        const area = this.hitArea(node);
+        const halfWidth = area.halfWidth ?? area.radius;
+        const halfHeight = area.halfHeight ?? area.radius;
+        return { minX: at.x - halfWidth, minY: at.y - halfHeight, maxX: at.x + halfWidth, maxY: at.y + halfHeight };
+      },
+      edgeOf: (id) => this.store.edge(id) ?? null,
+      placesOf: (id, places) => this.placesOf(id, places),
+      arrange: (state) => this.arrange(state),
+      /*
+        Folded cards are not in the index, so a sweep cannot catch what a fold is hiding — which is
+        the right answer and worth saying out loud: a card nobody can see must not end up in a
+        selection they are about to delete.
+      */
+      within: (bounds) => this.index.within(bounds),
       selectEdge: (id) => this.selectEdge(id),
       emit: (event) => this.emit(event),
     };
@@ -1571,9 +2969,195 @@ export class GraphEngine {
     );
   }
 
+  /**
+   * A card held by a rearranging drag, for the renderer: where its ghost is and what it looks like, and the
+   * line the drop would give it — or null when nothing is held.
+   *
+   * The ghost is the empty place the tree has made, drawn where the layout put the held card. The line runs
+   * to it from the parent the drop would give it, routed like a real edge against the ghost's own outline,
+   * and drawn as a proposal the way the connect gesture's line is — see {@link getPendingConnection}. The
+   * card's real line to its present parent is not drawn while it is held, so the two never disagree.
+   *
+   * `change` is false where the drop would change nothing — the card is over its own place, off the tree, or
+   * `refused` says why the move would be turned down. The renderer draws that as quietly as it can, because
+   * "nothing will happen" must not look like one more destination.
+   */
+  getArrangePreview(): {
+    id: string;
+    at: Point;
+    visual: NodeVisual;
+    line: EdgeGeometry | null;
+    change: boolean;
+    refused?: string;
+  } | null {
+    const held = this.arrangement;
+    const at = this.ghostAt();
+    const node = held ? this.store.node(held.id) : undefined;
+    if (!held || !at || !node) return null;
+    const parent = held.to ? held.to.parent : (this.hierarchy?.parents.get(held.id) ?? null);
+    const parentAt = parent ? this.positions.get(parent) : undefined;
+    const parentNode = parent ? this.store.node(parent) : undefined;
+    let line: EdgeGeometry | null = null;
+    if (parent && parentAt && parentNode) {
+      // What a connection with nothing said about it would be drawn as — the tree's own rule, for one.
+      const style = resolveStyle(
+        { id: ARRANGE_EDGE_ID, source: parent, target: held.id, type: '' },
+        this.spec.edgeStyle,
+      );
+      line = routeEdge(
+        ARRANGE_EDGE_ID,
+        { x: parentAt.x, y: parentAt.y },
+        at,
+        normaliseCurve(style.curve),
+        0,
+        this.clearanceFor(node),
+        this.clearanceFor(parentNode, 0),
+        anchorsOf(undefined, { source: style.sourceAnchor, target: style.targetAnchor }),
+      );
+    }
+    return {
+      id: held.id,
+      at,
+      visual: this.resolvedVisual(node, this.metrics),
+      line,
+      change: held.to !== null,
+      ...(held.refused ? { refused: held.refused } : {}),
+    };
+  }
+
+  /**
+   * Where a card would land at each of these places — see `BehaviourContext.placesOf`.
+   *
+   * A fresh layout instance rather than the live one, so asking cannot disturb whatever the live one holds
+   * between runs — a simulation's velocities, a warm start. Nothing is applied or drawn.
+   */
+  private placesOf(id: string, places: readonly NonNullable<ArrangeState['to']>[]): (Point | null)[] {
+    const spec = this.spec.layout ?? { type: 'force' };
+    const layout = places.length ? this.registry.layout(spec.type, spec.options) : undefined;
+    if (!layout) return places.map(() => null);
+    const nodes = [...this.store.nodes()].map((node) => this.overlaid(node));
+    const edges = [...this.store.edges()];
+    const containment = this.containment();
+    const { width, height } = this.viewport.get();
+    const answers = places.map((place) => {
+      const at = layout
+        .init({
+          nodes,
+          edges,
+          containment,
+          viewport: { width: width || 800, height: height || 600 },
+          arranging: { id, parent: place.parent, ...(place.index === undefined ? {} : { index: place.index }) },
+        })
+        .positions.get(id);
+      return at ? { x: at.x, y: at.y } : null;
+    });
+    layout.stop?.();
+    return answers;
+  }
+
+  /** The card a rearranging drag is holding under the pointer, if any. */
+  heldCard(): string | null {
+    return this.arrangement?.at ? this.arrangement.id : null;
+  }
+
+  /**
+   * Hold, move or let go of a card for a rearranging gesture — see `ArrangeState`.
+   *
+   * Laid out again only when where the drop would put it changes. Between those, only the pointer is moving,
+   * and the card follows it without anything else being asked. Let go with somewhere to go, the card travels
+   * into its place and is held there until the data agrees; let go with nowhere, it travels home.
+   */
+  private arrange(state: ArrangeState | null): void {
+    if (this.arrangeTimer) clearTimeout(this.arrangeTimer);
+    this.arrangeTimer = undefined;
+    const previous = this.arrangement;
+    if (!state) {
+      if (!previous) return;
+      this.arrangement = null;
+      this.relayout({ travel: this.arrangeTravel() });
+      return;
+    }
+    // Whoever holds a card owns its position — see `stopTravel`.
+    if (previous?.id !== state.id) this.stopTravel(state.id);
+    const same = previous?.id === state.id && sameArrangeTo(previous.to, state.to);
+    this.arrangement = {
+      ...(previous?.id === state.id ? previous : {}),
+      id: state.id,
+      at: state.at,
+      to: state.to,
+      refused: state.refused,
+    };
+    if (same && state.at && previous?.at) {
+      const placed = this.positions.get(state.id);
+      if (placed) this.positions.set(state.id, { ...placed, x: state.at.x, y: state.at.y });
+      this.positionsChanged();
+      return;
+    }
+    this.relayout({ travel: this.arrangeTravel() });
+    if (!state.at && this.arrangement) {
+      this.arrangeTimer = setTimeout(() => {
+        this.arrangeTimer = undefined;
+        if (!this.arrangement || this.arrangement.at) return;
+        this.arrangement = null;
+        this.relayout({ travel: this.arrangeTravel() });
+      }, ARRANGE_SETTLE_MS);
+    }
+  }
+
+  /** Whether the data now says what a dropped card is being held at — see {@link arrangement}. */
+  private arrangementSettled(): boolean {
+    const held = this.arrangement;
+    const tree = this.hierarchy;
+    if (!held?.to || !tree) return true;
+    const parent = tree.parents.get(held.id) ?? null;
+    if (parent !== held.to.parent) return false;
+    if (!parent || held.to.index === undefined) return true;
+    return (tree.children.get(parent) ?? []).indexOf(held.id) === held.to.index;
+  }
+
+  private endArrangement(): void {
+    this.arrangement = null;
+    if (this.arrangeTimer) clearTimeout(this.arrangeTimer);
+    this.arrangeTimer = undefined;
+  }
+
+  /** Where a held card's ghost is drawn this frame: travelling to its slot with the cards making room for it. */
+  private ghostAt(): Point | null {
+    const held = this.arrangement;
+    if (!held?.at || !held.slot) return null;
+    const from = held.ghostFrom ?? held.slot;
+    const t = this.travel.running ? this.travel.progress : 1;
+    return { x: from.x + (held.slot.x - from.x) * t, y: from.y + (held.slot.y - from.y) * t };
+  }
+
+  /** A rearranging gesture's travel — see {@link ARRANGE_TRAVEL_MS}. */
+  private arrangeTravel(): number {
+    return Math.min(this.selfTravel, ARRANGE_TRAVEL_MS);
+  }
+
   private drawConnection(from: string | null, to?: Point): void {
     this.pendingConnection = from && to ? { from, to } : null;
     this.notify('connection');
+  }
+
+  /**
+   * The rectangle a marquee is currently sweeping out, in world units, or null.
+   *
+   * World rather than screen, like everything else a behaviour deals in, so the renderer converts it
+   * once with the camera it is already drawing from. Panning mid-sweep therefore keeps the rectangle
+   * anchored to the canvas rather than to the window, which is what a sweep over a graph larger than
+   * the viewport needs — the cards it has already swallowed stay swallowed as the view moves.
+   */
+  getPendingMarquee(): Bounds | null {
+    return this.pendingMarquee;
+  }
+
+  private drawMarquee(bounds: Bounds | null): void {
+    // Cleared twice over a gesture — once on release and once by the cancel path — and notifying for
+    // a marquee that was already null would redraw the scene for nothing.
+    if (!bounds && !this.pendingMarquee) return;
+    this.pendingMarquee = bounds;
+    this.notify('marquee');
   }
 
   emit(event: GraphEvent): void {

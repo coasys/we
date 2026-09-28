@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { register } from 'node:module';
 import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { buildValidationContext, validateSemantic } from '../semanticValidation.js';
+import { buildValidationContext, validateSemantic, withOwnModule } from '../semanticValidation.js';
 import { validateStructure } from '../validators.js';
 
 // Validating a schema means importing it, which means resolving its asset imports — see assetHooks.
@@ -129,6 +129,36 @@ try {
 const contextData = JSON.parse(contextJson);
 const validationContext = buildValidationContext(contextData);
 
+/**
+ * Which module a schema file belongs to, if any — the nearest `package.json` above it that is a
+ * module package (`we.module` set, or named `@we/module-<id>`). A module's own chrome sees every
+ * member of its store, so its files are judged with that module's member set open. See `withOwnModule`.
+ */
+function ownModuleOf(filePath: string): string | undefined {
+  let dir = resolve(filePath, '..');
+  while (dir !== '/' && dir !== repoRoot) {
+    const pkgPath = resolve(dir, 'package.json');
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
+          name?: string;
+          we?: { module?: boolean | { id?: string } };
+        };
+        const declared = typeof pkg.we?.module === 'object' ? pkg.we.module.id : undefined;
+        if (declared) return declared;
+        if (pkg.name?.startsWith('@we/module-') && pkg.name !== '@we/module-shared')
+          return pkg.name.slice('@we/module-'.length);
+        if (pkg.we?.module) return pkg.name?.replace(/^@[^/]+\//, '');
+      } catch {
+        // An unreadable package.json is somebody else's problem; the file is judged as a template.
+      }
+      return undefined;
+    }
+    dir = resolve(dir, '..');
+  }
+  return undefined;
+}
+
 // Validate each file
 let totalErrors = 0;
 let totalWarnings = 0;
@@ -151,7 +181,8 @@ for (const filePath of files) {
     const structural = validateStructure(result.schema);
 
     // Run semantic validation (even if structural fails, to show all issues)
-    const semantic = validateSemantic(result.schema, validationContext);
+    const own = ownModuleOf(filePath);
+    const semantic = validateSemantic(result.schema, own ? withOwnModule(validationContext, own) : validationContext);
 
     const allErrors = [...structural.errors, ...semantic.errors];
     if (allErrors.length === 0) continue;

@@ -1,1 +1,14 @@
+# Hashed build output. A request for a file under here that is not on disk is a request from a build
+# that no longer exists — almost always a tab loaded before a deploy reaching for a lazy chunk. The
+# catch-all below would answer it with `index.html` and a 200, which is the wrong answer three times
+# over: the browser rejects a document where it wanted a module and reports only
+# `Failed to fetch dynamically imported module`, the host's logs record a served HTML page rather
+# than a miss, and nothing can recover by retrying because the URL keeps answering successfully.
+# A 404 says what happened, to the person reading the network panel and to the logs.
+#
+# This cannot shadow a real asset: a rule without `!` applies only when no file matches the path,
+# which is the same mechanism that lets the catch-all coexist with the rest of the site.
+/assets/*  /asset-gone.txt  404
+
+# Client-side routing — every other path is the app.
 /*  /index.html  200

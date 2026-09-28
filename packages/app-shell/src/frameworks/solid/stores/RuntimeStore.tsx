@@ -24,8 +24,10 @@ import type { ExecutorSettings } from '@shared/platform/types';
 import { copyText } from '@shared/utils';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
+  AI_API_PRESETS,
   type AiModelForm,
   type AiModelView,
+  CUSTOM_SERVICE,
   describeModel,
   draftFrom,
   EMPTY_FORM,
@@ -41,6 +43,7 @@ import type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
+  UnsupportedCapability,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import {
@@ -78,6 +81,20 @@ export interface RuntimeStore {
   canConfigureExecutor: Accessor<boolean>;
 
   // ── State ────────────────────────────────────────────────────────────────────
+  /**
+   * Capabilities this backend was asked for and does not have, each as `{ name, firstSeen }`.
+   *
+   * What a stale node looks like from inside the app. The adapter degrades rather than failing when
+   * the backend predates a feature, so the symptom reaches a person as a part of the app quietly
+   * doing less — a review list with no model names, a card with no icon — with nothing connecting
+   * it to the node. This is the connection, and `name` is the backend's own word for the capability
+   * so it can be searched for in that backend's source.
+   *
+   * **Empty means nothing has been refused yet, not that the backend is current.** Nothing is
+   * recorded until something asks, so a screen showing this should say so rather than reporting
+   * silence as health.
+   */
+  unsupportedCapabilities: Accessor<UnsupportedCapability[]>;
   /** Installed models, each carrying the strings its row displays. Empty until loadAiModels(). */
   aiModels: Accessor<AiModelView[]>;
   /** Named prompts apps registered against a model. */
@@ -88,6 +105,18 @@ export interface RuntimeStore {
   aiPresetOptions: Accessor<{ label: string; value: string }[]>;
   /** True when the open form has every field its chosen source needs. */
   aiFormComplete: Accessor<boolean>;
+  /**
+   * The remote services a model can be reached through, plus "Custom endpoint", for a we-select on
+   * `aiForm.apiService`. A named service sets the protocol and base URL itself.
+   */
+  aiServiceOptions: Accessor<{ label: string; value: string }[]>;
+  /** The backend can ask a remote endpoint which models it serves. */
+  canDiscoverAiModels: Accessor<boolean>;
+  /**
+   * The models the open form's endpoint said it serves, for a we-select — empty until asked, and
+   * empty again once the protocol, URL or key changes, since the list answered for those.
+   */
+  aiDiscoveredModelOptions: Accessor<{ label: string; value: string }[]>;
   /**
    * The open model form has been edited since it opened — what a discard guard reads.
    *
@@ -139,6 +168,10 @@ export interface RuntimeStore {
   editAiModel: (id: string) => void;
   /** Set one form field. Takes the field name so one action serves every input. */
   setAiFormField: (field: string, value: string | boolean) => void;
+  /** Choose the open form's service — a preset, which sets protocol and base URL, or `custom`. */
+  setAiService: (id: string) => void;
+  /** Ask the open form's endpoint which models it serves. Doubles as the check that the key works. */
+  discoverAiModels: () => Promise<void>;
   closeAiForm: () => void;
   saveAiModel: () => Promise<void>;
   removeAiModel: (id: string) => Promise<void>;
@@ -229,12 +262,34 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * whole section vanished on a node that was perfectly happy to answer what models it runs.
    */
   const canConfigureAi = createMemo(() => !!runtime()?.addAiModel);
+  const canDiscoverAiModels = createMemo(() => !!runtime()?.discoverAiModels);
 
   const executorHost = () => platform.executor;
   const canConfigureExecutor = createMemo(() => !!executorHost());
   // Both halves are needed: the backend writes the file, the host is what can name one. Neither is
   // any use alone, which is why this is one flag rather than two.
   const canBackUp = createMemo(() => !!runtime()?.exportDatabase && !!executorHost()?.chooseFile);
+
+  /**
+   * What the backend turned out not to support, kept current as more of it is discovered.
+   *
+   * A signal fed by the port's own subscription rather than a memo over `runtime()`: the list grows
+   * when some unrelated call is refused, which changes nothing a memo could be tracking. Without
+   * the subscription a settings page would render whatever was known when it mounted — and for the
+   * first gap of a session that is an empty list, which is exactly the reader who went looking.
+   *
+   * Re-read wholesale on each notification rather than appended to, so the port stays the one
+   * answer to what is missing and the handler carries no payload to get out of step with it.
+   */
+  const [unsupportedCapabilities, setUnsupportedCapabilities] = createSignal<UnsupportedCapability[]>([]);
+  createEffect(() => {
+    const port = runtime();
+    setUnsupportedCapabilities(port?.unsupported?.() ?? []);
+    // A backend that reports gaps but cannot say when a new one appears is still worth showing;
+    // it is simply a snapshot, which is what an absent subscription honestly is.
+    const stop = port?.onUnsupported?.(() => setUnsupportedCapabilities(port.unsupported?.() ?? []));
+    if (stop) onCleanup(stop);
+  });
 
   // Sorted, so adding an override does not reorder the rows under the cursor.
   const logLevels = createMemo(() =>
@@ -252,6 +307,26 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const aiFormComplete = createMemo(() => {
     const form = aiForm();
     return !!form && formComplete(form);
+  });
+
+  const aiServiceOptions = () => [
+    ...AI_API_PRESETS.map((preset) => ({ label: preset.label, value: preset.id })),
+    { label: 'Custom endpoint', value: CUSTOM_SERVICE },
+  ];
+
+  /**
+   * A discovered list, with the endpoint it was asked of.
+   *
+   * Keyed rather than cleared by each field setter, so the list cannot outlive the endpoint it
+   * describes whichever way the form changes — a preset, a pasted URL, a new key.
+   */
+  const [aiDiscovered, setAiDiscovered] = createSignal<{ endpoint: string; models: string[] } | null>(null);
+  const endpointOf = (form: AiModelForm) => JSON.stringify([form.apiProtocol, form.apiBaseUrl.trim(), form.apiKey]);
+  const aiDiscoveredModelOptions = createMemo(() => {
+    const form = aiForm();
+    const found = aiDiscovered();
+    if (!form || !found || found.endpoint !== endpointOf(form)) return [];
+    return found.models.map((model) => ({ label: model, value: model }));
   });
 
   /**
@@ -558,8 +633,40 @@ export function RuntimeStoreProvider(props: ParentProps) {
     setAiForm((form) => (form ? { ...form, [field]: value } : form));
   }
 
+  function setAiService(id: string): void {
+    const preset = AI_API_PRESETS.find((candidate) => candidate.id === id);
+    setAiForm((form) => {
+      if (!form) return form;
+      // Custom keeps whatever protocol and URL the form holds, as a starting point to edit.
+      if (!preset) return { ...form, apiService: CUSTOM_SERVICE };
+      return { ...form, apiService: preset.id, apiProtocol: preset.protocol, apiBaseUrl: preset.baseUrl };
+    });
+  }
+
+  async function discoverAiModels(): Promise<void> {
+    const form = aiForm();
+    if (!form?.apiBaseUrl.trim()) return;
+    const endpoint = endpointOf(form);
+    const found = await run('discoverAiModels', () =>
+      runtime()?.discoverAiModels?.({
+        protocol: form.apiProtocol,
+        baseUrl: form.apiBaseUrl.trim(),
+        apiKey: form.apiKey,
+      }),
+    );
+    if (!found.ok) {
+      setAiDiscovered(null);
+      return;
+    }
+    const models = [...(found.value ?? [])].sort((a, b) => a.localeCompare(b));
+    setAiDiscovered({ endpoint, models });
+    // An empty model field takes the first answer, so a working endpoint is one click from saveable.
+    if (models.length && !aiForm()?.apiModel.trim()) setAiFormField('apiModel', models[0]);
+  }
+
   function closeAiForm(): void {
     setAiForm(null);
+    setAiDiscovered(null);
   }
 
   async function saveAiModel(): Promise<void> {
@@ -717,6 +824,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canConfigureAi,
     canConfigureExecutor,
 
+    unsupportedCapabilities,
     canBackUp,
     logLevels,
     backupStatus,
@@ -729,6 +837,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiPresetOptions,
     aiFormComplete,
     aiFormDirty,
+    aiServiceOptions,
+    canDiscoverAiModels,
+    aiDiscoveredModelOptions,
     languages,
     trustedAgents,
     authorizedApps,
@@ -746,6 +857,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
     newAiModel,
     editAiModel,
     setAiFormField,
+    setAiService,
+    discoverAiModels,
     closeAiForm,
     saveAiModel,
     removeAiModel,

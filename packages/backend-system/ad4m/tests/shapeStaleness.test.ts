@@ -59,6 +59,7 @@ function current(): StoredShape {
   const declared = declaredShape(MODEL as never);
   return {
     paths: new Set(declared.paths),
+    pathCounts: new Map(declared.pathCounts),
     classHint: declared.classHint,
     identityPath: declared.identityPath,
     propHints: new Map(declared.propHints),
@@ -77,13 +78,36 @@ describe('shapeIsStale', () => {
     // Replication lag on a freshly-joined neighbourhood: the SubjectClass marker can arrive before
     // the shape triples. Reading that gap as "missing everything" would rewrite every shape in the
     // space on the strength of data that had simply not arrived.
-    expect(isStale({ paths: new Set(), propHints: new Map() })).toBe(false);
+    expect(isStale({ paths: new Set(), pathCounts: new Map(), propHints: new Map() })).toBe(false);
   });
 
   it('catches a property the model has gained', () => {
     const shape = current();
     shape.paths.delete('we://due_date');
     expect(isStale(shape)).toBe(true);
+  });
+
+  /**
+   * The case a set of paths cannot see.
+   *
+   * A relation and its `reverseOf` inverse are one link read from both ends, so they share a
+   * predicate: `WeNode` gained `inReplyTo` beside `comments`, both on `we://comment`. The set of
+   * paths was therefore unchanged, every existing space read as fresh, the new relation never
+   * reached them, and the reverse include found nothing to hydrate — a thread whose replies below
+   * the first level silently vanished, in old spaces only.
+   */
+  it('catches a second property arriving on a predicate the shape already has', () => {
+    const shape = current();
+    shape.pathCounts.set('we://due_date', 0);
+    // The path is still there, so the set comparison above is satisfied and says nothing.
+    expect(shape.paths.has('we://due_date')).toBe(true);
+    expect(isStale(shape)).toBe(true);
+  });
+
+  it('does not call a shape stale for a predicate it already carries enough times', () => {
+    const shape = current();
+    shape.pathCounts.set('we://due_date', 5);
+    expect(isStale(shape)).toBe(false);
   });
 
   it('catches a reworded class hint', () => {
@@ -217,7 +241,7 @@ describe('missing models', () => {
 
   const withPaths = (targetClass: string): [string, StoredShape] => [
     targetClass,
-    { paths: new Set(['we://x']), propHints: new Map() },
+    { paths: new Set(['we://x']), pathCounts: new Map(), propHints: new Map() },
   ];
 
   it('reports a class the perspective has never had', async () => {

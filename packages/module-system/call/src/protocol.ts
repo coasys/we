@@ -25,6 +25,12 @@
  *
  * `v` is checked on receipt and mismatches are dropped, as in presence. A peer running a newer
  * protocol should fail to connect visibly rather than half-negotiate into a broken session.
+ *
+ * Which is why `reset` was added **without** bumping `v`. A new `kind` degrades gracefully on its
+ * own: {@link parseCallMessage} answers `null` for a kind it does not know, so an old peer ignores
+ * the message and keeps its stale connection, then renegotiates when the fresh offer arrives — one
+ * side recovering rather than two, which still converges. Bumping `v` would instead make old and new
+ * peers drop *every* message from each other, turning a recoverable call into an impossible one.
  */
 
 export const CALL_PROTOCOL_VERSION = 1;
@@ -54,7 +60,21 @@ export interface CallEnvelope {
  * they share, losing the discriminant and with it the narrowing that makes handling each kind safe.
  */
 export type CallBody =
-  { kind: 'description'; description: RTCSessionDescriptionInit } | { kind: 'ice'; candidate: RTCIceCandidateInit };
+  | { kind: 'description'; description: RTCSessionDescriptionInit }
+  | { kind: 'ice'; candidate: RTCIceCandidateInit }
+  /**
+   * Throw this pair's connection away and build a new one.
+   *
+   * The only message here that is not part of the WebRTC handshake, and it exists because half a
+   * recovery is worse than none. A peer that rebuilds its `RTCPeerConnection` alone is offering a
+   * brand-new session to a peer still holding the old one: survivable, but it leaves the other side
+   * carrying a dead transport and a stale ICE generation until it happens to notice. Saying so makes
+   * the two sides start from the same place.
+   *
+   * Carries nothing. "Which connection" is already the `call` id plus the sender, and there is no
+   * reason to give: a reset is a request to start over, not a diagnosis.
+   */
+  | { kind: 'reset' };
 
 /**
  * Narrow an untrusted payload off the transport.
@@ -85,6 +105,8 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
     if (typeof candidate !== 'object' || candidate === null) return null;
     return { v: msg.v, call: msg.call, kind: 'ice', candidate: candidate as RTCIceCandidateInit };
   }
+
+  if (msg.kind === 'reset') return { v: msg.v, call: msg.call, kind: 'reset' };
 
   return null;
 }

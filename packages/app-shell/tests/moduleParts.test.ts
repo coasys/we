@@ -1,9 +1,9 @@
 /**
  * `$part` — placing a module's named fragment, and pointing it at something else.
  *
- * `ModuleDefinition.schemas` has said "named schema fragments a template can place" since it was
- * written, and nothing read the registry it fills: the promise existed and the mechanism did not, so
- * an interface that wanted a module's transcript beside its own board hand-wrote a copy of it. Both
+ * `contributes.parts` is where a module publishes named fragments a template can place, and for a
+ * long time nothing read the registry it fills: the promise existed and the mechanism did not, so an
+ * interface that wanted a module's transcript beside its own board hand-wrote a copy of it. Both
  * halves of this are worth pinning — that a part is found and expanded, and that a placer can point
  * it at a record the module has never heard of, which is the difference between a reusable fragment
  * and one welded to whatever state its module happens to hold.
@@ -25,14 +25,15 @@ const feed: SchemaNode = {
   ],
 };
 
-const definition = {
-  id: 'demo',
-  name: 'Demo',
-  schemas: {
-    feed: { node: feed, subject: 'modules.demo.collectionId' },
-    plain: { type: 'we-badge' },
+const definition: ModuleDefinition = {
+  manifest: { id: 'demo', name: 'Demo' },
+  contributes: {
+    parts: {
+      feed: { node: feed, subject: 'modules.demo.collectionId' },
+      plain: { type: 'we-badge' },
+    },
   },
-} as unknown as ModuleDefinition;
+};
 
 /** What every module is registered against here; nothing in these tests depends on either name. */
 const host = { backend: 'ad4m', framework: 'solid' };
@@ -86,16 +87,17 @@ describe('placing a module part', () => {
     // A part whose expression *mentions* the subject inside a larger sentence is left alone: a
     // partial rewrite of somebody else's expression is how substitution starts producing sentences
     // nobody wrote.
-    const mentions = {
-      id: 'demo',
-      name: 'Demo',
-      schemas: {
-        feed: {
-          node: { type: 'we-text', props: { text: { $: 'modules.demo.collectionId ? 1 : 2' } } },
-          subject: 'modules.demo.collectionId',
+    const mentions: ModuleDefinition = {
+      manifest: { id: 'demo', name: 'Demo' },
+      contributes: {
+        parts: {
+          feed: {
+            node: { type: 'we-text', props: { text: { $: 'modules.demo.collectionId ? 1 : 2' } } },
+            subject: 'modules.demo.collectionId',
+          },
         },
       },
-    } as unknown as ModuleDefinition;
+    };
     moduleRegistry.register(mentions, host);
     try {
       const resolved = resolveParts(place({ id: 'demo.feed', subject: 'other' }));

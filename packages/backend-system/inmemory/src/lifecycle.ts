@@ -26,7 +26,7 @@ import type {
   SchemaPort,
 } from '@we/backend-shared';
 import { createInMemoryEphemeralPort, InMemoryBus, manifestEntries } from '@we/backend-shared';
-import { getEntitiesForPerspective, getEntity, registerEntity, registerFileStore } from '@we/entities';
+import { getEntity, getEntityForDataset, registerEntity, registerFileStore } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { compileEntities, type EntityRuntime } from './entities';
@@ -196,14 +196,14 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
  * checks answer "core schema installed" so the shell treats every dataset as a WE space.
  *
  * `declare` is the part that carries weight: it compiles a module's manifest into row-backed
- * entities and registers them by name, which is the same contract the AD4M port fulfils by
- * compiling that manifest into decorated classes. A module declaring an entity gets a working
+ * entities and registers them by name, which is the same contract the production port fulfils by
+ * compiling that manifest into its own model classes. A module declaring an entity gets a working
  * one here without knowing either backend exists.
  */
 export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
   // Declared hint defaults by entity, captured at declare time; customizations by dataset+entity.
-  // Same observable contract as the AD4M port: reads answer the declared hints until a set() marks
-  // them customized, and reset() returns to the declared ones.
+  // Same observable contract as the production port: reads answer the declared hints until a set()
+  // marks them customized, and reset() returns to the declared ones.
   const declaredHints = new Map<string, { classHint?: string; propHints: Record<string, string> }>();
   const customized = new Map<string, { classHint?: string; propHints: Record<string, string> }>();
   const key = (dataset: unknown, entity: string) =>
@@ -214,8 +214,8 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
       const propHints: Record<string, string> = {};
       for (const spec of Object.values(entity.properties)) {
         // Keyed by predicate to match the port contract; a declaration without one has no stable
-        // storage key, so its hint is unreachable through this surface — as on AD4M, where the
-        // minted predicate is the key.
+        // storage key, so its hint is unreachable through this surface — as in production, where
+        // the minted predicate is the key.
         if (spec.interpretationHint && spec.predicate) propHints[spec.predicate] = spec.interpretationHint;
       }
       declaredHints.set(name, {
@@ -245,7 +245,7 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
 
     // Rows here are keyed by entity and property name rather than by predicate, so the neutral
     // projection is the whole answer — there is no wire vocabulary for this backend to mint.
-    entries: (manifest) => manifestEntries(manifest),
+    entries: (manifest) => manifestEntries(manifest, { parents: CORE_MANIFEST }),
 
     declareInDataset(dataset, manifest) {
       // Rows need no per-dataset schema separation here — the runtime resolves entities by name at
@@ -447,11 +447,11 @@ function release(beats: Map<string, PresenceBeat>, key: string): void {
  * `BackendConnector.ports()`.
  *
  * Connecting registers the core entities, which is when `Space`, `AgentSettings` and the rest
- * resolve to something that works. That mirrors the AD4M connector: entities exist because a
+ * resolve to something that works. That mirrors the production connector: entities exist because a
  * backend supplied them, never because a module was imported.
  *
- * The data plane is real, not stubbed: `dataBindings` exposes the same binding surface the AD4M
- * adapter does ($getEntity, $queryAdapter, model mutations, $identities, $ephemeral), backed by the
+ * The data plane is real, not stubbed: `dataBindings` exposes the same binding surface the
+ * production adapter does ($getEntity, $queryAdapter, model mutations, $identities, $ephemeral), backed by the
  * row-backed entities and the shared query engine, and `ephemeral` is the shared in-process bus.
  * That is what makes this bundle a conformance surface rather than a boot-only stub — a suite
  * running against these ports can exercise queries and mutations, not just lifecycle.
@@ -479,7 +479,7 @@ export function createInMemoryBackendPorts(
   });
 
   // One bus per bundle; the per-agent port is constructed lazily so the agent id is read after
-  // the session unlocks (mirrors the AD4M port's lazy selfId).
+  // the session unlocks (mirrors the production port's lazy selfId).
   const bus = new InMemoryBus();
   const ephemeral: EphemeralPort = (dataset) => {
     const scope = createInMemoryEphemeralPort(bus, ctx.selfId() ?? 'did:inmemory:anonymous')(dataset);
@@ -498,7 +498,7 @@ export function createInMemoryBackendPorts(
   };
 
   const mutationDataset = (deps: DataBindingDeps, opts?: Record<string, unknown>): unknown => {
-    const explicit = opts?.perspective as { handle?: unknown } | undefined;
+    const explicit = opts?.dataset as { handle?: unknown } | undefined;
     if (explicit && typeof explicit === 'object' && 'handle' in explicit) return explicit.handle;
     return deps.currentDataset();
   };
@@ -514,10 +514,8 @@ export function createInMemoryBackendPorts(
       // @we/entities' EntityClass and the contract's EntityClass<unknown> are structurally
       // compatible but declared separately; the cast bridges the two declarations.
       $getEntity: (name) => getEntity(name) as unknown as ReturnType<NonNullable<RendererDataBindings['$getEntity']>>,
-      $getEntitiesForPerspective: (name, dataset) =>
-        getEntitiesForPerspective(name, dataset) as ReturnType<
-          NonNullable<RendererDataBindings['$getEntitiesForPerspective']>
-        >,
+      $getEntityForDataset: (name, dataset) =>
+        getEntityForDataset(name, dataset) as ReturnType<NonNullable<RendererDataBindings['$getEntityForDataset']>>,
       $queryAdapter: inMemoryQueryAdapter,
       $identities: {
         get: (id) => deps.profiles().find((p) => p.did === id) as Record<string, unknown> | undefined,

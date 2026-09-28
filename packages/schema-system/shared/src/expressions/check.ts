@@ -28,6 +28,14 @@ export interface ExpressionScope {
   strict: boolean;
   /** Functions the host registers beyond the built-in library — the `$sources` names. */
   hostFunctions?: ReadonlySet<string>;
+  /**
+   * The public members of each feature module's store, by module id — `modules.<id>.<member>`.
+   *
+   * Absent when the context carries no module catalogue, in which case `modules.*` is admitted
+   * unchecked as it always was: which modules exist is a property of a deployment's seed. Present,
+   * an unknown module id or member is an error, with the nearest right one.
+   */
+  moduleMembers?: ReadonlyMap<string, ReadonlySet<string> | null>;
 }
 
 export interface ExpressionIssue {
@@ -68,6 +76,42 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
     // genuine collision: `model` meant both an LLM and a WE type. That is what the entity/record
     // naming settled — the shadowing rule stays, the ambiguity it was illustrating does not.
     if (scope.contextNames.has(root)) continue;
+
+    /*
+      `modules.<id>.<member>` — a feature module's store, one segment deeper than a host store's.
+
+      The bare `modules.<id>` read is the documented way to depend on an optional module and is
+      always allowed; `modules` alone is a namespace and never a value. With a catalogue, the id and
+      the member are both checked — a member the module did not mark public is as unknown as one it
+      never had, since a space template cannot reach either.
+    */
+    if (root === 'modules' && scope.moduleMembers) {
+      if (path.length === 0) {
+        issues.push({ message: '"modules" is a namespace — name a module: modules.<id>', severity: 'error', span });
+        continue;
+      }
+      const [id, member] = path;
+      const members = scope.moduleMembers.get(id);
+      if (members === undefined) {
+        const hint = suggest(id, scope.moduleMembers.keys());
+        issues.push({
+          message: `Unknown module "${id}"${hint ? ` — did you mean modules.${hint}?` : ''}. This deployment ships: ${[...scope.moduleMembers.keys()].join(', ')}`,
+          severity: 'error',
+          span,
+        });
+        continue;
+      }
+      // `null` is a module judging its own chrome, which sees every member — see `withOwnModule`.
+      if (members !== null && member !== undefined && !members.has(member)) {
+        const hint = suggest(member, members);
+        issues.push({
+          message: `Unknown member "${member}" on modules.${id}${hint ? ` — did you mean modules.${id}.${hint}?` : ''}. A module's store is private unless it marks a member public`,
+          severity: 'error',
+          span,
+        });
+      }
+      continue;
+    }
 
     if (scope.storeNames.has(root)) {
       if (path.length === 0) {

@@ -101,3 +101,23 @@ describe('planQuery', () => {
     expect(plan.gaps).toContainEqual(expect.objectContaining({ feature: 'scope', disposition: 'compute-up' }));
   });
 });
+
+describe('range bound kinds', () => {
+  const numbersOnly: AdapterCapabilities = { ...full, rangeBounds: ['number'] };
+  const range = (value: string | number): QueryIR => ({
+    irVersion: 1,
+    entity: 'TaskBlock',
+    filter: { field: 'dueDate', op: 'lt', value },
+  });
+
+  it('treats a bound of a kind the adapter compares as native', () => {
+    expect(planQuery(range(5), numbersOnly).gaps).toEqual([]);
+    expect(planQuery(range('2026-10-01'), full).gaps).toEqual([]);
+  });
+
+  it('reports a string bound to an adapter that compares numbers only, instead of letting it match nothing', () => {
+    expect(planQuery(range('2026-10-01'), numbersOnly).gaps).toContainEqual(
+      expect.objectContaining({ feature: 'operator:lt:string', path: 'filter.value' }),
+    );
+  });
+});

@@ -34,6 +34,12 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { headerLabel } from './peopleFilter.ts';
 
+/*
+  These name the transcribe module's store, and a template that places anything built on them depends
+  on that module. Say so: `meta.requires.modules: ['transcribe']` is what turns "the accept button does
+  nothing in this deployment" into a reported dependency. A kit fragment cannot declare it for you —
+  the declaration is the template's, since the template is what a deployment ships or omits.
+*/
 /** Records a pass made that nobody has kept — the transcribe module's list, by id. Empty without it. */
 export const UNCONFIRMED = 'modules.transcribe.unconfirmedIds';
 

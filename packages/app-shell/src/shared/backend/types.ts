@@ -113,6 +113,12 @@ export interface BackendInitResult {
 
 export interface BackendConnector {
   /**
+   * Which backend this connects to — `'ad4m'`, `'inmemory'` — as a module's `requires.backends` names
+   * it. Compatibility used to be checked against a literal in the shell; the connector is the thing
+   * that knows. Defaults to `'ad4m'`, which every bundled host is.
+   */
+  id?: string;
+  /**
    * Perform this backend's entire connection choreography — spawn/attach, auth, credential
    * acquisition, any settling delays — and return the ready-to-use result. Called once during
    * boot. The shell holds no opinions about how a backend comes up; ordering quirks (an executor

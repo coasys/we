@@ -1,15 +1,14 @@
 /**
- * aiInfra — the browser-side AI infrastructure: direct Anthropic API access, SSE stream parsing,
- * the schema-mutation tool definition, and prompt assembly.
+ * aiInfra — what the template editor tells a model: the system prompt, the schema-mutation tool,
+ * and how models from outside WE are described.
  *
- * Isolated from the edit-session store on purpose: this file is the complete surface of "the
- * browser calls a model with the user's API key". A backend-executed assistant (the pattern the
- * assistant module introduces, where the executor runs models and writes replies into the
- * dataset) would replace exactly this file — the sessions, panels, and undo history it serves
- * are unaffected. Keep it free of Solid and store imports so that boundary stays real.
+ * No transport. The conversation runs on the node's own language model through
+ * `LanguageModelPort.converse`, which is what let the editor stop holding a personal API key and
+ * calling one provider from the browser. What stays here is the part that is WE's to decide
+ * whichever model answers. Keep it free of Solid and store imports so that boundary stays real.
  */
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
-import type { EntityManifestEntry } from '@we/backend-shared';
+import type { ConversationTool, EntityManifestEntry } from '@we/backend-shared';
 
 /**
  * The full system prompt for schema-editing chat.
@@ -26,11 +25,11 @@ export function chatSystemPrompt(): Promise<string> {
 }
 
 /** Tool definition for schema mutations (ID-based patching). */
-export const updateSchemaTool = {
+export const updateSchemaTool: ConversationTool = {
   name: 'update_schema',
   description:
     'Apply patches to the current template schema. Each patch targets a node by its id. Exactly one of node, insert, or remove must be provided per patch.',
-  input_schema: {
+  parameters: {
     type: 'object' as const,
     properties: {
       patches: {
@@ -126,148 +125,4 @@ export function formatExternalManifestForPrompt(manifest: EntityManifestEntry[])
     lines.push('');
   }
   return lines.join('\n');
-}
-
-export interface StreamResult {
-  textContent: string;
-  toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }>;
-  stopReason: string;
-}
-
-/** Parse an SSE stream and return extracted text + tool calls + stop reason */
-export async function parseSSEStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  onTextDelta: (text: string) => void,
-  onToolUseStart?: (textSoFar: string) => void,
-): Promise<StreamResult> {
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let textContent = '';
-  let stopReason = '';
-
-  // Tool use tracking
-  let currentBlockType: 'text' | 'tool_use' | null = null;
-  let currentToolId = '';
-  let currentToolName = '';
-  let toolInputBuffer = '';
-  const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
-      if (data === '[DONE]') continue;
-
-      try {
-        const event = JSON.parse(data);
-
-        switch (event.type) {
-          case 'content_block_start':
-            if (event.content_block?.type === 'text') {
-              currentBlockType = 'text';
-            } else if (event.content_block?.type === 'tool_use') {
-              currentBlockType = 'tool_use';
-              currentToolId = event.content_block.id ?? '';
-              currentToolName = event.content_block.name ?? '';
-              toolInputBuffer = '';
-              onToolUseStart?.(textContent);
-            }
-            break;
-
-          case 'content_block_delta':
-            if (currentBlockType === 'text' && event.delta?.text) {
-              textContent += event.delta.text;
-              onTextDelta(textContent);
-            } else if (currentBlockType === 'tool_use' && event.delta?.partial_json) {
-              toolInputBuffer += event.delta.partial_json;
-            }
-            break;
-
-          case 'content_block_stop':
-            if (currentBlockType === 'tool_use' && currentToolId) {
-              try {
-                const input = JSON.parse(toolInputBuffer);
-                toolCalls.push({ id: currentToolId, name: currentToolName, input });
-              } catch {
-                // Malformed tool input — will be handled as no tool calls
-                console.error('Failed to parse tool input:', toolInputBuffer.slice(0, 200));
-              }
-            }
-            currentBlockType = null;
-            break;
-
-          case 'message_delta':
-            if (event.delta?.stop_reason) {
-              stopReason = event.delta.stop_reason;
-            }
-            break;
-        }
-      } catch {
-        // Skip malformed SSE events
-      }
-    }
-  }
-
-  return { textContent, toolCalls, stopReason };
-}
-
-/** Send a request to Claude and handle the response stream */
-export async function sendClaudeRequest(
-  apiKey: string,
-  claudeMessages: Array<{ role: string; content: unknown }>,
-  onTextDelta: (text: string) => void,
-  onToolUseStart?: (textSoFar: string) => void,
-): Promise<StreamResult> {
-  // Abort after 90 seconds to prevent hanging on stalled connections
-  const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    console.error('[aiInfra] Request timed out after 90s — aborting');
-    controller.abort();
-  }, 90_000);
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 16384,
-        stream: true,
-        tools: [updateSchemaTool],
-        system: [
-          {
-            type: 'text',
-            text: await chatSystemPrompt(),
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: claudeMessages,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
-      throw new Error(`Claude API error ${response.status}: ${errorBody}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body');
-
-    return await parseSSEStream(reader, onTextDelta, onToolUseStart);
-  } finally {
-    clearTimeout(timeout);
-  }
 }

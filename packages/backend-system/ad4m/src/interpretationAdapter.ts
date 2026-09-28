@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { Link, type LinkExpression, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationActivity,
@@ -33,12 +33,18 @@ import type {
   WatchRequest,
 } from '@we/backend-shared';
 import { trace } from '@we/backend-shared';
-import { getEntitiesForPerspective, getEntity, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
+import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
+
+import { recordMissingMethod } from './missingMethods';
+import { readShapeProperties } from './perspectiveHelpers';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
 /** The link that marks a record as carrying a staged suggestion — the executor's `OVERLAY_KIND_PRED`. */
 const OVERLAY_KIND_PREDICATE = 'ad4m://interp/kind';
+
+/** How long a staged-suggestion watch nobody holds stays up, for a holder about to come back. */
+const PROPOSAL_WATCH_GRACE_MS = 1500;
 
 /**
  * Answer `false` where the executor refuses because the suggestion is not staged any more.
@@ -199,17 +205,25 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<NameTables
   // failure here costs a proposal its readable field names, which is worth degrading over rather
   // than failing the whole review list for.
   try {
-    const native = new Set(getRegisteredEntityNames());
-    for (const shapeName of await perspective.getShaclNames()) {
-      if (native.has(shapeName)) continue; // already covered above, without the round trip
-      const shape = await perspective.getShacl(shapeName);
-      absorb(shapeName, (shape?.properties ?? []) as { path?: string; name?: string }[]);
-    }
+    for (const { name, properties } of await perspectiveOnlyShapes(perspective)) absorb(name, properties);
   } catch {
     // Leave what we have.
   }
 
   return tables;
+}
+
+/**
+ * The properties of every shape this perspective holds beyond the compiled-in registry. Every read
+ * of `proposals()` and every per-field decision asks, and reading the shapes one at a time cost a
+ * round trip per shape and per property — see `readShapeProperties` for what it costs instead.
+ *
+ * A shape with a native model's name is skipped whatever its target class: the compiled-in shape
+ * answers for that name, as it always has here.
+ */
+async function perspectiveOnlyShapes(perspective: PerspectiveProxy) {
+  const native = new Set(getRegisteredEntityNames());
+  return (await readShapeProperties(perspective)).filter(({ name }) => !native.has(name));
 }
 
 /**
@@ -253,7 +267,7 @@ async function entitiesOf(perspective: PerspectiveProxy, bases: string[]): Promi
   try {
     classes = await perspective.subjectClassesOf(bases);
   } catch (error) {
-    if (!isMissingHandler(error)) console.warn('interpretation: could not classify staged records —', error);
+    if (!recordMissingMethod(error)) console.warn('interpretation: could not classify staged records —', error);
     return out;
   }
   for (const [base, names] of Object.entries(classes ?? {})) {
@@ -424,28 +438,14 @@ const UNSUPPORTED =
   'This runtime does not support interpretation. It needs an AD4M build with the generic ' +
   'extraction stack; everything else in the app works normally without it.';
 
-/**
- * Whether a rejection means "this executor has never heard of that method".
- *
- * The WS dispatcher answers an unregistered method with a 404 whose message is
- * `Unknown type: <method>`, and that is a categorically different failure from the call being
- * attempted and going wrong: it says the node is running a build that predates the feature, and no
- * retry, model configuration or permission grant will change it.
- *
- * Both the status and the message are checked because only one of them is guaranteed to survive.
- * The client raises a typed error carrying `status`, but that type is not exported from the package
- * root, and an error crossing a transport or a rewrapping layer can arrive as a plain `Error` with
- * the text intact and the status gone.
- *
- * Deliberately narrow. Anything broader would let an unrelated outage — a busy node, a dropped
- * socket — be recorded as a permanent capability gap, which is the one mistake here that a user
- * cannot recover from without reloading.
- */
-function isMissingHandler(error: unknown): boolean {
-  const status = (error as { status?: unknown; code?: unknown })?.status ?? (error as { code?: unknown })?.code;
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return status === 404 || /unknown type/i.test(message);
-}
+/*
+  `isMissingHandler` used to live here. It now lives in `missingMethods.ts` as
+  `recordMissingMethod`, which answers the same question and keeps the method name it reads out of
+  the message on the way past, so every guard below feeds one list the settings page can show.
+
+  Renamed at the call sites rather than aliased: the function has a side effect now, and a
+  question-shaped name over a recording call is how the next reader gets surprised.
+*/
 
 /**
  * Whether the runtime can hold a standing watch, probed separately from `interpret`.
@@ -600,6 +600,21 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
    * things: one by the caller starting a run, the other by the executor part-way through it.
    */
   const oneShotExchange = new Map<string, { prompt?: string; response?: string }>();
+
+  /**
+   * One staged-suggestion watch per perspective, shared by every holder.
+   *
+   * The executor hands identical subscriptions from one user the same server-side subscription, with
+   * no count of who holds it, so disposing one ends it for all. Two watches on a perspective are
+   * ordinary: a space switch away and back inside a round trip has the first watch finish starting
+   * after the second, and its late stop silenced the live one until the keepalive noticed. So the
+   * watch is shared here and disposed when its last holder lets go — after a grace, because a
+   * dispose racing a fresh subscribe with the same text can land after it and end that one too.
+   */
+  const proposalWatches = new Map<
+    PerspectiveProxy,
+    { listeners: Set<() => void>; started: Promise<{ dispose(): void }>; idle?: ReturnType<typeof setTimeout> }
+  >();
 
   /**
    * Where a pass came from, for a consumer keeping a history — see `collection` on the activity row.
@@ -871,7 +886,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         await proxy(dataset).interpretationOverlays();
         executorSupports = true;
       } catch (error) {
-        if (!isMissingHandler(error)) {
+        if (!recordMissingMethod(error)) {
           // Inconclusive. Left unset so the next dataset change asks again.
           trace('interpretation', 'probe:inconclusive', { error: String(error) });
           return true;
@@ -952,7 +967,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
             observed ? passId : undefined,
           );
         } catch (error) {
-          if (!isMissingHandler(error)) throw error;
+          if (!recordMissingMethod(error)) throw error;
           executorSupports = false;
           throw new Error(UNSUPPORTED);
         }
@@ -1061,20 +1076,57 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         The overlay's `kind` link, and nothing else, is what "staged" means here.
 
         The engine writes it when it stages a suggestion and removes it once nothing on that record
-        is left to decide — whoever decided, on whichever node. A link removal synced in from a peer
-        publishes on the same subscription as a local one, which is the whole reason this watches
-        links rather than asking the relay: a decision is a fact in the graph, and a peer who was
-        offline when it was made still has to hear about it when the diff arrives.
+        is left to decide — whoever decided, on whichever node. A removal synced in from a peer
+        changes the query's result exactly as a local one does, so a peer who was offline when the
+        decision was made still hears about it when the diff arrives.
+
+        Watched on the executor rather than through link listeners, which pushed every link of a
+        peer-sync burst through JS to find the few that mattered. The executor re-runs this query
+        only for a diff touching its predicate, and pushes only when the result differs. It has to
+        stay SPARQL naming the predicate outright: that is what the executor reads to decide which
+        diffs to re-run it for.
       */
-      const onLink = (link: LinkExpression) => {
-        if (link?.data?.predicate === OVERLAY_KIND_PREDICATE) cb();
-        return null;
-      };
-      await perspective.addListener('link-added', onLink);
-      await perspective.addListener('link-removed', onLink);
+      let watch = proposalWatches.get(perspective);
+      if (!watch) {
+        const listeners = new Set<() => void>();
+        const started = perspective
+          .subscribeQuery(`SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`)
+          .then((sub) => {
+            sub.onResult(() => {
+              for (const listener of [...listeners]) listener();
+            });
+            return sub;
+          });
+        const created = { listeners, started };
+        proposalWatches.set(perspective, created);
+        // A watch that never started holds nothing; the next caller asks again.
+        started.catch(() => {
+          if (proposalWatches.get(perspective) === created) proposalWatches.delete(perspective);
+        });
+        watch = created;
+      }
+      const shared = watch;
+      clearTimeout(shared.idle);
+      shared.idle = undefined;
+      const listener = () => cb();
+      shared.listeners.add(listener);
+      try {
+        await shared.started;
+      } catch (error) {
+        shared.listeners.delete(listener);
+        throw error;
+      }
       return () => {
-        void perspective.removeListener('link-added', onLink);
-        void perspective.removeListener('link-removed', onLink);
+        if (!shared.listeners.delete(listener) || shared.listeners.size) return;
+        clearTimeout(shared.idle);
+        shared.idle = setTimeout(() => {
+          if (shared.listeners.size) return;
+          if (proposalWatches.get(perspective) === shared) proposalWatches.delete(perspective);
+          void shared.started.then(
+            (sub) => sub.dispose(),
+            () => {},
+          );
+        }, PROPOSAL_WATCH_GRACE_MS);
       };
     },
 
@@ -1177,7 +1229,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         // by the caller and, before this, disappeared into a console line — which is why a node
         // that could not auto-extract looked for three days like one that simply had nothing to
         // extract.
-        if (!isMissingHandler(error)) throw error;
+        if (!recordMissingMethod(error)) throw error;
         executorSupports = false;
         throw new Error(UNSUPPORTED_WATCH);
       }
@@ -1206,7 +1258,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           path: this attaches what a pass already minted, so a name it cannot resolve has nothing to
           find and nothing to lose.
         */
-        const model = getEntitiesForPerspective(name, perspective) as unknown as
+        const model = getEntityForDataset(name, perspective) as unknown as
           { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
         if (!model) continue;
         for (const instance of await model.findAll(perspective)) {
@@ -1358,7 +1410,7 @@ async function deleteProcessorConfig(perspective: PerspectiveProxy, watchId: str
  */
 function targetClasses(perspective: PerspectiveProxy, names: readonly string[]): string[] {
   return names.map((name) => {
-    const model = getEntitiesForPerspective(name, perspective);
+    const model = getEntityForDataset(name, perspective);
     const targetClass = model ? getEntityTargetClass(model as never) : undefined;
     if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
     return targetClass;
@@ -1368,9 +1420,9 @@ function targetClasses(perspective: PerspectiveProxy, names: readonly string[]):
 /**
  * Property name → predicate, for the per-property accept/reject path.
  *
- * The inverse of {@link predicateNames} and built from it, so the two cannot disagree about what a
- * name means. An unknown name throws: accepting the wrong property, or silently accepting nothing,
- * are both worse than a caller finding out its name was wrong.
+ * The inverse of {@link predicateNames}, read from the same shapes, so the two cannot disagree about
+ * what a name means. An unknown name throws: accepting the wrong property, or silently accepting
+ * nothing, are both worse than a caller finding out its name was wrong.
  */
 async function toPredicate(perspective: PerspectiveProxy, property: string): Promise<string> {
   /*
@@ -1397,12 +1449,9 @@ async function toPredicate(perspective: PerspectiveProxy, property: string): Pro
 
   // Then the perspective's own shapes — a module's entities, or a foreign app's.
   try {
-    const native = new Set(getRegisteredEntityNames());
-    for (const shapeName of await perspective.getShaclNames()) {
-      if (native.has(shapeName)) continue;
-      const shape = await perspective.getShacl(shapeName);
-      for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
-        if (p.name === property && p.path) return p.path;
+    for (const { properties } of await perspectiveOnlyShapes(perspective)) {
+      for (const p of properties) {
+        if (p.name === property) return p.path;
       }
     }
   } catch {

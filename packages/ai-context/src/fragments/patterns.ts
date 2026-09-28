@@ -31,10 +31,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "text-faint" } },
         {
           "type": "we-text",
-          "props": { "color": "textFaint", "textAlign": "center" },
+          "props": { "color": "text-faint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -265,7 +265,6 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$": "datasetStore.currentDataset.handle" },
         "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
@@ -428,6 +427,35 @@ The \`$localState\` holding the display is a convenience: \`recordStore.displays
 read in place each time. For a feed of *mixed* types, index by the row instead —
 \`recordStore.displays[row.type]\` — and the same card draws every kind of record the space holds.
 
+**A picture held by relation.** A community model carries its photo as a relation to an
+\`ImageBlock\` rather than as a string, so \`display.media\` is empty and \`display.mediaRelation\`
+names the relation. The row holds ids, not a URL — look the image up, and gate the query so an
+unresolved id does not widen it to every image in the space:
+
+\`\`\`json
+{
+  "type": "$if",
+  "props": {
+    "condition": { "$": "local.display.mediaRelation && row[local.display.mediaRelation]" },
+    "then": {
+      "type": "Column",
+      "$queries": {
+        "pictures": {
+          "entity": "ImageBlock",
+          "where": { "id": { "$": "row[local.display.mediaRelation]" } },
+          "when": { "$": "row[local.display.mediaRelation]" },
+          "limit": 1
+        }
+      },
+      "children": [
+        { "type": "$if", "props": { "condition": { "$": "count(local.pictures)" },
+          "then": { "type": "we-image", "props": { "src": { "$": "first(local.pictures).src" }, "fit": "cover", "r": "media" } } } }
+      ]
+    }
+  }
+}
+\`\`\`
+
 ### A group of faces with a count
 
 \`\`\`json
@@ -534,7 +562,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
 \`\`\`json
 {
   "type": "Card",
-  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
+  "props": { "bg": "surface", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -560,7 +588,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accent-text" } },
         {
           "type": "Column",
           "props": { "gap": "100" },

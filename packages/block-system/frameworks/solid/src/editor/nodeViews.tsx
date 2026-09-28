@@ -28,6 +28,7 @@ import type { Accessor, JSX } from 'solid-js';
 import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 
+import { FallbackBlockCard } from '../components/FallbackBlockCard/FallbackBlockCard';
 import type { EditorContext } from './context';
 import { blockTypeOf, COLLECTION_NODE, collectionStyle, MENTION_NODE, UNKNOWN_NODE } from './schema';
 
@@ -118,7 +119,7 @@ class CustomBlockView extends SolidNodeView {
         Input ? (
           <Input {...this.props()} onChange={this.onChange} isSelected={this.isSelected} />
         ) : (
-          <div class="we-unknown-block">Unsupported block: {blockType}</div>
+          <FallbackBlockCard block={this.props()} type={blockType} />
         ),
       this.dom,
     );

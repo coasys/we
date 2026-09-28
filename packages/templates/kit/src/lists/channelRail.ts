@@ -25,6 +25,7 @@
  * query answers the whole rail, including the dots.
  */
 import type { AnchorId } from '@we/schema-kit';
+import { sectionLabel } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { expr, ref } from '@we/schema-shared';
 
@@ -176,11 +177,7 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
             props: { width: '100%', gap: '100' },
             $queries: { catChannelRows: channelQuery({ $: 'category.id' }) },
             children: [
-              {
-                type: 'we-text',
-                props: { variant: 'footnote', uppercase: true, color: 'text-faint', letterSpacing: 'wide' },
-                children: [{ $: 'category.title' }],
-              },
+              sectionLabel({ label: { $: 'category.title' } }),
               {
                 type: '$each',
                 props: { items: { $: 'local.catChannelRows' }, as: 'catChannel' },

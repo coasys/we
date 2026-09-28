@@ -41,7 +41,7 @@ const spaceCard: SchemaNode = {
     ay: 'center',
     gap: '300',
     p: '300',
-    bg: 'surface-sunken',
+    bg: 'surface',
     r: '300',
     border: '1px solid border',
   },

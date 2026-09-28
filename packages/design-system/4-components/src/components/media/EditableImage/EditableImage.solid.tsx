@@ -291,7 +291,7 @@ export function EditableImage(allProps: EditableImageProps) {
             position="absolute"
             top="200"
             right="200"
-            zIndex={1}
+            prop:zIndex={1}
             title="Remove image"
             aria-label="Remove image"
             onClick={removeImage}

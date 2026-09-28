@@ -4,8 +4,8 @@
  * `RuntimeAdminPort` already knows about LLMs: it lists them, adds them, downloads them and picks a
  * default. What it cannot do is *use* one against a dataset's own schema. That is the same gap
  * {@link TranscriptionPort} was created to close for speech, and it has the same consequence — the
- * transcribe module cannot reach interpretation without importing `@coasys/ad4m` directly and
- * declaring `backends: ['ad4m']`, which is the coupling the module contract exists to prevent.
+ * transcribe module cannot reach interpretation without importing a backend's client directly and
+ * declaring itself backend-specific, which is the coupling the module contract exists to prevent.
  *
  * ## Why the caller supplies the turns
  *
@@ -288,7 +288,7 @@ export interface InterpretationPort {
 
   /**
    * Hear that the set of staged suggestions may have changed — somebody's pass staged one, or
-   * somebody, anywhere in the neighbourhood, accepted or rejected one.
+   * somebody, anywhere in the shared dataset, accepted or rejected one.
    *
    * ## Why a signal and not the list
    *
@@ -319,8 +319,8 @@ export interface InterpretationPort {
    *
    * ## Scope
    *
-   * Only what this node can see. On a backend whose event streams are local to the executor — AD4M
-   * is one — that means this peer's own passes, even for a watch shared across a neighbourhood.
+   * Only what this node can see. On a backend whose event streams are local to the process that
+   * runs them, that means this peer's own passes, even for a watch shared across a dataset.
    * Making peers visible to each other is a *host* concern, layered on top: see
    * `createInterpretationRelay`, which broadcasts what this returns and merges what peers send
    * back. Pushing it down here would ask every backend to reimplement a fan-out it may have no

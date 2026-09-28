@@ -1,14 +1,17 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "declarationMap": true,
     "outDir": "dist",
     "noEmit": true,
-    "rootDir": "src",
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    // TypeScript 6 defaults `types` to [] rather than auto-loading every @types package it can find, so
+    // a file importing node builtins has to say so. `@types/node` was already a devDependency here; it
+    // was arriving by accident.
+    "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "dist"]
 }

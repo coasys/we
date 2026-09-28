@@ -31,6 +31,8 @@ import {
 } from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractEntities } from './extractors/entities.js';
+import { extractForeignElements } from './extractors/foreignElements.js';
+import { extractModules } from './extractors/modules.js';
 import { extractPluginCatalog } from './extractors/plugins.js';
 import { extractTokens } from './extractors/tokens.js';
 import { extractComponentProps } from './extractors/typescript.js';
@@ -267,11 +269,6 @@ async function main() {
   const registered = extractRegisteredComponents(
     resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/registries/componentRegistry.tsx'),
   );
-  const documented = new Set([
-    ...(contextData.primitives ?? []).map((p) => p.tagName),
-    ...(contextData.components ?? []).map((c) => c.name),
-  ]);
-  contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
   /*
     The functions the host lends to expressions, read from its registry. Listed beside the built-in
@@ -279,6 +276,49 @@ async function main() {
     and a typo in one reported — the same catalogue argument as the graph plugins.
   */
   contextData.sources = extractHostSources(resolve(repoRoot, 'packages/app-shell/src/shared/sources/index.ts'));
+
+  /*
+    The modules this deployment ships, read off the definitions the seed names. Everything a schema
+    may name of a module — its public store members, parts, panels, settings, activities, components,
+    functions, views, blocks and entities — reaches the reference and the validator from here, which
+    is what turns `modules.transcribe.typo` from a silent nothing into an error with a suggestion.
+  */
+  contextData.modules = await extractModules(repoRoot);
+
+  /*
+    Custom elements from libraries the seed says this deployment bundles. Read from each package's
+    own custom-elements manifest, so a chart or a rating a template names is documented beside the
+    primitives and accepted by the validator — see `extractors/foreignElements.ts`.
+  */
+  contextData.foreignElements = extractForeignElements(repoRoot);
+
+  /*
+    A component is documented only if something mounts it.
+
+    A package's `context` field documents everything it exports, and exporting is not registering.
+    `@we/block-solid` exports every block's input half, its placeholder and its toolbar for the
+    composer's own use; `@we/components` exports the media helpers its block displays are built
+    from. None of those is in the registry, so all of them were documented as schema components,
+    accepted by the validator — which reads this same list — and rendered as nothing. Twenty-one
+    names, each a template an author or a model could write correctly by the reference and see
+    fail silently: the failure the `CodeEditor` entry in the registry records fixing once, by hand.
+
+    Filtered here rather than per package, because the registry is the only thing that knows, and a
+    package cannot: whether a component is a schema word is the host's decision. What a module
+    contributes counts as mounted, since the host registers it at boot.
+  */
+  const mountable = new Set([...registered, ...(contextData.modules ?? []).flatMap((m) => m.components ?? [])]);
+  const unmounted = (contextData.components ?? []).filter((c) => !mountable.has(c.name)).map((c) => c.name);
+  if (unmounted.length) {
+    contextData.components = (contextData.components ?? []).filter((c) => mountable.has(c.name));
+    console.log(`  Left out ${unmounted.length} exported components nothing registers: ${unmounted.join(', ')}`);
+  }
+
+  const documented = new Set([
+    ...(contextData.primitives ?? []).map((p) => p.tagName),
+    ...(contextData.components ?? []).map((c) => c.name),
+  ]);
+  contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
   const context = {
     ...contextData,
@@ -377,6 +417,8 @@ async function main() {
     storeEntries: context.storeEntries,
     shellComponents: context.shellComponents,
     sources: context.sources,
+    modules: context.modules,
+    foreignElements: context.foreignElements,
   };
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);

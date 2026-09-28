@@ -324,13 +324,17 @@ export function PresenceStoreProvider(props: ParentProps) {
     const did = myDid();
     const want = did ? wanted() : [];
     const refs = datasetStore.datasets();
+    // The space on screen was read fresh when it was switched to, so its handle is the one most
+    // likely to know it is shared. Preferred over the list's copy, which can lag behind a publish.
+    const current = datasetStore.currentDataset();
 
     const { open, close, refused } = reconcileLeases([...leases.keys()], want);
 
     for (const uri of close) closeLease(uri);
 
     for (const uri of open) {
-      const handle = refs.find((ref) => ref.sharedUri === uri)?.handle;
+      const handle =
+        (current?.sharedUri === uri ? current.handle : undefined) ?? refs.find((ref) => ref.sharedUri === uri)?.handle;
       // No local ref for it yet. The effect re-runs when the dataset list changes, which is when one
       // arrives; until then there is nothing to open a scope on.
       if (handle) untrack(() => openLease(uri, handle, did!));

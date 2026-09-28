@@ -4,6 +4,7 @@ export const TagBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     blockable: true,
+    description: 'A label to mark things with',
     flag: { predicate: 'we://flag', value: 'we://tag_block' },
     authoring: { fields: ['name', 'color'] },
     properties: {

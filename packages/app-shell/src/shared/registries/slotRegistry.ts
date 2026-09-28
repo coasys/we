@@ -35,8 +35,10 @@ import {
   createSpaceModalMount,
   destructivePrompt,
   installPrompt,
+  joinSpaceModalMount,
   namePrompt,
   removeAccountModal,
+  screenSourcePrompt,
   sidebar,
   templateEditor,
 } from '@we/template-shell';
@@ -279,11 +281,23 @@ export function registerCoreSlots(): void {
   // Chrome for the same reason, plus one of its own: it is opened from two places — the settings
   // page and the sidebar's spaces group — so it cannot belong to either. See `shellStore.createSpaceOpen`.
   slotRegistry.register({ id: 'core:createSpace', anchor: 'overlay', node: createSpaceModalMount, order: 4 });
+  // Its sibling, opened from the same two places and chrome for the same reason — see
+  // `shellStore.joinSpaceOpen`. The two are mutually exclusive in practice (one menu, two items),
+  // so the order between them decides nothing; it sits next to the one it belongs with.
+  slotRegistry.register({ id: 'core:joinSpace', anchor: 'overlay', node: joinSpaceModalMount, order: 5 });
   // Last of the overlays, and deliberately: it is the only one raised by the app rather than by
   // something the user just did, so anything they *did* ask for belongs in front of it. Its own gate
   // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,
   // so it cannot appear over the boot screen either. See NamePrompt.schema.ts.
-  slotRegistry.register({ id: 'core:namePrompt', anchor: 'overlay', node: namePrompt, order: 5 });
+  /*
+    The host asking which screen to share, on a machine whose OS will not ask for it.
+
+    Above the two space dialogs and below the name prompt for the reason the ordering comment there
+    gives: this is something the user just asked for and is waiting on — a `getDisplayMedia` is
+    outstanding the whole time it is up — where the name prompt merely became answerable.
+  */
+  slotRegistry.register({ id: 'core:screenSource', anchor: 'overlay', node: screenSourcePrompt, order: 6 });
+  slotRegistry.register({ id: 'core:namePrompt', anchor: 'overlay', node: namePrompt, order: 7 });
   /*
     What a template you are about to install will be able to do.
 
@@ -292,7 +306,7 @@ export function registerCoreSlots(): void {
     because the user pressed a button to get here and is waiting on an answer, where the name
     prompt merely became answerable. See InstallPrompt.schema.ts.
   */
-  slotRegistry.register({ id: 'core:installPrompt', anchor: 'overlay', node: installPrompt, order: 6 });
+  slotRegistry.register({ id: 'core:installPrompt', anchor: 'overlay', node: installPrompt, order: 8 });
   /*
     The host's own confirmation in front of anything a space template deletes.
 
@@ -300,7 +314,7 @@ export function registerCoreSlots(): void {
     a promise the tier boundary is holding open — and a dialog a person cannot see is a delete that
     never resolves. See DestructivePrompt.schema.ts.
   */
-  slotRegistry.register({ id: 'core:destructivePrompt', anchor: 'overlay', node: destructivePrompt, order: 7 });
+  slotRegistry.register({ id: 'core:destructivePrompt', anchor: 'overlay', node: destructivePrompt, order: 9 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The editor's panels, as docks — see `editorDocks.ts` for why they are not part of the node above.

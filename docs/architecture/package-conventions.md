@@ -244,8 +244,10 @@ Load-bearing, and previously written nowhere.
 
 `@we/module-globe` peer-depends on `@we/widgets` and takes `CesiumGlobe` as a constructor argument;
 `@we/entities` peer-depends on `@coasys/ad4m`; every module peer-depends on `@we/module-shared`. The
-failure this prevents is documented in `bundledModules.ts`: a bundle carrying its own reactive
-runtime gets a _second_ one, and reactivity silently stops crossing the boundary.
+failure this prevents is documented in `docs/guides/writing-a-module.md`: a bundle carrying its own
+reactive runtime gets a _second_ one, and reactivity silently stops crossing the boundary. It is
+also why a module store is built from injected `deps.signal` / `deps.effect` rather than importing a
+framework.
 
 ## Adding a new package
 

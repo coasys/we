@@ -74,6 +74,8 @@ export { attributeRow } from './layout/attributeRow.ts';
 export type { AttributeRowOptions } from './layout/attributeRow.ts';
 export { badgedAvatar } from './layout/badgedAvatar.ts';
 export type { BadgedAvatarOptions } from './layout/badgedAvatar.ts';
+export { CARET_SIZE, foldingBody, foldingSectionLabel, isOpen } from './layout/foldingSection.ts';
+export type { FoldingBodyOptions, FoldingSectionLabelOptions, FoldState } from './layout/foldingSection.ts';
 export { pageShell } from './layout/pageShell.ts';
 export type { PageShellOptions } from './layout/pageShell.ts';
 export {
@@ -94,6 +96,8 @@ export { recordCard } from './layout/recordCard.ts';
 export type { RecordCardOptions } from './layout/recordCard.ts';
 export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';
 export type { RailButtonOptions, RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
+export { iconDisc } from './layout/iconDisc.ts';
+export type { IconDiscOptions } from './layout/iconDisc.ts';
 export { sectionCard } from './layout/sectionCard.ts';
 export type { SectionCardOptions } from './layout/sectionCard.ts';
 export { statChip } from './layout/statChip.ts';
@@ -104,7 +108,7 @@ export { field } from './input/field.ts';
 export type { FieldOptions } from './input/field.ts';
 
 // Overlays.
-export { composerModal } from './overlays/composerModal.ts';
+export { backButton, composerModal } from './overlays/composerModal.ts';
 export type { ComposerModalOptions } from './overlays/composerModal.ts';
 export { confirmModal } from './overlays/confirmModal.ts';
 export type { ConfirmModalOptions } from './overlays/confirmModal.ts';

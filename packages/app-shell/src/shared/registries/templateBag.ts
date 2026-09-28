@@ -44,3 +44,27 @@ export function provideTemplateBag(bag: Stores): () => void {
 export function templateBag(): Stores | null {
   return lent;
 }
+
+/*
+  The chrome bag, lent for the mirror-image case.
+
+  A module's declared card — the part a block contribution names — is module-authored, and a module
+  renders against the chrome bag exactly as its panels do. But the card is drawn *inside* a
+  template's post, by the block renderer, which is reached through the component registry rather
+  than as a descendant of anything the provider owns. Grants follow authorship, so the card takes
+  the chrome bag from here, the way a panel body takes the template's from above.
+*/
+let chrome: Stores | null = null;
+
+/** Publish the chrome bag. Returns the take-back. */
+export function provideChromeBag(bag: Stores): () => void {
+  chrome = bag;
+  return () => {
+    if (chrome === bag) chrome = null;
+  };
+}
+
+/** The chrome bag, or `null` before the provider has built one. */
+export function chromeBag(): Stores | null {
+  return chrome;
+}

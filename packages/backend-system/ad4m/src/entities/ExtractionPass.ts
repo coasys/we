@@ -22,20 +22,15 @@ import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
  *
  * ## The prompt and the response are here, and they are the expensive part
  *
- * They were deliberately left out, and the reasons were good: a prompt is the whole transcript, so
- * one per pass in a shared neighbourhood means every member replicating a second copy of every
- * conversation, for a payload almost nobody opens. And `shareExtractionDetail` is off by default
- * precisely because the exchange is sensitive.
+ * A prompt is the whole transcript, so one per pass in a shared neighbourhood means every member
+ * replicating a second copy of every conversation, for a payload almost nobody opens.
  *
- * They are written anyway, for now, because a log that omits what was actually asked cannot answer
- * the question people have while this is being built: not "did a pass run" but "why did it decide
- * *that*". Two things follow from the choice and are worth stating plainly rather than discovering:
- * every member of the space replicates every prompt, and `shareExtractionDetail` no longer governs
- * whether the exchange is shared, only whether the *live* readout offers it — which makes that
- * setting the first thing to revisit if this stays.
- *
- * The honest way back is not deletion: gate the write on the same setting, so a space that wants a
- * complete log says so, and one that does not keeps the promise its setting makes.
+ * They are written anyway, because a log that omits what was actually asked cannot answer the
+ * question people have about a pass: not "did it run" but "why did it decide *that*". So every
+ * member of the space can read every exchange — which is also why this record, and not the live
+ * relay, is how a peer's exchange reaches anyone: the relay never sends it. There was a space
+ * setting that claimed to keep the exchange private; once this was written it no longer could, and
+ * it was removed rather than left promising something untrue.
  *
  * ## Why it hangs off the call
  *

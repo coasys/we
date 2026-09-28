@@ -24,12 +24,25 @@ import { describe, expect, it } from 'vitest';
 import * as showcase from './index.ts';
 import {
   BY_KIND,
+  BY_ORDER,
   BY_STATE,
   CANVAS_FILL,
   CANVAS_KEY,
   CARD_FILL,
   CARD_KEY,
+  FOLD_COUNT,
+  FOLD_FROM_GRAPH,
+  FOLD_QUERY,
+  FOLDED_CARDS,
+  HEAT_HIGH_FILL,
+  HEAT_HIGH_KEY,
+  HEAT_LOW_FILL,
+  HEAT_LOW_KEY,
+  HEAT_NONE_FILL,
+  HEAT_NONE_KEY,
+  HIDDEN_KINDS,
   KIND_DEFAULTS,
+  kindFill,
   LENS_PARAM,
   LENS_QUERY,
   LINK_ENTITY,
@@ -37,6 +50,7 @@ import {
   LINK_KEY,
   NO_LENS,
   PLAIN_FILL,
+  toggleKindShown,
   toggleLens,
 } from './WorkshopKey.ts';
 
@@ -349,16 +363,105 @@ describe('the workshop template’s call selection', () => {
     */
     const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
 
-    expect(calls).toContain('"condition":{"$":"modules.call.active || count(modules.call.liveCalls)"}');
     /*
       With `args`, and the empty string carries the whole point. A handler with none does not call
       the method with none — it forwards the click, and `startCall` takes an optional anchor id, so
       it was handed a PointerEvent and the backend refused the write. `''` is how `startCall`
       already spells "no anchor".
     */
-    expect(calls).toContain('"else":{"$action":"modules.call.startCall","args":[""]}');
+    expect(calls).toContain('{"$action":"modules.call.startCall","args":[""]}');
     // And it says which of the three it is about to do. The middle one had no words of its own.
     expect(calls).toContain("'Join the call'");
+  });
+
+  it('still offers a new call while one is running', () => {
+    /*
+      The regression this pair exists for, and it only appeared once calls became plural.
+
+      One button branched three ways, and the branch that starts a call is the one the other two
+      shadow: the moment anybody in the space was in a call it read "Join the call" — in the panel
+      header and in all three route gates, which is every door this template has — so there was no
+      way to start a second conversation without leaving the first. The call module had noticed the
+      same thing and put a `+` beside its own join prompt; this template had nothing.
+
+      Asserted as the pair rather than as the words, because the failure is one control doing two
+      jobs: a start that is only reachable when nothing is running is a start that is missing exactly
+      when somebody wants it.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // The contextual verb keeps the primary — all three of its readings.
+    expect(calls).toContain("'Go to the call'");
+    expect(calls).toContain("'Join the call'");
+    expect(calls).toContain("'New call'");
+    // And starting one stands beside it, on exactly the condition that makes the primary not a start.
+    expect(calls).toContain('"condition":{"$":"count(modules.call.liveCalls)"}');
+    expect(calls).toContain("'Leave your call and start a new one'");
+
+    // The same pair on the page, which is where somebody with no call is actually looking.
+    for (const path of ['/kanban', '/calendar']) {
+      const route = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
+      expect(route, path).toContain("'Leave your call and start a new one'");
+    }
+  });
+
+  it('asks about this space, not about wherever your call is', () => {
+    /*
+      `modules.call.active` is true of a call in *any* space, and the button was gated on it — so
+      standing in a space with no call at all, while in one somewhere else, every door read "Go to
+      the call" and led out of the space you were looking at. There was no way to start one where you
+      were standing, and nothing said why.
+
+      `liveCalls` is the space on screen and includes your own call when it is here, so it answers
+      both halves. Being in a call elsewhere keeps its own control — the call bar's "Back to the call
+      in …" — which is the module's to draw.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    expect(calls).not.toContain('modules.call.active || count(modules.call.liveCalls)');
+    expect(calls).toContain('modules.call.active && !modules.call.elsewhere');
+  });
+
+  it('joins the call it names rather than the one you are in', () => {
+    /*
+      `goToCall` answers "bring me to my call", and in a call elsewhere that is a different call from
+      the one the button is about: pressed on "Join the call", or on a live row in the list, it took
+      you to yours. `joinCall` names an id and leaves whatever you were in, which is what the word on
+      both controls promises.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // The header's singular default: the first of them, which is all a single button can mean.
+    expect(calls).toContain('{"$action":"modules.call.joinCall","args":[{"$":"first(modules.call.liveCalls).id"}]}');
+    // And the row's, which names the call beside it — see the next test for why the rows exist.
+    expect(calls).toContain('find(modules.call.liveCalls, { recordId: call.id }).id');
+  });
+
+  it('says which calls in the list are happening now, and lets you join one', () => {
+    /*
+      The list is a query over the archive, so a meeting three people were sitting in looked exactly
+      like one from last Tuesday — and the header's button cannot cover that gap, being singular:
+      with two calls running it joins whichever `liveCalls` lists first and nothing says there was a
+      choice. The call module makes the same argument for listing a row per call in its own join bar.
+
+      Asserted on the row's own affordances rather than on the section, because the fix is that a row
+      names the call it means: a marker with no way in is the state this replaces.
+    */
+    const calls = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
+
+    // A live row is told apart by being live, not by being yours — which is what it used to test.
+    expect(calls).not.toContain("call.id == modules.call.callRecordId ? 'danger' : 'text-faint'");
+    expect(calls).toContain("find(modules.call.liveCalls, { recordId: call.id }) ? 'danger' : 'text-faint'");
+    // Who is in it — on your own row too, where there is nothing to press beside them.
+    expect(calls).toContain('"type":"AvatarStack"');
+    /*
+      And a way in on everybody else's. The row used to carry both words, "Go to" for your own call
+      and "Join" for another — but going to a call you are already in is what clicking the row does,
+      so that half went and the button is gated on the row not being yours. What is left is the act
+      that is not navigation, and the tooltip says what it costs.
+    */
+    expect(calls).not.toContain("'Go to' : 'Join'");
+    expect(calls).toContain("modules.call.active ? 'Leave your call and join this one' : 'Join this call'");
   });
 
   it('keeps a calendar where the archive of calls used to be', () => {
@@ -460,9 +563,14 @@ describe('the workshop template’s call selection', () => {
     const json = JSON.stringify(workshop);
 
     expect(json).not.toContain("'danger-text'");
-    // The calls list's own dot. The transcript panel's is the module's now — see its
-    // `Panel.schema.test.ts`, which is where that half of this test went.
-    expect(json).toContain("modules.call.callRecordId ? 'danger' : 'text-faint'");
+    /*
+      The calls list's own dot. The transcript panel's is the module's now — see its
+      `Panel.schema.test.ts`, which is where that half of this test went.
+
+      It asks whether the row is live rather than whether it is *yours*, which is a separate test —
+      this one is only about the colour that answer is drawn in.
+    */
+    expect(json).toContain("find(modules.call.liveCalls, { recordId: call.id }) ? 'danger' : 'text-faint'");
   });
 
   it('draws a card nobody has agreed to yet as unsettled, and offers the decision on it', () => {
@@ -522,9 +630,17 @@ describe('the workshop template’s call selection', () => {
       `"hidden":{"$":"(routeStore.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
     );
     expect(json).toContain('"$action":"modules.transcribe.applyChange"');
-    expect(json).toContain('Pending acceptance hidden');
-    // Parked in slots a card fits, and pinned where it is drawn when kept.
-    expect(json).toContain('"layout":{"type":"manual","options":{"size":{"width":180,"height":135}');
+    // Said in the key, which carries every reason a card is off the canvas, and nowhere else: a chip
+    // over the corner spoke for one of the three and stood beside the panel already saying it.
+    expect(json).not.toContain('Pending acceptance hidden');
+    /*
+      Parked in slots a card fits, and pinned where it is drawn when kept.
+
+      Inside the layout expression now, because the canvas has a second reading — see `WorkshopTree`.
+      Asserted as the branch rather than as the whole prop: what matters is that the freeform side is
+      still `manual` with a card-sized slot, which is what stopped new suggestions arriving overlapping.
+    */
+    expect(json).toContain(`{ type: 'manual', options: { size: { width: 180, height: 135 }`);
     expect(json).toContain(
       `"$action":"recordStore.placeOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
     );
@@ -588,7 +704,11 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).not.toContain('connect-nodes');
+    // Only the quick form, which needs no arming for the same reason: the right button is the target.
+    const listed = json.match(/connect-nodes/g) ?? [];
+    const quick = json.match(/\{ type: 'connect-nodes', options: \{ button: 'secondary' \} \}/g) ?? [];
+    expect(listed.length).toBe(quick.length);
+    expect(quick.length).toBeGreaterThan(0);
     expect(json).not.toContain('local.connecting');
     /*
       And the drop writes the connection rather than asking about it.
@@ -630,18 +750,94 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    // Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record
-    // — the host's delete confirmation is modal and per record, so N of them would stack N dialogs.
     expect(json).toContain('"onDeleteSelection"');
-    expect(json).toContain('"condition":{"$":"event.recordId"}');
 
-    // Through `record.delete` in both places, so the host's own confirmation stands in front of a
-    // keystroke that has no undo behind it.
+    /*
+      A line has no placement, so taking it off the canvas and deleting it are the same act — and it
+      goes through `record.delete`, which the host guards, so the keystroke still asks before it
+      destroys anything.
+
+      Guarded on `kind == 'edge'` rather than on `recordId` alone, because a *card* now answers the
+      same key differently: see the test below.
+    */
+    expect(json).toContain('"condition":{"$":"event.kind == \'edge\' && event.recordId"}');
     expect(json).toContain('"$action":"record.delete"');
 
     // And the panel's own, which takes the id from the address rather than from a node payload —
     // the inspector is a panel, so the selection reaches it as parameters and nothing else.
     expect(json).toContain('"args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"}]');
+  });
+
+  it('asks once about a whole selection rather than once per card', () => {
+    /*
+      The host's delete confirmation is modal and phrased per record, so a template looping
+      `record.delete` over a selection stacks a dialog per card. `deleteRecords` raises one and
+      counts what is in the list, which is what made multi-select delete a thing to design.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"$action":"recordStore.deleteRecords"');
+    expect(json).toContain('"condition":{"$":"count(event.records)"}');
+    expect(json).toContain('"id":"delete"');
+  });
+
+  it('offers no "take off the canvas" beside the delete, because it could not work here', () => {
+    /*
+      Pinned as an absence, which is the only way a decision like this survives.
+
+      There was one, briefly, on the argument that a reflex key should do the reversible thing. It
+      is wrong on *this* canvas: almost every card is extraction output owned by the call, and the
+      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
+      returned the card on the next read and the `manual` layout parked it in the corner. The
+      control read as cards vanishing to somewhere nobody could find.
+
+      `recordStore.removeFromCanvas` is still right for a record merely *placed* here, which is a
+      distinction a bar over a mixed selection cannot draw.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).not.toContain('"eraser"');
+    expect(json).not.toContain('recordStore.removeFromCanvas');
+  });
+
+  it('can sweep a selection, carry it away, and put an arrangement back', () => {
+    const json = JSON.stringify(workshop);
+
+    /*
+      No armed toggle here, unlike the canvas view's: this canvas has no toolbar of its own — its
+      chrome is the workshop's panels — so Shift and Ctrl/Cmd are the whole gesture, which is what
+      every other canvas people use has taught them anyway.
+    */
+    // In the freeform branch of the behaviours expression. Dropped in the tree, where a rectangle
+    // over an arrangement nobody chose would select a set with no meaning.
+    expect(json).toContain("'marquee-select'");
+
+    // The canvas has always received drops and could never be dragged from, so nothing on it could
+    // reach the Pocket — which is the one thing that carries between spaces.
+    expect(json).toContain('"carry":true');
+
+    // Undo takes the canvas as an argument, which is the whole of the scoping: there is no separate
+    // "point the stack here" call for this template to have forgotten.
+    expect(json).toContain('"$action":"recordStore.undoCanvas"');
+    expect(json).toContain('"$action":"recordStore.redoCanvas"');
+  });
+
+  it('puts undo where it can be reached without the canvas having focus', () => {
+    /*
+      The keys answer only while the canvas has focus, and clicking into the inspector to edit a
+      label takes focus away — so the press that follows goes nowhere. This canvas has no toolbar of
+      its own, so the buttons live in the workshop's top chrome, which is already a row of pills.
+
+      Gated on the canvas page: the kanban and the calendar have no history of their own, and a
+      permanently disabled pill beside them would be furniture that never does anything.
+    */
+    const json = JSON.stringify(workshop);
+
+    expect(json).toContain('"arrow-u-up-left"');
+    expect(json).toContain('"arrow-u-up-right"');
+    expect(json).toContain('!recordStore.canvasHistory.canUndo');
+    // Disabled rather than hidden, and each says what it would put back.
+    expect(json).toContain('recordStore.canvasHistory.undoLabel');
   });
 
   it('offers a connection’s kind where the line is read, not only where it was drawn', () => {
@@ -999,6 +1195,8 @@ describe('the workshop’s key', () => {
     // A result equal to the default is written as nothing, so an ordinary link stays clean.
     expect(JSON.stringify(toggleLens('state'))).toContain("? '' : 'none'");
     expect(JSON.stringify(toggleLens('kind'))).toContain("? 'kind,state' : ''");
+    // The heat map is on alone, and off goes back to the default.
+    expect(JSON.stringify(toggleLens('order'))).toContain("? '' : 'order'");
   });
 
   it('builds the canvas’s colours from the space’s key, not from the seed', () => {
@@ -1028,7 +1226,10 @@ describe('the workshop’s key', () => {
 
     expect(canvas).toContain(`${NO_LENS} ? [{ style: { color: { from: 'data.canvasColor' } } }] : []`);
     expect(canvas).not.toContain('"color":{"from":"data.canvasColor"}');
-    expect(canvas).toContain('"width":{"from":"data.canvasWidth"},"height":{"from":"data.canvasHeight"}');
+    // Still a plain rule, and now a rule that answers differently in the tree, where every card is
+    // given one box — see `TREE_CARD_STYLE`. The card's own size is the freeform branch of it.
+    expect(canvas).toContain("{ from: 'data.canvasWidth' }");
+    expect(canvas).toContain("{ from: 'data.canvasHeight' }");
   });
 
   it('scopes its contents to the canvas without scoping the panel', () => {
@@ -1080,9 +1281,9 @@ describe('the workshop’s key', () => {
     // Naming a state is Settings' business; the key only ever changes one that exists.
     expect(key).not.toContain('createTaskState');
     // The same picker the vocabulary uses, tokens first, on every row of the key: the three canvas
-    // rows, a kind's, and a state's.
+    // rows, a kind's, a state's, and the heat map's two ends and its "no answers yet".
     const pickers = key.split('"type":"we-color-picker","props":{"tokens":true').length - 1;
-    expect(pickers).toBe(5);
+    expect(pickers).toBe(8);
   });
 
   it('turns each lens on from the heading of the section it governs, and hides the rest', () => {
@@ -1124,7 +1325,35 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain(`[{ style: { color: ${CARD_FILL} } }]`);
     expect(canvas).toContain(`"bg":{"$":"${CANVAS_FILL}"}`);
     expect(canvas).toContain(`"showLabel":true,"color":{"$":"${LINK_FILL}"}`);
-    expect(canvas).toContain(`filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}']))`);
+    expect(canvas).toContain(
+      `filter(s, !(s.nodeType in ['${CARD_KEY}', '${CANVAS_KEY}', '${LINK_KEY}', '${HEAT_LOW_KEY}', '${HEAT_HIGH_KEY}', '${HEAT_NONE_KEY}']))`,
+    );
+  });
+
+  it('shades every card by the order while the order lens is on, between the key’s two colours', () => {
+    /*
+      A heat map of whatever the tree is ordered by: three cards in a row say which is first, not
+      whether the middle one is nearer the top or the bottom, and a shade does. Continuous between two
+      colours the community picks, and exclusive — it colours every card, so kinds and states step aside.
+    */
+    const key = panel('key');
+    const canvas = route('/canvas');
+
+    for (const reserved of [HEAT_LOW_KEY, HEAT_HIGH_KEY, HEAT_NONE_KEY]) expect(key).toContain(`"${reserved}"`);
+    // The legend is the scale as the cards are shaded by it, blended the same way.
+    expect(key).toContain("'linear-gradient(to right in oklch, '");
+    // A card nobody has answered is outside the scale, in a colour of its own the community can set.
+    expect(key).toContain('"No answers yet"');
+    expect(canvas).toContain(`[{ style: { color: ${HEAT_NONE_FILL} } }, { style: { color: { metric: 'field'`);
+    // The rule: the order's own field, blended between the two ends, and nothing while as arranged.
+    expect(canvas).toContain("metric: 'field'");
+    expect(canvas).toContain(`scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} }`);
+    expect(canvas).toContain("local.order != 'manual'");
+    expect(canvas).toContain("{ from: 'createdAt' }");
+    // A rating is scaled against its own range, so one middling card cannot look like the best there is.
+    expect(canvas).toContain('min: find(local.treeSignalTypes');
+    // Exclusive: the heat lens is `order` alone, and "no lens" counts it as a lens.
+    expect(NO_LENS).toContain(BY_ORDER);
   });
 
   it('never offers a fill for a connection among the kinds', () => {
@@ -1261,9 +1490,8 @@ describe('the workshop’s key', () => {
     // Picking a colour turns the lenses off, so the pick is visible.
     expect(canvas).toContain(`"args":["${LENS_PARAM}","none"]`);
     // And the shape and scale a card was given show whatever lens is on.
-    expect(canvas).toContain(
-      '"cardShape":{"from":"data.canvasCardShape"},"contentScale":{"from":"data.canvasContentScale"}',
-    );
+    expect(canvas).toContain("{ from: 'data.canvasCardShape' }");
+    expect(canvas).toContain("{ from: 'data.canvasContentScale' }");
   });
 });
 
@@ -1282,15 +1510,32 @@ describe('the workshop’s canvas', () => {
       the canvas and the point — and then switched to the chosen model, since the first opens on
       whichever is offered first. Nothing is written until the form is submitted.
     */
-    expect(canvas).toContain('"canvas-double-click"');
+    expect(canvas).toContain("'canvas-double-click'");
     // Only with a call on screen: every choice writes against it, so without one the chooser offered
     // a list of things that could only fail.
     expect(canvas).toContain(
       `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
-    // Tasks, then events, then the rest in the store's order — under a heading below the note.
-    expect(canvas).toContain("distinct(['TaskBlock', 'EventBlock'], recordStore.creatableEntities.map(k, k.value))");
-    expect(canvas).toContain('"Block types"');
+    // One searchable grid over the one list — the note, this space's types, then blocks led by tasks
+    // and events (see `typePicker`). A composed kind opens the composer, anything else the form.
+    expect(canvas).toContain('"placeholder":"Search types…"');
+    expect(canvas).toContain(
+      "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities",
+    );
+    // Back from the form or the composer reopens this chooser — and not for a drawn connection. In
+    // the modal's top-left corner, not in the title's line.
+    expect(canvas).toContain('"condition":{"$":"!recordStore.pendingLink"}');
+    expect(canvas).toContain('"slot":"start-button"');
+    // No model picker in the form: the kind was just chosen.
+    expect(canvas).not.toContain('"label":"Entity"');
+    // A pin rather than two number boxes, for anything with a latitude and a longitude.
+    expect(canvas).toContain('"$action":"recordStore.setRecordPlace"');
+    expect(canvas.split('{"$setLocal":"chooserOpen","value":true}').length - 1).toBeGreaterThanOrEqual(3);
+    expect(canvas).toContain(
+      `"condition":{"$":"kind.via == 'composer'"},"then":{"$setLocal":"newNoteOpen","value":true}`,
+    );
+    // A collection is called a note here; its description says it is a document of blocks.
+    expect(canvas).toContain("(kind.via == 'composer' ? 'Note' : kind.label)");
     expect(canvas).toContain(
       `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );
@@ -1300,7 +1545,7 @@ describe('the workshop’s canvas', () => {
   });
 
   it('opens a note in the composer on a double-click, and only a note', () => {
-    expect(canvas).toContain('"node-double-click"');
+    expect(canvas).toContain("'node-double-click'");
     expect(canvas).toContain(`"onNodeDoubleClick":{"$if":{"condition":{"$":"event.recordType == 'CollectionBlock'"}`);
     expect(canvas).toContain('"$action":"spaceStore.updatePost","args":[{"$":"note.id"},{"$":"arg"}]');
     expect(canvas).toContain("local.inspectingType == 'CollectionBlock'");
@@ -1332,8 +1577,29 @@ describe('the workshop’s canvas', () => {
       '"$action":"recordStore.updateRecordField","args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
     );
     expect(inspector).not.toContain('saveRecord');
-    // Typed controls commit on change, never on input — a keystroke is not a write.
-    expect(inspector).not.toContain('"onInput"');
+    /*
+      Typed controls commit on change, never on input — a keystroke is not a write to a record
+      everybody else is reading.
+
+      Asked of the handlers rather than of the panel's text. It used to be `not.toContain("onInput")`
+      over the whole serialisation, which held only while the inspector contained nothing but the
+      record editor: the reactions row now carries the form that defines a new signal type, and that
+      form types into its own `$localState` behind a Save button, which is the shape a draft SHOULD
+      have. The coarse version read a correct form as the defect it was written about.
+    */
+    const writesOnInput: string[] = [];
+    const seek = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(seek);
+      if (!value || typeof value !== 'object') return;
+      for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+        if (key === 'onInput' && JSON.stringify(inner).includes('updateRecordField')) {
+          writesOnInput.push(JSON.stringify(inner));
+        }
+        seek(inner);
+      }
+    };
+    seek(JSON.parse(inspector));
+    expect(writesOnInput).toEqual([]);
     // A closed set of values is a select over what the model declares.
     expect(inspector).toContain('field.options.map(o, { label: o, value: o })');
   });
@@ -1440,6 +1706,22 @@ describe('the workshop’s people', () => {
     expect(calendar).toContain('.committed');
     expect(calendar).not.toContain('event.participants');
     expect(calendar).not.toContain('setAttending');
+  });
+
+  it('keeps the month and the chosen day in the address, so a link and a driver both land there', () => {
+    const calendar = route('/calendar');
+    /*
+      Which month you are looking at is the clearest case the rule has: send somebody a link to a month
+      and they should open on that month. It is also what makes the calendar follow a driver, since a
+      published frame carries the whole address and nothing else about a route travels.
+
+      The month is an offset from the reader's today, so a link opened across a month boundary lands one
+      month out. That is noted where it is declared: the expression language has no month arithmetic, so
+      an absolute month is not a one-line change, and wrong by a month at a boundary beats always opening
+      on today.
+    */
+    expect(calendar).toContain('"syncParam":"month"');
+    expect(calendar).toContain('"syncParam":{"name":"day","push":true}');
   });
 
   it('filters the calendar with the board’s own control, the chosen people in the address and the mode on the device', () => {
@@ -1629,17 +1911,391 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('"height":"1lh"');
   });
 
-  it('keeps the same gap under every section caption, with the captions a step fainter', () => {
-    expect(inspector).toContain('"props":{"ml":"auto","fontSize":"100","height":"1lh","ay":"center"}');
-    expect(inspector).toContain('"props":{"gap":"200","ay":"center","opacity":0.75}');
+  it('sizes the people picker for a section heading, not for the panel header', () => {
+    /*
+      It was `sm` — the size of the pencil and the bin in the panel's own header — and a heading is
+      not the header. The kit reserves `--we-component-height-xs` for a heading's aside precisely
+      because those are the small end of the set, so at `sm` this row came out 32px against
+      everything else's 24, and a row that centres its contents put "People" lower than the four
+      names around it.
+
+      It wore a `height: '1lh'` wrapper meant to prevent exactly that. The wrapper did not work: the
+      button overflowed it and the row grew anyway, which is why this is pinned on the SIZE rather
+      than on a box drawn around it. The pixels are in the `section headings agree` browser case.
+    */
+    expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"xs"');
   });
 
   it('offers no assignee text box beside the People section that answers it', () => {
     expect(inspector).toContain("f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes");
   });
 
-  it('sets section names apart from the properties under them, with a picker sized like the header’s', () => {
-    expect(inspector).toContain('"uppercase":true');
-    expect(inspector).toContain('"triggerTitle":"Who is on this","triggerVariant":"ghost","size":"sm"');
+  it('sets section names apart from the properties under them', () => {
+    /*
+      Through the kit's `SECTION_LABEL_PROPS`, not a local copy of it. The copy agreed on the colour
+      and the tracking and spelled the caps with `we-text`'s own shorthand, which is the kind of
+      divergence that is invisible until somebody changes one of the two.
+    */
+    expect(inspector).toContain('"textTransform":"uppercase"');
+    expect(inspector).not.toContain('"opacity":0.75');
+  });
+
+  it('folds every section, and remembers which are open', () => {
+    /*
+      The panel's sections were the one set that could not be folded, on a panel narrow enough that
+      five of them is a lot of scrolling — and the pattern for folding one was written four times in
+      the extraction panel and nowhere else.
+
+      Persisted, not in the URL: how somebody likes the inspector folded is a preference, and a link
+      they send should not impose it on whoever opens it.
+    */
+    for (const field of ['connectionsOpen', 'connectsOpen', 'peopleOpen', 'reactionsOpen', 'discussionOpen']) {
+      expect(inspector, `${field} is never folded`).toContain(`"$toggleLocal":"${field}"`);
+      expect(inspector, `${field} is not remembered`).toContain(
+        `"persist":"inspector.${field.replace('Open', 'Section')}"`,
+      );
+      // Closed to begin with: five sections opened push the record's own properties off a 320px
+      // panel before a reader has decided they want any of them.
+      expect(inspector, `${field} starts open`).toContain(`"${field}":{"type":"boolean","initial":false`);
+    }
+  });
+
+  it('says whether a section is open, rather than only drawing a caret', () => {
+    // `we-button`'s `expanded` — the prop the shared pattern was the reason for. Without it these
+    // rows announce as plain buttons and nothing says what pressing one would do.
+    expect(inspector).toContain('"expanded":{"$":"local.discussionOpen"}');
+  });
+});
+
+describe('the chooser’s colours', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+
+  it('draws a card’s icon in its kind’s colour, looked up by the entry’s name — the default, or the space’s', () => {
+    // The picker hands a whole entry; the key looks colours up by name. Passing the entry itself made
+    // every lookup miss, and every icon came out the plain card's colour.
+    const fill = kindFill('kind.value');
+    const kind = { value: 'ImageBlock', label: 'Image' };
+    expect(run(fill, { kind, local: { typeStyles: [] } })).toBe(KIND_DEFAULTS.ImageBlock);
+    expect(run(fill, { kind, local: { typeStyles: [{ nodeType: 'ImageBlock', color: '#123456' }] } })).toBe('#123456');
+  });
+});
+
+describe('putting a kind away from the canvas', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+  const next = (hide: string, kind: string) => {
+    const action = toggleKindShown('kind') as { args: [string, { $: string }] };
+    return run(action.args[1].$, { kind, routeStore: { params: { hide } } });
+  };
+
+  it('adds a kind to the address, and takes it back out, leaving nothing when none is hidden', () => {
+    expect(next('', 'ImageBlock')).toBe('ImageBlock');
+    expect(next('ImageBlock', 'TextBlock')).toBe('ImageBlock,TextBlock');
+    expect(next('ImageBlock,TextBlock', 'ImageBlock')).toBe('TextBlock');
+    expect(next('TextBlock', 'TextBlock')).toBe('');
+    expect(run(HIDDEN_KINDS, { routeStore: { params: {} } })).toEqual([]);
+  });
+
+  it('hands the hidden kinds to the canvas', () => {
+    const workshop = showcase.workshopTemplate;
+    const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+    expect(canvas).toContain(`"hiddenTypes":{"$":"${HIDDEN_KINDS}"}`);
+  });
+});
+
+describe('folding a card on the canvas', () => {
+  const run = (source: string, scope: Record<string, unknown>) =>
+    evaluateExpression(parseExpression(source), {
+      root: (name: string) => (name in scope ? { bound: true, value: scope[name] } : { bound: false }),
+      call: (name: string, args: unknown[]) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, {} as never),
+    } as never);
+
+  /** What the address would hold after the graph reported a press on one card's fold control. */
+  const next = (fold: string, recordId: string, folded: boolean) => {
+    const action = FOLD_FROM_GRAPH as { args: [string, { $: string }] };
+    return run(action.args[1].$, { event: { recordId, folded }, routeStore: { params: { fold } } });
+  };
+
+  it('adds the card the graph folded, and takes it back out', () => {
+    // Real record ids, because they are URIs: a comma-joined list is only safe if none of them can
+    // contain a comma, and this is the test that would fail if that stopped being true.
+    const one = 'we://ds/uuid-one';
+    const two = 'we://ds/uuid-two';
+
+    expect(next('', one, true)).toBe(one);
+    expect(next(one, two, true)).toBe(`${one},${two}`);
+    expect(next(`${one},${two}`, one, false)).toBe(two);
+    // Unfolding the last one leaves a clean address rather than an empty parameter.
+    expect(next(two, two, false)).toBe('');
+  });
+
+  it('folds once, however many times the same card is reported', () => {
+    const one = 'we://ds/uuid-one';
+
+    expect(next(one, one, true)).toBe(one);
+  });
+
+  it('reads nothing at all as nothing folded', () => {
+    expect(run(FOLDED_CARDS, { routeStore: { params: {} } })).toEqual([]);
+    expect(run(FOLD_COUNT, { routeStore: { params: {} } })).toBe(0);
+  });
+
+  it('hands the folded cards to the canvas, and draws the lines a fold leaves behind', () => {
+    const canvas = JSON.stringify((showcase.workshopTemplate.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+    expect(canvas).toContain(`"folded":{"$":"${FOLDED_CARDS}"}`);
+    expect(canvas).toContain('"onNodeFold"');
+    // The summary line has to look unlike a connection somebody drew — see the canvas's edgeStyle.
+    expect(canvas).toContain('"when":{"type":"fold-bundle"}');
+    expect(canvas).toContain('"dashed":true');
+  });
+
+  it('carries the fold from page to page, like the lens', () => {
+    /*
+      Every navigation this template makes spells its query out in full, and an explicit `?` drops
+      whatever the address held — so going to the board to look something up and coming back would
+      quietly unfold everything, which is most of the reason the fold is in the address at all.
+    */
+    const workshop = JSON.stringify(showcase.workshopTemplate);
+    // The fragment is a `${…}` hole in a template literal, so it is evaluated by lifting the
+    // expression out of it — the same thing the renderer does when it interpolates the path.
+    const inner = FOLD_QUERY.slice(2, -1);
+
+    // Every path the template navigates to carries it: the page switcher and the call links.
+    expect(workshop.split('&fold=').length).toBeGreaterThan(2);
+    expect(run(inner, { routeStore: { params: { fold: 'we://a' } } })).toBe('&fold=we://a');
+    expect(run(inner, { routeStore: { params: {} } })).toBe('');
+  });
+
+  it('lets a fold carry its contents when it is dragged', () => {
+    const canvas = JSON.stringify((showcase.workshopTemplate.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+    /*
+      The whole payload, and `dragOnCanvas` rather than `placeOnCanvas`. A folded card arrives
+      carrying a placement per card hidden under it, and a schema cannot loop — so picking four
+      values out of the payload would silently drop every carried card and unfolding in a corner
+      would scatter them back.
+    */
+    expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
+    expect(canvas).toContain('{"$":"event"}]');
+  });
+});
+
+/**
+ * Reading the canvas as a tree.
+ *
+ * The failures worth guarding are the ones that leave a control looking like it works. A mode nothing
+ * on screen can turn off; an order the picker names and the layout does not obey; a weight fetched on
+ * every canvas whether or not anything reads it; a gesture that writes a coordinate while the layout
+ * is deriving one.
+ */
+describe('the workshop’s tree', () => {
+  const workshop = showcase.workshopTemplate as Schema;
+  const canvas = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === '/canvas'));
+
+  it('keeps the reading in the address, and the card size nowhere', () => {
+    /*
+      Two different questions. Send somebody a link and they should see the shape you are looking at —
+      so the mode, the spine and the order are view state. How large the cards are is about the screen
+      somebody is sitting at, so a link that shrank the recipient's cards would impose a decision that
+      was never about them.
+    */
+    expect(canvas).toContain('"treeMode":{"type":"boolean","initial":false,"syncParam":{"name":"tree","push":true}}');
+    expect(canvas).toContain('"spine":{"type":"string","initial":"","syncParam":"spine"}');
+    expect(canvas).toContain('"order":{"type":"string","initial":"manual","syncParam":"order"}');
+    // Medium for everyone while there is no picker: a size kept on the device would outlive the control.
+    expect(canvas).toContain('"cardSize":{"type":"string","initial":"md"}');
+  });
+
+  it('puts the only way out of the mode on screen rather than in a panel', () => {
+    /*
+      The engine's own rule: a state the layout obeys has to be visible and reversible. A panel can be
+      closed, and a reader who closed it would be left in a mode with nothing offering the way back.
+    */
+    expect(canvas).toContain('"$toggleLocal":"treeMode"');
+    expect(canvas).toContain('"position":"absolute"');
+    /*
+      And below the pinned pill bar, off the band the template exports rather than a number.
+
+      The strip shipped at the container's own corner, which is *underneath* the call and history pills
+      — `position: fixed` over the whole route — so every control rendered, measured correctly and could
+      neither be seen nor pressed. That it clears them is a claim about pixels and is asserted in
+      `tests/browser/cases/treeStrip.mjs`; this is the narrower claim that the clearance is expressed as
+      the shared band, since a second copy of that arithmetic is what drifted last time.
+    */
+    expect(canvas).toContain('"top":"calc(calc(var(--we-space-300) + calc(var(--we-component-height-md)');
+    // And the strip's box is positioned against the route rather than whatever ancestor happens to be
+    // above it — without which "the canvas's own corner" is somewhere else entirely.
+    expect(canvas).toContain('"position":"relative"');
+  });
+
+  it('swaps the layout rather than the graph', () => {
+    /*
+      One `GraphView`, one expression. Two of them would unmount one and mount the other on every
+      switch, throwing away the selection, the camera and every card's identity — and with it the
+      travel, which is what makes the switch read as one movement over one set of cards.
+    */
+    expect(canvas).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+    expect(canvas).toContain("{ type: 'manual', options: { size: { width: 180, height: 135 }");
+    // One layout prop, so there is exactly one place the mode is read.
+    expect(canvas.match(/"layout":/g)).toHaveLength(1);
+  });
+
+  it('orders siblings by the thing the picker names', () => {
+    // Three genuinely different questions — what came first, what we most agree on, what we mean to do
+    // about it — and the third is the one the other two cannot answer.
+    expect(canvas).toContain("local.order == 'manual' ? 'canvasRank'");
+    expect(canvas).toContain("'weight'");
+    expect(canvas).toContain("'createdAt'");
+    // Strongest first, and whichever end of time was asked for: the direction follows the order.
+    expect(canvas).toContain("|| local.order == 'newest') ? 'desc' : 'asc'");
+  });
+
+  it('puts each card’s score on it while the tree is ordered by a reaction, and nowhere else', () => {
+    expect(canvas).toContain('"badge":{"$":"local.treeMode && (local.order == \'signal\' && (');
+  });
+
+  it('brings the tree back into view when its cards change size', () => {
+    // Large cards make a larger tree, and one left where it was pushed cards off the screen.
+    expect(canvas).toContain('"reframeOn":{"$":"local.treeMode ? local.cardSize : \'\'"}');
+  });
+
+  it('offers the date order both ways', () => {
+    expect(canvas).toContain('"value":"date"');
+    expect(canvas).toContain('"value":"newest"');
+  });
+
+  it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
+    /*
+      Only while ordering by a reaction, the weights were asked for at the moment the order changed —
+      which changed the seed, and choosing "by reaction" dimmed the canvas and redrew it. Read whenever
+      the tree is shown, they are already there. And kept on the freeform canvas while the order is a
+      reaction: a refresh replaces a card's data, so dropping them there took them off the cards, and
+      coming back to the tree sorted by date first and by the reaction a moment later. Under any other
+      order the canvas reads none — `null` is what the seed reads as "weigh nothing".
+    */
+    expect(canvas).toContain('"weigh":{"$":"(local.treeMode || local.order == \'signal\') && (');
+    /*
+      And it weighs the type the picker is SHOWING, not only one somebody has explicitly chosen.
+
+      This was the bug. The picker fell back to the community's first type so it never showed an empty
+      box, while `local.signalType` stayed empty — so "by reaction" weighed nothing, ordered by date
+      instead, and looked exactly like a sort that did not work. A local cannot be seeded from a
+      subscription, so the fallback has to live in the expression and every reader has to share it.
+    */
+    const inForce = 'local.signalType ? local.signalType : first(local.treeSignalTypes).id';
+    expect(canvas).toContain(`signalTypeId: (${inForce})`);
+    expect(canvas).toContain(`local.order == 'signal' && (${inForce})`);
+    // The community's own aggregate, passed through rather than re-derived. A second copy of that rule
+    // is the copy that falls behind, and nothing on screen would say why an order looked wrong.
+    expect(canvas).toContain(`aggregate: find(local.treeSignalTypes, { id: (${inForce}) }).aggregate`);
+    // And the mode, which is what a stored aggregate that cannot express it is read through.
+    expect(canvas).toContain(`mode: find(local.treeSignalTypes, { id: (${inForce}) }).mode`);
+    expect(canvas).toContain('me: me.did');
+    // Muted authors left out, as they are on every other reaction surface here.
+    expect(canvas).toContain('excludeAuthors: spaceStore.mutedDids');
+  });
+
+  it('writes a structure where the layout derives the position, and a coordinate where it does not', () => {
+    /*
+      The same gesture means two different things, so there are two handlers rather than one that
+      guesses. `arrangeOnTree` carries the spine, and has to: what makes a parent a parent is this
+      community's vocabulary and this reader's choice, neither of which a store can know.
+    */
+    expect(canvas).toContain('"onNodeArrange":{"$action":"recordStore.arrangeOnTree"');
+    expect(canvas).toContain('{"$":"local.spine"}');
+    expect(canvas).toContain('"onNodeDragEnd":{"$action":"recordStore.dragOnCanvas"');
+  });
+
+  it('swaps the gesture rather than listing both', () => {
+    // Both claim a press on a card, so listing the two would have whichever came first win — and the
+    // winner would be the wrong one in one of the two modes.
+    expect(canvas).toContain("type: 'arrange-nodes'");
+    expect(canvas).toContain("{ type: 'drag-node', options: { pin: true } }");
+    // `select` stays ahead of both: it does not claim the press, and it needs to see it.
+    expect(canvas).toContain("'select', { type: 'arrange-nodes'");
+  });
+
+  it('reorders siblings by dragging only while they are shown as arranged', () => {
+    // Ordered by date or reaction, a card slid along its row would land somewhere the order takes back.
+    expect(canvas).toContain("{ type: 'arrange-nodes', options: { reorder: local.order == 'manual',");
+  });
+
+  it('keeps a discussed connection when a card is dragged out of its tree, and says so first', () => {
+    // arrangeOnTree refuses to delete a connection people have commented on or reacted to; the gesture is
+    // told which counts mean that, so the preview refuses instead of showing a detach the store turns down.
+    expect(canvas).toContain("keep: ['commentsCount', 'signalsCount']");
+    expect(canvas).toContain('"counts":["signals","comments"]');
+  });
+
+  it('gives every card one box in the tree, and its own on the canvas', () => {
+    // A rank reads as significance, so cards at the sizes somebody chose while arranging a wall would
+    // claim an importance the data does not support.
+    expect(canvas).toContain("local.treeMode ? ((local.cardSize == 'sm'");
+    expect(canvas).toContain("{ from: 'data.canvasWidth' }");
+  });
+
+  it('draws the connections it is not following, faintly', () => {
+    /*
+      The honest counterpart of placing each card under one parent: the second claim is still true and
+      still drawn, and a connection of another kind entirely is exactly what a reader following a
+      decision pathway wants to notice. Faint rather than absent, or the shape is lost in the tangle.
+    */
+    expect(canvas).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+    expect(canvas).toContain('opacity: 0.25');
+    /*
+      And every child is met at its own top, from its parent's bottom.
+
+      Left to the geometry a parent's three children get three different-looking relationships — the
+      outer two are attached at their left and right edges, only the middle one at its top — when they
+      are the same relationship, and in a tree the arrangement is what says so.
+    */
+    expect(canvas).toContain("sourceAnchor: 's', targetAnchor: 'n'");
+    /*
+      And the spine keeps the canvas's own curve. Switching the line style as well as the arrangement
+      makes the mode read as a different drawing rather than as the same cards seen another way, which
+      is the one thing a mode of the canvas should not do.
+    */
+    expect(canvas).not.toContain("curve: 'step'");
+    /*
+      One element answering a LIST of rules, which the graph flattens — the same shape the key's lens
+      rules use. A rule that is always present with a clause matching nothing would work and is worse:
+      an inert rule is one more thing a reader of the style list has to work out is inert.
+    */
+    expect(canvas).toContain('] : []');
+  });
+
+  it('animates the switch and not the controls', () => {
+    /*
+      A `reveal` on the picker group animates its width, and the strip wraps — so the group growing
+      through the available width pushed the last control onto a second line and pulled it back, and the
+      strip visibly doubled in height and shrank again during the one moment that already has every card
+      moving. The mode switch is the animation.
+    */
+    expect(canvas).not.toContain('"axis":"inline"');
+  });
+
+  it('offers the unset spine as a placeholder and a button, never as a prepended row', () => {
+    // A schema cannot prepend to a list: two lists in a template literal evaluate to a string, so the
+    // select would render empty. Guarded globally as well, and stated here where the temptation was.
+    expect(canvas).toContain('"placeholder":"Any connection"');
+    expect(canvas).toContain('"$setLocal":"spine","value":""');
+    expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
   });
 });

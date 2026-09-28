@@ -29,8 +29,8 @@ imports a backend.
 
 ## Two layers, deliberately
 
-- **Scene** — `Viewport`, `SpatialIndex`, selection, positions. Everything needed to draw and interact
-  with a set of placed nodes, knowing nothing about where they came from.
+- **Scene** — `Viewport`, `SpatialIndex`, selection, positions, `foldGraph`. Everything needed to draw
+  and interact with a set of placed nodes, knowing nothing about where they came from.
 - **Exploration** — `GraphStore`, `ExpansionState`, `GraphEngine`. Expanders, expansion state,
   reference-counted collapse, bundling, budgets.
 
@@ -61,6 +61,16 @@ parents must survive closing one of them; and edges that crossed a collapse boun
 collapsed node as a weighted bundle, so the view says "twelve things in here relate to that" instead
 of showing an isolated dot. That mechanism is also all a cluster map needs — a cluster is a collapsed
 synthetic node.
+
+**Folding is not collapsing, and lives on the other side of that line.** Collapsing is about
+resolution — an explorer drops what it fetched, and the nodes leave the store. Folding (`fold.ts`,
+`GraphEngine.setFolded`, the `folded` prop) is about reading: everything stays loaded and a reader
+hides part of it, so nothing is re-queried, nothing is re-laid-out, and unfolding puts every card back
+exactly where it was rather than wherever a layout would now put it. On a canvas, where position _is_
+the work, that is the whole point. It borrows both of collapse's rules — never take a card another
+still points at, and say what went away — and answers them from the edges instead of from provenance,
+since a canvas has none. Hidden is spelled _no position_, which the three things downstream of a
+position already read as absent: no hit area, no routed lines, nothing drawn.
 
 **Expansion is paged and budgeted.** One click on a hub with four thousand neighbours must not be able
 to kill the frame. `ExpandResult.total` is reported so the UI can say what it is not showing, and the

@@ -254,6 +254,15 @@ export const graphView: TemplateSchema = {
     */
     connecting: { type: 'boolean', initial: false },
     /*
+      Whether dragging the background sweeps out a selection rather than panning.
+
+      The same shape `connecting` has and for the same reasons: a visible control, because a
+      touchscreen has no modifier keys and a gesture nobody can discover is a gesture nobody uses.
+      Off, the sweep is still there under Shift or Ctrl for anyone who arrives expecting it from
+      another canvas — arming it is for the reader who wants it to be what a plain drag does.
+    */
+    selecting: { type: 'boolean', initial: false },
+    /*
       Whether the canvas's key is open.
 
       A preference rather than view state: somebody sent a link to a canvas, and the recipient should
@@ -406,7 +415,10 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $: "local.mode != 'canvas' && count(recordStore.creatableEntities)" },
+                    // Form-made content only: this opens the record form, which cannot host a composer.
+                    condition: {
+                      $: "local.mode != 'canvas' && count(recordStore.creatableEntities.filter(k, k.via == 'form'))",
+                    },
                     then: {
                       type: 'we-button',
                       props: {

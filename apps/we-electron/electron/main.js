@@ -2,7 +2,7 @@ import { execSync, spawn, spawnSync } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
@@ -528,11 +528,40 @@ function createWindow() {
     just by asking to share.
   */
   session.setDisplayMediaRequestHandler(
-    (request, callback) => {
-      desktopCapturer
-        .getSources({ types: ['screen', 'window'] })
-        .then((sources) => callback(sources.length ? { video: sources[0], audio: 'loopback' } : {}))
-        .catch(() => callback({}));
+    async (request, callback) => {
+      /*
+        This handler runs only where the OS has no picker of its own.
+
+        `useSystemPicker` stays on, and stays first: where the OS draws the picker — macOS 15+, a
+        Wayland portal — the source list never enters the renderer at all, so a page cannot
+        enumerate somebody's open windows just by asking to share. That is worth keeping, and it is
+        also what makes the branch below correct by construction rather than by guessing the
+        platform: Electron does not call this handler when the system picker is used, so anything
+        reaching here is a machine with no picker, and the choice has to come from somewhere else.
+
+        Where that somewhere else used to be `sources[0]` — the first screen, chosen by nobody. On a
+        two-monitor Linux desktop that is a coin toss, and a share of the wrong screen is not a
+        mistake you can see from the sharing side.
+      */
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen', 'window'],
+          // Small enough to send several over IPC, large enough to tell two windows apart.
+          thumbnailSize: { width: 320, height: 180 },
+        });
+        if (!sources.length) return callback({});
+        // Nothing to choose between. Asking would be a dialog whose only answer is the one it was
+        // opened with.
+        if (sources.length === 1) return callback({ video: sources[0], audio: 'loopback' });
+
+        const chosenId = await askRendererForScreenSource(mainWindow, sources);
+        const chosen = sources.find((source) => source.id === chosenId);
+        // An empty answer is somebody closing the picker, which is an answer and not a failure —
+        // `{}` is how this API spells it, and the renderer reads it back as 'cancelled'.
+        callback(chosen ? { video: chosen, audio: 'loopback' } : {});
+      } catch {
+        callback({});
+      }
     },
     { useSystemPicker: true },
   );
@@ -649,6 +678,41 @@ ipcMain.handle('get-token', () => {
 
 ipcMain.handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
+});
+
+/**
+ * The server link language bundle built in the seed's ad4m checkout, in a development run only.
+ *
+ * Absolute, because the executor reads it from disk when publishing. Null in a packaged build,
+ * with no `repoPath`, or when the language has not been built — `pnpm build` in
+ * `bootstrap-languages/server-link-language` of the ad4m repo produces it.
+ *
+ * Returns a copy with one comment line appended, not the build itself. A language's address is
+ * the hash of its bundle, and the language store keeps the first meta published under an address:
+ * a later publish of identical bytes is ignored and hands back the earlier meta. A build that was
+ * ever published by hand with different template parameters is therefore stuck with them. The
+ * marker gives WE development its own address, the same one for everyone on the same build.
+ */
+ipcMain.handle('get-dev-link-language-bundle', () => {
+  if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) return null;
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (!runtime.ad4mRepoPath) return null;
+    const bundle = join(
+      expandHome(runtime.ad4mRepoPath),
+      'bootstrap-languages',
+      'server-link-language',
+      'build',
+      'bundle.js',
+    );
+    if (!existsSync(bundle)) return null;
+    const copy = join(app.getPath('temp'), 'we-dev-server-link-language', 'bundle.js');
+    mkdirSync(dirname(copy), { recursive: true });
+    writeFileSync(copy, `${readFileSync(bundle, 'utf8')}\n// Published for WE development.\n`);
+    return copy;
+  } catch {
+    return null;
+  }
 });
 
 // ── Account management ───────────────────────────────────────────────────────
@@ -794,6 +858,67 @@ async function restartExecutorAndReload() {
   // anything the static middleware cannot match falls through to a catch-all; that is the shape of
   // the NotFoundError seen when creating an account from a built app.
   mainWindow.loadURL(appUrl());
+}
+
+/**
+ * Ask the window to choose a screen, and wait for the answer.
+ *
+ * ## Why the ask goes this way round
+ *
+ * The obvious alternative is for the renderer to choose *before* it calls `getDisplayMedia` and
+ * stash the answer for this handler to read. It cannot: with `useSystemPicker` on, Electron does not
+ * call the handler at all where the OS has a picker, so the renderer would have to know in advance
+ * whether its own picker was wanted — and the only way to know is to guess from the platform and the
+ * OS version. Asking from inside the handler needs no guess, because reaching the handler *is* the
+ * condition.
+ *
+ * Thumbnails are sent as data URLs rather than as `NativeImage`s: what crosses is then plainly a
+ * string, and the renderer needs no Electron type to read it.
+ *
+ * ## The timeout is a release, not a policy
+ *
+ * A renderer that never answers — reloaded mid-share, crashed, a build with no picker in it — must
+ * not leave this promise outstanding forever, because the handler is holding a `getDisplayMedia`
+ * that the page is awaiting. Falling back to no selection reads as "cancelled" on the other side,
+ * which is the honest outcome: nothing was chosen.
+ */
+const SCREEN_PICK_TIMEOUT_MS = 60_000;
+
+function askRendererForScreenSource(window, sources) {
+  if (!window || window.isDestroyed()) return Promise.resolve('');
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (id) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      ipcMain.removeListener('screen-source-picked', onPicked);
+      resolve(id);
+    };
+
+    // Keyed by nothing: one share at a time per window, and a second request would have had to wait
+    // on the first anyway. A stale answer to a request that has already timed out is dropped by
+    // `settled`.
+    const onPicked = (event, id) => {
+      if (event.sender !== window.webContents) return;
+      finish(typeof id === 'string' ? id : '');
+    };
+
+    const timer = setTimeout(() => finish(''), SCREEN_PICK_TIMEOUT_MS);
+    ipcMain.on('screen-source-picked', onPicked);
+
+    window.webContents.send(
+      'screen-source-request',
+      sources.map((source) => ({
+        id: source.id,
+        name: source.name,
+        // A screen has no window title worth showing; Electron names them "Entire screen" and
+        // similar already, so nothing is invented here.
+        thumbnail: source.thumbnail?.toDataURL?.() ?? '',
+      })),
+    );
+  });
 }
 
 ipcMain.handle('get-desktop-sources', async () => {

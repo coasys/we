@@ -1,0 +1,8 @@
+This build asset no longer exists.
+
+Every file under /assets/ is named with a hash of its contents, so it belongs to one build. Asking
+for one that is not here means the request came from an older build than the one now published —
+usually a browser tab that was loaded before a deploy and has just reached for a lazily imported
+chunk. Reloading the page fetches the current build and resolves it.
+
+The body of this file is incidental; its status is the point. See apps/we-web/public/_redirects.

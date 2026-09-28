@@ -49,8 +49,20 @@ const DEFAULTS = {
   onsetHoldFrames: 12,
   // Frames of silence that close an utterance. ~500ms at 128 samples / 48 kHz.
   silenceTimeoutFrames: 188,
-  // 30s at 16 kHz. A speaker who never pauses still gets transcribed in pieces.
-  maxUtteranceSamples: 480000,
+  // 12s at 16 kHz. A speaker who never pauses still gets transcribed in pieces.
+  //
+  // Was 30s, which is what Whisper's own window is and would be the right number if the audio never
+  // left the machine. It does: an utterance is one HTTP POST of 16 kHz float32 mono, so 30s is a
+  // 1.92 MB body, and the node is usually behind a reverse proxy whose default body limit is 1 MB.
+  // Every utterance over about 16s was refused with a 413 — and refused invisibly, because the
+  // proxy's error carries no CORS headers, so the browser reports it as a failed fetch and the
+  // status never reaches the client. The first long thing anybody said ended their transcription.
+  //
+  // 12s is 768 KB, a quarter under that limit, and a run of speech that long with no pause of half a
+  // second is already being cut into pieces at any value. Raising the proxy's limit is the other
+  // half of this and does not make it safe to raise again: the limit belongs to whatever fronts a
+  // node, which a client cannot see.
+  maxUtteranceSamples: 192000,
   // 500ms at 16 kHz. Below this it is a cough, a sigh or a breath, not speech.
   minUtteranceSamples: 8000,
   // 500ms kept from before onset, so a sentence does not lose its first word.

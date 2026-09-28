@@ -70,36 +70,90 @@ const styles = css`
   [part='jump-end'] {
     bottom: var(--we-space-300);
   }
+
+  /*
+    Pinning, done by the browser rather than by us.
+
+    column-reverse makes the scroller's origin its BOTTOM: the resting position is the newest
+    content, and the browser holds it there through anything — rows reflowing taller as profiles and
+    avatars resolve, a font swapping, a whole page of content replacing another. Measured in Chrome:
+    tripling every row's height left the newest row still in view, with no script running at all.
+
+    This replaces about a hundred and fifty lines that tried to do the same by writing scrollTop, and
+    could not. The reason they could not is worth keeping: to chase the end you must know when the
+    content has stopped changing, and nothing can tell you. A MutationObserver is blind to reflow, a
+    ResizeObserver on the host is blind to the content, and the one mechanism that does see
+    everything — the browser's own scroll anchoring — was FIGHTING the chase rather than helping it.
+
+    Measured on a real transcript: the code jumped to the bottom, the rows then grew 2114px as their
+    bylines arrived, the browser shifted scrollTop by 2006px to keep the reader's place, our scroll
+    handler read that as the reader scrolling away, and the list unpinned itself 108px short of the
+    end for good. Every part of that is correct behaviour by two systems that should never both have
+    been running.
+
+    overflow-anchor: none is the other half: with the origin at the bottom there is nothing for
+    anchoring to do, and leaving it on re-opens exactly the fight described above.
+  */
+  :host([pin='end']) [part='base'] {
+    display: flex;
+    flex-direction: column-reverse;
+    overflow-anchor: none;
+  }
+
+  /*
+    One flex item, so the reversal does not reach the content.
+
+    column-reverse reverses the order of its *items*, which would otherwise mean every consumer of a
+    pinned list having to pass its children backwards — a contract that is invisible when broken and
+    that anything composing fragments would get wrong sooner or later. Collapsing the slot into a
+    single item means the reversal applies to that one box and the content inside it lays out
+    normally, in the order it was written. Measured: rows in ordinary oldest-first order, drawn in
+    the right order, resting at the newest end.
+
+    display: contents unless pinned, so an unpinned scroll area is laid out exactly as it was before
+    this box existed — it generates no box of its own and its children go on being the scroller's.
+  */
+  [part='content'] {
+    display: contents;
+  }
+
+  /*
+    Grows to fill the box when there is not enough content to fill it, and only then.
+
+    column-reverse packs its items at the *bottom*, so a panel holding less than a screenful put its
+    content down there — a transcript with nothing in it yet showed "Nothing has been said" sitting
+    on the floor of the panel instead of at the top where a placeholder belongs.
+
+    flex-grow is the whole fix: with spare room the box takes it and lays its own children out from
+    its top, which is ordinary document order; with none it keeps its content height and overflows
+    upward, which is the pinning. flex-shrink stays 0 so a long list is never squeezed to fit.
+  */
+  :host([pin='end']) [part='content'] {
+    display: block;
+    flex: 1 0 auto;
+  }
 `;
 
 /**
  * How close to the bottom still counts as "at the bottom", in pixels.
  *
  * Not zero, because it never is: fractional device pixels, a sub-pixel line height and a mid-flight
- * smooth scroll all leave `scrollTop` a hair short of the maximum, and an exact comparison would
- * read a reader who is plainly at the bottom as having scrolled away. Small enough that one line of
- * text is unambiguously "scrolled up".
+ * smooth scroll all leave a scroller a hair short of either end, and an exact comparison would read
+ * somebody plainly at the bottom as being somewhere else. Small enough that one line of text is
+ * unambiguously "scrolled up".
+ *
+ * Used against the distance from an end rather than against `scrollTop`, so it means the same thing
+ * whichever way round the scroller is — see `#fromEnd`.
  */
 const AT_END_PX = 24;
 
-/**
- * How far behind the end a follow may be and still be worth animating, in pixels.
- *
- * A smooth scroll earns its place by saying *which way* the content moved — a line arrived below,
- * rather than the view jumping to somewhere unrecognisable. It stops earning it once the journey is
- * longer than anybody would sit through: a backlog landing at once, a list re-subscribing, a call's
- * history arriving. Those are a change of place, not a movement, and a jump is the honest rendering.
- */
-const SMOOTH_MAX_PX = 1200;
-
-/**
- * Gestures that mean the reader has taken the scroller back.
- *
- * `keydown` is in the list for the same reason the others are — Page Down and End scroll — and
- * costs nothing when the key was a letter: the flag it clears is re-set by the next follow.
- */
-const USER_INPUT_EVENTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
-const USER_INPUT_OPTIONS = { capture: true, passive: true } as const;
+/** What one edge remembers between looks — see `#checkEdge`. */
+interface EdgeWatch {
+  /** How far the reader was from it when this last looked, or `null` before the first look. */
+  last: number | null;
+  /** Whether this edge has been reported for their current stay within reach of it. */
+  told: boolean;
+}
 
 /** Whether the reader has asked for less movement. Absent in a non-browser environment. */
 function prefersReducedMotion(): boolean {
@@ -114,27 +168,42 @@ export default class ScrollArea extends DesignSystemElement {
   @property({ type: String }) maxHeight = '';
   @property({ type: String }) maxWidth = '';
   /**
-   * Follow the end of the content as it grows — but only while the reader is already there.
+   * A log-shaped list: the newest content is at the bottom, and that is where the reader starts.
    *
-   * The behaviour every log-shaped list wants and none of them should implement twice: a transcript,
-   * a chat, an activity feed. `'end'` turns it on; anything else leaves scrolling alone.
+   * What every one of these wants and none of them should implement twice — a transcript, a chat, an
+   * activity feed. `'end'` turns it on; anything else leaves scrolling alone.
    *
-   * The conditional half is the whole point. Pinning unconditionally yanks somebody out of what they
-   * scrolled up to re-read, every time a new line lands — which in a live transcript is constantly,
-   * and which is the one unforgivable bug in a log view. So the element remembers whether the reader
-   * was at the end *before* the content changed, and only then follows.
+   * ## Nothing about the content changes
    *
-   * Following animates, so the eye can tell a line arriving below from the view jumping somewhere
-   * else. The opening jump does not — there is nothing to have moved from — and neither does a
-   * catch-up longer than `SMOOTH_MAX_PX`, nor one for a reader who has asked for reduced motion.
-   * A `jump` press is not subject to that cap: it is a request to travel, and the distance is the
-   * reason it was pressed.
+   * Children stay in ordinary reading order, oldest first, however many of them there are. The
+   * reversal is `flex-direction: column-reverse` on the scroller and it reaches exactly one box —
+   * see the `[part='content']` rule — so it moves the scroll *origin* to the bottom without touching
+   * the order anything is drawn in. A contract that said "pass your children backwards" would be
+   * invisible when broken and would be broken by the first fragment that composed two lists.
    *
-   * It reports nothing. `jump` covers the affordance a reader needs — a way back to the end — but a
+   * ## What that buys, and what it replaces
+   *
+   * The resting position is the bottom, from the first frame, with no script. The browser then holds
+   * it there through anything: rows reflowing taller as their bylines arrive, a font swapping, one
+   * call's transcript replacing another's. Older content loaded in above does not move the reader
+   * either, which is infinite-scroll-upwards for free.
+   *
+   * None of that was reachable by writing `scrollTop`, and the reason is worth stating once: to
+   * chase the end you have to know when the content has stopped changing, and nothing can tell you
+   * — see the note beside the `:host([pin='end'])` rule for what that cost in practice.
+   *
+   * ## Scroll coordinates are inverted here
+   *
+   * `scrollTop` runs from `-(scrollHeight - clientHeight)` at the oldest end to `0` at the newest,
+   * rather than `0`..max. Measured, not assumed. Nothing outside this element should care — the
+   * helpers below speak in distance-from-each-end — but a consumer reading `scrollTop` directly will
+   * find it negative.
+   *
+   * It reports nothing about arriving content. `jump` covers the affordance a reader needs; a
    * consumer wanting to say *how much* they missed ("3 new") needs an event, and can have one when
-   * something actually renders that: an event nobody listens to is API kept working for nothing.
+   * something actually renders that.
    */
-  @property({ type: String }) pin: '' | 'end' = '';
+  @property({ type: String, reflect: true }) pin: '' | 'end' = '';
   /**
    * Offer a button back to the start of the content, to the end of it, or both.
    *
@@ -143,10 +212,38 @@ export default class ScrollArea extends DesignSystemElement {
    * one is shown only when it would go somewhere — no button at the end you are already at — so
    * `'both'` on a short list draws nothing at all.
    *
-   * `'end'` also re-arms `pin`, which is the useful half in a live list: a reader who scrolled up
-   * to re-read something presses it once and goes back to being carried along.
+   * What pressing one *does* is not always a scroll — see `data-we-more` below.
    */
   @property({ type: String }) jump: '' | 'start' | 'end' | 'both' = '';
+  /**
+   * ## When a jump asks instead of scrolling: `data-we-more`
+   *
+   * A jump is a scroll when the end it names is *loaded*, and a different question when it is not.
+   * A windowed list has both cases and they swap around: a transcript anchored to its newest end can
+   * scroll back down to it, but the top of what it has fetched is not the beginning of anything —
+   * and read from the beginning, the same is true the other way. Load the whole conversation and
+   * both ends become reachable, at which point both buttons should simply scroll.
+   *
+   * None of that is knowable from here, so the consumer says it: put `data-we-more="start"` (or
+   * `"end"`) on any element inside the scroller while there is content beyond that end which is not
+   * loaded. A jump toward a marked end fires `jumpstart` / `jumpend` and moves nothing, leaving the
+   * consumer to go and get it; a jump toward an unmarked end scrolls, smoothly, as it always did.
+   *
+   * ## Why a marker and not a prop
+   *
+   * This was `jumpAsks`, a prop naming the ends to ask about, and it was wrong in a way worth
+   * recording. The consumer that knows whether there is more is the one holding the rows — which in
+   * a composed panel is a fragment *inside* this element, while the prop is set by the fragment
+   * *outside* it. So the answer had to be approximated by something the outer one could see, which
+   * was the anchor: it asked at the far end always, and a fully-loaded short transcript therefore
+   * jumped where it should have scrolled.
+   *
+   * A marker is read where the knowledge is. It also removes a duplicated condition: the element
+   * that carries it is the "more is coming" line, which is already rendered under exactly this test.
+   */
+  @property({ type: Number }) nearStart = 0;
+  /** The same, for the other end — see `nearStart`. */
+  @property({ type: Number }) nearEnd = 0;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   /** Whether each control would currently go anywhere. Reactive, so growth reveals them. */
@@ -176,20 +273,15 @@ export default class ScrollArea extends DesignSystemElement {
 
   /** The scroller. Assigned on first render; `null` before then and after disconnect. */
   #base: HTMLElement | null = null;
-  /** Whether the reader was at the end when we last looked. Seeded true so a fresh list starts pinned. */
-  #atEnd = true;
   /**
-   * Where our own last instant scroll left the scroller, read back after the write so it holds the
-   * value the browser actually clamped to. A scroll event reporting exactly this position is our
-   * own and says nothing about the reader — see `#onScroll`.
+   * What is known about the reader's relationship with each edge — see `#checkEdge`.
+   *
+   * `last` is how far away they were when this last looked, `null` before the first look. `told` is
+   * whether this edge has already been reported for their current stay within reach of it, cleared
+   * by leaving the threshold.
    */
-  #writtenTop = -1;
-  /** A smooth follow we started is still animating; its frames are ours, not the reader's. */
-  #following = false;
-  /** The opening jump has happened, so later follows may animate. */
-  #opened = false;
-  /** A pending second follow, scheduled for after layout. */
-  #frame = 0;
+  #atStart: EdgeWatch = { last: null, told: false };
+  #atEnd: EdgeWatch = { last: null, told: false };
   #mutations?: MutationObserver;
   #resize?: ResizeObserver;
 
@@ -203,11 +295,21 @@ export default class ScrollArea extends DesignSystemElement {
    *
    * Neither catches an image loading inside a row that was already there, which reflows without
    * mutating. Rows of text do not have that problem, and a log is rows of text; it is worth knowing
-   * rather than worth a third observer. The frame-later pass in `#followAfterLayout` does cover the
-   * near case — content that grows between the mutation and the paint, which every custom element
-   * rendering its own shadow content does — so what is left uncovered is a reflow arriving later
-   * than that, and following it would mean yanking the view for something the reader has by then
-   * been looking at.
+   * rather than worth a third observer. The settle pass in `#followUntilSettled` covers the near
+   * case — content that keeps growing for a few frames after the mutation, which a page of custom
+   * elements rendering their own shadow content does — so what is left uncovered is a reflow
+   * arriving later than that, and following it would mean yanking the view for something the reader
+   * has by then been looking at.
+   */
+  /**
+   * Two observers, and they no longer decide anything about position.
+   *
+   * Pinning is the browser's, so what is left for these is keeping the jump controls honest and
+   * noticing when the reader has come within reach of the start: both are questions about where the
+   * scroller is *now*, which changes when content does. They used to drive a follow, which is what
+   * made their blind spots matter — a `MutationObserver` cannot see a reflow and a `ResizeObserver`
+   * on the host cannot see the content. Neither gap costs anything here: the worst case is a jump
+   * button appearing a moment late.
    */
   connectedCallback(): void {
     super.connectedCallback();
@@ -219,19 +321,12 @@ export default class ScrollArea extends DesignSystemElement {
       this.#resize = new ResizeObserver(() => this.#contentChanged());
       this.#resize.observe(this);
     }
-    // A reader touching the element takes the scroller back off us: whatever we had in flight stops
-    // being ours, and the scroll it produces is judged as theirs.
-    for (const type of USER_INPUT_EVENTS) this.addEventListener(type, this.#onUserInput, USER_INPUT_OPTIONS);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#mutations?.disconnect();
     this.#resize?.disconnect();
-    for (const type of USER_INPUT_EVENTS) this.removeEventListener(type, this.#onUserInput, USER_INPUT_OPTIONS);
-    if (this.#frame) cancelAnimationFrame(this.#frame);
-    this.#frame = 0;
-    this.#following = false;
     this.#mutations = undefined;
     this.#resize = undefined;
     this.#base = null;
@@ -239,195 +334,198 @@ export default class ScrollArea extends DesignSystemElement {
 
   firstUpdated(): void {
     this.#base = this.renderRoot.querySelector('[part="base"]');
-    // A list that opens already scrolled to the bottom, rather than at the top of a backlog nobody
-    // asked to re-read. Only when pinning is on: otherwise this would be a scroll nobody requested.
-    if (this.pin === 'end') this.#toEnd({ smooth: false });
+    // No opening scroll. A pinned list is `column-reverse`, so its resting position IS the newest
+    // content — there is nothing to move it to, from the first frame, and nothing to get wrong.
     this.#syncControls();
   }
 
-  /**
-   * `pin` is set as a DOM property, and a framework binding it inside an effect can do so *after*
-   * Lit has rendered — in which case `firstUpdated` above ran while pinning was still off and the
-   * opening jump never happened, leaving the list at the top of its backlog. `jump` arrives the
-   * same way, and its controls cannot be measured before there is a scroller to measure.
-   */
+  /** `jump` arrives as a DOM property and its controls cannot be measured before there is a scroller. */
   updated(changed: PropertyValues): void {
     super.updated(changed);
-    if (changed.has('pin') && this.pin === 'end' && !this.#opened) this.#toEnd({ smooth: false });
     if (changed.has('pin') || changed.has('jump')) this.#syncControls();
   }
 
+  /*
+    ── Position, in the one place that knows which way round the scroller is ────────────────────
+
+    Under `pin='end'` the scroller is `column-reverse`, and `scrollTop` runs from
+    `-(scrollHeight - clientHeight)` at the oldest content to `0` at the newest — measured in Chrome
+    rather than assumed, because it is the opposite of the ordinary arrangement and everything that
+    reads a scroll position would be quietly backwards.
+
+    So nothing below reads `scrollTop`. Everything asks how far the reader is from one end or the
+    other, and these four are the only places the direction is known.
+  */
+
+  /** The travel available, in pixels. Zero when nothing overflows. */
+  #span(): number {
+    const base = this.#base;
+    return base ? Math.max(0, base.scrollHeight - base.clientHeight) : 0;
+  }
+
+  /** How far the reader is from the newest end. Zero at it. */
+  #fromEnd(): number {
+    const base = this.#base;
+    if (!base) return 0;
+    return this.pin === 'end' ? -base.scrollTop : this.#span() - base.scrollTop;
+  }
+
+  /** How far the reader is from the oldest end. Zero at it. */
+  #fromStart(): number {
+    const base = this.#base;
+    if (!base) return 0;
+    return this.pin === 'end' ? this.#span() + base.scrollTop : base.scrollTop;
+  }
+
+  /** The `scrollTop` of each end. */
+  #endTop(): number {
+    return this.pin === 'end' ? 0 : this.#span();
+  }
+  #startTop(): number {
+    return this.pin === 'end' ? -this.#span() : 0;
+  }
+
   /**
-   * Decide, from where the scroller has just landed, whether the reader still wants the end.
+   * Go somewhere, animating unless the reader has asked not to.
    *
-   * The subtlety is that not every scroll event is the reader. Content growing under a stationary
-   * `scrollTop` moves the end away without anybody moving at all, and the event our own follow
-   * queues is delivered in the frame's scroll steps — *after* the microtask that wrote it, and so
-   * after anything rendered asynchronously in between has made the content taller than it was when
-   * we measured. Reading either of those as "scrolled away" is what used to unpin a transcript
-   * permanently the first time somebody said more than one line's worth: the latch went false and
-   * nothing but a manual scroll back to the bottom could ever set it true again.
-   *
-   * So a scroll only counts as the reader's when it is neither a frame of our own animation nor a
-   * landing at the exact position we last wrote.
+   * Only ever called by a jump control now, which is why there is no distance cap left: the old one
+   * existed to tell a *follow* worth animating from a backlog landing at once, and follows are gone.
+   * Somebody who presses "jump to the end" has asked to travel, and the distance is the reason they
+   * pressed it.
    */
-  #onScroll = (): void => {
+  #scrollTo(top: number): void {
     const base = this.#base;
     if (!base) return;
-
-    const top = base.scrollTop;
-    const distance = base.scrollHeight - top - base.clientHeight;
-
-    if (this.#following) {
-      // Ours until it arrives. A reader who interrupts it has already cleared the flag by touching
-      // the element, so their scroll is judged below rather than swallowed here.
-      if (distance <= AT_END_PX) this.#following = false;
-      return;
-    }
-
-    // Landing at the end re-arms following, however the reader got there.
-    if (distance <= AT_END_PX) {
-      this.#atEnd = true;
-      return;
-    }
-
-    if (top === this.#writtenTop) return;
-    this.#atEnd = false;
-  };
-
-  /** Every scroll moves at least one control's answer, including the frames of our own follow. */
-  #onScrolled = (): void => {
-    this.#onScroll();
-    this.#syncControls();
-  };
-
-  #toEnd(options: { smooth: boolean; far?: boolean }): void {
-    const base = this.#base;
-    if (!base) return;
-
-    this.#opened = true;
-    this.#atEnd = true;
-
-    const target = Math.max(0, base.scrollHeight - base.clientHeight);
-    if (base.scrollTop >= target) {
-      this.#writtenTop = base.scrollTop;
-      return;
-    }
-
-    /*
-      `far` is the difference between following and being sent.
-
-      `SMOOTH_MAX_PX` is a rule about *following*: a backlog landing at once is a change of place
-      rather than a movement, and animating across it is a journey nobody watches. It is the wrong
-      rule for a press. Somebody who has pressed "jump to the end" has asked to travel, and the
-      distance is the reason they pressed it — so applying the cap there made the button smooth on a
-      short transcript and instant on a long one, which reads as the animation being broken rather
-      than as a rule being applied.
-    */
-    const smooth =
-      options.smooth &&
-      typeof base.scrollTo === 'function' &&
-      (options.far || target - base.scrollTop <= SMOOTH_MAX_PX) &&
-      !prefersReducedMotion();
-
-    if (smooth) {
-      // Re-targeting rather than queueing: a second smooth scroll on the same box abandons the
-      // first and animates on from wherever it had got to, which is exactly what a destination
-      // that keeps moving down wants.
-      this.#following = true;
-      base.scrollTo({ top: target, behavior: 'smooth' });
-      return;
-    }
-
-    this.#following = false;
-    base.scrollTop = target;
-    this.#writtenTop = base.scrollTop;
-  }
-
-  /** Where the reader would land pressing "jump to the start". Never re-arms `pin`. */
-  #toStart(): void {
-    const base = this.#base;
-    if (!base) return;
-
-    this.#atEnd = false;
-    this.#following = false;
-    // Deliberately not recorded as ours: the reader asked for this, so the scroll it produces
-    // should be judged as theirs like any other.
-    this.#writtenTop = -1;
-
-    // However far it is: this is a press, not a follow. See `far` in `#toEnd`.
     if (typeof base.scrollTo === 'function' && !prefersReducedMotion()) {
-      base.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      base.scrollTop = 0;
+      base.scrollTo({ top, behavior: 'smooth' });
+      return;
     }
-    this.#syncControls();
+    base.scrollTop = top;
   }
+
+  /**
+   * Say when the reader has come within reach of the start, once per approach.
+   *
+   * Latched, so sitting at the top does not fire it on every frame of a rubber-band and a consumer's
+   * handler can be the plain "fetch the next page". Scrolling back out past the threshold re-arms it.
+   *
+   * There is no place to hold any more. Under `column-reverse` the scroll position is measured from
+   * the bottom, so content loaded in above the reader does not move them — the thing the earlier
+   * implementation spent a `#holdBottom`, a deadline and a restore pass on is simply how the box
+   * behaves.
+   *
+   * `moved` is whether this look is because the READER moved. See `#checkEdge`.
+   */
+  #checkEdges(moved: boolean): void {
+    this.#checkEdge(this.nearStart, this.#fromStart(), this.#atStart, 'nearstart', moved);
+    this.#checkEdge(this.nearEnd, this.#fromEnd(), this.#atEnd, 'nearend', moved);
+  }
+
+  /**
+   * One edge: has the reader just approached it?
+   *
+   * Three things have to be true, and each of them is a case that went wrong.
+   *
+   * **They have to be within reach.** That is the threshold, and it is the only one of the three
+   * that is obvious.
+   *
+   * **The reader has to have moved, not the box.** Distance to an edge is `scrollHeight -
+   * clientHeight` away from the position, so it changes when the content lands, when a panel
+   * finishes laying out, when a dock is dragged taller — under a reader who has done nothing. This
+   * used to be one latch for both, so a transcript whose first page settled to within a threshold of
+   * filling its panel — measured taller for a frame, shorter once the panel resolved — reported an
+   * approach nobody had made and fetched a second page on open. Intermittently, since it depended on
+   * which measurement landed first. So `#contentChanged` records where they are and says nothing.
+   *
+   * **They have to have moved TOWARD it.** A list rests against one of its ends, so the first scroll
+   * in an unpinned list is a scroll away from the start and the first in a pinned one is a scroll
+   * away from the end — and without this both would be reported as arrivals at the edge they are
+   * leaving. It is also what the `null` first look protects, one case further out: with no previous
+   * distance there is no direction, so the first observation only ever records.
+   *
+   * ## Why the latch is "told" rather than "was near"
+   *
+   * So that leaving the threshold re-arms it while being *brought* inside it does not disarm it.
+   * When the loaded page overflows by less than the threshold the reader cannot leave — so a latch
+   * recording "near" had no transition left to make, and that list stopped paginating for good. This
+   * is the quiet half of the same bug: the spurious fetch on open was covering for it.
+   */
+  #checkEdge(threshold: number, distance: number, watch: EdgeWatch, event: string, moved: boolean): void {
+    // Nothing to be near the edge OF: a scroller with no overflow is at both ends at once.
+    if (!threshold || this.#span() <= AT_END_PX) return;
+
+    const closer = watch.last !== null && distance <= watch.last;
+    watch.last = distance;
+
+    // Out of reach: re-armed, whatever put them there.
+    if (distance > threshold) {
+      watch.told = false;
+      return;
+    }
+    if (watch.told || !moved || !closer) return;
+
+    watch.told = true;
+    this.dispatchEvent(new CustomEvent(event, { bubbles: true, composed: true }));
+  }
+
+  #onScrolled = (): void => {
+    this.#checkEdges(true);
+    this.#syncControls();
+  };
 
   #contentChanged(): void {
-    this.#follow();
+    this.#checkEdges(false);
     this.#syncControls();
-  }
-
-  #follow(): void {
-    if (this.pin !== 'end' || !this.#atEnd) return;
-    this.#toEnd({ smooth: this.#opened });
-    this.#followAfterLayout();
   }
 
   /**
    * Whether each jump control would currently go anywhere.
    *
-   * Measured rather than inferred, and re-measured whenever the content changes as well as
-   * whenever the scroller moves — a list growing past the reader is exactly when "jump to the end"
-   * becomes worth offering, and nobody has scrolled at that moment.
+   * Measured rather than inferred, and re-measured whenever the content changes as well as whenever
+   * the scroller moves — a list growing past the reader is exactly when "jump to the end" becomes
+   * worth offering, and nobody has scrolled at that moment.
    */
   #syncControls(): void {
-    const base = this.#base;
-    if (!base || !this.jump) {
+    if (!this.#base || !this.jump) {
       this._showStart = false;
       this._showEnd = false;
       return;
     }
 
-    const top = base.scrollTop;
-    const end = base.scrollHeight - base.clientHeight;
     // Nothing worth jumping across: an ordinary short list should draw no chrome at all.
-    const scrollable = end > AT_END_PX;
+    const scrollable = this.#span() > AT_END_PX;
     const offers = (which: 'start' | 'end') => this.jump === which || this.jump === 'both';
 
-    this._showStart = scrollable && offers('start') && top > AT_END_PX;
-    this._showEnd = scrollable && offers('end') && end - top > AT_END_PX;
+    this._showStart = scrollable && offers('start') && this.#fromStart() > AT_END_PX;
+    this._showEnd = scrollable && offers('end') && this.#fromEnd() > AT_END_PX;
   }
 
   /**
-   * A second pass, one frame later.
+   * Whether this end's button asks the consumer rather than scrolling.
    *
-   * Mutation records are delivered on a microtask — before the browser has laid anything out, and
-   * before a custom element appended in the same turn has rendered its own shadow content. A row
-   * measured then is a row of barely any height, so the follow lands short of a bottom that is
-   * about to move down again. This is what leaves a multi-line utterance half under the edge of
-   * the panel.
+   * Read from the light DOM on the press rather than watched, because it is only ever needed at the
+   * moment somebody presses — and reading it then is also what makes it current: the marker appears
+   * and disappears as pages load, and a cached answer would be one page out of date exactly when it
+   * mattered.
    */
-  #followAfterLayout(): void {
-    if (typeof requestAnimationFrame !== 'function' || this.#frame) return;
-    this.#frame = requestAnimationFrame(() => {
-      this.#frame = 0;
-      // The first honest measurement of the frame, so the controls are settled here too.
-      this.#syncControls();
-      if (this.pin !== 'end' || !this.#atEnd) return;
-      this.#toEnd({ smooth: this.#opened });
-    });
+  #asks(which: 'start' | 'end'): boolean {
+    return Boolean(this.querySelector(`[data-we-more='${which}']`));
   }
 
-  #onUserInput = (): void => {
-    this.#following = false;
+  #onJumpStart = (): void => {
+    if (this.#asks('start')) {
+      this.dispatchEvent(new CustomEvent('jumpstart', { bubbles: true, composed: true }));
+      return;
+    }
+    this.#scrollTo(this.#startTop());
   };
 
-  #onJumpStart = (): void => this.#toStart();
-
   #onJumpEnd = (): void => {
-    this.#toEnd({ smooth: true, far: true });
+    if (this.#asks('end')) {
+      this.dispatchEvent(new CustomEvent('jumpend', { bubbles: true, composed: true }));
+      return;
+    }
+    this.#scrollTo(this.#endTop());
     this.#syncControls();
   };
 
@@ -438,7 +536,7 @@ export default class ScrollArea extends DesignSystemElement {
 
     return html`
       <div part="base" style=${styleMap({ ...dynamicStyles, ...this.styles })} @scroll=${this.#onScrolled}>
-        <slot></slot>
+        <div part="content"><slot></slot></div>
       </div>
       ${
         this._showStart

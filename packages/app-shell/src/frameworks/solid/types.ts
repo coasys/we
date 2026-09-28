@@ -20,7 +20,7 @@ import type { RendererStores } from '@we/backend-shared';
 import type { RecordInstance } from '@we/backend-shared';
 
 export type RecordActionOptions = {
-  perspective?: string;
+  dataset?: string;
   parent?: { model: string; id: string; field?: string };
   [k: string]: unknown;
 };
@@ -31,9 +31,9 @@ export type RecordActions = {
     entity: string,
     id: string,
     data: Record<string, unknown>,
-    options?: { perspective?: string },
+    options?: { dataset?: string },
   ) => Promise<RecordInstance>;
-  delete: (entity: string, id: string, options?: { perspective?: string }) => Promise<void>;
+  delete: (entity: string, id: string, options?: { dataset?: string }) => Promise<void>;
 };
 
 /**

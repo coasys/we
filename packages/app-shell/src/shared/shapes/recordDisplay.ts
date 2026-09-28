@@ -22,6 +22,7 @@
  * `$each` and `$if` — see the "A record of any type" pattern in the generated reference.
  */
 import { type EntitySchema, namePropertyOf, type PropertySchema } from '@we/backend-shared';
+import { WE_NODE_RELATIONS } from '@we/entities/manifest';
 
 import { humanise } from './recordDraft';
 
@@ -110,6 +111,17 @@ export interface RecordDisplay {
   summary: string;
   /** Property holding the picture or file, or empty. */
   media: string;
+  /**
+   * A relation to an `ImageBlock` that pictures the record, or empty — the way a community's model
+   * carries a photo, since an image is content with its own alt text rather than a string on the
+   * record.
+   *
+   * Its own key rather than folded into `media`, because the two are read differently: `media` is
+   * a value to hand a `we-image` directly, and this is an id (or ids) to look the image up by. A
+   * template drawing `row[display.media]` as a picture keeps working, and draws nothing here rather
+   * than an id as a URL.
+   */
+  mediaRelation: string;
   /** Every field worth showing, in order — title, summary and media included, with their role. */
   fields: DisplayField[];
 }
@@ -240,6 +252,17 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     pick(declared.summary, (name) => name !== title && properties[name].control === 'textarea') ||
     pick(undefined, (name) => name !== title && isString(properties[name]));
   const media = pick(declared.media, (name) => properties[name].format === 'file');
+  const relationsDeclared = Object.fromEntries(
+    Object.entries(schema.relations ?? {}).filter(([name]) => !(name in WE_NODE_RELATIONS)),
+  );
+  const isPicture = (name: string) => relationsDeclared[name]?.target === 'ImageBlock';
+  // Only when no property already pictures it: a declared `media` naming a relation, else the first
+  // relation to an image.
+  const mediaRelation = media
+    ? ''
+    : declared.media && isPicture(declared.media)
+      ? declared.media
+      : (Object.keys(relationsDeclared).find(isPicture) ?? '');
 
   const fields: DisplayField[] = names.map((name) => ({
     name,
@@ -267,7 +290,18 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     is "after what was ordered". A relation the author *does* place is picked up in order by the
     filter below, and only the unplaced ones fall to the end.
   */
-  const relations = schema.relations ?? {};
+  /*
+    What the record points at — not what every node carries.
+
+    Core entities spread `WeNode`'s relations into their own declaration, so a task declared
+    `comments`, `signals`, `participants`, `calls` and `mentions` as though they were fields of
+    it, and a record page drew a task's reactions as a row of badges. Those are what a node *is*
+    (the reactions bar, the thread), shown by the surfaces built for them, so they are left out here
+    by name — the same names for a core entity and for a community model that inherits them.
+  */
+  const relations = Object.fromEntries(
+    Object.entries(schema.relations ?? {}).filter(([name]) => !(name in WE_NODE_RELATIONS)),
+  );
   const declaredOrder = schema.display?.fields ?? schema.authoring?.fields ?? [];
   const relationNames = Object.keys(relations).sort((a, b) => {
     const ai = declaredOrder.indexOf(a);
@@ -282,7 +316,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
       name,
       label: humanise(name),
       kind: 'relation',
-      role: 'detail',
+      role: name === mediaRelation ? 'media' : 'detail',
       options: [],
       vocabulary: '',
       target: relations[name].target ?? '',
@@ -297,6 +331,7 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     title,
     summary,
     media,
+    mediaRelation,
     fields,
   };
 }

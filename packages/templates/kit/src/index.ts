@@ -40,7 +40,7 @@ export { channelRail } from './lists/channelRail.ts';
 export type { ChannelRailOptions } from './lists/channelRail.ts';
 export { collectionFeed } from './lists/collectionFeed.ts';
 export type { CollectionFeedOptions } from './lists/collectionFeed.ts';
-export { commentThread, noReplies, replyCount } from './lists/commentThread.ts';
+export { commentThread, descendantCount, noReplies, replyCount, resetTopLimit } from './lists/commentThread.ts';
 export type { CommentThreadOptions } from './lists/commentThread.ts';
 export { mediaGrid } from './lists/mediaGrid.ts';
 export type { MediaGridOptions } from './lists/mediaGrid.ts';
@@ -73,8 +73,22 @@ export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleFilter } from './we/peopleFilter.ts';
 export type { PeopleFilterOptions } from './we/peopleFilter.ts';
+export { peopleAtPath } from './we/peopleAtPath.ts';
 export { peopleRow } from './we/peopleRow.ts';
-export { HAS_OFFERED_SIGNAL_TYPES, OFFERED_SIGNAL_TYPES } from './we/signalTypes.ts';
+export { typePicker, typePickerLists } from './we/typePicker.ts';
+export type { TypePickerOptions } from './we/typePicker.ts';
+export {
+  DEFAULT_SIGNAL_TYPE,
+  HAS_OFFERED_SIGNAL_TYPES,
+  LIKE_COUNT_TYPE,
+  OFFERED_SIGNAL_TYPES,
+} from './we/signalTypes.ts';
+export { signalDisplay } from './we/signalDisplay.ts';
+export type { SignalDisplayOptions } from './we/signalDisplay.ts';
+export { createSignalTypeModal, newSignalTypeButton } from './we/signalTypeForm.ts';
+export type { CreateSignalTypeModalOptions } from './we/signalTypeForm.ts';
+export { discussionSection } from './we/discussion.ts';
+export type { DiscussionSectionOptions } from './we/discussion.ts';
 export {
   fillForSemantic,
   iconForSemantic,
@@ -85,6 +99,9 @@ export {
   stateIcon,
   stateIconFor,
 } from './we/taskStates.ts';
+export type { PeopleAtPathOptions } from './we/peopleAtPath.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
+export { linkedRecords } from './we/linkedRecords.ts';
+export type { LinkedRecordsOptions } from './we/linkedRecords.ts';
 export { recordFormModal } from './we/recordForm.ts';
 export type { RecordFormModalOptions } from './we/recordForm.ts';

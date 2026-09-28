@@ -1,0 +1,33 @@
+{
+  "name": "@we/history",
+  "version": "0.1.0",
+  "description": "A stack of what this agent just did, replayed forwards — undo for a shared, last-write-wins data layer",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "sideEffects": false
+}

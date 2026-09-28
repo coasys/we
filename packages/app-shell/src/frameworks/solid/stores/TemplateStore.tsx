@@ -3,6 +3,7 @@ import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { reserveId } from '@shared/templateIdentity';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
+import type { NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/entities';
 import {
@@ -155,7 +156,7 @@ export interface TemplateStore {
   // Queries
   isBuiltInTemplateId: (templateId: string) => boolean;
   isInstalled: (templateId: string) => boolean;
-  getTemplateRecord: (templateId: string) => Template | undefined;
+  getTemplateRecord: (templateId: string) => NewRecord<Template> | undefined;
 }
 
 /**
@@ -188,10 +189,16 @@ export function TemplateStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
   const routeStore = useRouteStore();
 
-  // Map template ID → AD4M model instance for we-root templates
-  const savedTemplateMap = new Map<string, Template>();
-  // Map template ID → AD4M model instance for the current space's templates
-  const spaceTemplateMap = new Map<string, Template>();
+  /*
+    Map template ID → the model instance, for we-root and for the current space's templates.
+
+    `NewRecord` because both are filled from two places — a `findAll` on load, and whatever a save or
+    an install just wrote — and a create carries no relations (see `NewRecord`). Nothing reads one off
+    these: an entry is here to be addressed, saved and deleted by id. Saying so is what lets the two
+    fills agree, rather than leaving a `screenshots` nobody may trust on half the entries.
+  */
+  const savedTemplateMap = new Map<string, NewRecord<Template>>();
+  const spaceTemplateMap = new Map<string, NewRecord<Template>>();
 
   // Per-session cache of space templates keyed by perspective UUID.
   // Populated on first visit; subsequent visits restore synchronously without an AD4M fetch.
@@ -1530,8 +1537,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     return installedIds().has(templateId);
   }
 
-  /** Get the AD4M Template model instance by slug ID */
-  function getTemplateRecord(templateId: string): Template | undefined {
+  /** Get the AD4M Template model instance by slug ID — to address and save, not to read relations off. */
+  function getTemplateRecord(templateId: string): NewRecord<Template> | undefined {
     return savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
   }
 

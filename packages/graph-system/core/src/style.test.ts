@@ -6,10 +6,19 @@
  * readable rules instead of one nested condition. Get the merge wrong and the last rule silently wins
  * everything.
  */
-import type { GraphNode, GraphValue } from '@we/graph-protocol';
+import type { GraphNode, GraphValue, NodeVisual } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
-import { edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
+import {
+  blendColors,
+  blendVisual,
+  edgeVisual,
+  matches,
+  nodeVisual,
+  resolveColor,
+  resolveNumber,
+  resolveStyle,
+} from './style';
 
 const belief: GraphNode = {
   id: 'a',
@@ -273,5 +282,181 @@ describe('defaults', () => {
     expect(visual.height).toBe(150);
     // `size` becomes the half-extent, which is what hit-testing reads.
     expect(visual.size).toBe(100);
+  });
+});
+
+describe('blendVisual', () => {
+  const card = (over: Partial<NodeVisual> = {}): NodeVisual => ({
+    shape: 'card',
+    size: 90,
+    width: 180,
+    height: 135,
+    color: '#111',
+    cardShape: 'note',
+    ...over,
+  });
+
+  it('lerps the box and takes the destination for everything discrete', () => {
+    const from = card({ width: 100, height: 75, size: 50, color: '#aaa', contentScale: 0.5 });
+    const to = card({ width: 200, height: 150, size: 100, color: '#bbb', contentScale: 1.5 });
+
+    const half = blendVisual(from, to, 0.5);
+    expect(half.width).toBe(150);
+    expect(half.height).toBeCloseTo(112.5);
+    expect(half.size).toBe(75);
+    expect(half.contentScale).toBe(1);
+    // The colour is the destination's from the first frame: a colour fading through an intermediate
+    // hue nobody chose reads as a glitch, where a box easing to a new size reads as the move itself.
+    expect(half.color).toBe('#bbb');
+  });
+
+  it('is the destination at the end, and the start at the beginning', () => {
+    const from = card({ width: 100 });
+    const to = card({ width: 300 });
+    expect(blendVisual(from, to, 0).width).toBe(100);
+    expect(blendVisual(from, to, 1)).toBe(to);
+    // Out of range is clamped rather than extrapolated — a travel that overshoots by a frame must not
+    // draw a card wider than the layout asked for.
+    expect(blendVisual(from, to, 1.4)).toBe(to);
+    expect(blendVisual(from, to, -0.2).width).toBe(100);
+  });
+
+  it('only carries a silhouette when the two shapes actually differ', () => {
+    const same = blendVisual(card({ cardShape: 'note' }), card({ cardShape: 'note' }), 0.5);
+    expect(same.morph).toBeUndefined();
+
+    const changing = blendVisual(card({ cardShape: 'triangle' }), card({ cardShape: 'note' }), 0.5);
+    expect(changing.morph?.from).toBe('triangle');
+    expect(changing.morph?.at).toBe(0.5);
+    expect(changing.morph?.outline.length).toBeGreaterThan(2);
+    // Every point stays inside the unit box the renderer clips against.
+    for (const [x, y] of changing.morph!.outline) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(1);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('does not blend across a change of shape KIND', () => {
+    // A card becoming a circle is not one outline easing into another — the two are drawn by
+    // different code paths, so there is nothing to interpolate and the honest answer is the
+    // destination.
+    const from = card();
+    const to: NodeVisual = { shape: 'circle', size: 40, color: '#111' };
+    expect(blendVisual(from, to, 0.5)).toBe(to);
+  });
+
+  it("leaves a non-card's box alone", () => {
+    const from: NodeVisual = { shape: 'circle', size: 20, color: '#111' };
+    const to: NodeVisual = { shape: 'circle', size: 40, color: '#111' };
+    const half = blendVisual(from, to, 0.5);
+    expect(half.size).toBe(30);
+    expect(half.width).toBeUndefined();
+    expect(half.morph).toBeUndefined();
+  });
+});
+
+describe('reversing a morph that is already in flight', () => {
+  const card = (cardShape: NodeVisual['cardShape'], over: Partial<NodeVisual> = {}): NodeVisual => ({
+    shape: 'card',
+    size: 90,
+    width: 180,
+    height: 135,
+    color: '#111',
+    cardShape,
+    ...over,
+  });
+
+  /** How far an outline reaches from the box's centre along one direction. */
+  const reach = (outline: readonly (readonly [number, number])[], angle: number) => {
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    let nearest = Infinity;
+    for (let i = 0; i < outline.length; i += 1) {
+      const [ax, ay] = outline[i];
+      const [bx, by] = outline[(i + 1) % outline.length];
+      const px = ax - 0.5;
+      const py = ay - 0.5;
+      const ex = bx - ax;
+      const ey = by - ay;
+      const denominator = ux * ey - uy * ex;
+      if (Math.abs(denominator) < 1e-12) continue;
+      const along = (px * ey - py * ex) / denominator;
+      const across = (px * uy - py * ux) / denominator;
+      if (along > 0 && across >= -1e-9 && across <= 1 + 1e-9) nearest = Math.min(nearest, along);
+    }
+    return nearest;
+  };
+
+  it('leaves the outline it is drawn as, not the one its name says', () => {
+    /*
+      A blended visual takes the destination's `cardShape`, like everything else discrete — so a card half
+      way from a triangle to a note is NAMED a note while being drawn as neither. Reversing from its name
+      snapped it to a full note before it started leaving one, which is what a reader who changes their mind
+      half way through sees.
+    */
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    expect(halfWay.cardShape).toBe('note');
+    expect(halfWay.morph).toBeDefined();
+
+    // Now back the other way, from that half-morphed card.
+    const reversing = blendVisual(halfWay, card('triangle'), 0);
+    expect(reversing.morph).toBeDefined();
+    // At the very first frame of the reversal the outline is exactly the one that was on screen.
+    for (const angle of [-1.3, -0.4, 0.6, 1.9, 3.0]) {
+      expect(reach(reversing.morph!.outline, angle)).toBeCloseTo(reach(halfWay.morph!.outline, angle), 5);
+    }
+  });
+
+  it('continues on the directions it was already using, rather than deriving new ones', () => {
+    /*
+      What stops a spike. Deriving the directions again from the half-morphed POLYGON gives a set that shifts
+      under the blend — and one of them can be a direction that polygon cannot answer along, which used to
+      fall back to the box and put one point a long way off the shape for a frame.
+    */
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    expect(halfWay.morph?.samples?.length).toBeGreaterThan(0);
+
+    let previous = halfWay.morph!.samples!;
+    for (let step = 1; step <= 8; step += 1) {
+      const frame = blendVisual(halfWay, card('diamond'), step / 10).morph!.samples!;
+      expect(frame).toHaveLength(previous.length);
+      for (let i = 0; i < frame.length; i += 1) {
+        expect(frame[i].ux).toBeCloseTo(previous[i].ux, 9);
+        expect(Math.abs(frame[i].r - previous[i].r)).toBeLessThan(0.2);
+      }
+      previous = frame;
+    }
+  });
+
+  it('still morphs when the same switch is asked for twice', () => {
+    // Both names equal, and a card that is still half of something else. Skipped on the names alone, this
+    // is the card jumping to its destination shape while every position carries on easing.
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    const again = blendVisual(halfWay, card('note'), 0);
+
+    expect(again.morph).toBeDefined();
+    for (const angle of [-1.3, 0.6, 3.0]) {
+      expect(reach(again.morph!.outline, angle)).toBeCloseTo(reach(halfWay.morph!.outline, angle), 5);
+    }
+  });
+
+  it('arrives at the destination shape all the same', () => {
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    // At the end the blend is the destination visual outright, morph and all.
+    expect(blendVisual(halfWay, card('triangle'), 1).morph).toBeUndefined();
+    expect(blendVisual(halfWay, card('triangle'), 1).cardShape).toBe('triangle');
+  });
+});
+
+describe('a two-colour scale', () => {
+  it('blends continuously between the stops, and paints exactly a stop at either end', () => {
+    expect(blendColors('primary-100', 'accent', 0)).toBe('primary-100');
+    expect(blendColors('primary-100', 'accent', 1)).toBe('accent');
+    expect(blendColors('primary-100', 'accent', 0.5)).toBe('color-mix(in oklch, accent 50%, primary-100)');
+    // Continuous: three cards at 0.1, 0.4 and 0.9 are three different colours, not two buckets.
+    const shades = [0.1, 0.4, 0.9].map((t) => blendColors('a', 'b', t));
+    expect(new Set(shades).size).toBe(3);
   });
 });

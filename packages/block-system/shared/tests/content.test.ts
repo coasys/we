@@ -155,7 +155,7 @@ describe('Portable Text projection', () => {
       { _type: 'collection', _key: 'c1', layout: 'grid', content: [{ _type: 'image', _key: 'i1', src: 'x' }] },
     ];
     const projected = toPortableText(blocks);
-    expect((projected[1] as { content: ContentBlock[] }).content[0]._key).toBe('i1');
+    expect((projected[1] as unknown as { content: ContentBlock[] }).content[0]._key).toBe('i1');
     expect(collectKeys(blocks)).toEqual(['p1', 'c1', 'i1']);
   });
 });

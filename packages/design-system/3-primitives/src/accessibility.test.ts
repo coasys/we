@@ -171,3 +171,52 @@ describe('we-progress-bar announces a subject or stays out of the tree', () => {
     expect(el.getAttribute('aria-valuenow')).toBeNull();
   });
 });
+
+describe('we-button says whether it is open, when it opens something', () => {
+  /*
+    A folding section's heading, a nav group, a row that opens its people: each is a button whose
+    whole job is to report the state of something else, and a screen reader learns that from
+    `aria-expanded` alone. Every one of them was silent — a schema assigns props as DOM properties,
+    so a template cannot set an attribute the component does not declare, and this one did not.
+
+    Asserted directly rather than through axe because the failure is an ABSENT attribute, which is
+    valid markup: nothing in a rule set can see that a particular button was supposed to be a
+    disclosure.
+  */
+  async function attribute(markup: string, expanded?: boolean): Promise<string | null> {
+    host = document.createElement('div');
+    host.innerHTML = markup;
+    document.body.append(host);
+    const button = host.firstElementChild as HTMLElement & { updateComplete: Promise<unknown>; expanded?: boolean };
+    /*
+      Set as a PROPERTY, because `false` has no attribute form on a boolean prop — presence is
+      truth — and because a property is how it arrives in practice: the schema renderer assigns
+      every prop as a DOM property, which is the whole reason a template could not reach this
+      before it was declared.
+    */
+    if (expanded !== undefined) button.expanded = expanded;
+    await button.updateComplete;
+    return button.shadowRoot!.querySelector('[part="base"]')!.getAttribute('aria-expanded');
+  }
+
+  it('reports open and closed', async () => {
+    expect(await attribute('<we-button>Logs</we-button>', true)).toBe('true');
+    expect(await attribute('<we-button>Logs</we-button>', false)).toBe('false');
+  });
+
+  it('says nothing at all on a button that opens nothing', async () => {
+    /*
+      The case the three-valued prop exists for, and the reason `false` is not the default:
+      `aria-expanded="false"` announces an ordinary button as a collapsed disclosure and invites a
+      press that will do nothing of the kind. Silence is the correct answer for almost every button
+      in the app.
+    */
+    expect(await attribute('<we-button variant="primary">Save</we-button>')).toBeNull();
+  });
+
+  it('says it on a link-shaped button too', async () => {
+    // `href` renders an anchor with role="button" down a separate path, which is exactly the kind
+    // of branch an attribute gets added to one side of.
+    expect(await attribute('<we-button href="/logs">Logs</we-button>', true)).toBe('true');
+  });
+});

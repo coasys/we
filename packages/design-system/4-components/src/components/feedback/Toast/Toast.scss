@@ -69,28 +69,51 @@
   font-family: var(--we-font-family);
   font-size: var(--we-font-size-300);
 
+  /*
+    The same pairing `we-alert` uses for its `soft` appearance, and for the reason written there: a
+    `-100` is one theme's idea of a light red, it cannot follow a theme that *pins* `danger`, and the
+    contrast corrections at apply time skip a scale position entirely. The fill is the status role's
+    own tinted panel; the edge is `color-mix` against the role, which is how the system builds a step
+    it has no role for.
+  */
   &--info {
-    background-color: var(--we-color-neutral-100);
-    border: 1px solid var(--we-color-neutral-300);
+    background-color: var(--we-role-surface-sunken);
+    border: 1px solid var(--we-role-border);
   }
 
   &--success {
-    background-color: var(--we-color-success-100);
-    border: 1px solid var(--we-color-success-300);
+    background-color: var(--we-role-success-surface);
+    border: 1px solid color-mix(in srgb, var(--we-role-success) 30%, transparent);
   }
 
   &--warning {
-    background-color: var(--we-color-warning-100);
-    border: 1px solid var(--we-color-warning-300);
+    background-color: var(--we-role-warning-surface);
+    border: 1px solid color-mix(in srgb, var(--we-role-warning) 30%, transparent);
   }
 
   &--error {
-    background-color: var(--we-color-danger-100);
-    border: 1px solid var(--we-color-danger-300);
+    background-color: var(--we-role-danger-surface);
+    border: 1px solid color-mix(in srgb, var(--we-role-danger) 30%, transparent);
   }
 
   &__message {
     flex: 1;
+  }
+
+  &__action {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--we-space-100) var(--we-space-200);
+    border-radius: var(--we-radius-200);
+    font: inherit;
+    font-weight: var(--we-font-weight-semibold, 600);
+    color: inherit;
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--we-role-surface-hover);
+    }
   }
 
   &__dismiss {
