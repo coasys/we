@@ -413,6 +413,33 @@ describe('layout travel — the camera', () => {
     expect(engine.viewport.get().x).toBe(grabbed);
   });
 
+  it('carries on from where the camera is when another travel starts mid-switch, not from where it began', async () => {
+    const engine = await started();
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'away' } });
+    engine.relayout({ fit: true, travel: 400 });
+    await vi.advanceTimersByTimeAsync(200);
+    const midway = engine.viewport.get();
+
+    /*
+      What a read landing inside the switch does: the same layout answers again and asks for a travel of
+      its own, on a new clock. The camera was left aimed from where the switch STARTED, so the new clock
+      sent it back there — the tree, half-travelled, jumped off screen and slid in a second time.
+    */
+    engine.relayout({ travel: 400 });
+    await vi.advanceTimersByTimeAsync(20);
+    const after = engine.viewport.get();
+    const moved = Math.hypot(after.x - midway.x, after.y - midway.y);
+    expect(moved).toBeLessThan(200);
+
+    await vi.advanceTimersByTimeAsync(600);
+    const settled = engine.viewport.get();
+    const landed = engine.getPositions().get('a')!;
+    const onScreen = { x: landed.x * settled.zoom + settled.x, y: landed.y * settled.zoom + settled.y };
+    expect(onScreen.x).toBeGreaterThan(-200);
+    expect(onScreen.x).toBeLessThan(1000);
+  });
+
   it('lands the camera immediately when there is no travel, exactly as a fit always did', async () => {
     const engine = await started();
     const before = engine.viewport.get();

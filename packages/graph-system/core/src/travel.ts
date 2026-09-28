@@ -207,6 +207,16 @@ export class Travel {
   }): void {
     const { before, positions, asked, now, skip } = input;
     const moving = new Set(this.cards.keys());
+    /*
+      A new clock re-bases the camera on where it is drawn now, as it does every card. Left alone, its
+      start stayed where the switch BEGAN while the clock went back to nought, so a read landing inside
+      the switch — a tree's reaction weights arriving, say — sent the camera back to the old framing:
+      the half-travelled tree jumped off screen and slid in again.
+    */
+    if (asked > 0 && this.camera) {
+      const current = this.cameraNow();
+      if (current && this.camera) this.camera = { from: current, to: this.camera.to };
+    }
     if (asked > 0) {
       this.duration = asked;
       this.started = now;
