@@ -282,3 +282,27 @@ describe('range bounds', () => {
     });
   });
 });
+
+describe('selecting the fields a row carries', () => {
+  /**
+   * `select` sat in the IR, the validator and the reference engine, and the compiler dropped it on the
+   * way in — so a template could not ask for less than every field, and a list of containers carried
+   * every child id of every row.
+   */
+  it('carries a root `select` into the IR and back out to the flat query', () => {
+    const { ir, unsupported } = compileQuery({
+      entity: 'CollectionBlock',
+      select: ['title', 'participants'],
+      limit: 20,
+    });
+    expect(unsupported).toEqual([]);
+    expect(ir.select).toEqual(['title', 'participants']);
+    expect(irToFlatQuery(ir)).toMatchObject({ select: ['title', 'participants'], limit: 20 });
+  });
+
+  it('leaves a query without `select` asking for every field', () => {
+    const { ir } = compileQuery({ entity: 'CollectionBlock' });
+    expect(ir).not.toHaveProperty('select');
+    expect(irToFlatQuery(ir)).not.toHaveProperty('select');
+  });
+});

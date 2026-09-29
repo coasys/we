@@ -215,6 +215,8 @@ export const callsList: SchemaNode = {
       query: {
         entity: 'CollectionBlock',
         where: { kind: 'call' },
+        // What a row shows — see `$query.select`. Without it every call carried every utterance id.
+        select: ['title', 'description', 'author', 'createdAt', 'participants'],
         scope: anchorScope(),
         limit: 20,
         order: { createdAt: { $: 'local.sortDirection' } },

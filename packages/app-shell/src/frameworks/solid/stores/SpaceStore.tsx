@@ -7,6 +7,12 @@ import {
   resolveCallExtractionTargets,
   resolveSpaceExtractionTargets,
 } from '@shared/callExtraction';
+import {
+  CONTAINER_ACTIVITY_QUERY,
+  type ContainerActivity,
+  mentionsOf,
+  unreadContainerIds,
+} from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
 import {
@@ -3955,78 +3961,41 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Containers holding something newer than this agent's marker for them.
+   * The space's containers, read once for both unread dots and mentions — see `containerActivity.ts`.
    *
-   * One subscription for the whole space rather than a projection per row: the rail asked the same
-   * question for every channel, so a space with thirty channels opened thirty of them.
-   *
-   * A container with *no* marker counts as unread — it has never been opened, so everything in it is
-   * new. That case has to be written down rather than falling out of the comparison, because `>`
-   * against `undefined` is false and would have read as "nothing new here".
+   * Once per space: marking a container read changes the markers, not the containers, so the unread
+   * set is recomputed from these rows rather than by reading the space again.
    */
-  const [unreadNodeIds, setUnreadNodeIds] = createSignal<string[]>([]);
+  const [activityRows, setActivityRows] = createSignal<ContainerActivity[]>([]);
 
   createEffect(() => {
     const ds = datasetStore.currentDataset();
-    const markers = readMarkers();
-    if (!ds) {
-      setUnreadNodeIds([]);
-      return;
-    }
+    setActivityRows([]);
+    if (!ds) return;
 
     void (async () => {
       try {
-        const containers = await CollectionBlock.findAll(ds.handle, {
-          include: { $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 } },
-        });
-        const lastReadOf = new Map(markers.map((m) => [m.nodeId, m.lastReadAt]));
-        setUnreadNodeIds(
-          containers
-            .filter((container) => {
-              const latest = (container as unknown as { $latestChild?: { createdAt?: string } }).$latestChild;
-              if (!latest?.createdAt) return false;
-              const marker = lastReadOf.get(container.id);
-              // ISO-8601 UTC compares lexicographically in chronological order — see ReadMarker.
-              return marker === undefined || latest.createdAt > marker;
-            })
-            .map((container) => container.id),
-        );
+        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY);
+        // A read that lands after a space switch belongs to the space that was left.
+        if (datasetStore.currentDataset() === ds) setActivityRows(rows);
       } catch (error) {
-        console.error('SpaceStore: could not compute unread state', error);
-        setUnreadNodeIds([]);
+        console.error('SpaceStore: could not read container activity', error);
       }
     })();
   });
 
+  /**
+   * Containers holding something newer than this agent's marker for them.
+   *
+   * One read for the whole space rather than a projection per row: the rail asked the same question
+   * for every channel, so a space with thirty channels opened thirty of them.
+   */
+  const unreadNodeIds = createMemo(() => unreadContainerIds(activityRows(), readMarkers()));
+
   /** Nodes in this space naming this agent. See the interface for why the filter is not pushed down. */
-  // Typed number because that is what hydration actually returns — the old `string` here was
-  // only ever satisfied by `any` flowing through untyped model fields.
-  const [myMentions, setMyMentions] = createSignal<{ id: string; author: string; createdAt: number }[]>([]);
-
-  createEffect(() => {
-    const ds = datasetStore.currentDataset();
+  const myMentions = createMemo(() => {
     const did = session.me()?.did;
-    if (!ds || !did) {
-      setMyMentions([]);
-      return;
-    }
-
-    void (async () => {
-      try {
-        const nodes = await CollectionBlock.findAll(ds.handle, { include: { mentions: true } });
-        setMyMentions(
-          nodes
-            .filter((node) => (Array.isArray(node.mentions) ? node.mentions : []).includes(did))
-            // The contract keeps timestamps' representation the backend's business; comparison is
-            // the consumer's, made explicit here.
-            .map((node) => ({ id: node.id, author: node.author, createdAt: Number(node.createdAt) }))
-            .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
-        );
-      } catch (error) {
-        console.error('SpaceStore: could not read mentions', error);
-        setMyMentions([]);
-      }
-    })();
+    return did ? mentionsOf(activityRows(), did) : [];
   });
 
   /**

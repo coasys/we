@@ -104,6 +104,17 @@ describe('reading and writing', () => {
     expect(descending.map((s) => s.name)).toEqual(['C', 'B']);
   });
 
+  it('carries only the selected fields, in the template dialect and the store one', async () => {
+    await Space.create(dataset, { name: 'Alpha', uuid: 'a' });
+
+    for (const query of [{ select: ['name'] }, { properties: ['name'] }]) {
+      const [row] = (await Space.findAll(dataset, query)) as Record<string, unknown>[];
+      expect(row.name).toBe('Alpha');
+      expect(row.id).toBeDefined();
+      expect(row).not.toHaveProperty('uuid');
+    }
+  });
+
   it('keeps datasets separate', async () => {
     const other = { id: 'ds-2', tables: {} };
     await Space.create(dataset, { name: 'Mine' });
