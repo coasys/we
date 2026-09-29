@@ -30,6 +30,7 @@ import { getEntity, getEntityForDataset, registerEntity, registerFileStore } fro
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { compileEntities, type EntityRuntime } from './entities';
+import { createInMemoryFlowPort } from './flows';
 import { inMemoryQueryAdapter } from './queryAdapter';
 
 export interface InMemoryDatasetSeed {
@@ -508,6 +509,7 @@ export function createInMemoryBackendPorts(
     lifecycle,
     schemas,
     profiles: createInMemoryProfileDirectory(ctx, opts.profiles),
+    flows: createInMemoryFlowPort(ctx.selfId),
     ephemeral,
     dataBindings: (deps) => ({
       $currentDataset: deps.currentDataset,
