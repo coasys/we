@@ -28,12 +28,12 @@ let connectFailure: string | null = null;
 /** Supplied by connectors whose session is the connection — the web host's, in practice. */
 let disconnect: (() => Promise<void>) | undefined;
 
-/** Set by the tests that need a host able to restart the backend; absent is the web shape. */
 /** Set by a test to wrap the backend's ports before the shell boots against them. */
 let onPorts: ((ports: ReturnType<typeof createInMemoryBackendPorts>) => void) | undefined;
 /** Datasets that exist before boot — a space the agent already has, say. */
 let seededDatasets: { id: string; name: string }[] = [];
 
+/** Set by the tests that need a host able to restart the backend; absent is the web shape. */
 let executorHost:
   | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
   | undefined;
@@ -193,8 +193,8 @@ describe('boot', () => {
   });
 
   /*
-    Every dataset listing builds a handle per dataset on AD4M, and each handle registers socket
-    subscriptions nothing releases — so boot reads the list once, and publishes what it read plus
+    A dataset listing can cost a backend a handle per dataset, and some keep resources behind each
+    one nothing releases — so boot reads the list once, and publishes what it read plus
     what it made. Answering from the first read must still include a system dataset created after it.
   */
   it('reads the dataset list once, and publishes the system datasets it created', async () => {
@@ -220,7 +220,7 @@ describe('boot', () => {
 
   /*
     The root and the personal space share nothing but the list, and each is several round trips to
-    a remote executor. One after the other they were most of the wait before a space could open.
+    a remote backend. One after the other they were most of the wait before a space could open.
   */
   it('brings the root and the personal space up side by side', async () => {
     let releaseRoot!: () => void;
@@ -243,6 +243,37 @@ describe('boot', () => {
     await vi.waitFor(() => expect(started).toEqual(expect.arrayContaining(['root', 'personal'])));
     releaseRoot();
     await ready(stores);
+  });
+
+  /*
+    The settings read starts beside the root's reinstall rather than after it, so it can land while a
+    changed settings model is being rewritten and fail. That must cost a second read, not the root:
+    an unset root loses every saved template and theme for the session.
+  */
+  it('keeps the root when the settings read beside its reinstall fails, and reads them again', async () => {
+    seededDatasets = [{ id: 'root-1', name: 'we-root' }];
+    let findOne: ReturnType<typeof vi.spyOn> | undefined;
+    // Spied when boot lists the datasets: the entities are registered by then, and the root is not
+    // up yet. Any earlier and the spy sits on a class that registration replaces.
+    onPorts = (ports) => {
+      const list = ports.lifecycle.list.bind(ports.lifecycle);
+      ports.lifecycle.list = async (options) => {
+        // The registered class itself: a spy defined on the neutral stand-in never sees a call.
+        findOne ??= vi
+          .spyOn(getEntity('AgentSettings') as unknown as { findOne: () => Promise<unknown> }, 'findOne')
+          .mockRejectedValueOnce(new Error('No SHACL shape'));
+        return list(options);
+      };
+    };
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      expect(stores.datasets.rootDataset()?.id).toBe('root-1');
+      expect(findOne).toHaveBeenCalledTimes(2);
+    } finally {
+      findOne?.mockRestore();
+    }
   });
 
   /*

@@ -1885,7 +1885,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       await new Promise((resolve) => setTimeout(resolve, wait));
       wait = Math.min(Math.round(wait * 1.5), JOIN_RECOVERY_MAX_POLL_MS);
 
-      const refs = await lifecycle.list().catch(() => null);
+      // Fresh: the adapter may otherwise answer from the very events this is not relying on.
+      const refs = await lifecycle.list({ fresh: true }).catch(() => null);
       const match = refs?.find((ref) => datasetAnswersTo(ref, id));
       if (match) return match;
     }
@@ -1907,7 +1908,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       // since — and the case that matters here is the one where neither covers it: a join this
       // client abandoned, finished by the backend while the page was reloading. Joining again there
       // is how one space becomes two.
-      const alreadyJoined = (await lifecycle.list().catch(() => null))?.find((ref) => datasetAnswersTo(ref, id));
+      const alreadyJoined = (await lifecycle.list({ fresh: true }).catch(() => null))?.find((ref) =>
+        datasetAnswersTo(ref, id),
+      );
       if (alreadyJoined) {
         trace('space', 'join:already', { id: alreadyJoined.id });
         await finishJoin(alreadyJoined, focus);
@@ -3997,9 +4000,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     void (async () => {
       try {
-        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY as never);
+        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY);
         // A read that lands after a space switch belongs to the space that was left.
-        if (datasetStore.currentDataset() === ds) setActivityRows(rows as unknown as ContainerActivity[]);
+        if (datasetStore.currentDataset() === ds) setActivityRows(rows);
       } catch (error) {
         console.error('SpaceStore: could not read container activity', error);
       }

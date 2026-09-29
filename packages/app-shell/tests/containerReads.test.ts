@@ -16,6 +16,8 @@
 import { CONTAINER_ACTIVITY_QUERY } from '@shared/containerActivity';
 import { bundledModules } from '@shared/registries/bundledModules.generated';
 import { bundledTemplates } from '@shared/registries/bundledTemplates.generated';
+import type { TypedEntityQuery } from '@we/backend-shared';
+import type { CollectionBlock } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
 const UNSELECTED: string[] = [
@@ -104,6 +106,14 @@ describe('reading lists of containers', () => {
     expect(CONTAINER_ACTIVITY_QUERY.properties).not.toContain('children');
     expect(CONTAINER_ACTIVITY_QUERY.properties).toEqual(expect.arrayContaining(['createdAt', 'mentions']));
     // Selected, not included: an include asks for its targets hydrated, and `mentions` declares none.
-    expect(Object.keys(CONTAINER_ACTIVITY_QUERY.include)).not.toContain('mentions');
+    expect(Object.keys(CONTAINER_ACTIVITY_QUERY.include ?? {})).not.toContain('mentions');
+  });
+
+  it('names only fields the record declares, so a misspelt one fails to compile', () => {
+    // A field the entity does not have reads back as nothing rather than as an error, so the type
+    // is the only thing that catches it. `pnpm typecheck` fails if this line stops being an error.
+    // @ts-expect-error -- `mention` is not a field of CollectionBlock
+    const misspelt: TypedEntityQuery<CollectionBlock> = { properties: ['mention'] };
+    expect(misspelt.properties).toEqual(['mention']);
   });
 });

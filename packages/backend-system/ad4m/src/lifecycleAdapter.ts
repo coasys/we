@@ -128,11 +128,27 @@ export function createAd4mDatasetLifecycle(
   let complete = false;
   const subscribers = new Set<DatasetChangeHandlers>();
 
+  /*
+    What changed while a full read was in flight. The read's answer was taken at some moment inside
+    it, so on its own it can put back a perspective removed meanwhile, or leave out one added
+    meanwhile — and a registry that trusted it would keep either mistake until reload.
+  */
+  let reading = 0;
+  const addedWhileReading = new Set<string>();
+  const removedWhileReading = new Set<string>();
+
   function track(): void {
     if (tracking) return;
     tracking = true;
 
+    // Events sent while the socket was down were never heard, so the registry stops vouching for
+    // itself until the next full read. The client may not offer the hook; a fresh read still works.
+    (client.perspective as { onReconnect?: (callback: () => void) => unknown }).onReconnect?.(() => {
+      complete = false;
+    });
+
     client.perspective.addPerspectiveAddedListener((handle) => {
+      if (reading) addedWhileReading.add(handle.uuid);
       void (async () => {
         await resolveOwnProfileDatasetId();
         const held = proxies.get(handle.uuid);
@@ -159,6 +175,7 @@ export function createAd4mDatasetLifecycle(
     });
 
     client.perspective.addPerspectiveRemovedListener((uuid) => {
+      if (reading) removedWhileReading.add(uuid);
       proxies.delete(uuid);
       for (const s of subscribers) s.onRemoved?.(uuid);
       return null;
@@ -289,16 +306,30 @@ export function createAd4mDatasetLifecycle(
   }
 
   return {
-    async list() {
+    async list(listOptions?: { fresh?: boolean }) {
       // Once the registry is known complete, it is the answer: `all()` builds a handle for every
       // perspective, and each one's subscriptions stay behind however quickly it is dropped.
       // The own-profile lookup the filter needs runs beside the read, not before it: on a boot it
       // was a round trip of its own ahead of everything else.
-      if (!complete) {
+      if (!complete || listOptions?.fresh) {
         const tracked = tracking;
-        const [, all] = await Promise.all([resolveOwnProfileDatasetId(), client.perspective.all()]);
-        for (const p of all) adopt(p);
-        complete = tracked;
+        reading += 1;
+        try {
+          const [, all] = await Promise.all([resolveOwnProfileDatasetId(), client.perspective.all()]);
+          const present = new Set(all.map((p) => p.uuid));
+          for (const p of all) if (!removedWhileReading.has(p.uuid)) adopt(p);
+          // Held but no longer there, and not added since the read began: a removal nobody heard.
+          for (const uuid of [...proxies.keys()]) {
+            if (!present.has(uuid) && !addedWhileReading.has(uuid)) proxies.delete(uuid);
+          }
+          complete = tracked;
+        } finally {
+          reading -= 1;
+          if (!reading) {
+            addedWhileReading.clear();
+            removedWhileReading.clear();
+          }
+        }
       } else {
         await resolveOwnProfileDatasetId();
       }

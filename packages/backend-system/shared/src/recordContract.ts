@@ -226,7 +226,11 @@ export interface TypedEntityQuery<T extends RecordInstance> {
   order?: TypedOrder<T>;
   include?: TypedIncludeMap<T>;
   includeAll?: boolean;
-  properties?: PropertyKeysOf<T>[];
+  /**
+   * The fields each row carries. Record metadata may be named too: whether a backend returns it
+   * unasked differs between backends, so a read that needs `author` or `createdAt` says so.
+   */
+  properties?: (PropertyKeysOf<T> | 'author' | 'createdAt' | 'updatedAt')[];
   limit?: number;
   offset?: number;
   count?: boolean;
