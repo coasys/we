@@ -293,7 +293,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       }
 
       static rowsFor(dataset: DatasetEntry, query: Record<string, unknown> = {}): AnyRow[] {
-        // `select` is the template dialect; `properties` is the name store code writes, after `Ad4mModel`.
+        // `select` is the template dialect; `properties` is the record contract's name for the same list.
         const { where, order, limit, offset, include, select = query.properties, scope, properties, ...rest } = query;
         void properties;
         void rest;
@@ -321,9 +321,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       }
 
       /**
-       * Rows as instances. Under a field selection an instance carries only what was selected, as an
-       * `Ad4mModel` one does: the class's field defaults would otherwise stand in for fields the query
-       * never asked for, and an empty title reads as a real one.
+       * Rows as instances. Under a field selection an instance carries only what was selected, as any
+       * backend's does: the class's field defaults would otherwise stand in for fields the query never
+       * asked for, and an empty title reads as a real one.
        */
       static read(dataset: DatasetEntry, query: Record<string, unknown>): Entity[] {
         const narrowed = Array.isArray(query.select ?? query.properties);
