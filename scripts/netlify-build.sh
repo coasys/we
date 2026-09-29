@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Netlify deploy-preview build — optionally builds @coasys/ad4m and
-# @coasys/ad4m-connect from source and links both into the WE workspace before
-# running the normal build.
+# Netlify build — for deploy previews, and for branch deploys whose site opts in,
+# optionally builds @coasys/ad4m and @coasys/ad4m-connect from source and links
+# both into the WE workspace before running the normal build.
 #
 # Why: WE's pnpm override pins a published pre-release tag of the SDK, and that
 # tag only moves when somebody hand-publishes one from an ad4m commit. New SDK
 # work — batch RPC endpoints, performance fixes — lands on ad4m's branches well
 # before that happens, so a preview built against the pin cannot exercise it.
 #
-# Which ad4m a preview gets, in the order the answers are consulted:
+# A deploy of a branch (Netlify's `production` context — `dev` on both sites) builds
+# against the pin unless the site sets WE_AD4M_FROM_SOURCE=1. The dev site people
+# are invited to leaves it unset; a staging site for the team sets it, and then
+# answers the questions below like a preview does. See netlify.toml.
 #
+# Which ad4m a build gets, in the order the answers are consulted:
+#
+#   0. On a branch deploy, the pin, unless WE_AD4M_FROM_SOURCE=1.
 #   1. AD4M_BRANCH in the Netlify UI — site-wide, overrides everything below.
 #   2. A `preview:ad4m@<ref>` label on the pull request. `preview:ad4m@pin` means
 #      "use the version this repo pins", for a branch whose whole point is that
@@ -60,7 +66,12 @@ fi
 AD4M_REF=''
 REASON=''
 
-if [ -n "${AD4M_BRANCH:-}" ]; then
+if [ "${CONTEXT:-}" = 'production' ] && [ "${WE_AD4M_FROM_SOURCE:-}" != '1' ]; then
+  AD4M_REF='pin'
+  REASON='a branch deploy stays on the pin unless its site sets WE_AD4M_FROM_SOURCE=1'
+fi
+
+if [ -z "$AD4M_REF" ] && [ -n "${AD4M_BRANCH:-}" ]; then
   AD4M_REF="$AD4M_BRANCH"
   REASON='AD4M_BRANCH is set in the Netlify UI'
 fi
