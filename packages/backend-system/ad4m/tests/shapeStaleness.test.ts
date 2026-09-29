@@ -231,9 +231,13 @@ describe('missing models', () => {
   const perspective = (installed: string[]) => {
     const queried: string[] = [];
     const proxy = {
+      // Its own key in the adapter's short-lived read cache, as a real perspective has.
+      uuid: `staleness-${Math.random().toString(36).slice(2)}`,
       get: async (query: { source?: string }) => {
-        queried.push(query.source ?? '');
-        return installed.includes(query.source ?? '') ? [{}] : [];
+        queried.push(query.source ?? '*');
+        // Filtered to one class, or every marker — as the executor answers either.
+        const matching = query.source ? installed.filter((c) => c === query.source) : installed;
+        return matching.map((source) => ({ data: { source } }));
       },
     } as never;
     return { proxy, queried };

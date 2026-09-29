@@ -210,3 +210,167 @@ describe('development registration', () => {
     warn.mockRestore();
   });
 });
+
+describe('one handle per dataset', () => {
+  /**
+   * Every proxy the SDK builds registers four socket subscriptions it can never release on its own,
+   * so a handle built and dropped keeps running for the life of the session. The trace this was
+   * found in held 27 proxies for 8 datasets after one load, each filtering every socket message.
+   */
+  function perspectiveClient() {
+    const constructed: { uuid: string; name: string; sharedUrl?: string | null }[] = [];
+    const listeners: Record<string, (handle: unknown) => unknown> = {};
+    const build = (uuid: string, name = uuid, sharedUrl: string | null = null) => {
+      const p = { uuid, name, sharedUrl, state: 'Private', neighbourhood: null };
+      constructed.push(p);
+      return p;
+    };
+    const client = {
+      agent: { me: vi.fn(async () => ({ did: 'did:me', perspective: null })) },
+      perspective: {
+        all: vi.fn(async () => [build('a', 'Alpha'), build('b', 'Beta')]),
+        byUUID: vi.fn(async (uuid: string) => build(uuid)),
+        add: vi.fn(async (name: string) => build(`new-${name}`, name)),
+        remove: vi.fn(async () => undefined),
+        addPerspectiveAddedListener: vi.fn((cb) => (listeners.added = cb)),
+        addPerspectiveUpdatedListener: vi.fn((cb) => (listeners.updated = cb)),
+        addPerspectiveRemovedListener: vi.fn((cb) => (listeners.removed = cb)),
+        onReconnect: vi.fn((cb) => (listeners.reconnected = cb)),
+      },
+    };
+    return { client, constructed, listeners };
+  }
+
+  it('hands out the same handle for a dataset however it is read', async () => {
+    const { client } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    const [first] = await lifecycle.list();
+    const [again] = await lifecycle.list();
+    const got = await lifecycle.get('a');
+
+    expect(again.handle).toBe(first.handle);
+    expect(got?.handle).toBe(first.handle);
+    // Answered from what is held: a switch into a listed dataset costs no round trip.
+    expect(client.perspective.byUUID).not.toHaveBeenCalled();
+  });
+
+  it('refreshes what the held handle says from later reads and events, without reading again', async () => {
+    const { client, listeners } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+    const updated: unknown[] = [];
+    lifecycle.subscribe({ onUpdated: (ref) => updated.push(ref) });
+    const [held] = await lifecycle.list();
+
+    listeners.updated({ uuid: 'a', name: 'Alpha, renamed', sharedUrl: 'neighbourhood://Qm-a', state: 'Synced' });
+
+    expect(updated).toEqual([expect.objectContaining({ id: 'a', name: 'Alpha, renamed', handle: held.handle })]);
+    expect((await lifecycle.get('a'))?.sharedUri).toBe('neighbourhood://Qm-a');
+    expect(client.perspective.byUUID).not.toHaveBeenCalled();
+  });
+
+  it('answers the list from what it holds once it is listening and has read everything once', async () => {
+    const { client, listeners } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await lifecycle.list(); // before listening: cannot be trusted complete
+    lifecycle.subscribe({});
+    await lifecycle.list(); // the one full read made while listening
+    listeners.removed('b');
+    listeners.updated({ uuid: 'a', name: 'Alpha, renamed' });
+    const names = (await lifecycle.list()).map((d) => d.name);
+
+    expect(client.perspective.all).toHaveBeenCalledTimes(2);
+    expect(names).toEqual(['Alpha, renamed']);
+  });
+
+  it('reads the list without waiting for the own-profile lookup first', async () => {
+    // The lookup only feeds the filter; on a boot it was a round trip of its own ahead of the read.
+    const { client } = perspectiveClient();
+    let releaseMe!: () => void;
+    client.agent.me = vi.fn(
+      () =>
+        new Promise<{ did: string; perspective: null }>(
+          (resolve) => (releaseMe = () => resolve({ did: 'did:me', perspective: null })),
+        ),
+    );
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    const listed = lifecycle.list();
+    await vi.waitFor(() => expect(client.perspective.all).toHaveBeenCalled());
+    releaseMe();
+
+    expect((await listed).map((d) => d.id)).toEqual(['a', 'b']);
+  });
+
+  it('reads a dataset it does not hold, once, and lets a removed one go', async () => {
+    const { client, listeners } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+    lifecycle.subscribe({});
+
+    const first = await lifecycle.get('c');
+    expect((await lifecycle.get('c'))?.handle).toBe(first?.handle);
+    expect(client.perspective.byUUID).toHaveBeenCalledTimes(1);
+
+    listeners.removed('c');
+    await lifecycle.get('c');
+    expect(client.perspective.byUUID).toHaveBeenCalledTimes(2);
+  });
+
+  /*
+    Once complete, the registry is kept true by events alone — and the events that matter most are
+    the ones most likely to be missed: a join the transport gave up on is announced over the same
+    socket that just failed. So a caller can ask again, and a reconnect stops the registry vouching
+    for itself.
+  */
+  it('reads again when asked for a fresh list, finding what no event announced', async () => {
+    const { client } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+    lifecycle.subscribe({});
+    await lifecycle.list();
+
+    client.perspective.all.mockResolvedValueOnce([
+      { uuid: 'a', name: 'Alpha' },
+      { uuid: 'j', name: 'Joined, unannounced' },
+    ] as never);
+    const cached = (await lifecycle.list()).map((d) => d.id);
+    const fresh = (await lifecycle.list({ fresh: true })).map((d) => d.id);
+
+    expect(cached).toEqual(['a', 'b']);
+    // `b` went without an event, and `j` arrived without one: the fresh read corrects both.
+    expect(fresh).toEqual(['a', 'j']);
+  });
+
+  it('keeps a perspective removed during the read out of the registry', async () => {
+    const { client, listeners } = perspectiveClient();
+    let answer!: (rows: unknown[]) => void;
+    client.perspective.all.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve as never)));
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+    lifecycle.subscribe({});
+
+    const listed = lifecycle.list();
+    await vi.waitFor(() => expect(client.perspective.all).toHaveBeenCalled());
+    listeners.removed('b');
+    answer([
+      { uuid: 'a', name: 'Alpha' },
+      { uuid: 'b', name: 'Beta, already gone' },
+    ]);
+
+    expect((await listed).map((d) => d.id)).toEqual(['a']);
+    expect((await lifecycle.list()).map((d) => d.id)).toEqual(['a']);
+  });
+
+  it('stops answering from the registry after the socket reconnects', async () => {
+    const { client, listeners } = perspectiveClient();
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+    lifecycle.subscribe({});
+    await lifecycle.list();
+    await lifecycle.list();
+    expect(client.perspective.all).toHaveBeenCalledTimes(1);
+
+    listeners.reconnected(undefined);
+    await lifecycle.list();
+
+    expect(client.perspective.all).toHaveBeenCalledTimes(2);
+  });
+});

@@ -208,6 +208,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     ids: Set<string>;
   }
   const spaceTemplateCache = new Map<string, SpaceTemplateCacheEntry>();
+  /** Loads of a space's templates still running, by dataset id — see `preloadSpaceTemplates`. */
+  const spaceTemplateLoads = new Map<string, Promise<void>>();
 
   // Built-in templates from registry (always available)
   const builtInTemplates: TemplateSchema[] = Object.entries(templateRegistry).map(([id, template]) => ({
@@ -458,6 +460,10 @@ export function TemplateStoreProvider(props: ParentProps) {
    * Cache miss: full async load that also populates the cache.
    */
   async function preloadSpaceTemplates(dataset: AppDataset): Promise<void> {
+    // A boot starts this for the space the address names; the switch the route asks for moments
+    // later joins the load rather than starting a second one.
+    const inFlight = spaceTemplateLoads.get(dataset.id);
+    if (inFlight) return inFlight;
     const cached = spaceTemplateCache.get(dataset.id);
     if (cached) {
       clearSpaceTemplates();
@@ -473,7 +479,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
       return;
     }
-    await loadSpaceTemplates(dataset);
+    const load = loadSpaceTemplates(dataset).finally(() => spaceTemplateLoads.delete(dataset.id));
+    spaceTemplateLoads.set(dataset.id, load);
+    await load;
   }
 
   // Load saved templates when root perspective becomes available
