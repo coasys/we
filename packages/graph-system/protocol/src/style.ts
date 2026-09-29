@@ -16,8 +16,8 @@
  * registered plugin, referenced from data with parameters. Same bargain the template system makes
  * with components.
  */
-import type { GraphValue } from './graph';
-import type { EdgeCurve } from './layout';
+import type { GraphNode, GraphValue } from './graph';
+import type { EdgeCurve, EdgeSide } from './layout';
 
 /** Operators a match clause may use against a node/edge field. Mirrors the schema system's `$filter`. */
 export interface MatchOperators {
@@ -42,6 +42,30 @@ export type MatchClause = Record<string, GraphValue | MatchOperators>;
  * computational becomes a plugin with a name and parameters, so the data surface never has to grow
  * conditionals, arithmetic or scales.
  */
+/**
+ * What a computed metric is filed under: its id, and its options when it has any.
+ *
+ * By id alone, two rules reading `field` from different fields — a colour by weight and a size by
+ * comment count — would be one metric computed once, and the options would have nowhere to go. That was
+ * the bug this exists for: options were dropped on the way to `compute`, so `field` never knew which
+ * field to read and every heat rule fell through to its fallback. Keys are sorted, so the same options
+ * written in a different order are the same metric.
+ */
+export function metricKey(ref: { metric: string; options?: Record<string, unknown> }): string {
+  if (!ref.options || !Object.keys(ref.options).length) return ref.metric;
+  const sorted = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(sorted)
+      : value && typeof value === 'object'
+        ? Object.fromEntries(
+            Object.keys(value as object)
+              .sort()
+              .map((key) => [key, sorted((value as Record<string, unknown>)[key])]),
+          )
+        : value;
+  return `${ref.metric} ${JSON.stringify(sorted(ref.options))}`;
+}
+
 export interface MetricRef {
   /** Registered metric id — `degree`, `betweenness`, `community`, … */
   metric: string;
@@ -49,8 +73,17 @@ export interface MetricRef {
   options?: Record<string, unknown>;
   /** Map the metric's normalised 0..1 output onto an output range. */
   range?: [number, number];
-  /** Map onto a named colour scale instead of a numeric range. */
-  scale?: string;
+  /**
+   * Map onto a colour scale instead of a numeric range: a named one — `heat`, `cool`, `categorical` —
+   * or two colours to blend between, `{ from, to }`, low to high.
+   *
+   * A named scale steps; a pair blends continuously, in OKLCH so the middle of the range looks like the
+   * middle rather than a muddy detour. The pair is what a reader picking "cold" and "hot" for a heat
+   * map needs, and the continuity is the point of it: with three cards, the middle one's colour says
+   * whether it sits nearer the top or the bottom, which five steps cannot. Either colour may be a token,
+   * a role or any CSS colour.
+   */
+  scale?: string | { from: string; to: string };
 }
 
 /**
@@ -160,6 +193,18 @@ export interface NodeStyle {
    */
   contentMinZoom?: number;
   /**
+   * Name of a registered badge to pin to the card's lower edge — a small mark a reader can press.
+   *
+   * Not content, on purpose. A card's content is inert: it takes no pointer events, so a press anywhere
+   * on the card picks it up, and it is clipped to the card's shape and box, so the end of a long note is
+   * cut off. A mark somebody is meant to press cannot live there. A badge sits on the card's edge,
+   * outside the clip, takes its own presses and never starts a drag — a reaction on a card, pressed
+   * without opening anything.
+   *
+   * Named, and supplied through the host bindings, for the reason `content` is. Only on a card.
+   */
+  badge?: string;
+  /**
    * Whether the label grows and shrinks with the camera. Default `true`.
    *
    * `false` pins it to a constant on-screen size, which keeps text readable at any zoom — right for a
@@ -198,6 +243,39 @@ export interface EdgeStyle {
   scaleWithZoom?: boolean;
   showLabel?: boolean;
   labelColor?: string;
+  /**
+   * Which side of each node the line leaves and arrives on — see {@link EdgeSide}.
+   *
+   * Normally derived from where the two nodes are, which is right on a canvas: a line between two cards
+   * somebody placed should take the shortest sensible path. It is wrong wherever the *arrangement*
+   * carries the meaning. In a downward tree a parent's children sit below it and spread sideways, so the
+   * geometry attaches the outer ones to their left and right edges while the middle one gets its top —
+   * three children, three different-looking relationships, when they are the same relationship.
+   * `{ sourceAnchor: 's', targetAnchor: 'n' }` says "these hang off the bottom" and the rank reads as one.
+   *
+   * A rule, so it is behind an edge's own stored anchors rather than in front of them: those are one
+   * canvas's tidying of one connection, which is the more specific fact, exactly as a card's own colour
+   * sits in front of its type's.
+   */
+  sourceAnchor?: EdgeSide;
+  targetAnchor?: EdgeSide;
+  /**
+   * Ignore what one canvas has tidied about this connection — its stored anchors and the points it is bent
+   * through — and draw it as the rules say.
+   *
+   * The precedence above is right on a canvas and wrong wherever the ARRANGEMENT is what carries the
+   * meaning. In a tree every child hangs off its parent's underside and is met at its own top, and that
+   * uniformity is the whole of what makes a rank readable — so a line somebody once pulled to a card's left
+   * side, or bent around something that is no longer in the way, is one card disagreeing with the shape for
+   * a reason that belonged to a different reading of the same records.
+   *
+   * Nothing is unwritten. The route is still stored, still the canvas's, and comes back the moment the
+   * arrangement that reads it does — and the change of shape in between is animated rather than snapped:
+   * the engine routes the line both with and without its bend and blends the two control point by control
+   * point for the duration of the travel. That only happens for a line somebody bent, whose bend is actually
+   * appearing or going away, which is why turning this on costs nothing for the lines that have no bend.
+   */
+  ignoreRoute?: boolean;
 }
 
 /** One rule: match, then apply. A rule with no `when` is the base style. */
@@ -233,8 +311,17 @@ export type EdgeStyleRules = StyleRules<EdgeStyle>;
 export interface Metric {
   id: string;
   description?: string;
+  /**
+   * `nodes` are the nodes as everything downstream sees them, **data included**.
+   *
+   * It used to be `{ id }` alone, on the reasoning that a metric is about the graph's *shape*. That
+   * was true of the two that existed and false of the interesting one: "colour by how strongly people
+   * feel about this" reads a number off the node and needs to know the range the rest of the graph
+   * spans, which is exactly a metric's job and is impossible from ids. Widening it costs the existing
+   * metrics nothing — they go on reading `id` — and is what `field` is built on.
+   */
   compute(
-    graph: { nodes: { id: string }[]; edges: { source: string; target: string }[] },
+    graph: { nodes: GraphNode[]; edges: { source: string; target: string }[] },
     options?: Record<string, unknown>,
   ): Map<string, number>;
 }
@@ -288,4 +375,75 @@ export const CARD_SILHOUETTES: Partial<Record<CardShape, readonly (readonly [num
 /** The outline of a shape that has one — a cut card. `undefined` for a box, an ellipse, or a dot. */
 export function cardSilhouette(shape?: CardShape): readonly (readonly [number, number])[] | undefined {
   return shape ? CARD_SILHOUETTES[shape] : undefined;
+}
+
+/**
+ * How many points a circle is worth while it is turning into something else.
+ *
+ * Only ever seen mid-morph: at rest a round card is drawn by a border radius and attached to by formula,
+ * both exact. Forty-eight because the polygon is visible from the first frame — the card is clipped to
+ * it — and at twenty-four a large card's facets could be picked out.
+ */
+const ROUND_STEPS = 48;
+
+/**
+ * How much of a note's corner is rounded, as a fraction of its box, and in how many steps.
+ *
+ * A card is clipped to its polygon for the whole of a blend, so a note given four sharp corners could not
+ * show its radius until the clip stopped — it would appear in one step at the end. A rounded polygon keeps
+ * the corner round throughout. A twelfth is close to the radius token at the sizes a card is read at, and
+ * four steps reads as a curve rather than a chamfer.
+ */
+const NOTE_CORNER = 1 / 12;
+const CORNER_STEPS = 4;
+
+/** One corner of a rounded box, as points, turning from `fromAngle` a quarter turn clockwise. */
+function noteCorner(cx: number, cy: number, fromAngle: number): (readonly [number, number])[] {
+  return Array.from({ length: CORNER_STEPS + 1 }, (_, i) => {
+    const angle = fromAngle + (i / CORNER_STEPS) * (Math.PI / 2);
+    return [cx + NOTE_CORNER * Math.cos(angle), cy + NOTE_CORNER * Math.sin(angle)] as const;
+  });
+}
+
+/**
+ * Every shape as a polygon, for the one job a name cannot do: turning into another shape.
+ *
+ * `CARD_SILHOUETTES` is deliberately partial — a box and an ellipse are better described by a radius than
+ * by points — but a name does not interpolate, and a border radius cannot be lerped against a polygon. So
+ * these are the same shapes in the one representation that can be blended, and they are transient: nothing
+ * draws from them at rest, which is what makes their fidelity compromises free. Point counts are kept
+ * minimal because four things read an outline every frame; blending and stringifying 200 cards costs
+ * 0.12–0.84 ms a frame depending on the pair.
+ */
+export const MORPH_OUTLINES: Record<CardShape, readonly (readonly [number, number])[]> = {
+  /*
+    A rounded box, clockwise from the top-left corner's start — see `NOTE_CORNER` for why it is rounded
+    rather than the four points a box would take.
+  */
+  note: [
+    ...noteCorner(NOTE_CORNER, NOTE_CORNER, Math.PI),
+    ...noteCorner(1 - NOTE_CORNER, NOTE_CORNER, -Math.PI / 2),
+    ...noteCorner(1 - NOTE_CORNER, 1 - NOTE_CORNER, 0),
+    ...noteCorner(NOTE_CORNER, 1 - NOTE_CORNER, Math.PI / 2),
+  ],
+  // Square keeps its four, because its corners are the point of choosing it over a note.
+  square: [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+  ],
+  round: Array.from({ length: ROUND_STEPS }, (_, i) => {
+    const angle = -Math.PI / 2 + (i / ROUND_STEPS) * Math.PI * 2;
+    return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)] as const;
+  }),
+  triangle: CARD_SILHOUETTES.triangle!,
+  diamond: CARD_SILHOUETTES.diamond!,
+  pentagon: CARD_SILHOUETTES.pentagon!,
+  hexagon: CARD_SILHOUETTES.hexagon!,
+};
+
+/** The polygon a shape is blended as — see {@link MORPH_OUTLINES}. */
+export function morphOutline(shape?: CardShape): readonly (readonly [number, number])[] {
+  return MORPH_OUTLINES[shape ?? 'note'] ?? MORPH_OUTLINES.note;
 }

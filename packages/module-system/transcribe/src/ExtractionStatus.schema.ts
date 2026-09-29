@@ -304,6 +304,9 @@ export function codePane(options: {
                     attempt at a maximum did not scroll at all.
                   */
                   maxHeight: '240px',
+                  // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                  // declares no layout layer, so `width` on it is an unknown prop the
+                  // validator warns about and the renderer drops.
                   styles: { width: '100%' },
                 },
               },

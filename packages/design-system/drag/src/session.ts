@@ -329,13 +329,23 @@ export const dragSession = {
     current.zone?.onOver?.(context(current.zone, point));
   },
 
-  /** Release. Drops into whatever is under the pointer, or does nothing if that is nowhere. */
-  drop(point?: DragPoint): void {
-    if (!current) return;
+  /**
+   * Release. Drops into whatever is under the pointer, or does nothing if that is nowhere.
+   *
+   * Answers **whether a zone took it**, which a source that was moving the thing itself has to
+   * know. A canvas drags its cards in its own space: released over nothing the drag was an ordinary
+   * move and the new position is written, released into a zone the card belongs somewhere else now
+   * and has to go back where it started. Nothing else can tell those apart — the zone is the
+   * session's business and the card is the source's.
+   */
+  drop(point?: DragPoint): boolean {
+    if (!current) return false;
     const { zone, payload } = current;
     const at = point ?? { x: 0, y: 0 };
     this.end();
-    if (zone) zone.onDrop?.({ payload, point: at, zone });
+    if (!zone) return false;
+    zone.onDrop?.({ payload, point: at, zone });
+    return true;
   },
 
   /** Abandon. Escape, a cancelled pointer, or a second drag beginning. */

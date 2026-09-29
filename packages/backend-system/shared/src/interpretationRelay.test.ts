@@ -2,7 +2,7 @@
  * The relay, exercised over the in-memory transport.
  *
  * Using the reference `EphemeralPort` rather than a hand-rolled stub is the point: it is the one
- * implementation whose capability profile is the deliberate opposite of AD4M's, so a relay that
+ * implementation whose capability profile is the deliberate opposite of production's, so a relay that
  * only works against a mock would be a relay nobody had yet shown to be transport-neutral.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -60,7 +60,7 @@ describe('mergeActivity', () => {
 
   it('will not reopen a settled pass', () => {
     /*
-      The failure this prevents is not hypothetical: AD4M reports the end of a pass on two separate
+      The failure this prevents is not hypothetical: the backend reports the end of a pass on two separate
       streams (`processed` and `finished`), and the relay can deliver a peer's `thinking` after its
       `done` on any transport that does not guarantee order. Both would show a finished extraction
       as running again, which reads as a hang.
@@ -80,7 +80,7 @@ describe('mergeActivity', () => {
     /*
       The two facts a durable history needs, and the only two that the adapter alone can supply: a
       pass's collection comes from the map the client keeps, and its trigger from which of the two
-      maps answered. Only the events the adapter stamps carry them — the neighbourhood stream sends
+      maps answered. Only the events the adapter stamps carry them — the dataset-scoped stream sends
       none — so a merge that let a later row blank them would leave the settling event, which is the
       one the history is written from, with nothing to hang the record off.
     */
@@ -103,7 +103,7 @@ describe('mergeActivity', () => {
 
   it('keeps the prompt when the response update carries an explicit undefined prompt', () => {
     /*
-      The shape the AD4M adapter actually emits, and the one the test above does not.
+      The shape the production adapter actually emits, and the one the test above does not.
 
       It builds the exchange from two optional event fields, so `llmRequestSent` produces
       `{ prompt: 'P', response: undefined }` and `llmResponseReceived` the mirror image — keys

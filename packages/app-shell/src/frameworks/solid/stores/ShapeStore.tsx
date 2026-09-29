@@ -441,7 +441,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     excluded by `manifest` being null — an entity that is not queryable cannot be minted into
     either, and offering it would produce a pass that fails on a name the executor has no shape for.
 
-    Deduplicated, because a space may name a shape after core vocabulary: `getEntitiesForPerspective`
+    Deduplicated, because a space may name a shape after core vocabulary: `getEntityForDataset`
     prefers the native class, so the two names resolve to one class and requesting it twice would
     put the same shape in the prompt twice at the community's expense.
   */

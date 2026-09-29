@@ -244,6 +244,35 @@ This is read once at class registration to generate the static DS stylesheet (CS
 - Size map: `SIZE_DEFAULTS`
 - CSS block: `styles` or `CSS_STYLES`
 
+## Record-anchored decorations — `data-we-record`
+
+Some marks belong at a **record** rather than at a coordinate: a live cursor, a highlight on something
+an extraction pass touched, a comment pin, "two people are reading this". They all need one answer
+from the DOM — _which box is that record, and where is it right now_ — and `data-we-record` is it.
+
+```html
+<we-draggable recordid="post-1" data-we-record="post-1">…the card…</we-draggable>
+```
+
+**Why an id and not a position.** In a flow layout there is nothing else durable to measure against.
+A kanban column is wherever the columns before it ended, so a pixel offset lands somewhere else on a
+screen with a different width or a different panel docked; a DOM path lands somewhere else the moment
+a template rearranges itself, and a template is data that changes under you. Two agents are
+guaranteed to agree about a record id and about nothing else on screen.
+
+**Who sets it.** `we-draggable` sets it from its own `recordId`, which covers the great majority of
+cards for nothing — anything a person can pick up is something a mark can be anchored to, and both
+are the same id. Any other surface that wants to be anchorable stamps it on the element standing for
+the record.
+
+**Reading it: the marker may have no box.** `we-draggable` is `display: contents` by design, so the
+attribute frequently sits on an element whose `getBoundingClientRect()` is empty with the real box one
+level down. **Fall back to the first child that has a box** — the same rule `we-sortable` follows for
+`data-we-id`. Measuring the marker blindly gives a zero rect, and every fraction computed against it
+collapses into a corner.
+
+The constant is `RECORD_ATTR`, exported from `@we/design-utils` so the app shell can read it too. Do not hardcode the string.
+
 ## Token Types vs CSS Enums
 
 When adding or referencing types in `DesignSystemProps`:

@@ -468,6 +468,25 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         slot.stream.removeTrack(track);
         emitStreams();
       });
+      /*
+        A remote track that stops receiving goes MUTED, not ended — and that is the frozen frame.
+
+        `ended` is about the sender deliberately stopping a track, which is the replacement case
+        above. When a peer leaves, crashes or drops off the network, nothing ends: the track stays
+        `readyState === 'live'` for as long as the connection object exists, and what changes is
+        `muted`, which the browser sets when RTP stops arriving. Nothing was listening, so the
+        `<video>` kept its `srcObject` and went on painting the last frame it had decoded — for the
+        minutes it took the roster to drop the peer.
+
+        Re-emitting on both edges rather than only on `mute`: a connection that recovers unmutes the
+        same track, and a tile that had fallen back to an avatar has to come back to the picture
+        without waiting for some other event to happen to fire.
+
+        No state of its own. The streams map is rebuilt from the slots and the store reads the tracks
+        it holds, so re-emitting is the whole of telling it something changed — see `hasLiveVideo`.
+      */
+      track.addEventListener('mute', emitStreams);
+      track.addEventListener('unmute', emitStreams);
       emitStreams();
     };
 

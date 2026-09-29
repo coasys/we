@@ -216,7 +216,7 @@ be @mentioned — once, so no template names a store to say so:
 </BlockHostProvider>
 ```
 
-A `perspective` or `mentions` prop on a composer or renderer wins over the context.
+A `dataset` or `mentions` prop on a composer or renderer wins over the context.
 
 ## `BlockDisplayOverrides`
 

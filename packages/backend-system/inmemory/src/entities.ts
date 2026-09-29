@@ -1,9 +1,9 @@
 /**
  * Entities over plain rows — the in-memory half of what a declared manifest means.
  *
- * The AD4M adapter compiles a manifest into decorated model classes that write triples against
- * minted predicates. This compiles the *same manifest* into classes that write objects into
- * arrays, and the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
+ * The production adapter compiles a manifest into model classes that write links against minted
+ * predicates. This compiles the *same manifest* into classes that write objects into arrays, and
+ * the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
  * `space.save()`, `settings.addInstalledTemplates(t)` all mean what they always meant.
  *
  * That equivalence is the point. Stores and the boot sequence can then be tested against real
@@ -131,8 +131,8 @@ export interface EntityClassLike {
 /**
  * The contract, checked: this backend's compiled entities present the same static surface the
  * entity proxies are typed as — which is what makes it a second *conforming* implementation
- * rather than a lookalike. (The AD4M lane cannot make this assertion structurally — its statics
- * are `this`-polymorphic — so this is also the one place the contract is compiler-verified
+ * rather than a lookalike. (The production lane cannot make this assertion structurally — its
+ * statics are `this`-polymorphic — so this is also the one place the contract is compiler-verified
  * end to end.)
  */
 type Satisfies<A extends B, B> = A;
@@ -293,7 +293,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       }
 
       static rowsFor(dataset: DatasetEntry, query: Record<string, unknown> = {}): AnyRow[] {
-        const { where, order, limit, offset, include, scope, ...rest } = query;
+        // `select` is the template dialect; `properties` is the record contract's name for the same list.
+        const { where, order, limit, offset, include, select = query.properties, scope, properties, ...rest } = query;
+        void properties;
         void rest;
         const { ir, unsupported } = compileQuery({
           entity: name,
@@ -302,6 +304,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           ...(typeof limit === 'number' ? { limit } : {}),
           ...(typeof offset === 'number' ? { offset } : {}),
           ...(include ? { include: include as Record<string, unknown> } : {}),
+          ...(Array.isArray(select) ? { select: select as string[] } : {}),
           // A drill-down the engine has always been able to execute (`scopeRows`) and this layer
           // silently dropped into `rest` — so a scoped query answered as if it were unscoped,
           // returning every row in the table rather than one container's children.
@@ -317,9 +320,23 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return executeQueryIR(ir, data) as AnyRow[];
       }
 
+      /**
+       * Rows as instances. Under a field selection an instance carries only what was selected, as any
+       * backend's does: the class's field defaults would otherwise stand in for fields the query never
+       * asked for, and an empty title reads as a real one.
+       */
+      static read(dataset: DatasetEntry, query: Record<string, unknown>): Entity[] {
+        const narrowed = Array.isArray(query.select ?? query.properties);
+        return Entity.rowsFor(dataset, query).map((row) => {
+          const instance = Entity.hydrate(dataset, row) as Entity & Record<string, unknown>;
+          if (narrowed) for (const key of Object.keys(instance)) if (!(key in row)) delete instance[key];
+          return instance;
+        });
+      }
+
       static async findAll(handle: unknown, query: Record<string, unknown> = {}): Promise<Entity[]> {
         const dataset = datasetOf(handle);
-        return Entity.rowsFor(dataset, query).map((row) => Entity.hydrate(dataset, row));
+        return Entity.read(dataset, query);
       }
 
       static async findOne(handle: unknown, query: Record<string, unknown> = {}): Promise<Entity | null> {
@@ -448,7 +465,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return {
           async subscribe(callback: (rows: unknown[]) => void) {
             const run = () => {
-              const rows = Entity.rowsFor(dataset, q).map((row) => Entity.hydrate(dataset, row));
+              const rows = Entity.read(dataset, q);
               callback(rows);
               return rows;
             };
@@ -534,8 +551,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
 
       /*
         The whole list at once, in this order — the accessor an *ordered* relation is written through.
-        `setChildren` on AD4M diffs the list against what it holds and records only what moved; here
-        the list simply becomes the row's, since nothing concurrent can happen to an in-memory table.
+        A backend with concurrent writers diffs the list against what it holds and records only what
+        moved; here the list simply becomes the row's, since nothing concurrent can happen to an
+        in-memory table.
         Without it a consumer that arranges a relation — a board column — had no accessor on this
         backend at all, and the fixtures could only append.
       */

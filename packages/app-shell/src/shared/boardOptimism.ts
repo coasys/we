@@ -1,9 +1,9 @@
 /**
  * The board's arrangements that have been written and not yet seen come back.
  *
- * `shapes/pendingOrder` holds the rules; this holds the state, and is the one place the two halves
- * of the round trip meet — `boards.ts` puts an arrangement here the moment somebody drops a card,
- * and whatever draws the board reports back when the data has overtaken it.
+ * `@we/optimism` holds the rules; this holds the state, and is the one place the two halves of the
+ * round trip meet — `boards.ts` puts an arrangement here the moment somebody drops a card, and
+ * whatever draws the board reports back when the data has overtaken it.
  *
  * ## Why a module singleton rather than a member of `spaceStore`
  *
@@ -20,42 +20,43 @@
  * `status` — and they come back on two different subscriptions. Both have to be stood in for or the
  * card is drawn in neither column while one has landed and the other has not.
  *
- * They are held in one map, under `<recordId>.status`, rather than in a second one with rules of its
- * own. The settling question is identical — *has an answer later than my write arrived* — and the
- * answer is identical: the value has moved from what it read when the write was issued. A second
- * mechanism would be a second chance to get that subtly different, which is precisely the bug this
- * exists to avoid.
+ * They are held in one map, under the relation `status`, rather than in a second one with rules of
+ * its own. The settling question is identical — *has an answer later than my write arrived* — and so
+ * is the answer. A second mechanism would be a second chance to get that subtly different, which is
+ * precisely the bug this exists to avoid.
  *
- * ## Nothing releases on success
+ * ## `done` is why the ports grew a third member
  *
- * Only on failure. Releasing when the write *resolves* would put the card back for the rest of the
- * round trip — the flash again, with extra steps — because the promise settles before the
- * subscription carries the new order to the screen. What releases a successful one is the data
- * moving, which only whatever draws the board can observe; see {@link settle}.
+ * Rule 4: a hold is not judged against the data until the last write behind it has returned. Without
+ * somebody saying so, a board that was dragged twice in a second could have the first drag's echo
+ * read as "the data moved" while the second drag is what is on screen — the card jumps back to where
+ * the first drag put it, then forward again. `boards.ts` reports every write that returns.
  */
+import { createOptimism, keyOf, sameOrder } from '@we/optimism';
 import { createSignal } from 'solid-js';
-
-import { dropOrder, holdOrder, orderToDraw, type PendingOrders, reconcileOrders } from './shapes/pendingOrder';
 
 /** The relation a card's own state is held under — see the docblock. */
 const STATUS = 'status';
 
-const [orders, setOrders] = createSignal<PendingOrders>({});
+const optimism = createOptimism<string[]>(createSignal, { same: sameOrder });
 
 export const boardOptimism = {
-  /** What `createBoardActions` is given: hold on the way out, release only when a write is refused. */
+  /** What `createBoardActions` is given: hold on the way out, release when a write is refused. */
   ports: {
     hold: (recordId: string, relation: string, ids: readonly string[]) =>
-      setOrders((held) => holdOrder(held, recordId, relation, ids)),
-    release: (recordId: string, relation: string) => setOrders((held) => dropOrder(held, recordId, relation)),
-    holdStatus: (recordId: string, status: string) => setOrders((held) => holdOrder(held, recordId, STATUS, [status])),
-    releaseStatus: (recordId: string) => setOrders((held) => dropOrder(held, recordId, STATUS)),
+      optimism.hold(keyOf(recordId, relation), [...ids]),
+    release: (recordId: string, relation: string) => optimism.release(keyOf(recordId, relation)),
+    holdStatus: (recordId: string, status: string) => optimism.hold(keyOf(recordId, STATUS), [status]),
+    releaseStatus: (recordId: string) => optimism.release(keyOf(recordId, STATUS)),
+    /** A write returned. The hold stands — it is the *data* that retires one — but stops being exempt. */
+    done: (recordId: string, relation: string) => optimism.done(keyOf(recordId, relation)),
+    doneStatus: (recordId: string) => optimism.done(keyOf(recordId, STATUS)),
   },
 
   /**
    * The overlay, in the shape `arrangedBoard` takes.
    *
-   * Reading the signal here is what makes the board redraw the instant a card is dropped: the
+   * Reading the holds here is what makes the board redraw the instant a card is dropped: the
    * expression that calls `arrangedBoard` is a memo, and this read is one of its dependencies.
    *
    * Both lookups are given what the data actually says, because that is what decides whether the
@@ -63,12 +64,12 @@ export const boardOptimism = {
    * two places.
    */
   overlay: () => {
-    const held = orders();
+    optimism.holds(); // the dependency; `toDraw` reads it again per lookup
     return {
       order: (recordId: string, relation: string, observed: readonly string[]) =>
-        orderToDraw(held, recordId, relation, observed),
+        optimism.toDraw(keyOf(recordId, relation), [...observed]),
       status: (recordId: string, observed: string | undefined) =>
-        orderToDraw(held, recordId, STATUS, [observed ?? ''])?.[0],
+        optimism.toDraw(keyOf(recordId, STATUS), [observed ?? ''])?.[0],
     };
   },
 
@@ -80,11 +81,15 @@ export const boardOptimism = {
    * a write during a render is a re-entrancy bug waiting to happen.
    */
   settle(observed: (recordId: string, relation: string) => readonly string[] | undefined): void {
-    setOrders((held) => reconcileOrders(held, observed));
+    optimism.settle((key) => {
+      const [recordId, relation] = key.split('\u0000');
+      const seen = observed(recordId, relation);
+      return seen ? [...seen] : undefined;
+    });
   },
 
   /** Whether anything is currently drawn ahead of the data — for a caller that wants to say so. */
-  inFlight: () => Object.keys(orders()).length > 0,
+  inFlight: () => optimism.inFlight(),
 
   /**
    * Forget everything held, unconditionally.
@@ -94,5 +99,5 @@ export const boardOptimism = {
    * about records nothing on screen is showing. `settle` cannot do this — it only ever releases an
    * entry the data has overtaken, and data that is no longer being drawn overtakes nothing.
    */
-  reset: () => setOrders({}),
+  reset: () => optimism.reset(),
 };

@@ -38,7 +38,8 @@ const describeProperty = (p: SHACLShape['properties'][number]) => ({
   required: (p.minCount ?? 0) >= 1,
   collection: p.maxCount === undefined || p.maxCount > 1,
   storage: p.resolveLanguage ?? null,
-  initial: p.initial ?? null,
+  // Written by the compiler and not declared on the published SHACL property type.
+  initial: (p as { initial?: unknown }).initial ?? null,
   transformed: p.transform !== undefined,
   flagValue: p.hasValue ?? null,
   hint: p.interpretationHint ?? null,
@@ -52,7 +53,12 @@ const shapeSummary = (cls: unknown) => {
     classHint: shape.interpretationHint ?? null,
     properties: [...(shape.properties ?? [])]
       .map(describeProperty)
-      .sort((a, b) => `${a.path}`.localeCompare(`${b.path}`)),
+      // Sorted by path *and name*: a forward relation and its `reverseOf` inverse are one link read
+      // from both ends, so they share a predicate and path alone stopped being a unique key. With a
+      // tie the sort is stable, which means it preserves each side's declaration order — and the
+      // comparison then comes down to which order the two happened to be written in rather than to
+      // anything about the shapes.
+      .sort((a, b) => `${a.path}`.localeCompare(`${b.path}`) || `${a.name}`.localeCompare(`${b.name}`)),
   };
 };
 
@@ -113,7 +119,17 @@ describe('core manifest ↔ hand-written classes', () => {
       const field = lines.findIndex((l) => new RegExp(String.raw`^\s{2}${name}[?:]`).test(l));
       expect(field, `WeNode has no "${name}" field — did the relation get renamed?`).toBeGreaterThan(0);
       const decorator = lines[field - 1];
-      expect(decorator, `WeNode.${name} is not decorated`).toMatch(/@Has(Many|One)\(/);
+      // `@BelongsTo*` is the same check on the non-owning side of a relation: it hydrates its
+      // targets exactly as the forward side does, so it carries `polymorphic` for the same reason
+      // and a disagreement there is the same silent bug.
+      expect(decorator, `WeNode.${name} is not decorated`).toMatch(/@(Has|BelongsTo)(Many|One)\(/);
+      // A relation's direction has to match the manifest too. Declaring `reverseOf` and generating
+      // a `@HasMany` would mint a *second* link on the same predicate instead of reading the one
+      // that exists — and since both ends look alike once written, nothing downstream would say so.
+      const isReverse = /@BelongsTo(Many|One)\(/.test(decorator);
+      expect(isReverse, `WeNode.${name}: the manifest and this class disagree about which end owns the link`).toBe(
+        Boolean(spec.reverseOf),
+      );
       expect(
         decorator.includes('polymorphic: true'),
         `WeNode.${name}: the manifest and this class disagree about polymorphic hydration`,

@@ -1,10 +1,9 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
     "declarationMap": true,
     "outDir": "dist",
-    "rootDir": "src",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "types": ["node"],
@@ -12,5 +11,5 @@
     "noEmit": true
   },
   "include": ["src", "../shell/src/global.d.ts"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "dist"]
 }

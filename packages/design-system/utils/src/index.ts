@@ -5,6 +5,7 @@ import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
 
 export * from './color';
+export * from './record';
 export * from './safeHref';
 export * from './saveFile';
 export * from './surface';

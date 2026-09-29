@@ -82,3 +82,17 @@ describe('the arrowhead for a colour', () => {
     expect(arrowId('')).toBe('we-graph-arrow');
   });
 });
+
+describe('a mix of two colours', () => {
+  it('resolves each stop by the same rules as a bare colour', () => {
+    // A heat scale blends between two stops a reader picked, which may be tokens or roles.
+    expect(color('color-mix(in oklch, accent 40%, primary-100)', 'surface')).toBe(
+      'color-mix(in oklch, var(--we-role-accent) 40%, var(--we-color-primary-100))',
+    );
+  });
+
+  it('leaves a mix written in plain CSS as it was', () => {
+    const css = 'color-mix(in oklch, oklch(70% 0.1 150) 25%, #ff0000)';
+    expect(color(css, 'surface')).toBe(css);
+  });
+});

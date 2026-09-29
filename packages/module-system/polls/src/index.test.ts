@@ -63,6 +63,54 @@ describe('the polls module', () => {
   });
 });
 
+describe('tally with a vote still in flight', () => {
+  const mine = { poll: 'p1', author: 'did:me', option: 'coffee' };
+
+  it('counts the held vote, so the bars move on the press', () => {
+    // Without it the bars sit still for a round trip and the press reads as having failed — the
+    // vote is written, and the tally beside it is the only thing that could say so.
+    const rows = tally({ votes: [], options: 'tea,coffee', pending: mine });
+    expect(rows.find((row) => row.option === 'coffee')?.count).toBe(1);
+    expect(rows.find((row) => row.option === 'tea')?.count).toBe(0);
+  });
+
+  it('counts it in PLACE of this agent’s stored vote, never as well', () => {
+    /*
+      The case a naive overlay gets wrong. Changing a vote from tea to coffee leaves the tea row in
+      the query result for a round trip; adding the held vote on top makes the total two for one
+      person, so every share is wrong and both bars are drawn from a number nobody voted for.
+    */
+    const rows = tally({
+      votes: [
+        { author: 'did:me', option: 'tea' },
+        { author: 'did:them', option: 'tea' },
+      ],
+      options: 'tea,coffee',
+      pending: mine,
+    });
+    expect(rows.find((row) => row.option === 'tea')?.count).toBe(1);
+    expect(rows.find((row) => row.option === 'coffee')?.count).toBe(1);
+    expect(rows.reduce((sum, row) => sum + row.count, 0)).toBe(2);
+  });
+
+  it('leaves everybody else alone', () => {
+    const rows = tally({
+      votes: [
+        { author: 'did:a', option: 'tea' },
+        { author: 'did:b', option: 'tea' },
+      ],
+      options: 'tea,coffee',
+      pending: mine,
+    });
+    expect(rows.find((row) => row.option === 'tea')?.count).toBe(2);
+  });
+
+  it('ignores a pending that is not a vote — pure and total, like the rest', () => {
+    const rows = tally({ votes: [{ author: 'did:a', option: 'tea' }], options: 'tea', pending: { poll: 'p1' } });
+    expect(rows.find((row) => row.option === 'tea')?.count).toBe(1);
+  });
+});
+
 describe('tally', () => {
   it('gives every declared choice a row, in order, and counts votes under them', () => {
     const rows = tally({

@@ -14,15 +14,15 @@ import {
   parseRef,
 } from './recordRef';
 
-const AD4M_ID = 'ad4m://obj/8f14e45f-ea8f-4b0e-9c1a-1d2e3f4a5b6c';
+const URI_ID = 'store://obj/8f14e45f-ea8f-4b0e-9c1a-1d2e3f4a5b6c';
 
 describe('naming a dataset', () => {
   it('prefers the CID, which is the same string for every agent who joined', () => {
     expect(datasetKey({ cid: 'Qm123', uuid: 'local-uuid' })).toBe('n:Qm123');
   });
 
-  it('strips the scheme, so the two spellings of one neighbourhood are one key', () => {
-    expect(datasetKey({ cid: 'neighbourhood://Qm123' })).toBe('n:Qm123');
+  it('strips the scheme, so the two spellings of one shared dataset are one key', () => {
+    expect(datasetKey({ cid: 'shared://Qm123' })).toBe('n:Qm123');
   });
 
   it('falls back to the local uuid for a personal dataset', () => {
@@ -30,7 +30,7 @@ describe('naming a dataset', () => {
   });
 
   it('says which kind a key names', () => {
-    expect(datasetKindOf('n:Qm123')).toBe('neighbourhood');
+    expect(datasetKindOf('n:Qm123')).toBe('shared');
     expect(datasetKindOf('p:abc')).toBe('personal');
     expect(datasetKindOf('agent')).toBe('agent');
     expect(datasetKindOf('nonsense')).toBeNull();
@@ -45,13 +45,13 @@ describe('naming a dataset', () => {
 describe('round trips', () => {
   it('survives an id that carries its own slashes', () => {
     // The whole reason the grammar takes "everything after the second slash" as the id.
-    const ref = formatRef({ datasetKey: 'n:Qm123', entity: 'CollectionBlock', id: AD4M_ID });
-    expect(ref).toBe(`we:n:Qm123/CollectionBlock/${AD4M_ID}`);
-    expect(parseRef(ref)).toEqual({ datasetKey: 'n:Qm123', entity: 'CollectionBlock', id: AD4M_ID });
+    const ref = formatRef({ datasetKey: 'n:Qm123', entity: 'CollectionBlock', id: URI_ID });
+    expect(ref).toBe(`we:n:Qm123/CollectionBlock/${URI_ID}`);
+    expect(parseRef(ref)).toEqual({ datasetKey: 'n:Qm123', entity: 'CollectionBlock', id: URI_ID });
   });
 
   it('round trips a personal dataset', () => {
-    const ref = formatRef({ datasetKey: 'p:abc', entity: 'TextBlock', id: AD4M_ID });
+    const ref = formatRef({ datasetKey: 'p:abc', entity: 'TextBlock', id: URI_ID });
     expect(parseRef(ref)?.datasetKey).toBe('p:abc');
   });
 
@@ -72,14 +72,14 @@ describe('the relative form', () => {
   it('names a record in whatever dataset the reference is read in', () => {
     // What the composer writes: it has no store, so it cannot name a dataset — and naming one
     // would be wrong anyway, since a copied post would carry an address back to where it came from.
-    const ref = formatRef({ datasetKey: '.', entity: 'CollectionBlock', id: AD4M_ID });
-    expect(ref).toBe(`we:./CollectionBlock/${AD4M_ID}`);
-    expect(parseRef(ref)).toEqual({ datasetKey: '.', entity: 'CollectionBlock', id: AD4M_ID });
+    const ref = formatRef({ datasetKey: '.', entity: 'CollectionBlock', id: URI_ID });
+    expect(ref).toBe(`we:./CollectionBlock/${URI_ID}`);
+    expect(parseRef(ref)).toEqual({ datasetKey: '.', entity: 'CollectionBlock', id: URI_ID });
   });
 
   it('is its own kind, and counts as portable', () => {
     expect(datasetKindOf('.')).toBe('relative');
-    expect(isPortableRef(`we:./TextBlock/${AD4M_ID}`)).toBe(true);
+    expect(isPortableRef(`we:./TextBlock/${URI_ID}`)).toBe(true);
   });
 
   it('refuses the bare form, which would name nothing', () => {
@@ -92,7 +92,7 @@ describe('refusing what is not a reference', () => {
     ['empty', ''],
     ['undefined', undefined],
     ['another scheme', 'https://example.com/thing'],
-    ['a bare id', AD4M_ID],
+    ['a bare id', URI_ID],
     ['the scheme alone', 'we:'],
     ['an unknown dataset kind', 'we:x:123/TextBlock/abc'],
     ['a dataset and an entity but no id', 'we:n:Qm123/TextBlock'],
@@ -109,8 +109,8 @@ describe('refusing what is not a reference', () => {
 });
 
 describe('portability', () => {
-  it('a neighbourhood reference means the same thing to somebody else', () => {
-    expect(isPortableRef(`we:n:Qm123/CollectionBlock/${AD4M_ID}`)).toBe(true);
+  it('a shared-dataset reference means the same thing to somebody else', () => {
+    expect(isPortableRef(`we:n:Qm123/CollectionBlock/${URI_ID}`)).toBe(true);
   });
 
   it('an agent reference does too — a DID is global', () => {
@@ -118,7 +118,7 @@ describe('portability', () => {
   });
 
   it('a personal reference does not, and must not be shared as though it did', () => {
-    expect(isPortableRef(`we:p:local-uuid/CollectionBlock/${AD4M_ID}`)).toBe(false);
+    expect(isPortableRef(`we:p:local-uuid/CollectionBlock/${URI_ID}`)).toBe(false);
   });
 
   it('nonsense is not portable either', () => {

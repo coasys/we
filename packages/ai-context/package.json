@@ -28,6 +28,7 @@
     "@we/module-call": "workspace:*",
     "@we/module-globe": "workspace:*",
     "@we/module-graph": "workspace:*",
+    "@we/module-live": "workspace:*",
     "@we/module-notes": "workspace:*",
     "@we/module-pocket": "workspace:*",
     "@we/module-polls": "workspace:*",

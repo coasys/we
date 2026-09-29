@@ -169,6 +169,46 @@ const styles = css`
     color: var(--we-role-text);
   }
 
+  /* The decision row, where the picker confirms rather than committing as you browse. */
+  [part='footer'] {
+    display: flex;
+    gap: var(--we-space-200);
+    justify-content: flex-end;
+    padding-top: var(--we-space-100);
+    border-top: 1px solid var(--we-role-border);
+  }
+
+  [part='cancel'],
+  [part='apply'] {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--we-space-100);
+    padding: var(--we-space-100) var(--we-space-300);
+    border-radius: var(--we-radius-300);
+    font-size: var(--we-font-size-200);
+  }
+
+  [part='cancel'] {
+    color: var(--we-role-text-muted);
+  }
+
+  [part='cancel']:hover {
+    background: var(--we-role-surface-hover);
+    color: var(--we-role-text);
+  }
+
+  /* The affirmative one carries the accent, so the pair reads at a glance rather than by reading. */
+  [part='apply'] {
+    background: var(--we-role-accent);
+    color: var(--we-role-on-accent);
+  }
+
+  [part='apply']:hover {
+    background: var(--we-role-accent-hover);
+  }
+
   [part='tokens'] {
     display: grid;
     grid-template-columns: repeat(14, 1fr);
@@ -327,6 +367,9 @@ type Tab = 'tokens' | 'custom';
  *   released, text left, the eyedropper's answer, Default (which emits `''`). Store this one.
  * @fires preview - detail: the same, while a thumb is moving or a value is being typed. Show it;
  *   write nothing. See `_dispatch` for what happened when there was only one of these.
+ *
+ * With `confirm`, every interaction is a `preview` and `change` comes only from Apply — see the
+ * property for why a consumer would want that.
  */
 @customElement('we-color-picker')
 export default class ColorPicker extends DesignSystemElement {
@@ -357,9 +400,26 @@ export default class ColorPicker extends DesignSystemElement {
    * the same popover the way in is, not as a second control beside the swatch.
    */
   @property({ type: Boolean }) clearable = false;
+  /**
+   * Decide on a button rather than on every touch.
+   *
+   * Off, every swatch clicked and every drag released is a `change` — a decision — which is right
+   * where storing one is cheap and where the popover is the only thing on screen that moved.
+   *
+   * On, the popover grows a footer: everything inside it is a `preview` until **Apply**, and
+   * dismissing it any other way emits a final `preview` putting the value back to what it was when
+   * the popover opened. For a consumer whose commit is expensive — a canvas writing a record per
+   * selected card, each a round trip — browsing five colours is otherwise five commits per card,
+   * and five entries in an undo history, for one decision. It also gives the reader a moment where
+   * the change is visibly *not yet made*, which is the thing a picker that commits as you browse
+   * cannot offer.
+   */
+  @property({ type: Boolean }) confirm = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
+  /** What the value was when the popover opened, so `confirm` has something to put back. */
+  private _opened = '';
   @state() private _tab: Tab = 'custom';
   @state() private _format: ColorFormat = 'hex';
   /** The colour being dragged, in HSV — the area's own coordinates, so a drag does not round-trip. */
@@ -410,12 +470,12 @@ export default class ColorPicker extends DesignSystemElement {
     with forty swatch pickers is not forty live listeners.
   */
   private _onDocPointer = (e: Event) => {
-    if (!e.composedPath().includes(this)) this._open = false;
+    if (!e.composedPath().includes(this)) this._cancelChoice();
   };
 
   private _onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this._open) {
-      this._open = false;
+      this._cancelChoice();
       this.shadowRoot?.querySelector<HTMLElement>('[part="preview"]')?.focus();
     }
   };
@@ -478,6 +538,7 @@ export default class ColorPicker extends DesignSystemElement {
   private _openPopover() {
     this._syncFromValue();
     this._draft = null;
+    this._opened = this.value;
     this._open = true;
   }
 
@@ -501,7 +562,32 @@ export default class ColorPicker extends DesignSystemElement {
    */
   private _dispatch(kind: 'change' | 'preview', color: string) {
     this.value = color;
-    this.dispatchEvent(new CustomEvent(kind, { detail: color, bubbles: true, composed: true }));
+    // Nothing is a decision until Apply — see `confirm`. Everything else about the interaction is
+    // unchanged, which is what keeps this one property rather than a second component.
+    const spoken = kind === 'change' && this.confirm ? 'preview' : kind;
+    this.dispatchEvent(new CustomEvent(spoken, { detail: color, bubbles: true, composed: true }));
+  }
+
+  /** Apply: the one place a confirming picker says `change`, and the only way out that commits. */
+  private _confirmChoice() {
+    const color = this.value;
+    this._open = false;
+    this.dispatchEvent(new CustomEvent('change', { detail: color, bubbles: true, composed: true }));
+  }
+
+  /**
+   * Every other way out of a confirming popover: Cancel, Escape, a press elsewhere.
+   *
+   * A final `preview` carrying the value the popover opened on, because the consumer has been
+   * drawing each one as it arrived and has no other way to learn the last one was withdrawn.
+   * Silent when nothing moved, so dismissing a popover somebody only looked at says nothing.
+   */
+  private _cancelChoice() {
+    this._open = false;
+    if (!this.confirm || this.value === this._opened) return;
+    this.value = this._opened;
+    this._syncFromValue();
+    this.dispatchEvent(new CustomEvent('preview', { detail: this.value, bubbles: true, composed: true }));
   }
 
   private _emit(color: string) {
@@ -690,7 +776,7 @@ export default class ColorPicker extends DesignSystemElement {
         aria-label=${`Colour: ${this.value}`}
         style=${styleMap(swatchLayers(this.value || 'transparent'))}
         ?disabled=${this.disabled}
-        @click=${() => (this._open ? (this._open = false) : this._openPopover())}
+        @click=${() => (this._open ? this._cancelChoice() : this._openPopover())}
       ></button>
 
       ${
@@ -741,11 +827,24 @@ export default class ColorPicker extends DesignSystemElement {
                       part="clear"
                       @click=${() => {
                         this._emit('');
-                        this._open = false;
+                        // A choice like any other while confirming, so it waits for Apply with the
+                        // rest; without one it is the decision and the popover has done its job.
+                        if (!this.confirm) this._open = false;
                       }}
                     >
                       Default
                     </button>`
+                  : ''
+              }
+              ${
+                this.confirm
+                  ? html`<div part="footer">
+                      <button part="cancel" @click=${() => this._cancelChoice()}>Cancel</button>
+                      <button part="apply" @click=${() => this._confirmChoice()}>
+                        <we-icon name="check" size="xs"></we-icon>
+                        Apply
+                      </button>
+                    </div>`
                   : ''
               }
             </div>`

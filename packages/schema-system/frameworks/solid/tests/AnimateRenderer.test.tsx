@@ -95,7 +95,16 @@ describe('$animate with a condition — stays mounted, toggles in place', () => 
     await waitFor(() => expect(container.querySelector('div')?.style.opacity).toBe('0'));
   });
 
-  it('starts the reveal grid track closed when the condition starts false', () => {
+  it('is out of the layout entirely when the condition starts false', () => {
+    /*
+      It was `display: grid` with a `0fr` track, which gives the section no height and leaves it a
+      flex item — so a column holding it went on spending its `gap` either side of something that
+      is not there, and one section sat further from its neighbour than the rest.
+
+      `none` rather than unmounting: the subtree stays, which is the whole reason to reach for
+      `condition` over `$if` — a half-typed field, a scroll position. The track is still set, so
+      whichever way it opens from here animates.
+    */
     const node: SchemaNode = {
       type: '$animate',
       props: { condition: false, enterTransition: { type: 'reveal', duration: 200 } },
@@ -103,8 +112,27 @@ describe('$animate with a condition — stays mounted, toggles in place', () => 
     };
     const { container } = renderSchema(node, { registry });
     const wrapper = container.querySelector('div');
-    expect(wrapper?.style.display).toBe('grid');
+    expect(wrapper?.style.display).toBe('none');
     expect(wrapper?.style.gridTemplateRows).toBe('0fr');
+    expect(
+      wrapper?.querySelector('[data-box]') ?? wrapper?.firstElementChild,
+      'the content was unmounted',
+    ).toBeTruthy();
+  });
+
+  it('stays in the layout while a scroll trigger is waiting to reveal it', () => {
+    /*
+      The case the scoping exists for. A scroll-revealed section is closed until it comes into view,
+      and an IntersectionObserver cannot observe a box that is not laid out — so taking it out of
+      the flow would mean it never entered the viewport and never opened.
+    */
+    const node: SchemaNode = {
+      type: '$animate',
+      props: { scrollReveal: true, enterTransition: { type: 'reveal', duration: 200 } },
+      children: [{ type: 'Box' }],
+    };
+    const { container } = renderSchema(node, { registry });
+    expect(container.querySelector('div')?.style.display).toBe('grid');
   });
 
   it('starts the reveal grid track open when the condition starts true', () => {

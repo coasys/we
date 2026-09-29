@@ -30,7 +30,7 @@
     "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
   "sideEffects": false

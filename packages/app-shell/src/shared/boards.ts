@@ -21,13 +21,7 @@
  * the community's states are, and how a failure reaches a person — arrive as `BoardDeps` rather than
  * as imports.
  */
-import {
-  CollectionBlock,
-  type DatasetProxy,
-  getEntitiesForPerspective,
-  runEntityTransaction,
-  Space,
-} from '@we/entities';
+import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
 
@@ -72,9 +66,19 @@ export interface BoardDeps {
   hold?: (recordId: string, relation: string, ids: readonly string[]) => void;
   /** Withdraw a held arrangement — the write failed, so what is on screen is a lie. */
   release?: (recordId: string, relation: string) => void;
+  /**
+   * A write for this relation has returned successfully.
+   *
+   * Not a release — see above. What it does is end the hold's exemption from judgement: until the
+   * last write behind it is back, nothing the data says is about it yet. Without this, a board
+   * dragged twice in a second can have the first drag's echo read as "the data has moved" while the
+   * second drag is what is on screen, and the card jumps back and then forward again.
+   */
+  done?: (recordId: string, relation: string) => void;
   /** The same pair for a card's state, which a drop into a bound column writes alongside the order. */
   holdStatus?: (recordId: string, status: string) => void;
   releaseStatus?: (recordId: string) => void;
+  doneStatus?: (recordId: string) => void;
 }
 
 export interface CreateBoardOptions {
@@ -117,6 +121,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   const release = deps.release ?? (() => {});
   const holdStatus = deps.holdStatus ?? (() => {});
   const releaseStatus = deps.releaseStatus ?? (() => {});
+  const done = deps.done ?? (() => {});
+  const doneStatus = deps.doneStatus ?? (() => {});
 
   /**
    * The title a column stores: nothing, when it is the name of the state it stands for.
@@ -304,7 +310,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       // A bare list of ids is native on this backend — it pushes down to a VALUES clause — so this
       // asks "are any of these children tasks?" in one round trip rather than hydrating them all.
       if (!held.length) return '';
-      const Task = getEntitiesForPerspective('TaskBlock', p);
+      const Task = getEntityForDataset('TaskBlock', p);
       const tasks = await Task?.findAll(p, { where: { id: held }, limit: 1 });
       if (!tasks?.length) return '';
 
@@ -494,6 +500,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         release(board.id, 'children');
         throw error;
       }
+      done(board.id, 'children');
     } catch (error) {
       console.error('SpaceStore: could not reorder the columns', error);
       notify('Could not save that order');
@@ -557,6 +564,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         release(column.id, 'arranges');
         throw error;
       }
+      done(column.id, 'arranges');
     } catch (error) {
       console.error('SpaceStore: could not save the column arrangement', error);
       notify('Could not save that arrangement');
@@ -639,9 +647,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         release(toColumnId, 'arranges');
         return;
       }
-      const task = to.slug
-        ? await getEntitiesForPerspective('TaskBlock', p)?.findOne(p, { where: { id: cardId } })
-        : null;
+      const task = to.slug ? await getEntityForDataset('TaskBlock', p)?.findOne(p, { where: { id: cardId } }) : null;
       // The drag decides the state; a staged suggestion for it, if there is one, is superseded rather
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
       // cannot race.
@@ -701,6 +707,16 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           await (task as { save: (batch?: string) => Promise<unknown> }).save(tx.batchId);
         }
       });
+      /*
+        Every hold this move put up, reported back — see `BoardDeps.done`.
+
+        All of them, including the `from` column's, because a hold that never hears its write
+        returned stays exempt from judgement until the backstop expires, and a card would be drawn
+        from a promise for ten seconds after the data agreed with it.
+      */
+      done(to.id, 'arranges');
+      if (from) done(from.id, 'arranges');
+      doneStatus(cardId);
     } catch (error) {
       // The card goes back where it was: what is on screen is a lie the moment the write is refused,
       // and the toast is the only thing saying so.
@@ -730,7 +746,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     try {
       const column = await CollectionBlock.findOne(p, { where: { id: columnId } });
       if (!column) return;
-      const Task = getEntitiesForPerspective('TaskBlock', p);
+      const Task = getEntityForDataset('TaskBlock', p);
       if (!Task) return;
       await runEntityTransaction(p, async (tx) => {
         const task = await Task.create(p, { title: title.trim(), ...(column.slug ? { status: column.slug } : {}) }, {

@@ -14,7 +14,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { avatarInnerRings, avatarSeededFillForTest as seededFill, avatarSeededHueForTest as seededHue } from './avatar';
+import { seededFill, seededHue } from '../shared/seededColor';
+import { avatarInnerRings } from './avatar';
 
 describe('what it draws', () => {
   /*

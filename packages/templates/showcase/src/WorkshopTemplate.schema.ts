@@ -62,15 +62,22 @@ import {
   answerButton,
   CHANGED,
   composerModal,
+  discussionSection,
+  emptyNote,
   emptyState,
   field,
+  foldingBody,
+  foldingSectionLabel,
   formModal,
   linkedRecords,
+  newSignalTypeButton,
   panelHeader,
   panelScroll,
+  peopleAtPath,
   peopleFilter,
   peopleRow,
   recordFormModal,
+  signalDisplay,
   suggestedChanges,
   SUGGESTIONS_HIDDEN,
   suggestionsToggle,
@@ -107,6 +114,21 @@ import {
   PLAIN_FILL,
   TYPE_STYLES_QUERY,
 } from './WorkshopKey.ts';
+import {
+  TREE_BEHAVIOURS,
+  TREE_CARD_STYLE,
+  TREE_EDGE_RULES,
+  TREE_HEAT_RULES,
+  TREE_LAYOUT,
+  TREE_LOCALS,
+  TREE_ON,
+  TREE_QUERIES,
+  TREE_REFRAME,
+  TREE_VOICE_SUMMARY,
+  TREE_WEIGH,
+  TREE_WEIGHTS,
+  treeStrip,
+} from './WorkshopTree.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -382,12 +404,82 @@ const callPill: SchemaNode = {
           name gets them with one line. It renders nothing where the call module is off.
         */
         { type: '$part', props: { id: 'call.continueCallButton' } },
+        /*
+          The name, truncated — and the whole of it on hover, with whatever was written about it.
+
+          ## Why a tooltip rather than a pill that opens
+
+          The obvious alternative is letting the pill grow, and it is the wrong one twice over. This
+          is fixed chrome over the content: `meta.chromeReserve` declares a band 80px tall, which is
+          a static number, so a pill that grew on hover would grow straight past its own reservation
+          and over whatever is underneath — including a floating panel, which is placed against that
+          reserve. And a box that changes size under the pointer moves the thing being read out from
+          under the cursor, which closes it again.
+
+          ## The trigger is the name, not the pill
+
+          Wrapping the whole row would fire this on the way to the pencil and on the way to the
+          faces, both of which have tooltips of their own that say something else. The name is a
+          narrow target somebody has to rest on, which is the right cost for the answer.
+
+          Both `we-tooltip` and its trigger are `display: contents`, so this wrapper is not a box:
+          the `we-text` is still the flex item, and its `minWidth: '0'` still does its job.
+
+          ## Always mounted, not gated on there being a description
+
+          A tooltip repeating a short, fully visible name is mild noise; a long name with no way to
+          read it is the complaint this is answering. The schema cannot tell those apart — knowing
+          whether the text actually overflowed needs a string length, and the expression library has
+          none (`count` is for lists, and `split` drops empty pieces, so neither stands in). Given
+          the choice, show it: the cost of the noisy case is a bubble nobody needed, and the cost of
+          the other is a name nobody can read.
+
+          `bottom`, because the pill is pinned to the top of the window and a tooltip above it would
+          have nowhere to go.
+        */
         {
-          type: 'we-text',
-          // The name of the thing every other surface is about, so it reads as a heading rather
-          // than as a caption on the chrome around it.
-          props: { variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
-          children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+          type: 'we-tooltip',
+          props: { placement: 'bottom' },
+          children: [
+            {
+              type: 'we-text',
+              // The name of the thing every other surface is about, so it reads as a heading rather
+              // than as a caption on the chrome around it.
+              props: { variant: 'subheading', tag: 'h5', truncate: true, minWidth: '0' },
+              children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+            },
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              slot: 'content',
+              children: [
+                {
+                  // The same fallback the truncated line uses, so the bubble never contradicts what
+                  // it is expanding.
+                  type: 'we-text',
+                  props: { variant: 'label' },
+                  children: [{ $: "first(local.callRecord).title ? first(local.callRecord).title : 'Call'" }],
+                },
+                {
+                  /*
+                    Only where there is one. `on-inverse` rather than `text-muted`: a tooltip sits on
+                    `surface-inverse`, which holds a fixed lightness and does not flip with the
+                    theme, so the page's own muted foreground is measured against the wrong thing
+                    and can vanish into the bubble entirely.
+                  */
+                  type: '$if',
+                  props: {
+                    condition: { $: 'first(local.callRecord).description' },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                      children: [{ $: 'first(local.callRecord).description' }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
         },
         {
           type: 'we-tooltip',
@@ -434,7 +526,16 @@ const callPill: SchemaNode = {
         */
         // No `noun`: the pill is chrome and a count beside three faces is a word doing no work. The
         // roster is on hover, which is where a name belongs when the faces are this small.
-        peopleRow({ items: { $: 'first(local.callRecord).participants' }, dids: true, max: 4, size: 'sm' }),
+        // `flexShrink: '0'` for the reason the two buttons carry it: a stack of faces compressed by
+        // a long title overlaps further and further until the roster is a smear, and the title is
+        // the thing with somewhere to go.
+        peopleRow({
+          items: { $: 'first(local.callRecord).participants' },
+          dids: true,
+          max: 4,
+          size: 'sm',
+          rowProps: { flexShrink: '0' },
+        }),
         formModal({
           open: { $: 'local.editOpen' },
           close: { $setLocal: 'editOpen', value: false },
@@ -515,6 +616,24 @@ const switcher: SchemaNode = {
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
             { type: 'we-text', children: [{ $: 'nav.label' }] },
+            /*
+              Who else is on this page.
+
+              The other half of live cursors, and what makes them legible: a cursor that disappears is
+              explained by a face turning up beside another route, rather than by the feature seeming to
+              break. Useful on its own in a space where nobody has cursors on at all.
+
+              No width is held for it, deliberately — see the fragment. This pill held 34px so its
+              buttons would not shift as people moved around, and nobody being there is the ordinary
+              state, so what that actually bought was a permanent gap at the end of every button.
+
+              Edged in the pill's own colour so overlapping faces read as separate; `surface-raised` is
+              what the pill is painted with a few lines above.
+            */
+            peopleAtPath({
+              path: { $: '`${spaceStore.spacePath}/${nav.segment}`' },
+              edge: 'var(--we-role-surface-raised)',
+            }),
           ],
         },
       ],
@@ -619,11 +738,17 @@ const newCallButton = (size: 'sm' | 'md'): SchemaNode => ({
  * The way into a call: go to yours, join the one running here, or start one — and, beside it, always
  * a way to start a *new* one.
  *
- * Takes its size because it is placed at two scales. `md` on a page with no call to be about —
- * under the sentence each of the three routes shows there, which is the template's main way in and
- * wants the default control height. `sm` in the calls panel header, where `panelShell` reserves the
- * height of a small control and a default one would make that header taller than every other
- * panel's.
+ * Takes its size because it is placed at two scales, and the two no longer offer quite the same
+ * thing. `md` on a page with no call to be about — under the sentence each of the three routes shows
+ * there, which is the template's main way in and wants the default control height. `sm` in the calls
+ * panel header, where `panelShell` reserves the height of a small control and a default one would
+ * make that header taller than every other panel's.
+ *
+ * **The `sm` placement drops the "go to yours" state entirely**, so in the calls panel this is a
+ * join-or-start button and nothing else. A list of calls with the live one marked in red, a row
+ * click that already loads it, and a button above them all saying "Go to the call" is the same offer
+ * three times over — and that button's action is a no-op whenever the stage is up, which joining
+ * already made it. The gate is on the node; the reasoning is there.
  *
  * It used to sit in the corner beside the pill as well. That placement showed on the same condition
  * the page gates do and did the same thing, so it was the same door drawn twice — see `callChrome`.
@@ -679,66 +804,92 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
       },
       children: [
         {
-          type: 'we-button',
+          /*
+            In the calls panel, no button for the call you are already in.
+
+            Its third state was "Go to the call", and `goToCall` for a call you are in and in this
+            space is one line: show the stage. Joining already raised it and leaving lowers it, so
+            pressing this normally set a flag that was already set — and it sat directly above a list
+            whose live row is marked in red and already loads the call on a click. Three controls
+            call `goToCall`; the two named after it (the module rail's launcher, the pill's phone
+            button) are the ones to keep.
+
+            Only here. The `md` placement is a route's gate — a page with no call on it, where the
+            button is the whole invitation and there is no list under it saying the same thing.
+
+            Wrapped rather than given a condition of its own, so the two halves of the pair stay
+            independent: with this away and a call running, the header is the `+` alone, which is
+            what a list panel's header aside should be.
+          */
+          type: '$if',
           props: {
-            size,
-            gap: '200',
-            variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
-            /*
-              Three branches, flat, and read at the press.
+            condition: { $: size === 'sm' ? `!(${IN_A_CALL_HERE})` : 'true' },
+            then: {
+              type: 'we-button',
+              props: {
+                size,
+                gap: '200',
+                variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
+                /*
+                  Three branches, flat, and read at the press.
 
-              `goToCall` used to be the whole of this button, and it has a branch that continues the
-              call *in the address* when nothing is running — right for the module rail, where it is
-              how you pick up the meeting you are reading, and wrong here: with a call selected in
-              the list below, pressing "New call" reopened the selected one.
+                  `goToCall` used to be the whole of this button, and it has a branch that continues
+                  the call *in the address* when nothing is running — right for the module rail,
+                  where it is how you pick up the meeting you are reading, and wrong here: with a
+                  call selected in the list below, pressing "New call" reopened the selected one.
 
-              `joinCall` rather than `goToCall` for the middle branch, because `goToCall` answers
-              "bring me to my call" and this button is asking about *this space*. In a call elsewhere
-              with one running here, `goToCall` navigates you away — while the button plainly says
-              "Join the call". `joinCall` names the call it means and leaves whatever you were in,
-              which is what the word promises.
+                  `joinCall` rather than `goToCall` for the middle branch, because `goToCall` answers
+                  "bring me to my call" and this button is asking about *this space*. In a call
+                  elsewhere with one running here, `goToCall` navigates you away — while the button
+                  plainly says "Join the call". `joinCall` names the call it means and leaves
+                  whatever you were in, which is what the word promises.
 
-              Flat `$if` entries rather than nesting, so each condition is one sentence and the
-              handler array resolves them lazily — the state at the press, not at the paint that
-              happened to be current when the panel opened.
-            */
-            onClick: [
-              { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
-              {
-                $if: {
-                  condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
-                  // The first of them, which is the whole of what a singular button can mean. Which
-                  // call, where there are several, is the list's question — see `callsPanel`.
-                  then: {
-                    $action: 'modules.call.joinCall',
-                    args: [{ $: 'first(modules.call.liveCalls).id' }],
+                  The first branch is unreachable at `sm`, where the gate above has already taken the
+                  button away — kept because the same node serves the `md` route gates, and because a
+                  handler array resolves lazily: these read the state at the press, not at the paint
+                  that happened to be current when the panel opened.
+                */
+                onClick: [
+                  { $if: { condition: { $: IN_A_CALL_HERE }, then: { $action: 'modules.call.goToCall' } } },
+                  {
+                    $if: {
+                      condition: { $: `!(${IN_A_CALL_HERE}) && ${CALL_RUNNING_HERE}` },
+                      // The first of them, which is the whole of what a singular button can mean.
+                      // Which call, where there are several, is the list's question — see
+                      // `callsPanel`.
+                      then: {
+                        $action: 'modules.call.joinCall',
+                        args: [{ $: 'first(modules.call.liveCalls).id' }],
+                      },
+                    },
                   },
-                },
+                  {
+                    $if: {
+                      condition: { $: `!(${IN_A_CALL_HERE}) && !(${CALL_RUNNING_HERE})` },
+                      then: NEW_CALL_ACTION,
+                    },
+                  },
+                  openLiveCall,
+                ],
               },
-              {
-                $if: {
-                  condition: { $: `!(${IN_A_CALL_HERE}) && !(${CALL_RUNNING_HERE})` },
-                  then: NEW_CALL_ACTION,
-                },
-              },
-              openLiveCall,
-            ],
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'phone-call' } },
-            {
-              type: 'we-text',
-              /*
-                Three words for three acts, because the middle one used to be missing: with a call
-                running that this agent had not joined, the button said "New call" and joined it.
-              */
               children: [
+                { type: 'we-icon', props: { name: 'phone-call' } },
                 {
-                  $: `${IN_A_CALL_HERE} ? 'Go to the call' : ${CALL_RUNNING_HERE} ? 'Join the call' : 'New call'`,
+                  type: 'we-text',
+                  /*
+                    Three words for three acts, because the middle one used to be missing: with a
+                    call running that this agent had not joined, the button said "New call" and
+                    joined it. The first is only ever drawn at `md` now — see the gate above.
+                  */
+                  children: [
+                    {
+                      $: `${IN_A_CALL_HERE} ? 'Go to the call' : ${CALL_RUNNING_HERE} ? 'Join the call' : 'New call'`,
+                    },
+                  ],
                 },
               ],
             },
-          ],
+          },
         },
         newCallButton(size),
       ],
@@ -767,6 +918,19 @@ const CHROME_TOP = 'var(--we-space-300)';
 const PILL_HEIGHT =
   'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px) + 2 * var(--we-space-200))';
 const CHROME_BOTTOM = `calc(${CHROME_TOP} + ${PILL_HEIGHT})`;
+
+/**
+ * The same three numbers, as one thing, for the surfaces that are not routes.
+ *
+ * `ROUTE_BAND` turns them into padding, which is what a page of content wants. The canvas cannot: it is
+ * full-bleed, and the only thing on it that has to clear the pills is the reading strip floating in its
+ * corner — which needs the line as a coordinate rather than as padding.
+ *
+ * Exported as a band rather than as three constants because that is what it is, and because the browser
+ * harness needs the same geometry to assert the strip clears it: a case that hard-coded 68px would pass
+ * against a theme that adds to control heights and lie about every other one.
+ */
+export const CALL_CHROME_BAND = { top: CHROME_TOP, height: PILL_HEIGHT, bottom: CHROME_BOTTOM } as const;
 
 /**
  * The corner that says which call every other surface is about.
@@ -798,6 +962,98 @@ const CHROME_BOTTOM = `calc(${CHROME_TOP} + ${PILL_HEIGHT})`;
  * *content*, computed from the sidebar and dock insets, so a neighbour that changes width — or
  * disappears — is nothing to it.
  */
+/**
+ * Undo and redo, as a pill of their own beside the call's.
+ *
+ * ## Why a pill rather than a control on the canvas
+ *
+ * The canvas has no toolbar — its chrome is the workshop's panels — so there was nowhere to put
+ * these, and the keys alone are not enough. They answer only while the *canvas* has focus, and
+ * clicking into the inspector to edit a label takes focus away, so the press that follows goes
+ * nowhere. Buttons work wherever focus is. They are also the only sign anywhere that the canvas
+ * remembers what you did to it, which a key by itself can never be.
+ *
+ * This bar is already a row of pills, each sized by its own contents and none disturbing the
+ * others, so a third one costs nothing and reads as what it is.
+ *
+ * ## Only where there is something to undo
+ *
+ * Gated on the canvas page: the kanban and the calendar have no history of their own yet, and a
+ * permanently disabled pill beside them would be furniture that never does anything. Within the
+ * canvas the buttons *are* disabled rather than hidden — a control that appears and disappears as
+ * you work is harder to aim at than one that greys — and each says what it would put back, which is
+ * the one thing a pair of arrows cannot.
+ */
+const historyPill: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${PAGE_EXPR} == '${ROUTE.canvas}'` },
+    then: {
+      type: 'Row',
+      props: {
+        gap: '100',
+        ay: 'center',
+        p: '200',
+        // The same family as the pills beside it — see the switcher for why the theme's control
+        // shape rather than a fixed radius.
+        r: 'control',
+        bg: 'surface-raised',
+        border: '1px solid border',
+        shadow: 'lg',
+        // Two square controls and nothing that can grow: it must not absorb room a truncating
+        // title next to it is giving up.
+        flexShrink: '0',
+      },
+      children: [
+        {
+          type: 'we-tooltip',
+          props: {
+            placement: 'bottom',
+            content: {
+              $: "recordStore.canvasHistory.undoLabel ? `Undo ${recordStore.canvasHistory.undoLabel}` : 'Nothing to undo'",
+            },
+          },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                square: true,
+                label: 'Undo',
+                disabled: { $: '!recordStore.canvasHistory.canUndo' },
+                onClick: { $action: 'recordStore.undoCanvas', args: [CALL] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-u-up-left' } }],
+            },
+          ],
+        },
+        {
+          type: 'we-tooltip',
+          props: {
+            placement: 'bottom',
+            content: {
+              $: "recordStore.canvasHistory.redoLabel ? `Redo ${recordStore.canvasHistory.redoLabel}` : 'Nothing to redo'",
+            },
+          },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                square: true,
+                label: 'Redo',
+                disabled: { $: '!recordStore.canvasHistory.canRedo' },
+                onClick: { $action: 'recordStore.redoCanvas', args: [CALL] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-u-up-right' } }],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const callChrome: SchemaNode = {
   type: 'Row',
   props: {
@@ -828,7 +1084,7 @@ const callChrome: SchemaNode = {
     */
     minHeight: PILL_HEIGHT,
   },
-  children: [callPill],
+  children: [callPill, historyPill],
 };
 
 /** The model the selected card is of — the inspector's whole subject, named once. */
@@ -889,6 +1145,16 @@ const EMPTY_COUNT = `count(${EMPTY_FIELDS})`;
  * in it: the same empty panel this whole piece of work started from, one press further in.
  */
 const HAS_EDITABLE_FIELDS = `count(recordStore.displays[${CARD_TYPE}].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json'])))`;
+
+/**
+ * Whether the selected RECORD is a composed document — the header's reading of {@link COMPOSED}.
+ *
+ * The same question one scope up: `COMPOSED` asks it of the `$each`'s row, and the header has no
+ * row, so it asks the query. Both exist because editing a note and editing a task are one control
+ * in the header and two different actions underneath — a note's substance is a document and opens
+ * in the composer, where a task's is a set of fields and unlocks in place.
+ */
+const COMPOSED_CARD = 'first(local.card).editorState';
 
 /** Whether the selected thing is a drawn connection rather than a card. */
 const IS_RELATIONSHIP = `${CARD_TYPE} == 'Relationship'`;
@@ -1080,10 +1346,12 @@ const COMPOSED = 'row.editorState';
  * than on the ground — what is wanted here is a card, since the strip above is a description of the
  * record and this is the record itself.
  *
- * The composer beside it is the other half: with the content on screen, the pencil in the header —
- * which edits declared fields, and for a note means its title and description — is the wrong tool
- * for the thing somebody is now looking at. Its own button, attached to the content, opening the
- * same composer the canvas's double-click does and saving through the same reconcile.
+ * The composer below it is opened from the HEADER'S pencil, like every other kind of record — see
+ * the note on `aside` in `inspectorPanel`. It used to have a button of its own down here, on the
+ * grounds that the header's pencil meant "unlock the declared fields" and a note has none; the cost
+ * was that "how do I change this" had two answers depending on what was selected, and the one in
+ * the corner was where people looked. It is the same composer the canvas's double-click opens, and
+ * it saves through the same reconcile.
  */
 const composedContent: SchemaNode = {
   type: '$if',
@@ -1104,20 +1372,6 @@ const composedContent: SchemaNode = {
             overflow: 'hidden',
           },
           children: [{ type: 'BlockRenderer', props: { editorState: { $: COMPOSED } } }],
-        },
-        {
-          type: 'Row',
-          props: { ax: 'start' },
-          children: [
-            {
-              type: 'we-button',
-              props: { size: 'sm', variant: 'ghost', gap: '200', onClick: { $setLocal: 'noteOpen', value: true } },
-              children: [
-                { type: 'we-icon', props: { name: 'pencil-simple' } },
-                { type: 'we-text', props: { variant: 'footnote' }, children: ['Edit note'] },
-              ],
-            },
-          ],
         },
         // No `$if` of its own: the fragment mounts only while `noteOpen` is set, which is what
         // resets the editor between one note and the next.
@@ -1142,8 +1396,13 @@ const composedContent: SchemaNode = {
  * row is at the foot of the panel and shut by default — a model with twelve properties and three
  * filled in should read as three facts, not as nine gaps.
  *
- * `$animate` rather than `$if`, so closing it does not unmount a control somebody is halfway through
- * typing into — `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed.
+ * `keepMounted`, so closing it does not unmount a control somebody is halfway through typing into —
+ * `fieldEditor` writes on change, so an unmount mid-edit would drop what was typed. Every other
+ * folding section here drops its contents, which is the right default and the wrong one for this.
+ *
+ * The heading is the same row the other sections use, which is a change from the sentence it was:
+ * "3 empty fields" said the count in words and left the section unnamed, so the one row in the
+ * panel that folded looked unlike the four that now do.
  */
 const emptyFields: SchemaNode = {
   type: '$if',
@@ -1151,42 +1410,12 @@ const emptyFields: SchemaNode = {
     condition: { $: EMPTY_COUNT },
     then: {
       type: 'Column',
-      props: { gap: '200', pt: '200', borderTop: '1px solid border' },
+      props: { gap: '200' },
       children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'bare',
-            width: '100%',
-            ax: 'start',
-            gap: '200',
-            onClick: { $toggleLocal: 'showEmpty' },
-          },
-          children: [
-            {
-              type: 'we-icon',
-              props: {
-                size: 'xs',
-                color: 'text-faint',
-                name: { $: "local.showEmpty ? 'caret-down' : 'caret-right'" },
-              },
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [{ $: `${EMPTY_COUNT} + ' empty ' + plural(${EMPTY_COUNT}, 'field', 'fields')` }],
-            },
-          ],
-        },
-        {
-          type: '$animate',
-          props: {
-            condition: { $: 'local.showEmpty' },
-            enterTransition: [
-              { type: 'reveal', duration: 200 },
-              { type: 'fade', duration: 150 },
-            ],
-          },
+        foldingSectionLabel({ label: 'Empty fields', count: EMPTY_COUNT, open: { field: 'showEmpty' } }),
+        foldingBody({
+          open: { field: 'showEmpty' },
+          keepMounted: true,
           children: [
             {
               type: 'Column',
@@ -1194,7 +1423,7 @@ const emptyFields: SchemaNode = {
               children: [fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, EMPTY_FIELDS)],
             },
           ],
-        },
+        }),
       ],
     },
   },
@@ -1331,43 +1560,6 @@ function endButton(opts: { id: string; type: string; icon: string; name: string;
 }
 
 /**
- * A section's caption, with a count beside it where the count is worth reading.
- *
- * Uppercase, and a step fainter than the faintest text role, so a section's name reads apart from
- * the properties under it and from a placeholder sentence like "Nobody is on this yet", which is
- * already `text-faint`. There is no role below that one, so the step is opacity — it follows the
- * theme either way, where a scale position would fix it to one theme's idea of grey.
- */
-function sectionCaption(label: string, count?: string): SchemaNode {
-  return {
-    type: 'Row',
-    props: { gap: '200', ay: 'center', opacity: 0.75 },
-    children: [
-      {
-        type: 'we-text',
-        props: { variant: 'footnote', uppercase: true, letterSpacing: 'wide', color: 'text-faint' },
-        children: [label],
-      },
-      ...(count
-        ? [
-            {
-              type: '$if',
-              props: {
-                condition: { $: count },
-                then: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: [{ $: count }],
-                },
-              },
-            } as SchemaNode,
-          ]
-        : []),
-    ],
-  };
-}
-
-/**
  * Everything this card is connected to — including what this canvas cannot draw.
  *
  * The canvas draws a line only when both of its ends are placed on it (see the `canvas` seed), which
@@ -1385,89 +1577,120 @@ function sectionCaption(label: string, count?: string): SchemaNode {
  */
 const cardConnections: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  props: { gap: '100' },
   children: [
-    sectionCaption('Connections', 'count(local.connections)'),
-    {
-      type: '$if',
-      props: {
-        condition: { $: 'count(local.connections)' },
-        then: {
-          type: '$each',
-          props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
-          children: [
-            {
-              type: 'Row',
-              props: { gap: '100', ay: 'center', width: '100%' },
-              children: [
-                endButton({
-                  id: 'conn.otherId',
-                  type: 'conn.otherType',
-                  icon: 'conn.icon',
-                  name: 'conn.name',
-                  lead: [
-                    {
-                      type: 'we-icon',
-                      props: {
-                        name: { $: 'conn.arrow' },
-                        size: 'xs',
-                        // The kind's own colour, where the community chose one — the same colour its
-                        // lines are drawn in on the knowledge map.
-                        color: { $: "conn.tint ? conn.tint : 'text-faint'" },
-                      },
-                    },
-                    {
-                      type: 'we-text',
-                      props: {
-                        variant: 'footnote',
-                        flexShrink: '0',
-                        color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
-                      },
-                      children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
-                    },
-                  ],
-                }),
-                {
-                  type: 'we-tooltip',
-                  props: { content: 'Open this connection' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        size: 'sm',
-                        square: true,
-                        flexShrink: '0',
-                        label: 'Open this connection',
-                        onClick: openRecord('conn.id', 'Relationship'),
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        /*
-          Nothing yet — said only once the query has answered, and said as what to do.
-
-          The connect handles appear on a selected card's edges and nowhere else, so the gesture is
-          easy to miss; this is the moment somebody is looking at a selected card and wondering.
-        */
-        else: {
+    foldingSectionLabel({
+      label: 'Connections',
+      count: 'count(local.connections)',
+      open: { field: 'connectionsOpen' },
+    }),
+    foldingBody({
+      open: { field: 'connectionsOpen' },
+      children: [
+        {
+          /*
+        Waiting, then counted — the same gate the thread below uses, and for the same reason: an
+        unanswered query and an empty one are both `count() == 0`, so a section that tests the count
+        alone declares itself empty on its first frame and fills a moment later. The connections
+        arrive after the card does, so that frame is visible.
+      */
           type: '$if',
           props: {
             condition: { $: 'local.connectionsLoaded' },
+            else: {
+              type: 'Column',
+              props: { gap: '200', py: '100' },
+              children: [1, 2].map(() => ({
+                type: 'Row',
+                props: { gap: '200', ay: 'center' },
+                children: [
+                  { type: 'we-skeleton', props: { width: '16px', height: '16px', bg: 'control-surface' } },
+                  { type: 'we-skeleton', props: { width: '60%', height: '12px', bg: 'control-surface' } },
+                ],
+              })),
+            },
             then: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+              type: '$if',
+              props: {
+                condition: { $: 'count(local.connections)' },
+                then: {
+                  type: '$each',
+                  props: { items: { $: CONNECTION_ROWS }, as: 'conn' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '100', ay: 'center', width: '100%' },
+                      children: [
+                        endButton({
+                          id: 'conn.otherId',
+                          type: 'conn.otherType',
+                          icon: 'conn.icon',
+                          name: 'conn.name',
+                          lead: [
+                            {
+                              type: 'we-icon',
+                              props: {
+                                name: { $: 'conn.arrow' },
+                                size: 'xs',
+                                // The kind's own colour, where the community chose one — the same colour its
+                                // lines are drawn in on the knowledge map.
+                                color: { $: "conn.tint ? conn.tint : 'text-faint'" },
+                              },
+                            },
+                            {
+                              type: 'we-text',
+                              props: {
+                                variant: 'footnote',
+                                flexShrink: '0',
+                                color: { $: "conn.verb ? 'text-muted' : 'text-faint'" },
+                              },
+                              children: [{ $: "conn.verb ? conn.verb : 'connected to'" }],
+                            },
+                          ],
+                        }),
+                        {
+                          type: 'we-tooltip',
+                          props: { content: 'Open this connection' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                square: true,
+                                flexShrink: '0',
+                                label: 'Open this connection',
+                                onClick: openRecord('conn.id', 'Relationship'),
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'line-segment', color: 'text-faint' } }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                /*
+          Nothing yet — and said as what to do.
+
+          The connect handles appear on a selected card's edges and nowhere else, so the gesture is
+          easy to miss; this is the moment somebody is looking at a selected card and wondering.
+
+          No `Loaded` check of its own any more: the gate above only reaches here once the query has
+          answered, where before this was the only thing standing between a card and the claim that
+          it was connected to nothing.
+        */
+                else: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['Not connected to anything yet. Drag from one of its edges to another card.'],
+                },
+              },
             },
           },
         },
-      },
-    },
+      ],
+    }),
   ],
 };
 
@@ -1480,28 +1703,33 @@ const cardConnections: SchemaNode = {
  */
 const linkEnds: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  props: { gap: '100' },
   children: [
-    sectionCaption('Connects'),
-    {
-      type: '$each',
-      props: { items: { $: LINK_END_ROWS }, as: 'end' },
+    foldingSectionLabel({ label: 'Connects', open: { field: 'connectsOpen' } }),
+    foldingBody({
+      open: { field: 'connectsOpen' },
       children: [
-        endButton({
-          id: 'end.id',
-          type: 'end.type',
-          icon: 'end.icon',
-          name: 'end.name',
-          lead: [
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
-              children: [{ $: 'end.role' }],
-            },
+        {
+          type: '$each',
+          props: { items: { $: LINK_END_ROWS }, as: 'end' },
+          children: [
+            endButton({
+              id: 'end.id',
+              type: 'end.type',
+              icon: 'end.icon',
+              name: 'end.name',
+              lead: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint', flexShrink: '0', minWidth: '2.5em' },
+                  children: [{ $: 'end.role' }],
+                },
+              ],
+            }),
           ],
-        }),
+        },
       ],
-    },
+    }),
   ],
 };
 
@@ -1531,49 +1759,168 @@ const peopleSection: SchemaNode = {
     then: {
       type: 'Column',
       // The same gap under the caption as Connections has; the parts below keep a wider one.
-      props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+      props: { gap: '100' },
       children: [
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', width: '100%' },
-          children: [
-            sectionCaption('People'),
-            /*
-              One caption line tall, with the picker centred on it and spilling over either side.
+        foldingSectionLabel({
+          label: 'People',
+          count: `count(${ON_ROW}.people)`,
+          open: { field: 'peopleOpen' },
+          /*
+            `xs`, which is the size a section heading's aside is.
 
-              The button is the size of the header's pencil, which is taller than a footnote; left in
-              flow it made this caption row that tall, so People stood further from its first line
-              than Connections does from its own. Held to the caption's line, the two sections share
-              one rhythm and the button keeps the size it is pressed at.
-            */
+            It was `sm` — the size of the pencil and the bin in the panel's header — and a heading
+            is not the header: the kit reserves `--we-component-height-xs` for a heading's aside
+            precisely because they are the small end of the set, an xs button, a switch, a badge. At
+            `sm` this row came out 32px against everything else's 24, and since the row centres its
+            contents, "People" sat lower than the four names around it.
+
+            It used to wear a `height: '1lh'` wrapper meant to stop exactly that, and the wrapper
+            did not work: the button overflowed it and the row grew anyway. Measured, not guessed —
+            see the `section headings agree` case.
+          */
+          action: {
+            type: '$if',
+            props: {
+              // An event's answers have their own buttons on the calendar; the picker is for parts
+              // one member gives another, and an entity with none of those has nothing to pick.
+              condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+              then: {
+                type: 'DropdownMenu',
+                props: {
+                  triggerIcon: 'user-plus',
+                  triggerTitle: 'Who is on this',
+                  triggerVariant: 'ghost',
+                  size: 'xs',
+                  itemSize: 'sm',
+                  placement: 'bottom-end',
+                  searchable: true,
+                  searchPlaceholder: 'Find a member',
+                  items: {
+                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                  },
+                  onSelect: {
+                    $action: 'spaceStore.setInvolvement',
+                    args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                  },
+                },
+              },
+            },
+          },
+        }),
+        foldingBody({
+          open: { field: 'peopleOpen' },
+          children: [
             {
-              type: 'Row',
-              props: { ml: 'auto', fontSize: '100', height: '1lh', ay: 'center' },
+              type: 'Column',
+              props: { gap: '200' },
               children: [
+                {
+                  type: '$each',
+                  props: {
+                    items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
+                    as: 'part',
+                  },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '100' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } },
+                        },
+                        {
+                          type: '$each',
+                          props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center', width: '100%' },
+                              children: [
+                                {
+                                  type: 'AvatarStack',
+                                  props: {
+                                    size: 'xs',
+                                    avatars: {
+                                      $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                    },
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    fontSize: '200',
+                                    flex: '1',
+                                    minWidth: '0',
+                                    truncate: true,
+                                    text: {
+                                      $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                    },
+                                  },
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    // Anybody may take somebody off an assignment; only you may withdraw your own answer.
+                                    condition: { $: '!holder.reflexive || holder.did == me.did' },
+                                    then: {
+                                      type: 'we-tooltip',
+                                      props: {
+                                        content: {
+                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                        },
+                                      },
+                                      children: [
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            variant: 'ghost',
+                                            size: 'xs',
+                                            square: true,
+                                            label: {
+                                              $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
+                                            },
+                                            onClick: {
+                                              $if: {
+                                                condition: { $: 'holder.reflexive' },
+                                                then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                                else: {
+                                                  $action: 'spaceStore.setInvolvement',
+                                                  args: [
+                                                    { $: 'row.id' },
+                                                    { $: 'holder.did' },
+                                                    { $: 'holder.kind' },
+                                                    false,
+                                                  ],
+                                                },
+                                              },
+                                            },
+                                          },
+                                          children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
                 {
                   type: '$if',
                   props: {
-                    // An event's answers have their own buttons on the calendar; the picker is for parts
-                    // one member gives another, and an entity with none of those has nothing to pick.
-                    condition: { $: `count(${ROW_KINDS}.filter(k, !k.reflexive))` },
+                    condition: { $: `!count(${ON_ROW}.people)` },
                     then: {
-                      type: 'DropdownMenu',
+                      type: 'we-text',
                       props: {
-                        triggerIcon: 'user-plus',
-                        triggerTitle: 'Who is on this',
-                        triggerVariant: 'ghost',
-                        // The size of the pencil and the bin in the panel's header — the controls it sits among.
-                        size: 'sm',
-                        itemSize: 'sm',
-                        placement: 'bottom-end',
-                        searchable: true,
-                        searchPlaceholder: 'Find a member',
-                        items: {
-                          $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
-                        },
-                        onSelect: {
-                          $action: 'spaceStore.setInvolvement',
-                          args: [{ $: 'row.id' }, { $: 'arg.id' }, { $: 'arg.kind' }, { $: '!arg.checked' }],
+                        variant: 'footnote',
+                        color: 'text-faint',
+                        text: {
+                          $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
                         },
                       },
                     },
@@ -1582,115 +1929,7 @@ const peopleSection: SchemaNode = {
               ],
             },
           ],
-        },
-        {
-          type: 'Column',
-          props: { gap: '200' },
-          children: [
-            {
-              type: '$each',
-              props: {
-                items: { $: `${ROW_KINDS}.filter(k, count(${ON_ROW}.people.filter(p, p.kind == k.slug)))` },
-                as: 'part',
-              },
-              children: [
-                {
-                  type: 'Column',
-                  props: { gap: '100' },
-                  children: [
-                    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: { $: 'part.name' } } },
-                    {
-                      type: '$each',
-                      props: { items: { $: `${ON_ROW}.people.filter(p, p.kind == part.slug)` }, as: 'holder' },
-                      children: [
-                        {
-                          type: 'Row',
-                          props: { gap: '200', ay: 'center', width: '100%' },
-                          children: [
-                            {
-                              type: 'AvatarStack',
-                              props: {
-                                size: 'xs',
-                                avatars: {
-                                  $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
-                                },
-                              },
-                            },
-                            {
-                              type: 'we-text',
-                              props: {
-                                fontSize: '200',
-                                flex: '1',
-                                minWidth: '0',
-                                truncate: true,
-                                text: {
-                                  $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
-                                },
-                              },
-                            },
-                            {
-                              type: '$if',
-                              props: {
-                                // Anybody may take somebody off an assignment; only you may withdraw your own answer.
-                                condition: { $: '!holder.reflexive || holder.did == me.did' },
-                                then: {
-                                  type: 'we-tooltip',
-                                  props: {
-                                    content: { $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'" },
-                                  },
-                                  children: [
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        variant: 'ghost',
-                                        size: 'xs',
-                                        square: true,
-                                        label: {
-                                          $: "holder.reflexive ? 'Withdraw your answer' : 'Take them off this'",
-                                        },
-                                        onClick: {
-                                          $if: {
-                                            condition: { $: 'holder.reflexive' },
-                                            then: { $action: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
-                                            else: {
-                                              $action: 'spaceStore.setInvolvement',
-                                              args: [{ $: 'row.id' }, { $: 'holder.did' }, { $: 'holder.kind' }, false],
-                                            },
-                                          },
-                                        },
-                                      },
-                                      children: [{ type: 'we-icon', props: { name: 'x', color: 'text-faint' } }],
-                                    },
-                                  ],
-                                },
-                              },
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: `!count(${ON_ROW}.people)` },
-                then: {
-                  type: 'we-text',
-                  props: {
-                    variant: 'footnote',
-                    color: 'text-faint',
-                    text: {
-                      $: "row.assignee ? `Nobody yet — the conversation named “${row.assignee}”.` : 'Nobody is on this yet.'",
-                    },
-                  },
-                },
-              },
-            },
-          ],
-        },
+        }),
       ],
     },
   },
@@ -1770,10 +2009,134 @@ const originLine: SchemaNode = {
   },
 };
 
+/**
+ * Whether a reply here may itself be replied to — the community's answer, in Settings → Features.
+ *
+ * Anything but the stored `'flat'` reads as branching, so a space that predates the setting behaves
+ * exactly as it did. The test is on the value rather than on its absence because `!=` over an
+ * unbound value is the trap this codebase keeps rediscovering; here it is client-side and safe, and
+ * written positively so the reading is the same either way.
+ */
+const FRACTAL_THREADS = "spaceStore.currentSpace.threadMode != 'flat'";
+
 /** The connection section for whatever is selected — a card's connections, or a line's two ends. */
 const connectionsSection: SchemaNode = {
   type: '$if',
   props: { condition: { $: IS_RELATIONSHIP }, then: linkEnds, else: cardConnections },
+};
+
+/**
+ * What people make of the selected record — its reactions, and the conversation about it.
+ *
+ * ## Why here rather than on the cards
+ *
+ * Because a canvas card is clipped and a board card is dragged. Both are previews the size of a
+ * postcard, and a row of controls on each is furniture competing with the gesture the card exists
+ * for — so the cards carry counts (`signalDisplay` at `compact`) and the panel carries the controls,
+ * is the whole reason this panel is worth opening: it already shows every field a record holds, and
+ * what the community *thinks* of the record is the part it was missing.
+ *
+ * ## A line gets both, exactly as a card does
+ *
+ * A `Relationship` is a `WeNode`, so nothing here is written twice: the same section reacts to a
+ * task and to the claim that the task blocks another one. `EdgeDetail` in the views package is the
+ * older surface for that and keeps its own modal; this is the canvas's answer, where opening a line
+ * must not take you off the arrangement it is part of.
+ */
+const reactionsSection: SchemaNode = {
+  type: 'Column',
+  /*
+    More room under this heading than the others have.
+
+    A section whose body is prose or a list of rows starts below its heading and reads as one
+    block. This one starts with a CONTROL, and a control sitting a hundred under a heading reads as
+    belonging to it — as though the heading were its label rather than the section's name.
+  */
+  props: { gap: '300', width: '100%' },
+  children: [
+    foldingSectionLabel({
+      label: 'Signals',
+      count: 'signalTally({ signals: row.signals })',
+      open: { field: 'reactionsOpen' },
+      /*
+        The plus goes here, beside the count, where every other per-section control in this panel
+        sits — not at the foot of the list as a full-width button.
+
+        A reaction type is a thing about the SECTION rather than about any reaction in it, and a
+        button under the last type reads as belonging to that type. The list keeps rendering the
+        form, from the flag declared on the panel; this only opens it.
+      */
+      action: newSignalTypeButton({ open: 'newSignalTypeOpen' }),
+    }),
+    foldingBody({
+      open: { field: 'reactionsOpen' },
+      children: [
+        signalDisplay({
+          record: 'row',
+          /*
+            The middle step.
+
+            `md` is the size a control is on a page rather than in a 320px column; `xs` is the size
+            it is on a card, among a row of marks, and in a panel somebody opened deliberately it
+            read as too small to aim at. At `sm` every mode comes out one line tall — a toggle, a
+            rating, a vote and a slider all 24px — which is also what lets each control sit on the
+            same line as the name beside it.
+          */
+          size: 'sm',
+          // The plus is in the section's heading, so the list draws none of its own. The form is
+          // still this fragment's, bound to the flag the panel declares.
+          newTypeOpen: 'newSignalTypeOpen',
+          /*
+        A space arrives with no reactions at all — nothing seeds a heart on a community's behalf, and
+        that is the design rather than an omission. Without this the section was a caption over empty
+        space, which reads as something failing to load; the line is also the only place anybody
+        would learn that a space names its own.
+      */
+          empty: emptyNote('No reactions here yet — a space names its own in Settings → Vocabulary.'),
+        }),
+      ],
+    }),
+  ],
+};
+
+/**
+ * The whole conversation, counted — not the top of it.
+ *
+ * `count(row.comments)` is the first level only: a thread of one reply carrying nine answers reads
+ * "1", and a caption over a conversation should count the conversation.
+ *
+ * This used to add up the three levels the panel draws, by hand, because a subtree could not be
+ * walked — each level was another hop, so a true descendant total was not expressible at any price
+ * and the number was right only as far down as it had been written. `$descendants` is a transitive
+ * count projection: one number, every level, no extra query. It falls back to the record's own
+ * count where the backend cannot walk a path, which reads low rather than wrong.
+ */
+const REPLY_TOTAL = 'first(local.card).$descendants ?? count(row.comments)';
+
+/** The thread, and the way into it. */
+const discussion: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '100%' },
+  children: [
+    foldingSectionLabel({ label: 'Discussion', count: REPLY_TOTAL, open: { field: 'discussionOpen' } }),
+    foldingBody({
+      open: { field: 'discussionOpen' },
+      children: [
+        /*
+      No depth or breadth of its own: the kit's [10, 5, 3] at three levels.
+
+      Three is right for THIS surface and the reason is arithmetic. Each level costs the gutter and
+      its gap — 32px — and the panel is 320px wide, so six levels would spend nearly two thirds of
+      the width on indent before a word is drawn. Depth past three is reached by re-rooting, which
+      gives the branch the top level's whole budget and is a better place to read it from anyway.
+
+      Said by saying nothing, so the number lives in one place. A template that restates a default
+      is a template that stops following it.
+    */
+        discussionSection({ record: 'row', fractal: FRACTAL_THREADS }),
+      ],
+    }),
+  ],
 };
 
 /**
@@ -1824,8 +2187,47 @@ const inspectorPanel: SchemaNode = {
   /*
     Whether the fields are controls or values — the pencil in the header. Ephemeral and per panel:
     it is a mode of looking, not a fact about the record, and it drops when the panel is rebuilt.
+
+    `noteOpen` is the other half of that same pencil, for a record whose substance is a document.
+    Declared HERE rather than inside the `$each` — where it used to sit, with the button that opened
+    it — because the header is outside the loop and a `$setLocal` only reaches a field an ancestor
+    of the BUTTON declared. It loses the per-record reset the inner scope gave it, which costs
+    nothing: the composer is modal, so the selection cannot change under it, and every way out of it
+    sets the flag false.
   */
-  $localState: { editing: { type: 'boolean', initial: false } },
+  $localState: {
+    editing: { type: 'boolean', initial: false },
+    noteOpen: { type: 'boolean', initial: false },
+    /*
+      Which sections are open — kept on the device, not in the URL.
+
+      A preference rather than view state: somebody who works from Connections and never opens
+      Discussion should find it that way tomorrow, and a link they send should not impose their
+      folding on the person who opens it. The extraction panel keeps its sections the same way.
+
+      Per panel rather than per record, which is the same decision: it is a way of working, not a
+      fact about the card.
+
+      CLOSED to begin with. The fields are the record, and the five sections are all things *about*
+      it — who is on it, what it is joined to, what people made of it, what was said. Opened, they
+      push the record's own properties off a 320px panel before a reader has decided they want any
+      of them; closed, each is one line saying what is there and how much, which is the question
+      most visits are answering.
+
+      The keys carry `Section` because an earlier version of this defaulted them open, and anybody
+      who has looked at the panel since then has `true` sitting in their device storage: a stored
+      preference outranks the declaration, so keeping the old keys would mean shipping a default
+      nobody who had already opened the inspector would ever see.
+    */
+    // Opened from the Signals heading, and read by the form `signalDisplay` renders — so it is
+    // declared above both of them.
+    newSignalTypeOpen: { type: 'boolean', initial: false },
+    connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
+    connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
+    peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },
+    reactionsOpen: { type: 'boolean', initial: false, persist: 'inspector.reactionsSection' },
+    discussionOpen: { type: 'boolean', initial: false, persist: 'inspector.discussionSection' },
+  },
   $queries: {
     /*
       The record itself, by id. `limit: 1` because an id names one thing — the list is the shape a
@@ -1840,6 +2242,26 @@ const inspectorPanel: SchemaNode = {
       entity: { $: 'routeStore.params.cardType' },
       where: { id: { $: 'routeStore.params.card' } },
       limit: 1,
+      /*
+        The reactions, hydrated — what `signalDisplay` filters by type.
+
+        Safe for a type this template was not written for, which is the question worth asking of an
+        `include` on a query whose entity is an expression: every model a community defines extends
+        `WeNode` (see `shapeDraft`), so `signals` is declared on all of them. A model made before
+        that was true declares no such relation and the query would be refused outright rather than
+        answering without it — it becomes a node again the next time it is edited.
+      */
+      include: {
+        signals: true,
+        /*
+          The whole conversation under this card, as one number.
+
+          A count projection is already asked of every row at once and already grouped per row, so
+          `transitive` costs one character in the emitted path and no extra round trip. Without it
+          this is the direct replies only, which is not what a reader takes "42 replies" to mean.
+        */
+        $descendants: { from: 'comments', count: true, transitive: true },
+      },
       /*
         Not until there is an id to ask about — which is what kept the panel showing a record
         nobody had selected.
@@ -1903,15 +2325,36 @@ const inspectorPanel: SchemaNode = {
     involvements: { entity: 'Involvement', when: { $: `${CARD_ID} && !(${IS_RELATIONSHIP})` } },
     // The call's own record, for which of its records a model proposed — see `peopleSection`.
     inspectedCall: { entity: 'CollectionBlock', where: { id: CALL }, limit: 1, when: CALL },
+    /*
+      What this community reacts with — one subscription for the panel, read by the controls below
+      and by the counts on every reply in the thread.
+
+      Unconditional, like `relationshipKinds` and for the same reason: a space has a handful of
+      these, and gating it on something about the selection would tear the subscription down and set
+      it up again on every click to save nothing.
+    */
+    signalTypes: { entity: 'SignalType', subscribe: true },
   },
   children: [
     panelHeader({
       title: 'Inspector',
       /*
-        Unlock editing, in the header where a mode belongs. The inspector already shows every value
-        a record has, so it is the surface that edits them; a separate form would show the same
-        fields a second time. Offered only while a record is loaded and its model has a field worth
-        editing — a note's content is not one, and is edited where it is shown. Lit while it is on.
+        Edit, in the header where a mode belongs, for every kind of record the panel can open.
+
+        One control, two things underneath, and that is the point. A record whose substance is a set
+        of FIELDS unlocks in place: the inspector already shows every value it has, so it is the
+        surface that edits them and a separate form would show the same rows a second time. A
+        composed document — a note — has no fields to unlock; its substance is a document, and it
+        opens in the composer.
+
+        It used to be one control and a half. The pencil was gated on the model declaring an
+        editable field, so a note never had one, and its own "Edit note" button sat under the
+        content instead — which meant "how do I change this" had two answers depending on what you
+        had selected, and the one in the corner was the one people looked for first. A note is now
+        edited from the same place as everything else, and the button below it is gone.
+
+        Lit while the field mode is on; a note's press opens a modal, so there is no lasting state
+        for it to show.
       */
       aside: {
         type: 'Row',
@@ -1920,21 +2363,34 @@ const inspectorPanel: SchemaNode = {
           {
             type: '$if',
             props: {
-              condition: { $: `count(local.card) && ${HAS_EDITABLE_FIELDS}` },
+              condition: { $: `count(local.card) && (${HAS_EDITABLE_FIELDS} || ${COMPOSED_CARD})` },
               then: {
                 type: 'we-tooltip',
-                props: { content: { $: "local.editing ? 'Done editing' : 'Edit this record'" } },
+                props: {
+                  content: {
+                    $: `${COMPOSED_CARD} ? 'Edit this note' : (local.editing ? 'Done editing' : 'Edit this record')`,
+                  },
+                },
                 children: [
                   {
                     type: 'we-button',
                     props: {
                       size: 'sm',
                       square: true,
-                      variant: { $: "local.editing ? 'secondary' : 'ghost'" },
-                      onClick: { $toggleLocal: 'editing' },
+                      variant: { $: `!(${COMPOSED_CARD}) && local.editing ? 'secondary' : 'ghost'` },
+                      onClick: {
+                        $if: {
+                          condition: { $: COMPOSED_CARD },
+                          then: { $setLocal: 'noteOpen', value: true },
+                          else: { $toggleLocal: 'editing' },
+                        },
+                      },
                     },
                     children: [
-                      { type: 'we-icon', props: { name: { $: "local.editing ? 'check' : 'pencil-simple'" } } },
+                      {
+                        type: 'we-icon',
+                        props: { name: { $: `!(${COMPOSED_CARD}) && local.editing ? 'check' : 'pencil-simple'` } },
+                      },
                     ],
                   },
                 ],
@@ -2021,7 +2477,17 @@ const inspectorPanel: SchemaNode = {
               children: [
                 {
                   type: 'Column',
-                  props: { gap: '300' },
+                  /*
+                    The gap the extraction panel sets its sections apart with, and no rules between
+                    them.
+
+                    Each section drew a line above itself, which was the separation when a heading
+                    was a caption and a section was a caption with rows under it. They fold now, so
+                    every one already has a heading that reads as a heading — and six rules on a
+                    panel 320px wide is a lot of horizontal ink for a job the space between them
+                    does.
+                  */
+                  props: { gap: '400' },
                   /*
                     The model's own declaration, held for the subtree rather than read at each use.
 
@@ -2037,8 +2503,6 @@ const inspectorPanel: SchemaNode = {
                       opened to add something to *this* one.
                     */
                     showEmpty: { type: 'boolean', initial: false },
-                    /** The composer, open on this note's own document — see `composedContent`. */
-                    noteOpen: { type: 'boolean', initial: false },
                   },
                   children: [
                     /*
@@ -2264,6 +2728,11 @@ const inspectorPanel: SchemaNode = {
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
+                    // Last, and in this order: what the record *is* comes first, then who is on it
+                    // and what it is joined to, then what people make of it. The thread is last
+                    // because it is the only section with no ceiling on its height.
+                    reactionsSection,
+                    discussion,
                     /*
                       No "Open full record". There was a ghost button here that navigated to
                       `<space>/record/<type>?id=<id>` — the record page the host appends to every
@@ -2314,6 +2783,44 @@ const ROW_LIVE_CALL = 'find(modules.call.liveCalls, { recordId: call.id })';
 const ROW_IS_MINE = 'call.id == modules.call.callRecordId';
 
 /**
+ * The faces on a row — who is in that call now, or who was in it.
+ *
+ * Two sources, because the question changes with the row. A live call has people in it this second,
+ * which is what `liveCalls` carries; a finished one has the roster its record kept — `participants`,
+ * everyone who was present, whether or not they ever said anything. Reading the record's roster on a
+ * live row would draw everyone who has *ever* been in that meeting rather than whoever is in it now,
+ * which is the wrong answer in a list somebody is scanning to find the conversation happening.
+ *
+ * The record's roster comes back as bare DIDs — the relation is untyped — so the pictures are joined
+ * from the profile cache here, exactly as `peopleRow` does for the pill. `hash` is the DID itself and
+ * is set unconditionally rather than as a fallback for a missing picture: somebody whose profile has
+ * not arrived is then still a distinct face instead of one of several identical blanks.
+ *
+ * No dedupe: `AvatarStack` does it, which matters here — `participants` is an add-only relation that
+ * every agent transcribing appends to with no coordination, so a two-person call routinely lists each
+ * of them several times over.
+ *
+ * ## The green ring is what tells the two apart
+ *
+ * Both sources draw the same thing — faces on a row — so without a mark a meeting three people are
+ * sitting in looks exactly like last Tuesday's attendance list. `tone: 'success'` puts a ring inside
+ * each live face, which is the distinction stated where the ambiguity is rather than somewhere else
+ * on the row.
+ *
+ * It is not the only thing saying so, which is what makes a colour acceptable here: the row already
+ * carries a red `phone-call` glyph for any live call, and the selected fill and the Join button say
+ * it again. The two colours are not in competition — the glyph says *this call is happening* and the
+ * rings say *these particular people are in it now* rather than having once been.
+ *
+ * The call module's own stage passes no tone, and its note says why: everyone on a stage is in the
+ * call, so a ring there would encode a distinction that cannot vary. In this list it varies row by
+ * row, which is exactly when it is worth drawing.
+ */
+const ROW_FACES =
+  `${ROW_LIVE_CALL} ? ${ROW_LIVE_CALL}.faces.map(f, { image: f.image, hash: f.hash, initials: f.initials, tone: 'success' }) ` +
+  ': call.participants.map(m, { image: find(profileStore.profiles, { did: m }).avatar, hash: m })';
+
+/**
  * The calls, as a panel — how you change which call every other surface is about.
  *
  * The same list the `/calls` route draws, without the transcripts: choosing is a two-second act and
@@ -2350,7 +2857,14 @@ const callsPanel: SchemaNode = {
     deletingIsCurrent: { type: 'boolean', initial: false },
   },
   $queries: {
-    calls: { entity: 'CollectionBlock', where: { kind: 'call' }, order: { createdAt: 'desc' }, limit: 30 },
+    // What a row shows. Without it every call arrived with the id of every utterance in it.
+    calls: {
+      entity: 'CollectionBlock',
+      where: { kind: 'call' },
+      select: ['title', 'description', 'createdAt'],
+      order: { createdAt: 'desc' },
+      limit: 30,
+    },
   },
   children: [
     panelHeader({ title: 'Calls', aside: startCallButton('sm') }),
@@ -2390,13 +2904,58 @@ const callsPanel: SchemaNode = {
                       $localState: { pointerOnRow: { type: 'boolean', initial: false } },
                       children: [
                         {
-                          type: 'we-button',
-                          props: {
-                            variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
-                            flex: '1',
-                            ax: 'start',
-                            gap: '200',
-                            /*
+                          /*
+                            The whole row asks the question, not just its first line.
+
+                            The trigger used to be the title alone. That put the bubble on most of the
+                            row's width and none of its height: moving from the name down to the
+                            description — inside one row, over one subject — opened it and closed it
+                            again, and resting on the faces or the date asked nothing. A tooltip that
+                            answers "what is this row" should be triggered by the row.
+
+                            The note here used to argue the opposite, that a list read by sweeping
+                            should not open a bubble on every row the pointer crosses. Worth keeping
+                            the observation and dropping the conclusion: the title spans the row's
+                            width already, so the sweep has always opened them — what the narrow
+                            trigger bought was not fewer bubbles but a flickering one.
+
+                            What it costs is nothing in layout: this element and its trigger part are
+                            both `display: contents`, so the button is still the flex item that
+                            carries `flex: '1'` and `minWidth: '0'`, and the bubble anchors on the
+                            button's box.
+
+                            What it gains, besides the flicker: the tooltip shows on `focusin` as well
+                            as hover, and a `we-text` cannot take focus. Around the button — which is
+                            a real `<button>` — the full name is on the keyboard path for the first
+                            time.
+
+                            The Join and delete buttons keep their own tooltips and sit outside this
+                            one, so nothing nests and each control still says what it does.
+                          */
+                          type: 'we-tooltip',
+                          props: { placement: 'right' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
+                                flex: '1',
+                                /*
+                              The half of `flex: '1'` that is easy to forget, and without which this
+                              row overflowed its panel.
+
+                              A button sets `white-space: nowrap` on its own host, so its
+                              min-content width is the whole untruncated title. A flex item's
+                              automatic minimum size is its min-content, so `flex: '1'` bought
+                              nothing: the button refused every request to narrow, and the deficit
+                              came out of the Join button and the trash, which were pushed off the
+                              edge. The Column inside already has `minWidth: '0'` and never got
+                              asked, because the floor was here.
+                            */
+                                minWidth: '0',
+                                ax: 'start',
+                                gap: '200',
+                                /*
                               Two lines — the name and when — and a button's size pins its height to
                               the one-line control height, so the selected row's fill was shorter
                               than its own label and the icon sat on the edge of it. `auto` lets the
@@ -2404,10 +2963,10 @@ const callsPanel: SchemaNode = {
                               keeps clear above and below it. Horizontal matches it: a list row in
                               a `sm` panel, not a standalone control, and the icon is its own inset.
                             */
-                            height: 'auto',
-                            py: '200',
-                            px: '200',
-                            /*
+                                height: 'auto',
+                                py: '200',
+                                px: '200',
+                                /*
                               The whole of choosing: the id goes in the address, and every surface
                               follows. Nothing is joined, claimed or written.
 
@@ -2421,20 +2980,20 @@ const callsPanel: SchemaNode = {
                               rather than choosing at render time — the one place `$if` is a token
                               rather than a node.
                             */
-                            onClick: {
-                              $if: {
-                                condition: { $: `call.id == (${CALL_EXPR})` },
-                                then: openLiveCall,
-                                else: openCall('call.id'),
+                                onClick: {
+                                  $if: {
+                                    condition: { $: `call.id == (${CALL_EXPR})` },
+                                    then: openLiveCall,
+                                    else: openCall('call.id'),
+                                  },
+                                },
                               },
-                            },
-                          },
-                          children: [
-                            {
-                              type: 'we-icon',
-                              props: {
-                                name: 'phone-call',
-                                /*
+                              children: [
+                                {
+                                  type: 'we-icon',
+                                  props: {
+                                    name: 'phone-call',
+                                    /*
                                   The fill role, for the reason the record icon above uses it: a
                                   live-call marker is a signal rather than a sentence, and the
                                   derived foreground goes pale in a dark theme.
@@ -2445,11 +3004,11 @@ const callsPanel: SchemaNode = {
                                   Which of them is *yours* is said twice over beside it — the row's
                                   selected fill, and a button that says "Go to" rather than "Join".
                                 */
-                                color: { $: `${ROW_LIVE_CALL} ? 'danger' : 'text-faint'` },
-                              },
-                            },
-                            {
-                              /*
+                                    color: { $: `${ROW_LIVE_CALL} ? 'danger' : 'text-faint'` },
+                                  },
+                                },
+                                {
+                                  /*
                                 What it was called, and when — in that order, because a list of
                                 meetings told apart only by date is a list you read by elimination.
 
@@ -2458,25 +3017,117 @@ const callsPanel: SchemaNode = {
                                 the title: clearing a name has to be allowed, and what it returns to
                                 is the plain "Call" it started as.
                               */
+                                  type: 'Column',
+                                  props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
+                                  children: [
+                                    // The name. The whole of it, and whatever was written about the call,
+                                    // are on hover — from the tooltip around the whole row button rather
+                                    // than from one around this line; see the note there.
+                                    {
+                                      type: 'we-text',
+                                      props: { truncate: true, width: '100%', textAlign: 'left' },
+                                      children: [{ $: "call.title ? call.title : 'Call'" }],
+                                    },
+                                    /*
+                                  A line of what the call was about, where there is one — the thing
+                                  the pill has no room for and this panel does. The panel is where
+                                  one call is chosen out of thirty, and a date is what you fall back
+                                  to when the names do not tell them apart.
+
+                                  ONE line, truncated, not a clamp of two. A button sets
+                                  `white-space: nowrap` on its own host and this sits inside one, so
+                                  a wrapping line would need that overridden here and would then set
+                                  a taller min-content for a row that has just been taught to
+                                  narrow. `truncate` is already nowrap, so it costs nothing and the
+                                  tooltip above carries the rest.
+                                */
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: 'call.description' },
+                                        then: {
+                                          type: 'we-text',
+                                          props: {
+                                            truncate: true,
+                                            width: '100%',
+                                            textAlign: 'left',
+                                            variant: 'footnote',
+                                            color: 'text-muted',
+                                          },
+                                          children: [{ $: 'call.description' }],
+                                        },
+                                      },
+                                    },
+                                    {
+                                      type: 'we-timestamp',
+                                      // No `truncate`: a timestamp is one short token and the primitive has
+                                      // no such prop. It went unnoticed because a panel's node was never
+                                      // walked by the validator until sections were.
+                                      props: {
+                                        value: { $: 'call.createdAt' },
+                                        relative: true,
+                                        relativeStyle: 'narrow',
+                                        fontSize: '100',
+                                        color: 'text-faint',
+                                      },
+                                    },
+                                  ],
+                                },
+                                {
+                                  /*
+                                Who is in the call, or who was — inside the button, at the end of it.
+
+                                The faces used to sit outside the button altogether, in a column of
+                                their own between it and the trash, and only on rows that were live.
+                                Against the name they say what the row *is* rather than decorating the
+                                space beside it: this list is read to find a conversation, and "the one
+                                with Anna and Josh" is how somebody finds it when three meetings on a
+                                Tuesday have interchangeable names. Which is also why they are on every
+                                row now and not only the live one — see `ROW_FACES`.
+
+                                A sibling of the text column rather than a child of it, so the stack is
+                                centred against the whole row instead of sitting on the title's line.
+                                Three lines of text run to about twice the height of a face, so in the
+                                title line the stack read as pinned to the top-right corner of the row;
+                                the button's own `ay: 'center'` puts it against the middle of the
+                                block, where it reads as belonging to the row rather than to the name.
+
+                                Faces rather than a count: three of them say who is in a meeting in the
+                                width a number and a noun would take, and the stack carries its own
+                                "+N" past `max`. On your own row too — who is in it is worth saying
+                                whether or not there is anything to press beside it.
+
+                                `sm` is 32px. It cannot be compressed — the avatars are each
+                                `flex-shrink: 0`, so the stack's min-content is its whole width — which
+                                means the title is what yields, and that is the right way round: the
+                                title has somewhere to go, since the column beside it carries
+                                `minWidth: '0'` and the whole name is on hover.
+                              */
+                                  type: 'AvatarStack',
+                                  props: { avatars: { $: ROW_FACES }, size: 'sm', max: 3 },
+                                },
+                              ],
+                            },
+                            {
                               type: 'Column',
-                              props: { flex: '1', minWidth: '0', gap: '0', ax: 'start' },
+                              props: { gap: '100' },
+                              slot: 'content',
                               children: [
                                 {
                                   type: 'we-text',
-                                  props: { truncate: true, width: '100%', textAlign: 'left' },
+                                  props: { variant: 'label' },
                                   children: [{ $: "call.title ? call.title : 'Call'" }],
                                 },
                                 {
-                                  type: 'we-timestamp',
-                                  // No `truncate`: a timestamp is one short token and the primitive has
-                                  // no such prop. It went unnoticed because a panel's node was never
-                                  // walked by the validator until sections were.
+                                  // `on-inverse`, not `text-muted` — see the pill's note.
+                                  type: '$if',
                                   props: {
-                                    value: { $: 'call.createdAt' },
-                                    relative: true,
-                                    relativeStyle: 'narrow',
-                                    fontSize: '100',
-                                    color: 'text-faint',
+                                    condition: { $: 'call.description' },
+                                    then: {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'on-inverse', opacity: 0.8 },
+                                      children: [{ $: 'call.description' }],
+                                    },
                                   },
                                 },
                               ],
@@ -2485,14 +3136,40 @@ const callsPanel: SchemaNode = {
                         },
                         {
                           /*
-                            Who is in this call, and the way in — on the rows where there is one.
+                            On somebody else's live call, the way into it.
 
                             The panel's whole job is choosing which call every other surface is
-                            about, and until now choosing was all it could do: a live meeting was
-                            selectable and not joinable, so the only way in was the header's button,
-                            which is singular and therefore a guess the moment two calls are running.
-                            A row names the call it means, which is what makes this the right place
-                            for the choice rather than a second copy of the header.
+                            about, and until this row had a button choosing was all it could do: a
+                            live meeting was selectable and not joinable, so the only way in was the
+                            header's button, which is singular and therefore a guess the moment two
+                            calls are running. A row names the call it means, which is what makes
+                            this the right place for the choice rather than a second copy of the
+                            header.
+
+                            Who is *in* it is no longer said here. The faces moved into the name
+                            line, where they are on every row rather than only the live ones — see
+                            `ROW_FACES` — which left this a single conditional button with a Row and
+                            a nested `$if` around it for no remaining reason.
+
+                            ## Nothing on the row for the call you are already in
+
+                            It carried a "Go to" there, and that button was `goToCall` — which, for a
+                            call you are in and in this space, is one line: show the stage. Joining
+                            already raised it and leaving lowers it, so unless you had deliberately
+                            closed the stage and stayed in the call, it set a flag that was already
+                            set. Beside a row whose red glyph says "this is the one you are in", next
+                            to a click that already points every surface at it, the button read as a
+                            second way to do what the row does and was in practice a no-op.
+
+                            Reopening a stage somebody closed is a real thing to want and keeps two
+                            controls that are named after it — the module rail's call launcher and
+                            the pill's phone button, both `goToCall`. What it does not need is a
+                            third, on the one surface where it is indistinguishable from navigation.
+
+                            The row click is left as pure navigation rather than inheriting the verb.
+                            Giving it `goToCall` would force the stage open on a row press, which is
+                            exactly the behaviour somebody who just closed the stage is asking not to
+                            have.
 
                             Absent rather than disabled on a finished call: there is nothing to join,
                             and picking one back up is what the pill's `call.continueCallButton` is
@@ -2500,69 +3177,48 @@ const callsPanel: SchemaNode = {
                           */
                           type: '$if',
                           props: {
-                            condition: { $: ROW_LIVE_CALL },
+                            /*
+                              One condition, where there used to be two nested. Joining is not
+                              navigation, which is the whole reason this button outlived the one
+                              beside it: clicking the row looks at a call, where this leaves whichever
+                              call you are in and enters another one, and a heavier act than the row's
+                              own click deserves to be asked for separately. The tooltip says what it
+                              costs.
+                            */
+                            condition: { $: `${ROW_LIVE_CALL} && !(${ROW_IS_MINE})` },
                             then: {
-                              type: 'Row',
-                              props: { gap: '100', ay: 'center', flexShrink: '0' },
+                              type: 'we-tooltip',
+                              props: {
+                                content: {
+                                  $: "modules.call.active ? 'Leave your call and join this one' : 'Join this call'",
+                                },
+                                placement: 'top',
+                              },
                               children: [
                                 {
-                                  // Faces rather than a count: three avatars say "a meeting is
-                                  // happening and these are the people in it" in the width a number
-                                  // and a noun would take. The stack carries its own "+N" past `max`.
-                                  type: 'AvatarStack',
-                                  props: { avatars: { $: `${ROW_LIVE_CALL}.faces` }, size: 'xs', max: 3 },
-                                },
-                                {
-                                  type: 'we-tooltip',
+                                  type: 'we-button',
                                   props: {
-                                    content: {
-                                      $:
-                                        `${ROW_IS_MINE} ? 'Go to this call' : ` +
-                                        `modules.call.active ? 'Leave your call and join this one' : 'Join this call'`,
-                                    },
-                                    placement: 'top',
-                                  },
-                                  children: [
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        size: 'sm',
-                                        variant: { $: `${ROW_IS_MINE} ? 'secondary' : 'primary'` },
-                                        /*
-                                          Branched at the press, and `joinCall` rather than
-                                          `goToCall` for the row that is not yours.
-
-                                          `goToCall` means "bring me to my call", so pressed on
-                                          somebody else's row while in a call of your own it would
-                                          take you to *yours* — a button beside one conversation
-                                          doing something about another. `joinCall` names the id the
-                                          row carries and leaves whatever you were in, which is what
-                                          the word on it promises.
-                                        */
-                                        onClick: [
-                                          {
-                                            $if: {
-                                              condition: { $: ROW_IS_MINE },
-                                              then: { $action: 'modules.call.goToCall' },
-                                            },
-                                          },
-                                          {
-                                            $if: {
-                                              condition: { $: `!(${ROW_IS_MINE})` },
-                                              then: {
-                                                $action: 'modules.call.joinCall',
-                                                args: [{ $: `${ROW_LIVE_CALL}.id` }],
-                                              },
-                                            },
-                                          },
-                                          // And point every other surface at it, which is what
-                                          // clicking the row itself would have done.
-                                          openCall('call.id'),
-                                        ],
+                                    size: 'sm',
+                                    variant: 'primary',
+                                    /*
+                                      `joinCall` rather than `goToCall`: the latter means "bring me to
+                                      my call", so pressed on somebody else's row while in a call of
+                                      your own it would take you to *yours* — a button beside one
+                                      conversation doing something about another. `joinCall` names the
+                                      id the row carries and leaves whatever you were in, which is what
+                                      the word on it promises.
+                                    */
+                                    onClick: [
+                                      {
+                                        $action: 'modules.call.joinCall',
+                                        args: [{ $: `${ROW_LIVE_CALL}.id` }],
                                       },
-                                      children: [{ $: `${ROW_IS_MINE} ? 'Go to' : 'Join'` }],
-                                    },
-                                  ],
+                                      // And point every other surface at it, which is what clicking
+                                      // the row itself would have done.
+                                      openCall('call.id'),
+                                    ],
+                                  },
+                                  children: ['Join'],
                                 },
                               ],
                             },
@@ -2704,6 +3360,27 @@ const canvas: SchemaNode = {
         hidden: { $: `(${SUGGESTIONS_HIDDEN}) ? ${UNCONFIRMED} : []` },
         // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
         hiddenTypes: { $: HIDDEN_KINDS },
+        /*
+          How many reactions and replies each card has collected, as two numbers on its footer.
+
+          The counts ride in the reads the seed already makes — one projection each, no extra round
+          trip and no subscription per card, which is what a canvas of three hundred things needs.
+          The breakdown by type and the controls are the inspector's, one press away: a card here is
+          a preview inside an arrangement, and what it owes the reader is that there is something to
+          open.
+        */
+        counts: ['signals', 'comments'],
+        /*
+          What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
+          in `WorkshopTree` for why both.
+
+          `null` on the freeform canvas under any other order, which the seed reads as "weigh nothing":
+          nothing there is ordered, so it pays one projection less. A change here is read again in the background rather
+          than reloading the graph, since `weigh` is one of the canvas seed's `refreshOptions`.
+        */
+        weigh: TREE_WEIGH,
+        // How much each person's voice counts in that weight — re-applied without a read. See `TREE_WEIGHTS`.
+        weights: TREE_WEIGHTS,
       },
     },
     // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
@@ -2713,10 +3390,9 @@ const canvas: SchemaNode = {
       narrower than a card, which is why new suggestions arrived overlapping — and clear of the cards
       already on the canvas, including one somebody resized.
     */
-    layout: {
-      type: 'manual',
-      options: { size: { width: 180, height: 135 }, widthField: 'canvasWidth', heightField: 'canvasHeight' },
-    },
+    layout: TREE_LAYOUT,
+    // Back into view when the tree's cards change size — see `TREE_REFRAME`.
+    reframeOn: TREE_REFRAME,
     nodeStyle: [
       {
         /*
@@ -2755,20 +3431,20 @@ const canvas: SchemaNode = {
         cascade is unchanged: what is on contributes, what is off contributes nothing.
       */
       ...lensNodeRules(),
+      // The heat map, when the key's order lens is on — see `TREE_HEAT_RULES`.
+      TREE_HEAT_RULES,
       // The card's own size, always — a box somebody dragged out is a fact about the card whatever
       // lens is on. Its colour is above, where the lenses decide whether it shows.
-      {
-        style: {
-          width: { from: 'data.canvasWidth' },
-          height: { from: 'data.canvasHeight' },
-          // The card's own outline and how large its content is drawn — set from its header, kept
-          // on its placement, and shown whatever lens is on: neither is a colour.
-          cardShape: { from: 'data.canvasCardShape' },
-          contentScale: { from: 'data.canvasContentScale' },
-          // Which card is in front where two overlap — a fact about the arrangement, like its size.
-          z: { from: 'data.canvasZ' },
-        },
-      },
+      /*
+        The card's own box on the canvas — and one uniform box in the tree.
+
+        Uniform is the decision that makes a tree readable: a rank reads as significance, so cards at
+        the sizes somebody chose while arranging a wall would claim an importance the data does not
+        support, and the widest card on a row would look like the answer whatever its weight. Colour
+        survives, because here colour is meaning; so do the counts, which are what say why an order is
+        the order it is. See `TREE_CARD_STYLE`.
+      */
+      { style: TREE_CARD_STYLE },
       /*
         Last, so it survives the card's own colour: a suggestion is faded whatever shade it is.
 
@@ -2796,25 +3472,17 @@ const canvas: SchemaNode = {
       { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
     ],
     /*
-      No `connect-nodes`. Connecting is a handle on the card now, not a mode.
+      No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.
 
-      That behaviour claims a press *anywhere on a node*, so it has to be armed — a switch somebody
-      turns on to connect and off again to move cards, which is a thing to remember and a thing to
-      forget, and forgetting it either way is a gesture doing something nobody asked for. The dots
-      off a selected card's edges need no arming, because the target is what makes the gesture
-      unambiguous. Nothing else changes: they end in the same `edgeCreate`, so `onEdgeCreate` below
-      is unchanged.
+      Armed, that behaviour claims a press *anywhere on a node* — a switch somebody turns on to connect
+      and off again to move cards, which is a thing to remember and a thing to forget. The dots off a
+      selected card's edges need no arming, because the target is what makes the gesture unambiguous.
+
+      Its quick form is listed, and needs no arming for the same reason: a right-drag, which nothing
+      else here uses, so the button is what makes it unambiguous. See `TREE_BEHAVIOURS`. All three end
+      in the same `edgeCreate`, so `onEdgeCreate` below serves them all.
     */
-    behaviours: [
-      // The two halves of a double-click: on a note it opens, on empty canvas it asks what to make.
-      'node-double-click',
-      'canvas-double-click',
-      'select',
-      { type: 'drag-node', options: { pin: true } },
-      // Last, because it is the background fallback — listed earlier it claims the press `select`
-      // needs to see, and clicking empty canvas silently stops clearing the selection.
-      'pan-zoom',
-    ],
+    behaviours: TREE_BEHAVIOURS,
     /*
       The lines, in the colour the community set — the key's third canvas row.
 
@@ -2838,6 +3506,16 @@ const canvas: SchemaNode = {
         when: { type: 'fold-bundle' },
         style: { curve: 'straight', arrow: 'target', width: 3, dashed: true, showLabel: true, color: { $: LINK_FILL } },
       },
+      /*
+        In the tree: right angles along the spine, and everything else faint — see `TREE_EDGE_RULES`.
+
+        The faint half is the honest counterpart of placing each card under one parent. A card related
+        to two others by the spine sits under one of them, and the other claim is still true and still
+        drawn; a connection of an entirely different kind is exactly what a reader following a decision
+        pathway wants to notice. Faint rather than absent, because a tree with every line at full
+        strength is a tangle and the shape has to be what the eye follows first.
+      */
+      TREE_EDGE_RULES,
     ],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
@@ -2962,7 +3640,26 @@ const canvas: SchemaNode = {
       a fold a way of hiding things rather than of tidying them.
     */
     onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [CALL, { $: 'event' }] },
+    /*
+      The same gesture in the tree, where what a drag means is different.
+
+      On the canvas a drag writes a coordinate, because the position IS the data. In the tree the
+      layout derives the position, so a drag writes the structure the layout reads: a card dropped on
+      another becomes its child, dropped beside one it is reordered there, dropped in the unconnected
+      zone it comes out of its tree. The behaviour reports which of the three, and the store decides
+      what each means — including the refusals, since only something that knows which connection is
+      the spine can tell that a drop would put a card inside itself.
+
+      The spine goes with it, and has to: what makes a parent a parent is this community's own
+      vocabulary and this reader's current choice, neither of which a store can know.
+    */
+    onNodeArrange: { $action: 'recordStore.arrangeOnTree', args: [CALL, { $: 'local.spine' }, { $: 'event' }] },
+    // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
+    onSeedSummary: TREE_VOICE_SUMMARY,
     onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CALL, { $: 'event' }] },
+    // Not in the tree, which gives every card one box: a resize there would change nothing on screen, and
+    // its handles would sit over the card's reaction badge on the same edge.
+    resizable: { $: `!${TREE_ON}` },
     /*
       Routing a line by hand, written back — and binding these is what puts the handles on one.
 
@@ -3034,7 +3731,7 @@ const canvas: SchemaNode = {
       { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
     ],
     /*
-      Delete, on whatever is selected — a card or a line, the same key for both.
+      Delete, on whatever is selected — a card, several cards, or a line.
 
       An accelerator, not the only path: a card's own bar carries a bin (see `nodeActions`), and the
       inspector carries one for whichever of the two is open. A key that was the sole way to remove
@@ -3042,21 +3739,108 @@ const canvas: SchemaNode = {
       of those is disproportionate — tidying up a canvas, where the answer to "this line is wrong" is
       wanted in the same beat as noticing it.
 
-      Guarded on `event.recordId`, which the graph fills only for a selection of exactly one record.
-      That is the whole of the multi-select story here and it is deliberately small: `record.delete`
-      raises the host's own confirmation, so firing it per member of a selection would stack a dialog
-      per card. A batch confirmation is a thing to design rather than to arrive at by looping.
+      Cards go through `deleteRecords`, which raises the host's confirmation **once** for the whole
+      selection. Looping `record.delete` over a set stacks a dialog per card, which is what made
+      multi-select delete a thing to design rather than to fall into.
 
-      Through `record.delete` for `nodeActions`' reason — it is guarded by the host, so a keystroke
-      asks before it destroys anything. Which is also what makes the key safe to offer at all: there
-      is no undo behind it.
+      It was briefly the case that this took cards *off the canvas* instead, on the argument that the
+      reversible act is the better one to put behind a reflex key. That was wrong here, and worth
+      recording: almost every card on this canvas is extraction output owned by the call, and the
+      canvas seed reads owned-but-unplaced records back as the tray — so removing the placement
+      returned the card on the next read and parked it in the corner. The reversible act does not
+      exist on this canvas, so the guard in front of the key is the dialog.
+
+      A line goes through `record.delete`, which is the same guard by a different route: a connection
+      is a single record and there is no set to count.
     */
-    onDeleteSelection: {
-      $if: {
-        condition: { $: 'event.recordId' },
-        then: { $action: 'record.delete', args: [{ $: 'event.recordType' }, { $: 'event.recordId' }] },
+    onDeleteSelection: [
+      {
+        $if: {
+          condition: { $: 'count(event.records)' },
+          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+        },
       },
-    },
+      {
+        $if: {
+          condition: { $: "event.kind == 'edge' && event.recordId" },
+          /*
+            Through the store rather than `record.delete`, which the store never sees: going through it is
+            what lets the line vanish on the press instead of lingering until the delete comes back.
+            Destructive either way, so the host asks the same question it always did.
+          */
+          then: {
+            $action: 'recordStore.deleteRecords',
+            args: [{ $: '[{ recordId: event.recordId, recordType: event.recordType }]' }],
+          },
+        },
+      },
+    ],
+    /*
+      Undo, over this canvas's arrangement — a move, a resize, a colour, a card taken off.
+
+      Replayed as new forward writes rather than as a rollback, so a peer rearranging the same canvas
+      during a call does not lose what they did, and a card they have moved since is left alone
+      rather than dragged back out from under them. Deleting a record is outside it, which is the
+      other half of why the key above no longer deletes.
+
+      Scoped to the call this canvas is about, so walking to another call's canvas does not leave a
+      press that would move cards on a canvas nobody is looking at.
+    */
+    onUndo: { $action: 'recordStore.undoCanvas', args: [CALL] },
+    onRedo: { $action: 'recordStore.redoCanvas', args: [CALL] },
+    /*
+      Cards can be carried off this canvas — into the Pocket, and from there into any other space.
+
+      The canvas beside a live call is exactly where somebody finds a thing worth keeping, and until
+      now there was no gesture that could take it anywhere: the graph received drops and could not
+      be dragged from. It is the ordinary card drag, with the release deciding — over the canvas a
+      move, over a drop zone a carry, and the card goes back where it started.
+    */
+    carry: true,
+    /*
+      What a selection of several offers. Two, and they are the two that mean something said about a
+      set — recolour them, or end them.
+
+      A "take off the canvas" sat here and has gone; see `onDeleteSelection` for why it could not
+      work on this canvas.
+    */
+    selectionActions: [
+      { id: 'color', control: 'color', title: 'Colour', value: { from: 'data.canvasColor' } },
+      { id: 'delete', icon: 'trash', title: 'Delete', tone: 'danger' },
+    ],
+    onSelectionAction: [
+      {
+        $if: {
+          condition: { $: "event.action == 'delete'" },
+          then: { $action: 'recordStore.deleteRecords', args: [{ $: 'event.records' }] },
+        },
+      },
+      /*
+        The colour, previewed as it is browsed and written once on Apply.
+
+        The picker confirms here (see `ColorControl`), so everything before the tick arrives as a
+        preview — which for a selection matters: without the guard, dragging the hue area would
+        write a record per selected card per frame.
+      */
+      {
+        $if: {
+          condition: { $: "event.action == 'color' && event.preview" },
+          then: {
+            $action: 'recordStore.previewCardStyle',
+            args: [{ $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+      {
+        $if: {
+          condition: { $: "event.action == 'color' && !event.preview" },
+          then: {
+            $action: 'recordStore.setCardStyle',
+            args: [CALL, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+          },
+        },
+      },
+    ],
     /*
       Clearing on a background click, and only then.
 
@@ -3276,7 +4060,8 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     A flex-grown item has a definite used height, so the percentage inside it resolves. This is the
     chain the graph view in `templates/views` uses, and the one the panels above already use.
   */
-  // `relative` so the hidden-suggestions chip can sit over the canvas's corner.
+  // `position: relative` so the reading strip can sit over the canvas's own corner rather than over
+  // whatever positioned ancestor happens to be above this route.
   props: { width: '100%', flex: '1', minHeight: '0', overflow: 'hidden', position: 'relative' },
   /*
     `syncParam`, so the inspector panel can read what the canvas selected — see `onNodeClick`.
@@ -3291,6 +4076,10 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     inspectingType: { type: 'string', initial: '', syncParam: 'cardType' },
     // Making things and opening notes — see `WorkshopCards`.
     ...CARD_LOCALS,
+    // How the canvas is being read: freeform or a tree, and what the tree is made of — see
+    // `WorkshopTree`. Declared here rather than on the graph, because the strip that sets them is a
+    // sibling of it and a local is only readable from below where it is declared.
+    ...TREE_LOCALS,
   },
   /*
     The space's key, which the canvas builds its colour rules from — see `lensNodeRules`.
@@ -3299,7 +4088,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     route is rendered through its own pass with nothing inherited, so a query hoisted to the root
     would validate and then resolve to nothing here. Each of the three pages declares its own.
   */
-  $queries: { typeStyles: TYPE_STYLES_QUERY },
+  $queries: { typeStyles: TYPE_STYLES_QUERY, ...TREE_QUERIES },
   /*
     The canvas itself, always — never a placeholder standing in front of it.
 
@@ -3313,56 +4102,22 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     loads nothing until it is given a canvas, so mounting it with no call costs a read of nothing and
     keeps the surface constant from the first frame.
   */
+  /*
+    Nothing over the canvas's corner saying what is hidden.
+
+    There was a chip there while drafts were put away, on the reasoning that the switch lives in the
+    key and the key is a panel that can be closed. Three things take cards off this canvas, though —
+    drafts put away, a kind hidden, a card folded — and the key carries all three, where the chip
+    carried one and never asked whether the key was closed. So it sat beside an open panel saying
+    what that panel already said, and its absence read as "nothing is hidden" while two of the three
+    were. A reader who has put drafts away has the switch in the key, on the board's header and on
+    the calendar's, and the address they are at says so.
+  */
   children: [
     canvas,
-    /*
-      That drafts are hidden, said on the canvas itself.
-
-      The switch lives in the key, which is a panel and can be closed — and cards missing with nothing
-      on screen to say why is how a person comes to think extraction lost them. So while they are
-      hidden, a chip in the corner says so and brings them back. No count: the store's list spans every
-      call asked about, and a number that is not this canvas's would be worse than none.
-    */
-    {
-      type: '$if',
-      props: {
-        condition: { $: `(${CALL_EXPR}) && ${SUGGESTIONS_HIDDEN}` },
-        then: {
-          type: 'Row',
-          props: {
-            position: 'absolute',
-            left: '400',
-            bottom: '400',
-            gap: '200',
-            ay: 'center',
-            pl: '300',
-            pr: '100',
-            py: '100',
-            r: 'pill',
-            bg: 'surface-raised',
-            border: '1px solid border',
-            shadow: 'sm',
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'eye-slash', size: 'xs', color: 'text-muted' } },
-            {
-              type: 'we-text',
-              props: { fontSize: '200', color: 'text-muted' },
-              children: ['Pending acceptance hidden'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'ghost',
-                onClick: { $action: 'routeStore.setParam', args: ['suggestions', null] },
-              },
-              children: ['Show'],
-            },
-          ],
-        },
-      },
-    },
+    // How the canvas is read: the mode, and what the tree is made of. Over the canvas's own corner
+    // rather than in a panel, because a panel can be closed and this is the only way out of the mode.
+    treeStrip({ below: CALL_CHROME_BAND.bottom }),
     /*
       Where a connection is actually written down.
 
@@ -3644,6 +4399,12 @@ const kanbanRoute: RouteSchema = {
                             took on in this call".
                           */
                           people: true,
+                          /*
+                            And what people have made of each card — reactions and replies, as
+                            counts. The inspector is where either is given; a card says only that
+                            there is something to open, which is what a preview owes a reader.
+                          */
+                          social: true,
                           // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
                           suggestions: true,
                           /*
@@ -3743,6 +4504,9 @@ const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? ${witho
 
 /** An event a pass made that nobody has kept — drawn provisional, and put away with the board's switch. */
 const UNCONFIRMED_EVENT = (as: string) => `${as}.id in ${UNCONFIRMED}`;
+
+/** The event the inspector is open on — the same address the canvas and the board write. */
+const SELECTED_EVENT = "event.id == routeStore.params.card && routeStore.params.cardType == 'EventBlock'";
 
 /** Faded, for an event nobody chosen is on while the filter dims. */
 const DIMMED = (as: string) => `${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})`;
@@ -4064,11 +4828,31 @@ const eventList: SchemaNode = {
                     */
                     bg: 'surface',
                     r: '400',
-                    // A draft looks like one, as on the board: dashed, and a little faded.
-                    border: { $: `(${UNCONFIRMED_EVENT('event')}) ? '1px dashed border-strong' : '1px solid border'` },
+                    /*
+                      A draft looks like one, as on the board: dashed, and a little faded. A selected
+                      event takes the accent and a one-pixel ring outside it — the board card's
+                      treatment, because it is the same act on a different surface.
+                    */
+                    border: {
+                      $: `(${SELECTED_EVENT}) ? '1px solid accent' : (${UNCONFIRMED_EVENT('event')}) ? '1px dashed border-strong' : '1px solid border'`,
+                    },
+                    ring: { $: `(${SELECTED_EVENT}) ? '0 0 0 1px var(--we-role-accent)' : ''` },
                     p: '400',
                     opacity: { $: `(${DIMMED('event')}) ? 0.35 : (${UNCONFIRMED_EVENT('event')}) ? 0.75 : 1` },
                     transition: 'opacity 200 ease-in-out',
+                    /*
+                      Pressing an event opens it in the inspector, exactly as pressing a card on the
+                      canvas or the board does — the same two parameters, so the panel that was
+                      already on screen answers about the event and a link to this page carries the
+                      selection with it.
+
+                      This was the one surface of the four with no selection at all, which is why the
+                      inspector could say nothing about an event: there was no way to tell it about
+                      one. The type first and only then the id, so its query is never asked about an
+                      event under the wrong type for the instant between the two writes.
+                    */
+                    cursor: 'pointer',
+                    onClick: [{ $setLocal: 'pressedCard', value: true }, ...openRecord('event.id', 'EventBlock')],
                   },
                   children: [
                     {
@@ -4182,6 +4966,12 @@ const eventList: SchemaNode = {
                       ],
                     },
                     rsvp,
+                    /*
+                      What people have made of this event — the board card's line, on the surface
+                      that shares its records. Counts only: pressing the row opens the event in the
+                      inspector, which is where a reaction is given and the thread is read.
+                    */
+                    signalDisplay({ record: 'event', mode: 'compact', size: 'xs', readOnly: true, inline: true }),
                     // What a pass suggests changing about an agreed event, as old → new.
                     suggestedChanges({ record: 'event', collapseAfter: 3 }),
                   ],
@@ -4246,7 +5036,33 @@ const eventList: SchemaNode = {
 const calendarRoute: RouteSchema = {
   path: '/calendar',
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
+  // A press anywhere on the page lets go of the selected event — unless it was a press on one. The
+  // kanban route's pattern, arriving here with the selection it exists to release; see there for why
+  // the card marks its own press rather than this second-guessing the event.
+  $localState: { pressedCard: { type: 'boolean', initial: false } },
+  props: {
+    width: '100%',
+    minHeight: '100%',
+    ax: 'center',
+    px: '400',
+    onClick: [
+      {
+        $if: {
+          condition: { $: 'local.pressedCard' },
+          then: { $setLocal: 'pressedCard', value: false },
+          else: {
+            $if: {
+              condition: { $: 'routeStore.params.card' },
+              then: [
+                { $action: 'routeStore.setParam', args: ['card', null] },
+                { $action: 'routeStore.setParam', args: ['cardType', null] },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  },
   children: [
     {
       type: 'Column',
@@ -4276,9 +5092,25 @@ const calendarRoute: RouteSchema = {
               $localState: {
                 // Paging is arithmetic on an offset, so every source reads the same offset and the template
                 // only ever adds to it.
-                monthOffset: { type: 'number', initial: 0 },
+                /*
+                  In the URL, because which month you are looking at is the clearest case the rule has:
+                  send somebody a link to a month and they should open on that month. It is also what
+                  makes the calendar follow a driver, since a frame carries the whole address.
+
+                  **An offset, so it is relative to the reader's today.** Within a session that is exactly
+                  right and both agents agree. A link opened after midnight on the first of a month lands
+                  one month out, which is a real flaw and the reason to move this to an absolute `YYYY-MM`
+                  eventually; the expression language has no month arithmetic, so stepping from an absolute
+                  month is not a one-line change. Wrong by a month across a boundary is a great deal better
+                  than a link that always opens on today.
+                */
+                monthOffset: { type: 'number', initial: 0, syncParam: 'month' },
                 // The day a reader has picked, as `YYYY-MM-DD`, or empty for the whole month.
-                day: { type: 'string', initial: '' },
+                /*
+                  In the URL for the same reason, and pushed, so choosing a day is a step Back can undo.
+                  Absolute, unlike the month above, because a day already is: no flaw to note here.
+                */
+                day: { type: 'string', initial: '', syncParam: { name: 'day', push: true } },
                 /*
                   The people filter's two halves, split the way the board splits them: who is chosen
                   rides in the address, since "what Ana is going to" is a thing a link can point at,
@@ -4306,8 +5138,12 @@ const calendarRoute: RouteSchema = {
                   scope: anchorScope(CALL),
                   order: { startDate: 'asc' },
                   limit: 200,
-                  include: { location: true },
+                  // The place, and the reactions the row's counts read. `comments` needs no include —
+                  // a relation's own ids arrive anyway, which is what makes a reply count free.
+                  include: { location: true, signals: true },
                 },
+                // What this community reacts with, for those counts — one subscription for the month.
+                signalTypes: { entity: 'SignalType', subscribe: true },
                 // Who said they are coming to what. Space-wide, for the board's reason: an answer is
                 // not a child of anything, and there are as many as people have given.
                 involvements: { entity: 'Involvement' },

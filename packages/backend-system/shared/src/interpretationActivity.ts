@@ -22,8 +22,8 @@
  * backend a second question, and it is the difference between "expand for details" being an
  * affordance and being a broken button for everybody but one person.
  *
- * The asymmetry is the backend's, not ours: AD4M's fine-grained step stream is DID-filtered while
- * its neighbourhood stream is perspective-scoped, and neither crosses machines on its own. A host
+ * The asymmetry is the backend's, not ours: its fine-grained step stream is filtered to this agent
+ * while its coarse one is scoped to the dataset, and neither crosses machines on its own. A host
  * that wants peers to see each other's passes relays them — see `interpretationRelay.ts`, which
  * does exactly that over {@link EphemeralPort} and sets `mine: false` on what it receives.
  *
@@ -43,7 +43,7 @@
 /**
  * How far a pass has got, in terms a UI can render without knowing which backend produced it.
  *
- * Seven phases rather than AD4M's thirteen steps, and the collapsing is deliberate: a person
+ * Seven phases rather than the backend's thirteen steps, and the collapsing is deliberate: a person
  * watching a bar wants to know whether to keep waiting, and `backedOff` / `notCandidate` /
  * `awaitingAuthor` are three ways of saying "not on this machine, nothing to watch here". A
  * backend with fewer states than this reports the ones it has; a backend with more maps them in.
@@ -65,9 +65,9 @@ export type InterpretationPhase =
   /**
    * The response arrived and is being planned and written.
    *
-   * Usually brief, and not reliably so: on AD4M this spans dedup resolution, planning, a subject
-   * write per instance, several batch commits and the provenance overlay, none of which reports
-   * progress and all of which contend with whatever else is writing to the perspective — a live
+   * Usually brief, and not reliably so: in practice this spans dedup resolution, planning, a
+   * record write per instance, several batch commits and the provenance overlay, none of which
+   * reports progress and all of which contend with whatever else is writing to the dataset — a live
    * transcription, say. A pass has sat here for minutes. A UI should keep the elapsed clock running
    * through it rather than treating it as the last frame before `done`.
    */
@@ -173,7 +173,7 @@ export const INTERPRETATION_ACTIVITY_TTL_MS = 10 * 60 * 1000;
  *
  * Object spread cannot do this, and the difference is not academic: it copies keys that are present
  * *and* undefined, so `{...{prompt:'x', response:undefined}, ...{prompt:undefined, response:'y'}}`
- * silently drops the prompt. That is exactly the shape the AD4M adapter produces — `llmRequestSent`
+ * silently drops the prompt. That is exactly the shape the production adapter produces — `llmRequestSent`
  * carries an input and no output, `llmResponseReceived` the reverse — so a plain spread lost the
  * prompt at the moment the response arrived to be compared against it.
  *
@@ -228,7 +228,7 @@ export function byActivityInterest(a: InterpretationActivity, b: InterpretationA
  *
  * A later update replaces an earlier one for the same `passId`, **except** that a settled phase is
  * never overwritten by an unsettled one. Without that exception, ordinary event interleaving
- * reopens finished rows: AD4M emits `processed` on one stream and `finished` on the other, and the
+ * reopens finished rows: the backend emits `processed` on one stream and `finished` on the other, and the
  * relay can deliver a peer's `thinking` after its `done` on a lossy transport. Both would show a
  * completed pass as running again.
  *

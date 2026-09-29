@@ -203,5 +203,49 @@ export type ExpanderFactory<TOptions = unknown> = (options?: TOptions) => Expand
 export interface SeedSource {
   id: string;
   description?: string;
+  /**
+   * Options whose change leaves this the same graph — the same records, drawn or read differently —
+   * as opposed to the options that decide which records it is.
+   *
+   * A seed's options are one bag holding two kinds of thing. Most decide which records the graph is
+   * made of: which canvas, which types, how many. A few change nothing about that: which cards to mark
+   * as suggestions, which to leave off, how much to read about each card that is already there. The
+   * host cannot tell them apart, and the difference decides whether a change is worth throwing the
+   * graph away for.
+   *
+   * A change to one of the first kind goes down {@link GraphEngine.start}, which raises the loading
+   * state and treats the result as a different graph. A change to one named here goes down
+   * {@link GraphEngine.refresh}, which re-reads and merges in the background — nothing on screen
+   * dims, goes stale or loses its place, and the new data arrives as one more change to a graph that
+   * never went away.
+   *
+   * It matters most for the options that change often. The workshop's suggestion markers come
+   * straight from the transcriber and change every couple of minutes during a call; each change used
+   * to be a full reload, the old graph faded under a spinner for two cards changing opacity. And
+   * ordering a tree by a reaction needs each card's reactions read — more data about the same cards,
+   * which is a refresh and not a new graph.
+   *
+   * A seed that names nothing behaves exactly as before.
+   */
+  refreshOptions?: string[];
+  /**
+   * Options applied to rows this seed has already fetched — see {@link derive}. A change to one of these
+   * re-runs `derive` over the rows in hand and asks the backend nothing.
+   *
+   * The third kind of option, beside the ones that decide which records the graph is and the ones that
+   * read them again (`refreshOptions`). A slider re-weighing whose reactions count moves many times a
+   * second; a round trip per movement would have the tree trailing the hand by a second or more, where
+   * recomputing a score from values already on the cards costs a few microseconds a card.
+   */
+  deriveOptions?: string[];
+  /**
+   * Finish what {@link seed} fetched, from nothing but the fetched rows and the options — pure, and
+   * cheap enough to run on every movement of a control. Run after every fetch, and again on its own
+   * whenever only a {@link deriveOptions} option changes.
+   *
+   * May also answer a `summary`: facts about the whole fragment a host shows beside the graph — the
+   * people whose reactions a score was made from, say — reported as a `seedSummary` event.
+   */
+  derive?(fragment: GraphFragment, options: unknown): GraphFragment & { summary?: Record<string, unknown> };
   seed(options: unknown, context: ExpanderContext, signal?: AbortSignal): Promise<ExpandResult>;
 }

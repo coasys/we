@@ -28,6 +28,11 @@ let connectFailure: string | null = null;
 /** Supplied by connectors whose session is the connection — the web host's, in practice. */
 let disconnect: (() => Promise<void>) | undefined;
 
+/** Set by a test to wrap the backend's ports before the shell boots against them. */
+let onPorts: ((ports: ReturnType<typeof createInMemoryBackendPorts>) => void) | undefined;
+/** Datasets that exist before boot — a space the agent already has, say. */
+let seededDatasets: { id: string; name: string }[] = [];
+
 /** Set by the tests that need a host able to restart the backend; absent is the web shape. */
 let executorHost:
   | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
@@ -39,7 +44,8 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
       if (connectFailure) throw new Error(connectFailure);
-      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
+      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions, datasets: seededDatasets });
+      onPorts?.(ports);
       lifecycle = ports.lifecycle;
       return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
     },
@@ -164,6 +170,8 @@ const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootSta
 beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
   executorHost = undefined;
+  onPorts = undefined;
+  seededDatasets = [];
   connectFailure = null;
   disconnect = undefined;
   navigate.mockClear();
@@ -182,6 +190,126 @@ describe('boot', () => {
     expect(names).toEqual(['we-personal', 'we-root', 'we-test']);
     expect(stores.session.me()?.did).toBe('did:test:james');
     expect(navigate).toHaveBeenCalledWith('/');
+  });
+
+  /*
+    A dataset listing can cost a backend a handle per dataset, and some keep resources behind each
+    one nothing releases — so boot reads the list once, and publishes what it read plus
+    what it made. Answering from the first read must still include a system dataset created after it.
+  */
+  it('reads the dataset list once, and publishes the system datasets it created', async () => {
+    let listed = 0;
+    onPorts = (ports) => {
+      const list = ports.lifecycle.list.bind(ports.lifecycle);
+      ports.lifecycle.list = async () => {
+        listed++;
+        return list();
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    expect(listed).toBe(1);
+    expect(
+      stores.datasets
+        .datasets()
+        .map((d) => d.name)
+        .sort(),
+    ).toEqual(['we-personal', 'we-root', 'we-test']);
+  });
+
+  /*
+    The root and the personal space share nothing but the list, and each is several round trips to
+    a remote backend. One after the other they were most of the wait before a space could open.
+  */
+  it('brings the root and the personal space up side by side', async () => {
+    let releaseRoot!: () => void;
+    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
+    const started: string[] = [];
+    onPorts = (ports) => {
+      const { installRoot, installSpace } = ports.schemas;
+      ports.schemas.installRoot = async (dataset) => {
+        started.push('root');
+        await rootHeld;
+        return installRoot(dataset);
+      };
+      ports.schemas.installSpace = async (dataset, modules) => {
+        started.push('personal');
+        return installSpace(dataset, modules);
+      };
+    };
+    const stores = mountShell();
+
+    await vi.waitFor(() => expect(started).toEqual(expect.arrayContaining(['root', 'personal'])));
+    releaseRoot();
+    await ready(stores);
+  });
+
+  /*
+    The settings read starts beside the root's reinstall rather than after it, so it can land while a
+    changed settings model is being rewritten and fail. That must cost a second read, not the root:
+    an unset root loses every saved template and theme for the session.
+  */
+  it('keeps the root when the settings read beside its reinstall fails, and reads them again', async () => {
+    seededDatasets = [{ id: 'root-1', name: 'we-root' }];
+    let findOne: ReturnType<typeof vi.spyOn> | undefined;
+    // Spied when boot lists the datasets: the entities are registered by then, and the root is not
+    // up yet. Any earlier and the spy sits on a class that registration replaces.
+    onPorts = (ports) => {
+      const list = ports.lifecycle.list.bind(ports.lifecycle);
+      ports.lifecycle.list = async (options) => {
+        // The registered class itself: a spy defined on the neutral stand-in never sees a call.
+        findOne ??= vi
+          .spyOn(getEntity('AgentSettings') as unknown as { findOne: () => Promise<unknown> }, 'findOne')
+          .mockRejectedValueOnce(new Error('No SHACL shape'));
+        return list(options);
+      };
+    };
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      expect(stores.datasets.rootDataset()?.id).toBe('root-1');
+      expect(findOne).toHaveBeenCalledTimes(2);
+    } finally {
+      findOne?.mockRestore();
+    }
+  });
+
+  /*
+    A reload on a space's address waited for the whole boot before that space began to load, then
+    read its templates, then its schema, one after another. Its templates and schema reads now start
+    as soon as the list names it, and the agent's spaces are read beside the system datasets.
+  */
+  it('starts the addressed space, and reads spaces, while the system datasets come up', async () => {
+    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
+    window.history.replaceState({}, '', '/space/garden-1/canvas');
+    let releaseRoot!: () => void;
+    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
+    const prepared: unknown[] = [];
+    onPorts = (ports) => {
+      const { installRoot } = ports.schemas;
+      ports.schemas.installRoot = async (dataset) => {
+        await rootHeld;
+        return installRoot(dataset);
+      };
+      ports.schemas.prepare = (dataset) => prepared.push(dataset);
+    };
+    try {
+      const stores = mountShell();
+      const loadSpaces = vi.spyOn(stores.spaces, 'loadSpaces');
+
+      await vi.waitFor(() => expect(prepared).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(loadSpaces).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'garden-1' })])),
+      );
+      expect(stores.session.bootState()).not.toBe('ready');
+
+      releaseRoot();
+      await ready(stores);
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
   });
 
   it('walks the lock → login flow, including a failed password', async () => {
@@ -860,5 +988,128 @@ describe('moving between spaces', () => {
     navigate.mockClear();
     await stores.spaces.navigateToSpace(a);
     expect(navigate).toHaveBeenCalledWith(`/space/${a}`);
+  }, 10000);
+});
+
+describe('changing a reaction', () => {
+  it('replaces the record rather than editing it, because an edit notifies nobody', async () => {
+    /*
+      A rating moved from three stars to four did nothing anybody could see, the author included.
+
+      The write landed. What did not happen was the re-read. Every surface fetches reactions as
+      `include: { signals: true }` on the record, so the live query is over the RECORD's class, and
+      the executor builds that subscription's trigger from `build_model_trigger_predicates` — the
+      predicates of the subscribed class's own shape, plus the parent predicate. It does not walk
+      `include`. `we://signal` is in that set, so adding or removing a reaction fires it; `we://value`,
+      which belongs to the Signal, is not. An in-place edit changes the store and wakes no reader.
+
+      So the shape IS the requirement: a change has to touch `we://signal`, which means removing and
+      adding. The test asserts the record's identity changed, because that is the observable
+      difference between the two implementations — and the obvious tidy-up, one write instead of
+      two, is exactly what broke it.
+
+      The rest of the assertion is what a naive delete-then-create could still get wrong: one
+      reaction of this type by this agent, holding the new value, not two.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Raters', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Raters')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+
+    const handle = space.handle as never;
+    const SignalType = getEntity('SignalType')!;
+    const Signal = getEntity('Signal')!;
+    const stars = await (SignalType as never as typeof Space).create(handle, {
+      name: 'Stars',
+      slug: 'stars',
+      mode: 'rating',
+      rangeMin: 0,
+      rangeMax: 5,
+    } as never);
+    const subject = await CollectionBlock.create(handle, { kind: 'post', textContent: 'rate me' } as never);
+
+    const mine = async () =>
+      (await (Signal as never as typeof Space).findAll(handle, {
+        parent: { id: subject.id, predicate: 'we://signal' },
+        where: { signalTypeId: stars.id, author: 'did:test:james' },
+      } as never)) as unknown as { id: string; value: number }[];
+
+    await stores.spaces.upsertSignal(subject.id, stars.id, 3);
+    const first = await mine();
+    expect(first).toHaveLength(1);
+    expect(first[0].value).toBe(3);
+
+    await stores.spaces.upsertSignal(subject.id, stars.id, 4);
+    const second = await mine();
+    // One reaction, the new value — not two rows where the reader finds the stale one first.
+    expect(second).toHaveLength(1);
+    expect(second[0].value).toBe(4);
+    // And a different record, which is what touching `we://signal` twice amounts to.
+    expect(second[0].id).not.toBe(first[0].id);
+
+    /*
+      A zero is an ordinary value now, and is stored.
+
+      It used to be the withdrawal, which meant a type whose range includes 0 could not hold it — a
+      0–100 slider dragged to the bottom was written as "did not answer". The two acts are spelled
+      apart: a number is a reaction, `null` takes it back.
+    */
+    await stores.spaces.upsertSignal(subject.id, stars.id, 0);
+    const zeroed = await mine();
+    expect(zeroed).toHaveLength(1);
+    expect(zeroed[0].value).toBe(0);
+
+    // And withdrawing is its own act, which removes the record rather than storing anything.
+    await stores.spaces.withdrawSignal(subject.id, stars.id);
+    expect(await mine()).toHaveLength(0);
+  }, 10000);
+});
+
+describe('a card’s presentation, drawn before it is stored', () => {
+  it('holds each field on its own, so one settling does not retire the other', async () => {
+    /*
+      The improvement consolidating on `@we/optimism` bought the canvas.
+
+      A colour and a size are written by different gestures and answered by different pushes. Held
+      together as one patch per record, the first to come back retired the other — so recolouring a
+      card you had just resized snapped it back to its old size for the rest of that round trip.
+      Keyed per field, each answers for itself.
+
+      `previewCardStyle` is used because it is synchronous and holds exactly as a write does; what is
+      under test is the holding and the settling, not the round trip.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    stores.records.previewCardStyle('card-1', 'color', 'danger-100');
+    stores.records.previewCardStyle('card-1', 'rotation', 15);
+    expect(stores.records.pendingCardStyle()['card-1']).toEqual({ color: 'danger-100', rotation: 15 });
+
+    // The graph reports the records whose own data now says what was written. Only the colour has
+    // landed, but the report is per record — so the rotation must survive it on its own terms.
+    stores.records.confirmPending(['card-1']);
+    expect(stores.records.pendingCardStyle()['card-1']).toBeUndefined();
+
+    // And a second card's holds are untouched by a report about the first.
+    stores.records.previewCardStyle('card-2', 'color', 'warning-100');
+    stores.records.confirmPending(['card-1']);
+    expect(stores.records.pendingCardStyle()['card-2']).toEqual({ color: 'warning-100' });
+  }, 10000);
+
+  it('a preview is not a write, so it settles rather than standing until the backstop', async () => {
+    // A slider emits continuously as it is dragged. Counted as writes those holds would never be
+    // judged — nothing returns to decrement them — and the card would show its last dragged frame
+    // for ten seconds after the real value had landed.
+    const stores = mountShell();
+    await ready(stores);
+
+    for (const degrees of [5, 10, 15, 20]) stores.records.previewCardStyle('card-3', 'rotation', degrees);
+    expect(stores.records.pendingCardStyle()['card-3']).toEqual({ rotation: 20 });
+
+    stores.records.confirmPending(['card-3']);
+    expect(stores.records.pendingCardStyle()['card-3']).toBeUndefined();
   }, 10000);
 });

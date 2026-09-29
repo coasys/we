@@ -74,8 +74,11 @@ function emitTypes(defs) {
     for (const [rname, spec] of Object.entries(e.relations)) {
       const cap = rname[0].toUpperCase() + rname.slice(1);
       // No setter for an untyped to-one — the accessor's whole signature is its target type.
+      // By identity, as the to-many trio below already is: a link write reads an id and nothing
+      // else, so asking for the whole record asked for more than it uses — and refused the record a
+      // `create` just answered with, which carries no relations (see `NewRecord` in the contract).
       if (spec.cardinality === 'one' && spec.target) {
-        L.push(`  set${cap}(value: ${spec.target}Record): Promise<unknown>;`);
+        L.push(`  set${cap}(value: Pick<${spec.target}Record, 'id'>): Promise<unknown>;`);
       } else if (def.methodRelations?.includes(rname)) {
         L.push(`  add${cap}(value: string | { id: string }, batch?: string): Promise<unknown>;`);
         L.push(`  remove${cap}(value: string | { id: string }, batch?: string): Promise<unknown>;`);

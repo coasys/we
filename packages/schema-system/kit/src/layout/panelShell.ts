@@ -1,4 +1,4 @@
-import type { ExpressionToken, SchemaNode } from '@we/schema-shared';
+import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { helpTip } from '../overlays/helpTip.ts';
 
@@ -209,10 +209,39 @@ export interface PanelScrollOptions {
    * `panelShell`'s default is `300`, which is what every panel in the repo uses.
    */
   inset?: string;
-  /** Follow the tail while the reader is at it — `we-scroll-area`'s `pin`. */
-  pin?: string;
+  /**
+   * Follow the tail while the reader is at it — `we-scroll-area`'s `pin`.
+   *
+   * An expression is allowed, for a list that is only sometimes a tail: a transcript follows the
+   * live end, and stops when the reader asks to read the same conversation from its beginning, where
+   * pinning would drag them back down on every new line.
+   */
+  pin?: string | ExpressionToken;
   /** Jump-to-end controls — `we-scroll-area`'s `jump`. */
   jump?: string;
+  /**
+   * Load what lies beyond an end as the reader reaches it — `we-scroll-area`'s `nearStart` and
+   * `nearEnd`, in pixels, each with the handler that fetches the next page.
+   *
+   * Both halves of a pair or neither: a distance with nothing listening is a measurement nobody
+   * reads, and a handler with no distance never fires.
+   *
+   * A window has two directions and a list that only paginates one way stops dead at the other. A
+   * transcript anchored to its newest end grows backwards and wants the first pair; the same
+   * transcript read from its beginning grows forwards and wants the second.
+   */
+  nearStart?: number;
+  onNearStart?: SchemaProp;
+  nearEnd?: number;
+  onNearEnd?: SchemaProp;
+  /**
+   * What to do when a jump button asks instead of scrolling.
+   *
+   * Which ends ask is not set here: the scroller reads it from a `data-we-more` marker in its own
+   * content, so the answer comes from whatever is holding the rows. See `we-scroll-area`.
+   */
+  onJumpStart?: SchemaProp;
+  onJumpEnd?: SchemaProp;
 }
 
 /**
@@ -312,6 +341,12 @@ export function panelScroll(opts: PanelScrollOptions): SchemaNode {
       scrollbarGutter: 'stable',
       ...(opts.pin ? { pin: opts.pin } : {}),
       ...(opts.jump ? { jump: opts.jump } : {}),
+      ...(opts.nearStart ? { nearStart: opts.nearStart } : {}),
+      ...(opts.onNearStart ? { 'on:nearstart': opts.onNearStart } : {}),
+      ...(opts.nearEnd ? { nearEnd: opts.nearEnd } : {}),
+      ...(opts.onNearEnd ? { 'on:nearend': opts.onNearEnd } : {}),
+      ...(opts.onJumpStart ? { 'on:jumpstart': opts.onJumpStart } : {}),
+      ...(opts.onJumpEnd ? { 'on:jumpend': opts.onJumpEnd } : {}),
     },
     children: opts.children,
   };

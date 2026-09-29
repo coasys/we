@@ -1,4 +1,4 @@
-import type { Account, BackendConnector, ExecutorSettings } from '@we/app-shell/shared';
+import type { Account, BackendConnector, ExecutorSettings, ScreenSource } from '@we/app-shell/shared';
 import { createLocalAd4mConnector } from '@we/backend-ad4m';
 
 import weSeed from '../../../../we-seed.json';
@@ -12,6 +12,9 @@ declare global {
       getIsDevelopment: () => Promise<boolean>;
       getDevLinkLanguageBundle: () => Promise<string | null>;
       getDesktopSources: () => Promise<unknown[]>;
+      // Choosing a screen to share where the OS will not ask — see `screenSources` on the adapter.
+      onScreenSourceRequest: (listener: (sources: ScreenSource[]) => void) => () => void;
+      chooseScreenSource: (id: string) => void;
       // The contract's own type rather than a hand-copied shape: the copy had drifted, and was
       // missing the `hasAgent` the boot screen reads to tell setup from sign-in.
       listAccounts: () => Promise<Account[]>;

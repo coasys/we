@@ -20,6 +20,25 @@ export interface Point {
   y: number;
 }
 
+/**
+ * An axis-aligned world rectangle.
+ *
+ * Here beside {@link Point} rather than in the core, because a behaviour asks about one — a marquee
+ * hands the engine a rectangle and gets back what is inside it — and {@link BehaviourContext} is
+ * declared in this package. The core re-exports it, so nothing downstream had to change when it
+ * moved.
+ *
+ * Min/max rather than x/y/width/height: every consumer of a rectangle here is testing overlap, which
+ * is four comparisons against these and four subtractions against the other spelling. A caller
+ * building one from a drag normalises as it goes — see `boundsFromPoints`.
+ */
+export interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 /** A node's placement. `fixed` means the user pinned it and the layout must not move it. */
 export interface Placement extends Point {
   fixed?: boolean;
@@ -49,10 +68,78 @@ export interface LayoutInput {
    * why it is optional and why a layout falls back to the origin rather than requiring it.
    */
   visible?: { x: number; y: number; width: number; height: number };
+  /**
+   * A card somebody is dragging to a new place in a hierarchy, and where it would go — see
+   * {@link LayoutArranging}. A layout with no notion of parents ignores it.
+   */
+  arranging?: LayoutArranging;
+}
+
+/**
+ * A card being rearranged by hand: lay it out as if it were already where the drag would put it.
+ *
+ * What makes a drag in a tree a *preview* rather than a guess. While a card is held, the layout places it
+ * — and everything around it makes room — exactly as it would once the drop is written, so the reader sees
+ * the result before committing to it. The same answer again after the drop, until the write comes back and
+ * the data says the same thing, is what makes the drop one movement rather than two.
+ */
+export interface LayoutArranging {
+  id: string;
+  /** The parent it would have; null for out of every tree. */
+  parent: string | null;
+  /**
+   * Its position among that parent's other children, in the order the layout draws them. Absent for
+   * wherever the layout's own order would put it — which is the honest preview when siblings are ordered by
+   * something a drag cannot change, like a date.
+   */
+  index?: number;
+}
+
+/**
+ * The tree a layout read out of the graph, for a gesture that rearranges it.
+ *
+ * From the DATA, whatever {@link LayoutArranging} asked for: it is what a drop would change, not what is on
+ * screen mid-drag. Only a layout that has parents reports one.
+ */
+export interface LayoutHierarchy {
+  /** Each card's parent — the one it is drawn under, where the graph gives it several. */
+  parents: ReadonlyMap<string, string>;
+  /** Each parent's children, in the order the layout draws them. */
+  children: ReadonlyMap<string, readonly string[]>;
+  /** The edge that makes each card's parent its parent. */
+  parentEdges: ReadonlyMap<string, string>;
+}
+
+/**
+ * An area of the arrangement that means something, for the renderer to draw behind the nodes.
+ *
+ * A layout can only answer with positions, and there are arrangements where a position is not the
+ * whole of what was decided: `forest` puts every card that is on no tree in a zone of its own, and a
+ * region of cards with nothing said about it reads as a tree whose lines failed to draw. What makes
+ * it legible is the thing a position cannot carry — that this area is a *kind* of place, and how many
+ * cards are in it.
+ *
+ * Deliberately not a node. A synthetic node would be picked, dragged, selected, counted in the
+ * budget, offered a fold and asked for its record, and every one of those is wrong for a caption. It
+ * is also deliberately not styled: a region says what it is and the renderer decides what that looks
+ * like, exactly as a warning is worded here and drawn by the status strip.
+ */
+export interface LayoutRegion {
+  /** Stable within a layout, so a renderer can key on it across runs. */
+  id: string;
+  /** What this area is, in the reader's language. The renderer draws it as the region's caption. */
+  label?: string;
+  /** World bounds, as {@link Bounds}. */
+  bounds: Bounds;
 }
 
 export interface LayoutResult {
   positions: Map<string, Placement>;
+  /**
+   * Areas of the arrangement worth naming — see {@link LayoutRegion}. Absent for the layouts where
+   * position says everything, which is most of them.
+   */
+  regions?: LayoutRegion[];
   /**
    * True while the layout is still settling — a force simulation between ticks.
    *
@@ -70,6 +157,8 @@ export interface LayoutResult {
    * and decided nothing needed moving.
    */
   warnings?: string[];
+  /** The tree this arrangement was read from, where it is one — see {@link LayoutHierarchy}. */
+  hierarchy?: LayoutHierarchy;
 }
 
 /**

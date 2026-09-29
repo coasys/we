@@ -389,7 +389,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     recordWatchPass: WIRING,
     onDatasetRemoved: WIRING,
+    readDatasets: WIRING,
     initSystemDatasets: WIRING,
+    prepareDataset: WIRING,
     loadDatasets: WIRING,
     subscribeToChanges: WIRING,
     getDatasetOrder: WIRING,
@@ -397,6 +399,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
   profileStore: {
     profiles: state('identity'),
+    // Host plumbing, not template surface: the narrow read behind `$agent` and the module identity
+    // port. A template that wants one agent writes `$agent`, which fetches a profile it has not got
+    // — this only reads the cache, so exposing it would add a second spelling that silently answers
+    // nothing for anybody who has not been fetched yet.
+    profileFor: WIRING,
     ownProfile: state('identity'),
     ownProfileLoaded: state('identity'),
     fetchProfile: action('identity'),
@@ -478,6 +485,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // a community naming what it means by something.
     createRelationshipType: action('signals'),
     upsertSignal: action('signals'),
+    withdrawSignal: action('signals'),
     /*
       The vocabulary of states, the third of the same kind — a community naming what it means by
       something, alongside its reactions and its connections.
@@ -602,6 +610,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
+    setThreadMode: hereOnly('space-settings', 1),
     setAutoInterpretForCall: action('content'),
     /*
       Writing one. `hereOnly` on the community setter for the reason every other community write has
@@ -645,6 +654,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     updateSpaceInCache: WIRING,
     loadSpaces: WIRING,
+    prepareSpaceAt: WIRING,
   },
 
   shapeStore: {
@@ -737,15 +747,35 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     placeOnCanvas: action('content'),
     dragOnCanvas: action('content'),
     removeFromCanvas: action('content'),
+    /*
+      Destructive, where `removeFromCanvas` beside it is not, and the pair is the whole point.
+
+      Taking a card off a canvas ends a placement; this ends the records, for everybody, with no way
+      back. So the host asks — once for the whole list, which is why this exists rather than a
+      template looping `record.delete` and stacking a dialog per card.
+    */
+    deleteRecords: destructive('content'),
+    /*
+      Undo over a canvas's arrangement. Not destructive: every entry it replays is itself an
+      ordinary `content` write that was already granted when it was made, so guarding the replay
+      would be asking a second time about a decision the reader has already taken — and asking it
+      about a key press, which is the interaction least able to carry a modal.
+    */
+    undoCanvas: action('content'),
+    redoCanvas: action('content'),
+    canvasHistory: state('content'),
     resizeOnCanvas: action('content'),
     anchorOnCanvas: action('content'),
     rerouteOnCanvas: action('content'),
     retargetOnCanvas: action('content'),
+    arrangeOnTree: action('content'),
     // Host wiring, both halves of one mechanism: the graph host reads what is pending and reports
     // the rows it read back. A template has no use for either — it writes through the actions above
     // and the optimism is applied for it.
     pendingCardStyle: WIRING,
     confirmPending: WIRING,
+    pendingConnections: WIRING,
+    observeConnections: WIRING,
     // Template-facing: a control that reports while it moves previews through this and writes on
     // release, which is what makes a slider show its result before the drag ends.
     previewCardStyle: action('content'),
@@ -959,6 +989,23 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       user's behalf.
     */
     setCreateSpaceOpen: action('navigation'),
+    joinSpaceOpen: state('space-admin'),
+    /*
+      And the same for the join dialog, by exactly the same argument: asking for chrome's own dialog
+      is not joining anything. `spaceStore.joinSpace` is where that decision is actually taken, and
+      it keeps its own grant — a template that could join a space on the user's behalf could add
+      them to a stranger's neighbourhood without a word.
+    */
+    setJoinSpaceOpen: action('navigation'),
+    /*
+      `host-layout`, like the destructive prompt beside it and for the same reason: the *chrome*
+      draws this, and chrome renders at a tier that sees everything, so the classification is about
+      what a space template could reach rather than about where it is used. A template naming these
+      would be drawing its own dialog over a `getDisplayMedia` the host is holding — answering a
+      question about which of somebody's screens to share, on their behalf.
+    */
+    pendingScreenSources: state('host-layout'),
+    chooseScreenSource: action('host-layout'),
     /*
       The host's delete confirmation.
 
@@ -1248,7 +1295,7 @@ const ALWAYS_PRESENT = new Set([
   '$me',
   '$currentDataset',
   '$getEntity',
-  '$getEntitiesForPerspective',
+  '$getEntityForDataset',
   '$queryAdapter',
   '$identities',
   '$ephemeral',

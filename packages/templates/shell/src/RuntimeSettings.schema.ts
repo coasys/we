@@ -187,7 +187,7 @@ export const trustedAgents: SchemaNode = {
                         gap: '300',
                         ay: 'center',
                         ax: 'between',
-                        bg: 'surface-sunken',
+                        bg: 'surface',
                         r: '300',
                         px: '300',
                         py: '200',
@@ -321,7 +321,7 @@ export const mcpServer: SchemaNode = {
             condition: { $: 'runtimeStore.executorRestartPending' },
             then: {
               type: 'Row',
-              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface', r: '300', px: '300', py: '200' },
               children: [
                 {
                   type: 'we-text',
@@ -467,7 +467,7 @@ export const logging: SchemaNode = {
                   children: [
                     {
                       type: 'Row',
-                      props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
+                      props: { gap: '200', ay: 'center', bg: 'surface', r: '300', px: '300', py: '200' },
                       children: [
                         { type: 'we-code', props: { flex: '1' }, children: [{ $: 'entry.crate' }] },
                         {
@@ -597,6 +597,9 @@ const networkMetricsModal: SchemaNode = {
                 // The editor's own scroller rather than the modal's, so its fold gutter and search
                 // stay beside the text while it scrolls.
                 maxHeight: '60dvh',
+                // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                // declares no layout layer, so `width` on it is an unknown prop the
+                // validator warns about and the renderer drops.
                 styles: { width: '100%' },
               },
             },
@@ -755,6 +758,9 @@ const peerExchangeModal: SchemaNode = {
                         readOnly: true,
                         // Lower than the metrics viewer's: the paste box shares this modal.
                         maxHeight: '240px',
+                        // `styles`, not the `width` prop: CodeEditor is a layer-4 component that
+                        // declares no layout layer, so `width` on it is an unknown prop the
+                        // validator warns about and the renderer drops.
                         styles: { width: '100%' },
                       },
                     },
@@ -878,7 +884,7 @@ export const executorSupport: SchemaNode = {
                 ay: 'center',
                 ax: 'between',
                 wrap: true,
-                bg: 'surface-sunken',
+                bg: 'surface',
                 r: '300',
                 px: '300',
                 py: '200',

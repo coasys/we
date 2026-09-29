@@ -275,6 +275,18 @@ function hasChildren(block: RecordInstance): block is BlockWithChildren {
   return Array.isArray((block as BlockWithChildren).children);
 }
 
+/**
+ * The replies hanging off a record — `WeNode.comments`, as ids.
+ *
+ * Read structurally rather than through a class, because what is on the other end of `we://comment`
+ * is whatever somebody replied with, and the relation is declared on `WeNode` rather than on any
+ * one model.
+ */
+function commentsOf(block: RecordInstance): string[] {
+  const comments = (block as { comments?: unknown }).comments;
+  return Array.isArray(comments) ? comments.filter((uri): uri is string => typeof uri === 'string') : [];
+}
+
 /** Returns true if a value looks like a FileData object (data_base64 + file_type). */
 function isFileData(value: unknown): value is FileData {
   return (
@@ -720,11 +732,27 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
 // ── Delete ───────────────────────────────────────────────────────────────────
 
 /**
- * Recursively delete a block tree rooted at rootUri.
+ * Recursively delete a block tree rooted at rootUri — its blocks, and the conversation about them.
  *
  * Resolves each node's model class, hydrates it, deletes descendants before their parent so each
  * `delete()` call only ever has to clean up links to blocks that still exist. Runs inside a
  * transaction so a failure partway through doesn't leave the tree half-deleted.
+ *
+ * ## Why replies go too
+ *
+ * A reply is a composition hanging off `we://comment` rather than `we://children`, which is what
+ * makes threads fractal — the two relations say different things, and keeping them apart is the
+ * whole design (see `commentThread`). This walk followed only `children`, so deleting a post left
+ * every reply to it in the perspective: reachable by nothing, rendered by nothing, and counted by
+ * `count(post.comments)` on a post that no longer exists.
+ *
+ * That was survivable while a thread was one level a person had to open a modal to write into. It
+ * is not now that a reply can be replied to, because the orphan is a whole subtree.
+ *
+ * So a delete takes the conversation with it, which is also what a reader means by it: a reply
+ * whose subject is gone cannot be read, let alone answered. Anything on the relation that is not a
+ * block resolves to nothing and is skipped, and the cycle guard and depth limit cover `comments`
+ * exactly as they cover `children` — both are multi-writer link sets.
  */
 export async function deleteBlocks(perspective: BlockDataset, rootUri: string): Promise<void> {
   await runEntityTransaction(perspective, async (tx) => {
@@ -739,6 +767,7 @@ export async function deleteBlocks(perspective: BlockDataset, rootUri: string): 
       if (hasChildren(resolved.model)) {
         for (const childUri of resolved.model.children) await deleteNode(childUri, depth + 1);
       }
+      for (const replyUri of commentsOf(resolved.model)) await deleteNode(replyUri, depth + 1);
       await resolved.model.delete(tx.batchId);
     }
     await deleteNode(rootUri, 0);

@@ -199,6 +199,7 @@ kernels are in `packages/module-system/shared/src/kernels.ts`:
 | `records`        | Records in the space — `create`, `link`, `update`, `remove`, and **`find` / `subscribe`**, the read half a module never had |
 | `agentData`      | The agent's own records, for `entities: { scope: 'agent' }`                                                                 |
 | `presence`       | Who is here and what they are doing; publish an activity of your own                                                        |
+| `view`           | The screen — where this agent's pointer is, what is in view, what to show them instead, what to draw on top                 |
 | `ephemeral`      | Peer-to-peer transport, for coordinating without storing                                                                    |
 | `media`          | `getUserMedia` / `getDisplayMedia`; `publish` what you capture, `input()` what another module did                           |
 | `peerConnection` | `RTCPeerConnection`s, overridable in a test                                                                                 |
@@ -213,6 +214,28 @@ transport, and a test builds your store with none.
 
 The one trigger a module has is `records.subscribe` — records changed. Anything periodic has no medium
 yet, deliberately; see `docs/architecture/capabilities-and-surfaces.md`.
+
+### Drawing on somebody else's surface
+
+`view.decorate(() => marks)` is how a module puts something at a _place_ — a peer's cursor, a pin on a
+card, a highlight on a record an extraction pass touched. A mark is `{ id, at, node }`: the node is a
+`SchemaNode`, so what it looks like stays data, and the host owns positioning and easing, because only
+the host can turn a frame into pixels.
+
+**Nothing you send is a pixel.** `LiveAnchor` names the frame it is in — a canvas's own world units, a
+fraction of a record's box, a fraction of the content region — and a mark whose frame is not on screen
+is not drawn. Two agents have different window sizes, different panels docked and different zoom, so a
+pixel offset means somewhere else entirely on the other screen; the sender cannot see it go wrong,
+because their own cursor is always in the right place.
+
+Two rules that bite:
+
+- **Key by `id`.** A mark is drawn once while its id is present, and only its position changes. Build
+  anything that can change later — a name that arrives after the first message — as an expression
+  inside the node rather than a value baked into it, or it will never update.
+- **A record is anchorable only if something stamped it.** `we-draggable` publishes `data-we-record`
+  from its `recordId`, which covers most cards; anything else opts in. See the primitives'
+  CONVENTIONS.md, including why the marker usually has no box of its own.
 
 ## Blocks, views and functions
 

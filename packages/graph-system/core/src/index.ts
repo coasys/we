@@ -23,10 +23,11 @@ export {
   dragNodeBehaviour,
   expandOnClickBehaviour,
   expandOnDoubleClickBehaviour,
+  marqueeSelectBehaviour,
   panZoomBehaviour,
   selectBehaviour,
 } from './behaviours';
-export type { PanZoomOptions, SelectOptions } from './behaviours';
+export type { MarqueeSelectOptions, PanZoomOptions, SelectOptions } from './behaviours';
 export {
   DEFAULT_CONTROLS,
   defaultControls,
@@ -36,14 +37,17 @@ export {
   zoomOutControl,
 } from './controls';
 export { connectionTarget } from './connect';
-export { GraphEngine, kindOf } from './engine';
+export { GraphEngine, kindOf, NO_PENDING_EDGES, PENDING_EDGE_PREFIX, PENDING_EDGE_TYPE } from './engine';
 export {
   anchorsOf,
   bowOffsets,
   distanceToEdge,
   bendPoints,
   edgeBounds,
+  angleOf,
   endOf,
+  facingAt,
+  facingOf,
   fractionAlong,
   groupByEndpoints,
   orthogonalThrough,
@@ -52,14 +56,16 @@ export {
   routeEdge,
   routesAlike,
   splineThrough,
+  trimCubicEnd,
   trimToRadius,
+  turnBetween,
   waypointFromWorld,
   waypointsOf,
   waypointToWorld,
 } from './geometry';
-export type { EdgeClearance, EdgeWaypoint } from './geometry';
+export type { Cubic, EdgeClearance, EdgeWaypoint, Facing } from './geometry';
 export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
-export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
+export type { ChangeReason, EngineOptions, EngineStatus, PendingEdges } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';
 export type { CollapseResult } from './expansion';
 export { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, wouldFold } from './fold';
@@ -71,6 +77,7 @@ export type { IndexedNode } from './spatial';
 export { GraphStore } from './store';
 export type { StoreChange } from './store';
 export {
+  blendColors,
   edgeVisual,
   matches,
   nodeVisual,
@@ -81,5 +88,5 @@ export {
   resolveText,
 } from './style';
 export type { EdgeVisual, MetricValues } from './style';
-export { boundsOf, Viewport } from './viewport';
+export { boundsFromPoints, boundsOf, Viewport } from './viewport';
 export type { Bounds, ViewportState } from './viewport';

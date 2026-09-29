@@ -108,6 +108,22 @@ describe('canvasCard', () => {
     ]);
   });
 
+  it('carries the counts the seed read, and nothing for a card nobody has touched', () => {
+    const touched = canvasCard({
+      type: 'TaskBlock',
+      label: 'x',
+      data: { signalsCount: 3, commentsCount: 2 },
+      display: task,
+      states,
+    });
+    expect(touched).toMatchObject({ signals: 3, comments: 2 });
+    // The seed leaves a zero out entirely, so the card has to read an absent field as nothing —
+    // and a count is never a *line*, which would caption the card "Signals count: 3".
+    const untouched = canvasCard({ type: 'TaskBlock', label: 'x', data: {}, display: task, states });
+    expect(untouched).toMatchObject({ signals: 0, comments: 0 });
+    expect(touched.lines.map((line) => line.name)).toEqual([]);
+  });
+
   it('draws no heading for a record with no name, since the header already says what it is', () => {
     const card = canvasCard({ type: 'TaskBlock', label: 'TaskBlock', data: {}, display: task, states });
     expect(card.title).toBe('');
@@ -167,6 +183,18 @@ describe('CANVAS_RECORD_CARD', () => {
     expect(evaluate(swatch, { line: { swatch: '#f8cd51', swatchRadius: '50%' } })).toContain(
       'border-radius: 50%; background: #f8cd51;',
     );
+  });
+
+  it('draws the reaction and reply counts only where there are any', () => {
+    // A canvas of untouched cards must gain no furniture at all — the rule the board and calendar
+    // summaries follow, expressed here as `display: none` because the fragment cannot use `$if`.
+    const line = expressions.find((source) => source.startsWith('card.signals || card.comments ?')) ?? '';
+    const reactions = expressions.find((source) => source.startsWith('card.signals ?')) ?? '';
+    const replies = expressions.find((source) => source.startsWith('card.comments ?')) ?? '';
+    expect(evaluate(line, { card: { signals: 0, comments: 0 } })).toBe('display: none;');
+    expect(evaluate(line, { card: { signals: 0, comments: 2 } })).toContain('font-size');
+    expect(evaluate(reactions, { card: { signals: 0 } })).toBe('display: none;');
+    expect(evaluate(replies, { card: { comments: 0 } })).toBe('display: none;');
   });
 
   it('says "suggested" on a draft, floated clear of the shape, and nothing on an agreed card', () => {

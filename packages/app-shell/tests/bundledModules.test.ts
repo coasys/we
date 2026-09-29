@@ -1,77 +1,138 @@
 /**
- * Seed-declared module activation.
+ * Every module this build ships: well formed, and able to run *on this host*.
  *
- * The seed's stated purpose already includes "which modules to include", so this is the deployment
- * layer of the three-part enablement story — `AgentSettings.installedModules` and
- * `Space.enabledModules` are the other two. The map of factories is generated from the seed
- * (`bundledModules.generated.ts`); what is tested here is the activation over it.
+ * Two different questions, and only the first was asked. `lintModule` judges a definition on its own —
+ * a definition can be perfect and still be refused at registration, because refusal is about what the
+ * host implements. That gap is not theoretical: the live module named the `view` kernel, which the bag
+ * implements and `HOST_KERNELS` did not list, so it was refused at boot and had no store, no launcher,
+ * no slot and no panel. The feature was absent, and a refusal reads as a console line in an app that
+ * otherwise works — so the obvious conclusion is that the module is switched off somewhere.
+ *
+ * The registry already checks both at boot. Here they are red tests instead of console lines, which is
+ * the whole point: "a module quietly does less" is the failure mode this codebase keeps meeting.
+ *
+ * It lives here rather than in `@we/module-testing` because this is the only package that depends on
+ * every bundled module; a testing package importing them all would invert the dependency direction the
+ * contract packages exist to keep straight.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { activateSeedModules } from '@shared/registries/bundledModules';
+import { bundledModules } from '@shared/registries/bundledModules.generated';
+import { createModuleStoreDeps, HOST_KERNELS } from '@shared/registries/moduleHostServices';
+import { checkModuleCompatibility, KERNEL_NAMES, lintModule } from '@we/module-shared';
+import { describe, expect, it } from 'vitest';
 
-import { activateSeedModules, bundledModules } from '../src/shared/registries/bundledModules';
-import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
+/**
+ * No framework components, which is what makes this runnable under plain vitest.
+ *
+ * A module that takes one from the host — the globe, the graph — gets `undefined` for it. That is
+ * exactly what `lintModule` should tolerate: it judges the *declaration*, and a component's value is
+ * the host's business. A module that needed a real component to describe itself would be doing
+ * something at definition time that belongs in its store.
+ */
+const host = { components: {} };
 
-const host = { backend: 'ad4m', framework: 'solid' };
-const deps = { components: { CesiumGlobe: () => null, GraphView: () => null } };
+describe('bundled modules', () => {
+  for (const [id, factory] of Object.entries(bundledModules)) {
+    it(`${id} satisfies the module contract`, () => {
+      const lint = lintModule(factory(host));
+      expect(lint.problems).toEqual([]);
+      expect(lint.warnings).toEqual([]);
+    });
+  }
 
-beforeEach(() => {
-  for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
+  /**
+   * The check that was missing, and the one that matters most: can it run *here*.
+   *
+   * A definition can be flawless and still be refused, because refusal is about the host. Registration
+   * reports its reasons to the console and carries on, which is the right thing for a deployment naming
+   * a module it does not ship and the wrong thing to find out from.
+   */
+  for (const [id, factory] of Object.entries(bundledModules)) {
+    it(`${id} can run on this host`, () => {
+      const outcome = checkModuleCompatibility(factory(host), {
+        backend: 'ad4m',
+        framework: 'solid',
+        kernels: HOST_KERNELS,
+      });
+      expect(outcome.problems).toEqual([]);
+      expect(outcome.compatible).toBe(true);
+    });
+  }
+
+  it('names each module under the id its manifest claims', () => {
+    // A seed key that disagreed with the manifest would namespace the store under one name and the
+    // predicates under another, and nothing else checks it.
+    for (const [id, factory] of Object.entries(bundledModules)) {
+      expect(factory(host).manifest.id).toBe(id);
+    }
+  });
 });
 
-describe('activateSeedModules', () => {
-  it('activates a module the seed declares', () => {
-    const result = activateSeedModules(['globe'], deps, host, moduleRegistry);
-    expect(result.activated).toEqual(['globe']);
-    expect(moduleRegistry.has('globe')).toBe(true);
+describe('what this host says it implements', () => {
+  /**
+   * `HOST_KERNELS` against the keys the deps bag actually builds, in both directions.
+   *
+   * Two hand-maintained copies of one fact, and each way round fails differently. A kernel implemented
+   * and not declared means every module naming it is refused, silently — which is the bug this test was
+   * written for. A kernel declared and not implemented is worse: the module registers, asks for it, and
+   * gets `undefined` from a bag that promised it.
+   */
+  /**
+   * The one kernel the generic bag does not carry.
+   *
+   * `secrets` reads a module's own secret-typed settings, so it cannot be built without knowing which
+   * module is asking — the registry adds it per module. Named here rather than allowed by a loose
+   * assertion, so the exception stays one exception.
+   */
+  const PER_MODULE = ['secrets'];
+
+  it('declares exactly the kernels it hands a module', () => {
+    const built = createModuleStoreDeps({
+      signal: (initial) => [() => initial, () => {}],
+      effect: (fn) => fn(),
+    });
+    const handed = [...Object.keys(built.kernels), ...PER_MODULE].sort();
+    expect([...HOST_KERNELS].sort()).toEqual(handed);
   });
 
-  it('activates nothing when the seed declares nothing', () => {
-    expect(activateSeedModules(undefined, deps, host, moduleRegistry).activated).toEqual([]);
-    expect(moduleRegistry.all()).toHaveLength(0);
+  it('names only kernels the contract knows', () => {
+    // A typo here is the same silent refusal as an omission, from the other direction.
+    for (const name of HOST_KERNELS) expect(KERNEL_NAMES).toContain(name);
   });
+});
 
-  it('reports an unknown id rather than ignoring it', () => {
-    // A silently missing module surfaces much later as an unexplained missing component — which is
-    // exactly the confusion the renderer's placeholder now has to name.
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const result = activateSeedModules(['globe', 'nonexistent'], deps, host, moduleRegistry);
-
-    expect(result.activated).toEqual(['globe']);
-    expect(result.missing).toEqual(['nonexistent']);
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
-  });
-
-  it('records a refusal separately from a missing id — they are different faults', () => {
-    // Missing means the build lacks the module; refused means it is present but cannot run here.
-    // Collapsing them would send someone hunting for a packaging problem that isn't there.
-    const refusing = { register: () => ({ registered: false, problems: ['needs backend nextgraph'] }) };
-    const result = activateSeedModules(['globe'], deps, host, refusing);
-
-    expect(result.activated).toEqual([]);
-    expect(result.missing).toEqual([]);
-    expect(result.refused).toEqual([{ id: 'globe', problems: ['needs backend nextgraph'] }]);
-  });
-
-  it('passes host components through, so a module never imports them itself', () => {
-    // The globe's definition is built from the CesiumGlobe the host already holds — which is what
-    // keeps Solid and @we/widgets single instances.
-    activateSeedModules(['globe'], deps, host, moduleRegistry);
-    expect(moduleRegistry.get('globe')?.definition.contributes?.components?.CesiumGlobe).toBe(
-      deps.components.CesiumGlobe,
+describe('a module the seed asked for and the host refused', () => {
+  /**
+   * That it is *said out loud*, in the line somebody reads.
+   *
+   * The registry already warned per refusal and that was not enough: the boot summary listed only what
+   * started, so a refused module read as a healthy boot with a feature mysteriously absent. This is the
+   * cheap half of the fix — the expensive half is the compatibility test above, which stops it happening.
+   */
+  it('is reported, with the reason, rather than left to a warning further up the console', () => {
+    const outcome = activateSeedModules(
+      ['needy'],
+      { components: {} },
+      { backend: 'ad4m', framework: 'solid', kernels: ['records'] },
+      {
+        register: (definition, hostProfile) => {
+          const checked = checkModuleCompatibility(definition, hostProfile);
+          return { registered: checked.compatible, problems: checked.problems };
+        },
+      },
+      {
+        needy: () => ({
+          manifest: { id: 'needy', name: 'Needy', requires: { kernels: ['view'] } },
+        }),
+      },
     );
-  });
 
-  it('exposes every module the seed names, in the seed’s order', () => {
-    // The generated map is the seed's list: an unlisted module leaves the bundle, and the order is
-    // the module rail's order.
-    expect(Object.keys(bundledModules)).toEqual(['call', 'transcribe', 'pocket', 'notes', 'globe', 'graph', 'polls']);
-  });
-
-  it('takes a factory map of its own, so a test can activate a module the seed left out', () => {
-    const custom = { extra: () => ({ manifest: { id: 'extra', name: 'Extra' } }) };
-    const result = activateSeedModules(['extra'], deps, host, moduleRegistry, custom);
-    expect(result.activated).toEqual(['extra']);
-    expect(moduleRegistry.has('extra')).toBe(true);
+    expect(outcome.refused).toEqual([
+      { id: 'needy', problems: expect.arrayContaining([expect.stringContaining('view')]) },
+    ]);
+    // Reported rather than thrown, and not counted as activated — a deployment naming a module it does
+    // not ship is a configuration mistake, not a reason to fail boot.
+    expect(outcome.activated).toEqual([]);
+    expect(outcome.missing).toEqual([]);
   });
 });

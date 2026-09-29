@@ -1,15 +1,20 @@
 /**
  * The two halves of a drag meeting: what is held on the way out, and what releases it.
  *
- * `pendingOrder` proves the rules in isolation. What is left to check is the composition, because
- * the mistake here is not in either rule — it is in releasing at the wrong moment, and the wrong
+ * `@we/optimism` proves the rules in isolation. What is left to check is the composition, because
+ * the mistake here is not in any one rule — it is in releasing at the wrong moment, and the wrong
  * moment looks exactly like the right one from inside a single function.
+ *
+ * Every write below is followed by `done`, which is what `boards.ts` does when one returns. It is
+ * not decoration: until the last write behind a hold is back, nothing the data says is about that
+ * hold yet, so a test that omits it is testing a board mid-drag rather than one that has been
+ * dropped. The case at the end is what that rule is for.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { boardOptimism } from '../src/shared/boardOptimism';
 
-const { hold, release, holdStatus, releaseStatus } = boardOptimism.ports;
+const { hold, release, holdStatus, releaseStatus, done, doneStatus } = boardOptimism.ports;
 
 /*
   Drop every entry, so one test cannot leak into the next through the module singleton.
@@ -54,6 +59,7 @@ describe('an arrangement in flight', () => {
 
   it('is released once the data has moved', () => {
     hold('col-1', 'arranges', ['b', 'a']);
+    done('col-1', 'arranges');
     // Two draws, which is the real sequence: the first is made from the data as it still stands and
     // is what gives the entry its baseline; the second is made from the push that answered.
     boardOptimism.settle(observedFrom({ 'col-1.arranges': ['a', 'b'] }));
@@ -90,6 +96,7 @@ describe('a card’s state, held as an arrangement of one', () => {
 
   it('is released once the record actually reads as the new state', () => {
     holdStatus('t1', 'doing');
+    doneStatus('t1');
     boardOptimism.settle(observedFrom({ 't1.status': ['todo'] }));
     boardOptimism.settle(observedFrom({ 't1.status': ['doing'] }));
 
@@ -98,6 +105,7 @@ describe('a card’s state, held as an arrangement of one', () => {
 
   it('is released when the record reads as something else entirely — a peer moved it', () => {
     holdStatus('t1', 'doing');
+    doneStatus('t1');
     boardOptimism.settle(observedFrom({ 't1.status': ['todo'] }));
     boardOptimism.settle(observedFrom({ 't1.status': ['blocked'] }));
 
@@ -136,6 +144,9 @@ describe('what a draw reports', () => {
     hold('col-1', 'arranges', ['a']);
     hold('col-2', 'arranges', ['b', 'c']);
     holdStatus('b', 'doing');
+    done('col-1', 'arranges');
+    done('col-2', 'arranges');
+    doneStatus('b');
 
     // The draw that gives all three their baselines, then the one made from the answer.
     boardOptimism.settle(observedFrom({ 'col-1.arranges': ['a', 'b'], 'col-2.arranges': ['c'], 'b.status': ['todo'] }));
@@ -144,5 +155,49 @@ describe('what a draw reports', () => {
     );
 
     expect(boardOptimism.inFlight()).toBe(false);
+  });
+});
+
+describe('a board dragged twice before the first write is back', () => {
+  /*
+    The rule the board did not have until `@we/optimism` brought it over from involvements.
+
+    Two drags in a second are two writes for one column, and the first one's echo arrives while the
+    second drag is what is on screen. Judged then, "the data has moved" is true — of data the person
+    has already superseded — so the hold lifts, the column is drawn from the first answer, and the
+    cards jump back and then forward again as the second write lands.
+  */
+  it('ignores the first write echoing back under the second drag', () => {
+    hold('col-1', 'arranges', ['b', 'a']);
+    hold('col-1', 'arranges', ['a', 'b', 'c']);
+    done('col-1', 'arranges'); // the first write returns; the second is still going
+
+    boardOptimism.settle(observedFrom({ 'col-1.arranges': ['b', 'a'] }));
+
+    expect(boardOptimism.overlay().order('col-1', 'arranges', ['b', 'a'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('judges it against a fresh baseline once the last write is back', () => {
+    hold('col-1', 'arranges', ['b', 'a']);
+    hold('col-1', 'arranges', ['a', 'b', 'c']);
+    done('col-1', 'arranges');
+    boardOptimism.settle(observedFrom({ 'col-1.arranges': ['b', 'a'] }));
+    done('col-1', 'arranges');
+
+    // Whatever the data said while writes were in flight is the history of the earlier press, so the
+    // baseline is taken again from here.
+    boardOptimism.settle(observedFrom({ 'col-1.arranges': ['b', 'a'] }));
+    expect(boardOptimism.overlay().order('col-1', 'arranges', ['b', 'a'])).toEqual(['a', 'b', 'c']);
+
+    boardOptimism.settle(observedFrom({ 'col-1.arranges': ['a', 'b', 'c'] }));
+    expect(boardOptimism.inFlight()).toBe(false);
+  });
+
+  it('a refused write under a later drag leaves the later one drawn', () => {
+    hold('col-1', 'arranges', ['b', 'a']);
+    hold('col-1', 'arranges', ['a', 'b', 'c']);
+    release('col-1', 'arranges');
+
+    expect(boardOptimism.overlay().order('col-1', 'arranges', ['x'])).toEqual(['a', 'b', 'c']);
   });
 });

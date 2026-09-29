@@ -79,11 +79,7 @@ export const ROOT_MODELS = [
  * `packages/api/src/sdnaHelpers.ts`, which hit this same race first.
  */
 async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | undefined): Promise<boolean> {
-  if (!targetClass) return false;
-  const links = await p.get(
-    new LinkQuery({ source: targetClass, predicate: 'rdf://type', target: 'ad4m://SubjectClass' }),
-  );
-  return links.length > 0;
+  return targetClass ? (await cachedSubjectClasses(p)).has(targetClass) : false;
 }
 
 /**
@@ -99,15 +95,39 @@ export async function bulkHasSubjectClassLink(
   p: PerspectiveProxy,
   targetClasses: (string | undefined)[],
 ): Promise<boolean[]> {
-  // Short-circuit when there are no classes to check.
   if (targetClasses.length === 0) return [];
-  // Single class — the same one round trip, but source-filtered, so the executor returns one link
-  // rather than every registered class in the space.
-  if (targetClasses.length === 1) return [await hasSubjectClassLink(p, targetClasses[0])];
-
-  const allLinks = await p.get(new LinkQuery({ predicate: 'rdf://type', target: 'ad4m://SubjectClass' }));
-  const registered = new Set(allLinks.map((l) => l.data.source));
+  const registered = await cachedSubjectClasses(p);
   return targetClasses.map((tc) => (tc ? registered.has(tc) : false));
+}
+
+/**
+ * Every class this perspective marks as a SubjectClass, read once and shared for a moment.
+ *
+ * A space switch asks three times in a row — \`hasCoreSchema\`, then \`installModules\`, then
+ * \`refreshSpace\` — and each used to be its own round trip on the load path. The answer is one
+ * query whichever classes are asked about, so it is read once and shared: concurrent callers share
+ * the read in flight, and later ones reuse it for a few seconds. Dropped with the stored shapes
+ * whenever this package writes a registration, and never kept after a failure.
+ *
+ * Short on purpose. A class another peer registers inside the window reads as absent, and a
+ * registration written on that answer is a duplicate — the thing \`cleanupSpaceSdna\` exists for.
+ */
+const subjectClassesCache = new Map<string, { classes: Promise<Set<string>>; at: number }>();
+const SUBJECT_CLASSES_CACHE_TTL = 3_000;
+
+function cachedSubjectClasses(p: PerspectiveProxy): Promise<Set<string>> {
+  const now = Date.now();
+  const cached = subjectClassesCache.get(p.uuid);
+  if (cached && now - cached.at < SUBJECT_CLASSES_CACHE_TTL) return cached.classes;
+  const classes = p
+    .get(new LinkQuery({ predicate: 'rdf://type', target: 'ad4m://SubjectClass' }))
+    .then((links) => new Set(links.map((l) => l.data.source)));
+  const entry = { classes, at: now };
+  subjectClassesCache.set(p.uuid, entry);
+  classes.catch(() => {
+    if (subjectClassesCache.get(p.uuid) === entry) subjectClassesCache.delete(p.uuid);
+  });
+  return classes;
 }
 
 /**
@@ -128,6 +148,16 @@ export async function bulkHasSubjectClassLink(
 export interface StoredShape {
   /** `sh://path` of every property the stored shape declares. */
   paths: Set<string>;
+  /**
+   * How many property shapes sit on each path.
+   *
+   * A set of paths cannot tell one property on a predicate from two, and two is a real shape: a
+   * relation and its `reverseOf` inverse are one link read from both ends, so they share a
+   * predicate by construction. `WeNode` gained `inReplyTo` beside `comments` on `we://comment` and
+   * every existing space read as fresh — the set was unchanged — so the new relation never reached
+   * them and the reverse include silently found nothing to hydrate.
+   */
+  pathCounts: Map<string, number>;
   /** Class-level interpretation hint, decoded. */
   classHint?: string;
   /** `sh://path` of the property marked `ad4m://identity`, if any. */
@@ -158,7 +188,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   const entry = (targetClass: string): StoredShape => {
     const existing = shapes.get(targetClass);
     if (existing) return existing;
-    const created: StoredShape = { paths: new Set(), propHints: new Map() };
+    const created: StoredShape = { paths: new Set(), pathCounts: new Map(), propHints: new Map() };
     shapes.set(targetClass, created);
     return created;
   };
@@ -195,7 +225,10 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
   ]);
 
   for (const row of pathRows) {
-    if (row.targetClass && row.path) entry(row.targetClass).paths.add(row.path);
+    if (!row.targetClass || !row.path) continue;
+    const shape = entry(row.targetClass);
+    shape.paths.add(row.path);
+    shape.pathCounts.set(row.path, (shape.pathCounts.get(row.path) ?? 0) + 1);
   }
   for (const row of hintRows) {
     if (row.targetClass && row.hint !== undefined) entry(row.targetClass).classHint = decodeHint(row.hint);
@@ -233,15 +266,20 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
  *
  * A failed read is never cached: the callers fall back to an empty map for that call only.
  */
-const storedShapesCache = new Map<string, { shapes: Map<string, StoredShape>; at: number }>();
+const storedShapesCache = new Map<string, { shapes: Promise<Map<string, StoredShape>>; at: number }>();
 const STORED_SHAPES_CACHE_TTL = 10_000;
 
-async function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, StoredShape>> {
+/** Held as the read in flight, so callers that arrive together — a switch's two steps — share it. */
+function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, StoredShape>> {
   const now = Date.now();
   const cached = storedShapesCache.get(p.uuid);
   if (cached && now - cached.at < STORED_SHAPES_CACHE_TTL) return cached.shapes;
-  const shapes = await storedShapes(p);
-  storedShapesCache.set(p.uuid, { shapes, at: now });
+  const shapes = storedShapes(p);
+  const entry = { shapes, at: now };
+  storedShapesCache.set(p.uuid, entry);
+  shapes.catch(() => {
+    if (storedShapesCache.get(p.uuid) === entry) storedShapesCache.delete(p.uuid);
+  });
   // Prevent the map from growing without bound across many perspectives.
   if (storedShapesCache.size > 20) {
     for (const [key, entry] of storedShapesCache) {
@@ -257,11 +295,33 @@ async function cachedStoredShapes(p: PerspectiveProxy): Promise<Map<string, Stor
  */
 export function forgetStoredShapes(p: Pick<PerspectiveProxy, 'uuid'>): void {
   storedShapesCache.delete(p.uuid);
+  subjectClassesCache.delete(p.uuid);
+}
+
+/**
+ * Start reading the stored shapes now, for a caller about to need them.
+ *
+ * \`hasCoreSchema\` calls this: on a WE space the next two steps of the switch read the stored
+ * shapes, and starting the read beside the marker check takes a round trip off the load path. On a
+ * foreign dataset it is five reads nobody uses, which is the price.
+ */
+export function warmStoredShapes(p: PerspectiveProxy): void {
+  void cachedStoredShapes(p).catch(() => {});
+}
+
+/**
+ * Start every read a switch into this perspective makes: the SubjectClass markers and the stored
+ * shapes. What a switch arriving within their windows asks for is then already answered.
+ */
+export function warmSchemaReads(p: PerspectiveProxy): void {
+  warmStoredShapes(p);
+  void cachedSubjectClasses(p).catch(() => {});
 }
 
 /** Exported for testing — clears the storedShapes TTL cache. */
 export function clearStoredShapesCache(): void {
   storedShapesCache.clear();
+  subjectClassesCache.clear();
 }
 
 /**
@@ -273,7 +333,11 @@ export function clearStoredShapesCache(): void {
  * worth more than the tidiness of a narrow export surface.
  */
 export function declaredShape(model: EntityClass): StoredShape {
-  const out: StoredShape = { paths: new Set(getEntityPredicates(model)), propHints: new Map() };
+  const out: StoredShape = {
+    paths: new Set(getEntityPredicates(model)),
+    pathCounts: new Map(),
+    propHints: new Map(),
+  };
   const generate = (
     model as unknown as {
       generateSHACL?: () => {
@@ -290,6 +354,7 @@ export function declaredShape(model: EntityClass): StoredShape {
     out.classHint = shape?.interpretationHint || undefined;
     for (const property of shape?.properties ?? []) {
       if (!property.path) continue;
+      out.pathCounts.set(property.path, (out.pathCounts.get(property.path) ?? 0) + 1);
       if (property.identity) out.identityPath = property.path;
       if (property.interpretationHint) out.propHints.set(property.path, property.interpretationHint);
     }
@@ -338,6 +403,14 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
 
   const declared = declaredShape(model);
   if ([...declared.paths].some((predicate) => !current.paths.has(predicate))) return true;
+  // A path the stored shape already has, but fewer times than the model now declares — a relation
+  // gaining its inverse. Only when the declared side has counts at all: a model whose SHACL could
+  // not be generated has none, and reading that as "declares nothing" would call every shape fresh.
+  if (declared.pathCounts.size) {
+    for (const [path, count] of declared.pathCounts) {
+      if ((current.pathCounts?.get(path) ?? 0) < count) return true;
+    }
+  }
   if (declared.identityPath !== current.identityPath) return true;
   // Hints are space-owned once customized (see StoredShape.hintsCustomized): a stored hint that
   // differs from the declaration is then the community's tuning, not staleness, and rewriting it

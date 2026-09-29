@@ -60,6 +60,8 @@ interface HarnessDeps {
   dataset?: () => unknown;
   settings?: (() => Record<string, boolean | string | number>) | undefined;
   onDispose?: (fn: () => void) => void;
+  /** Which call the address names — what the transcript's window is scoped to. */
+  callOnScreen?: () => string | null;
 }
 
 function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
@@ -2842,5 +2844,104 @@ describe('a stream that went away', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * The transcript's window.
+ *
+ * A transcript is two documents with opposite anchors — a tail while the call runs, a document
+ * afterwards — and the window is what makes both bounded. Before it there was no limit at all, so
+ * every utterance re-read, re-hydrated and re-fingerprinted everything already said: the cost of
+ * speaking grew with the length of the conversation.
+ */
+describe('the transcript window', () => {
+  it('opens on a small page, following the live end', () => {
+    /*
+      Fifty, not the two hundred it grows by. Opening is paid by everybody on every call, and a
+      page that size is also a hundred-odd custom elements laying out in one pass — which is what
+      made the panel open a couple of lines short of the bottom.
+    */
+    const h = harness();
+    expect(h.store.transcriptShown()).toBe(50);
+    expect(h.store.transcriptFromStart()).toBe(false);
+  });
+
+  it('grows by more than it opened with, because the two answer different questions', () => {
+    /*
+      The asymmetry is the point. The window grows by re-running the query at a bigger limit rather
+      than by fetching a page and appending, so reading backwards is quadratic in the number of
+      loads — and the loads are automatic now, on scroll, rather than one press each. A small step
+      would turn a scroll through a long transcript into twenty re-fetches of a growing list.
+    */
+    const h = harness();
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(250);
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(450);
+  });
+
+  /*
+    Reading from the start is a different QUERY, not a longer scroll — the window is anchored to the
+    live end, so the top of what is loaded is not the beginning of the conversation and no amount of
+    scrolling reaches one from the other. It re-anchors and starts again at one page, which is what
+    makes reaching the beginning of a two-hour call cheap rather than a matter of pressing "earlier"
+    thirty times.
+  */
+  it('re-anchors to the beginning, at one page again', () => {
+    const h = harness();
+    h.store.showMoreTranscript();
+    h.store.showMoreTranscript();
+
+    h.store.readTranscriptFromStart();
+    expect(h.store.transcriptFromStart()).toBe(true);
+    expect(h.store.transcriptShown()).toBe(50);
+  });
+
+  it('goes back to following the end', () => {
+    const h = harness();
+    h.store.readTranscriptFromStart();
+    h.store.showMoreTranscript();
+
+    h.store.readTranscriptLive();
+    expect(h.store.transcriptFromStart()).toBe(false);
+    expect(h.store.transcriptShown()).toBe(50);
+  });
+
+  /*
+    A different conversation is a different document.
+
+    Without this the window is a high-water mark across calls: read six hundred lines of one and the
+    next opens by loading six hundred of its own — the cost the window exists to bound, arriving one
+    call late.
+  */
+  it('starts again when the call on screen changes', async () => {
+    let onScreen: string | null = 'call-one';
+    const h = harness([], { callOnScreen: () => onScreen });
+
+    // Read back into it, and from the other end — both are state the next call must not inherit.
+    h.store.readTranscriptFromStart();
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(250);
+    expect(h.store.transcriptFromStart()).toBe(true);
+
+    onScreen = 'call-two';
+    await h.settle();
+
+    expect(h.store.transcriptShown()).toBe(50);
+    expect(h.store.transcriptFromStart()).toBe(false);
+  });
+
+  /*
+    And does NOT start again for a tick that changed nothing — a reader who has just asked for more
+    in the call they are already in must not have it taken away by the next presence heartbeat.
+  */
+  it('leaves the window alone while the call on screen is the same', async () => {
+    const h = harness([], { callOnScreen: () => 'call-one' });
+
+    h.store.showMoreTranscript();
+    await h.settle();
+
+    expect(h.store.transcriptShown()).toBe(250);
   });
 });

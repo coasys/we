@@ -31,6 +31,7 @@ import {
   CollapsedContent,
   Column,
   Combobox,
+  CountMark,
   DropdownMenu,
   EditableImage,
   FlipCard,
@@ -148,6 +149,7 @@ export const componentRegistry: ComponentRegistry = {
   // Host-only for the same reason: a template writes `$panels`, never this.
   PanelLane: PanelLaneOnDemand,
   SignalControl,
+  CountMark,
 
   // @we/block-solid
   BlockComposer,

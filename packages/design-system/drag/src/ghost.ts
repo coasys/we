@@ -3,7 +3,8 @@ import type { GhostRenderer, GhostSpec } from './types';
 
 /** What the caller holds while a drag is in flight. */
 export interface Ghost {
-  el: HTMLElement;
+  /** Null for a ghost that draws nothing — see `{ kind: 'none' }` on `GhostSpec`. */
+  el: HTMLElement | null;
   /** Put the ghost's top-left corner here, in client coordinates. */
   moveTo(left: number, top: number): void;
   destroy(): void;
@@ -36,7 +37,15 @@ export function setGhostRenderer(fn: GhostRenderer | null): () => void {
   };
 }
 
+/** A ghost that draws nothing, for `{ kind: 'none' }` — see the note on `GhostSpec`. */
+const NO_GHOST: Ghost = {
+  el: null,
+  moveTo() {},
+  destroy() {},
+};
+
 export function createGhost(spec: GhostSpec): Ghost {
+  if (spec.kind === 'none') return NO_GHOST;
   const el = buildGhost(spec);
   mountOverlay(el);
   let disposed = false;
@@ -57,7 +66,7 @@ export function createGhost(spec: GhostSpec): Ghost {
   };
 }
 
-function buildGhost(spec: GhostSpec): HTMLElement {
+function buildGhost(spec: Exclude<GhostSpec, { kind: 'none' }>): HTMLElement {
   if (spec.kind === 'clone') return cloneGhost(spec.source, spec.rect);
   if (spec.kind === 'node') {
     const drawn = renderer?.(spec.items) ?? null;

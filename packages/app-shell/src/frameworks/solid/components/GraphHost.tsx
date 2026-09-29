@@ -23,18 +23,29 @@ import '@we/graph-solid/styles';
 import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shared';
 import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
+import { Column, Row } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { placementStyle } from '@we/graph-expanders';
+import { placementPosition, placementStyle } from '@we/graph-expanders';
 import type { GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import type { RenderProps } from '@we/schema-solid';
 import { RenderSchema } from '@we/schema-solid';
 import { fillForSemantic } from '@we/template-kit';
-import { createComputed, createMemo, type JSX, Show } from 'solid-js';
+import { createComputed, createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
+import {
+  actAs,
+  actingAs,
+  pretendPeople,
+  pretendPeopleAvailable,
+  pretendSettings,
+  setPretendCount,
+} from '../../../shared/pretendPeople';
+import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
+import { componentRegistry } from '../registries/componentRegistry';
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
@@ -43,6 +54,8 @@ import { useShapeStore } from '../stores/ShapeStore';
 import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 import { nodeControls } from './graphControls';
+import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
+import { ReactionBadge } from './ReactionBadge';
 
 /**
  * How many rows a reverse lookup will read before giving up.
@@ -105,7 +118,7 @@ function DocumentCard(props: { node: GraphNode; fallback: JSX.Element }) {
 
   return (
     <Show when={editorState()} fallback={props.fallback}>
-      {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
+      {(state) => <BlockRenderer editorState={state() as never} dataset={datasetStore.currentDataset()?.handle} />}
     </Show>
   );
 }
@@ -152,6 +165,8 @@ function RecordCard(props: { node: GraphNode }) {
     lines: [],
     prose: [],
     pending: false,
+    signals: 0,
+    comments: 0,
   });
   createComputed(() =>
     setCard(
@@ -201,6 +216,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
       profiles: profileStore.profiles,
+      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+      profileFor: profileStore.profileFor,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
     }),
@@ -251,7 +268,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       dataset && dataset !== datasetStore.currentDataset()?.id
         ? datasetStore.datasets().find((d) => d.id === dataset || d.sharedId === dataset)?.handle
         : datasetStore.currentDataset()?.handle;
-    return bound.$getEntitiesForPerspective?.(entity, handle) ?? bound.$getEntity?.(entity);
+    return bound.$getEntityForDataset?.(entity, handle) ?? bound.$getEntity?.(entity);
   }
 
   /**
@@ -319,10 +336,110 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     });
   }
 
+  /**
+   * The canvas this graph is showing, if it is showing one — the surface a peer's mark is addressed to.
+   *
+   * Read out of the `canvas` seed's own options rather than taken as a prop, because that is already
+   * where a template says which canvas it is drawing: a second way of saying it would be a second
+   * thing to keep in step, and the one that fell behind would silently address marks to a canvas
+   * nobody is looking at. A graph with no canvas seed — a schema map, a static diagram — has no
+   * shared coordinate space, so it registers nothing and draws no marks.
+   */
+  const canvasId = createMemo(() => {
+    const seeds = Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : [];
+    for (const seed of seeds) {
+      if (!('source' in seed) || seed.source !== 'canvas') continue;
+      const id = seed.options?.canvas;
+      if (typeof id === 'string' && id) return id;
+    }
+    return null;
+  });
+
+  /**
+   * Register with the live-view host for as long as this graph is showing one canvas.
+   *
+   * Re-registered when the canvas changes, which is what keeps the surface key honest: a graph whose
+   * template switches canvas is a different shared coordinate space, and marks addressed to the old one
+   * must stop being drawn rather than being placed in the new one's units.
+   *
+   * ## An effect, emphatically not a memo
+   *
+   * This was a memo, and a memo is computed *lazily* — on first read, inside whatever computation
+   * happened to read it. That read was the graph's own decorations memo, which also depends on the
+   * registry's version signal. So registering bumped a signal from inside a computation that depends on
+   * it, which invalidated that computation from within itself, which registered again: `markDownstream`
+   * recursion until the stack went, and a frozen tab with no clue but a stack of one repeated frame. It
+   * bit hardest on a space change, where the canvas id changes and the whole cycle starts again.
+   *
+   * An effect runs in the effects queue, outside anybody's tracking scope, so the write is an ordinary
+   * update. The result goes in a signal because a value is still wanted downstream.
+   */
+  const [live, setLive] = createSignal<ReturnType<typeof registerLiveCanvas> | null>(null);
+  createEffect(() => {
+    const id = canvasId();
+    if (!id) {
+      setLive(null);
+      return;
+    }
+    const surface = registerLiveCanvas(id);
+    setLive(surface);
+    onCleanup(() => {
+      surface.dispose();
+      setLive(null);
+    });
+  });
+
+  /**
+   * The seeds with any pretend people mixed into a weighed canvas — a development tool; see
+   * `pretendPeople`. Everything else passes through untouched, and a production build never gets here.
+   */
+  const seedList = () => (Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : []);
+  const weighs = createMemo(() =>
+    seedList().some((seed) => 'source' in seed && seed.source === 'canvas' && Boolean(seed.options?.weigh)),
+  );
+  const pretending = () => pretendPeopleAvailable && sessionStore.devTools() && weighs();
+  const seeds = createMemo(() => {
+    const simulate = pretending() ? pretendSettings() : undefined;
+    if (!simulate) return props.seeds;
+    return seedList().map((seed) =>
+      'source' in seed && seed.source === 'canvas' && seed.options?.weigh
+        ? { ...seed, options: { ...seed.options, simulate } }
+        : seed,
+    ) as GraphViewProps['seeds'];
+  });
+
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard, record: RecordCard },
+    // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
+    nodeBadges: { reaction: ReactionBadge },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.
     nodeControls,
+    // Only while a canvas is weighed, in a development build with developer tools showing.
+    ...(pretendPeopleAvailable ? { overlay: () => <Show when={pretending()}>{PretendControl()}</Show> } : {}),
+
+    /**
+     * Peers' marks, and anything else a capability has put on this canvas.
+     *
+     * Turned from what a module declares — a `SchemaNode` and a point — into what the graph draws.
+     * The node is rendered against the **chrome** bag, not a template's: a mark comes from a
+     * capability the person installed, so it is repo-authored chrome wherever it happens to land, and
+     * grants follow authorship rather than render site.
+     */
+    decorations: () => {
+      const surface = live();
+      const bag = chromeBag();
+      if (!surface || !bag) return [];
+      return liveSurfaceMarks(surface.key).map((mark) => ({
+        id: mark.id,
+        x: mark.at.x,
+        y: mark.at.y,
+        ease: mark.ease,
+        // Passed through rather than defaulted here: only the producer knows the gap it is covering,
+        // and the graph's own stylesheet owns what a mark that does not say gets.
+        easeMs: mark.easeMs,
+        render: () => RenderSchema({ node: mark.node, stores: bag, registry: componentRegistry }),
+      }));
+    },
 
     /**
      * The parts of the graph's box the shell's floating panels are sitting over.
@@ -350,7 +467,11 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     pendingData: () => {
       const pending = recordStore.pendingCardStyle();
       const out: Record<string, Record<string, GraphValue>> = {};
-      for (const [nodeId, patch] of Object.entries(pending)) out[nodeId] = placementStyle(patch);
+      // Style and coordinate both: an undone move is a placement write like any other, and the
+      // `manual` layout reads a card's position off the same data bag its colour comes from.
+      for (const [nodeId, patch] of Object.entries(pending)) {
+        out[nodeId] = { ...placementStyle(patch), ...placementPosition(patch) };
+      }
       return out;
     },
 
@@ -362,6 +483,14 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       in between — so clearing where the rows arrive put the old value back for that whole window.
     */
     confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
+
+    /*
+      Connections the store has written and not yet seen come back — a line just drawn, one just deleted,
+      an end just moved — and the graph's report of what it is drawing from its own data, which is how the
+      store knows when to stop. The same round trip as `pendingData` and `confirmPending`, for lines.
+    */
+    pendingConnections: () => recordStore.pendingConnections(),
+    observeConnections: (connections) => recordStore.observeConnections(connections),
 
     /**
      * Tell the graph when the answer to one of its reads changes here.
@@ -518,7 +647,94 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     },
   };
 
-  return <GraphView {...props} host={host} />;
+  /*
+    The three seams the live-view host needs from a canvas, bound only while there is one.
+
+    `props` wins where a template bound the same callback: a template asking for the pointer is asking
+    for its own reason, and this has to forward rather than replace it. Nothing in the app binds either
+    today, so the spread is about not surprising whoever does.
+  */
+  return (
+    <GraphView
+      {...props}
+      seeds={seeds()}
+      host={host}
+      onPointerAt={(at) => {
+        live()?.reportPointer(at);
+        props.onPointerAt?.(at);
+      }}
+      onViewport={(region) => {
+        live()?.reportRegion(region);
+        props.onViewport?.(region);
+      }}
+      region={props.region ?? (live() ? liveSurfaceRegion(live()!.key) : null)}
+    />
+  );
 }
 
 export default GraphHost;
+
+/**
+ * How many pretend people are answering, and which of them the reader answers as — on the canvas
+ * itself, so it cannot be left on unnoticed. Development builds only; see `pretendPeople`.
+ */
+function PretendControl() {
+  const options = () => [
+    { label: 'Myself', value: '' },
+    ...pretendPeople().map((person) => ({ label: person.name, value: person.id })),
+  ];
+  return (
+    <Column
+      class="we-graph-pretend"
+      bg="surface-raised"
+      border="1px solid border"
+      shadow="sm"
+      r="200"
+      p="200"
+      gap="200"
+      maxWidth="240px"
+    >
+      <Row ay="center" gap="200">
+        <we-icon name="robot" color="text-muted" />
+        <we-text variant="footnote" color="text-muted">
+          Pretend people
+        </we-text>
+        <Row ay="center" gap="100" ml="auto">
+          <we-button
+            variant="ghost"
+            size="xs"
+            square
+            label="One fewer"
+            disabled={!pretendPeople().length}
+            onClick={() => setPretendCount(pretendPeople().length - 1)}
+          >
+            <we-icon name="minus" />
+          </we-button>
+          <we-text variant="footnote">{pretendPeople().length}</we-text>
+          <we-button
+            variant="ghost"
+            size="xs"
+            square
+            label="One more"
+            onClick={() => setPretendCount(pretendPeople().length + 1)}
+          >
+            <we-icon name="plus" />
+          </we-button>
+        </Row>
+      </Row>
+      <Show when={pretendPeople().length}>
+        <Row ay="center" gap="200">
+          <we-text variant="footnote" color="text-muted">
+            Answer as
+          </we-text>
+          <we-select
+            size="xs"
+            value={actingAs()}
+            options={options()}
+            onChange={(event: CustomEvent) => actAs(String(event.detail ?? ''))}
+          />
+        </Row>
+      </Show>
+    </Column>
+  );
+}

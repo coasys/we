@@ -85,6 +85,27 @@ describe('evaluation', () => {
     );
     const roots = { spaceStore: store, item: { role: 'admin' } };
     expect(run("filter(spaceStore.members, { role: 'admin' }).count()", roots)).toBe(1);
+    /*
+      The arithmetic counterpart of `count`, and the reason it exists: a thread's caption counts the
+      whole conversation, which is its replies plus each reply's own — and "how much" had no answer
+      in a library that could already say "how many".
+    */
+    expect(run('sum(rows.map(r, count(r.kids)))', { rows: [{ kids: [1, 2] }, { kids: [] }, { kids: [3] }] })).toBe(3);
+    /*
+      A window anchored to the END of a list is the reason this exists: "the newest 200 lines" is a
+      descending query, and a transcript is read oldest-first, so something has to turn one into the
+      other. Nothing else in the grammar can — there is no sort and no index arithmetic — so without
+      it a live feed cannot be bounded at all.
+    */
+    expect(run('reverse([1, 2, 3])', {})).toEqual([3, 2, 1]);
+    // A new list: the one given is untouched, so reversing a query result does not disturb anything
+    // else reading it.
+    const original = [1, 2, 3];
+    expect(run('reverse(rows)', { rows: original })).toEqual([3, 2, 1]);
+    expect(original).toEqual([1, 2, 3]);
+    // Total, like every other function here: not-a-list is the empty list, never a throw.
+    expect(run('reverse(nothing)', {})).toEqual([]);
+    expect(run("reverse('abc')", {})).toEqual([]);
     expect(run('spaceStore.members.count() > 1', roots)).toBe(true);
     expect(run('spaceStore.logout', roots)).toBeUndefined();
     expect(run('spaceStore', roots)).toBeUndefined();
@@ -127,6 +148,8 @@ describe('evaluation', () => {
     expect(run('null + 1')).toBe(1);
     expect(run("'x' in 'xyz'")).toBe(false);
     expect(run('count(5)')).toBe(0);
+    expect(run("sum('nonsense')")).toBe(0);
+    expect(run('sum([1, "two", 3])')).toBe(4);
     expect(run('nothing.filter(x, x)')).toEqual([]);
     expect(run('nothing.map(x, x)')).toEqual([]);
     expect(run('nothing.all(x, x)')).toBe(true);

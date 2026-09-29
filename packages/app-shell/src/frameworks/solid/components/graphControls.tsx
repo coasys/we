@@ -58,12 +58,24 @@ function Popup(props: { icon: string; title?: string; children: JSX.Element }) {
   );
 }
 
-/** A card's own colour: the picker's swatch, at the square's size, opening the picker itself. */
+/**
+ * A card's own colour: the picker's swatch, at the square's size, opening the picker itself.
+ *
+ * `confirm`, which is the one thing this asks of the picker that a theme editor does not. A commit
+ * here is a record write per card — nine of them for a selection of nine, each a round trip and
+ * each an entry in the canvas's undo history — so a picker that decided on every swatch clicked
+ * turned browsing five colours into forty-five writes and five undos for one decision. With it,
+ * the cards follow every choice and nothing is written until Apply.
+ *
+ * It also gives the reader the moment a canvas needs and a settings panel does not: the change is
+ * visibly *not yet made*, and Cancel puts it back.
+ */
 export const ColorControl: NodeControl = (props) => (
   <we-tooltip content={props.title ?? 'Colour'}>
     <we-color-picker
       tokens
       clearable
+      confirm
       // The fill the card is drawn in where it has no colour of its own — so the swatch shows what
       // the card looks like rather than a blank. Picking Default emits '' and hands the choice back.
       value={typeof props.value === 'string' && props.value ? props.value : props.fill}

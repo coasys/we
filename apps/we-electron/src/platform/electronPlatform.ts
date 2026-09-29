@@ -30,4 +30,12 @@ export const electronPlatform = createDesktopPlatform({
     chooseFile: (options) => window.electron.chooseFile(options),
   },
   saveFile: (file) => window.electron.saveFile(file),
+  /*
+    Only reached on a machine whose OS has no picker of its own — the main process asks, and it only
+    asks where Electron did not use the system picker. See `askRendererForScreenSource` there.
+  */
+  screenSources: {
+    onRequest: (listener) => window.electron.onScreenSourceRequest(listener),
+    choose: (id) => window.electron.chooseScreenSource(id),
+  },
 });

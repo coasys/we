@@ -1,14 +1,13 @@
 /// <reference types="vite/client" />
 
-/**
- * The shell imports a `.glb` for its 3D cube, and Vite resolves asset imports to a URL string at
- * build time. `vite/client` declares the common extensions but not this one, so a host that
- * typechecks the shell's source has to say so itself.
- *
- * Duplicated in `apps/we-preview`. It belongs with the asset, but an ambient declaration only
- * applies to the program that includes it, and each host compiles the shell under its own tsconfig.
- */
-declare module '*.glb' {
-  const src: string;
-  export default src;
-}
+/*
+  The shell's own ambient declarations reach this program through `include` in this app's tsconfig, which
+  names `packages/app-shell/src/shared/global.d.ts` directly.
+
+  Every host here compiles the shell's source under its own tsconfig, and an ambient declaration only
+  applies to the program that includes it — so each host used to carry its own copy of the shell's `*.glb`
+  block, with a comment in each apologising for the duplication. Naming the file in `include` gives one
+  list instead, and anything added to it arrives here for nothing. A triple-slash reference would do the
+  same job and is what `triple-slash-reference` forbids, which is why this is configuration rather than
+  a line of code.
+*/

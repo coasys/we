@@ -28,8 +28,8 @@ describe('a node ghost', () => {
 
     const ghost = createGhost({ kind: 'node', items: [item()] });
 
-    expect(ghost.el.className).toBe('record-card');
-    expect(ghost.el.isConnected).toBe(true);
+    expect(ghost.el!.className).toBe('record-card');
+    expect(ghost.el!.isConnected).toBe(true);
     ghost.destroy();
   });
 
@@ -50,8 +50,8 @@ describe('a node ghost', () => {
     // got before, and does not have to know which it is getting.
     const ghost = createGhost({ kind: 'node', items: [item('A post')] });
 
-    expect(ghost.el.hasAttribute('data-we-drag-ghost')).toBe(true);
-    expect(ghost.el.textContent).toContain('A post');
+    expect(ghost.el!.hasAttribute('data-we-drag-ghost')).toBe(true);
+    expect(ghost.el!.textContent).toContain('A post');
     ghost.destroy();
   });
 
@@ -59,7 +59,7 @@ describe('a node ghost', () => {
     setGhostRenderer(() => null);
     const ghost = createGhost({ kind: 'node', items: [item('A post')] });
 
-    expect(ghost.el.textContent).toContain('A post');
+    expect(ghost.el!.textContent).toContain('A post');
     ghost.destroy();
   });
 
@@ -69,8 +69,8 @@ describe('a node ghost', () => {
     setGhostRenderer(() => document.createElement('div'));
     const ghost = createGhost({ kind: 'node', items: [item()] });
 
-    expect(ghost.el.style.position).toBe('fixed');
-    expect(ghost.el.style.pointerEvents).toBe('none');
+    expect(ghost.el!.style.position).toBe('fixed');
+    expect(ghost.el!.style.pointerEvents).toBe('none');
     ghost.destroy();
   });
 
@@ -101,7 +101,7 @@ describe('registering', () => {
     setGhostRenderer(() => Object.assign(document.createElement('div'), { className: 'second' }));
 
     const ghost = createGhost({ kind: 'node', items: [item()] });
-    expect(ghost.el.className).toBe('second');
+    expect(ghost.el!.className).toBe('second');
     ghost.destroy();
   });
 
@@ -111,7 +111,7 @@ describe('registering', () => {
     off();
 
     const ghost = createGhost({ kind: 'node', items: [item()] });
-    expect(ghost.el.className).toBe('second');
+    expect(ghost.el!.className).toBe('second');
     ghost.destroy();
   });
 });

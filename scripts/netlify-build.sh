@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Netlify build — clones ad4m, builds the TypeScript SDK from source, and links
-# it into the WE workspace before running the normal build.
+# Netlify deploy-preview build — optionally builds @coasys/ad4m and
+# @coasys/ad4m-connect from source and links both into the WE workspace before
+# running the normal build.
 #
 # Why: WE's pnpm override pins a published pre-release tag of the SDK, and that
 # tag only moves when somebody hand-publishes one from an ad4m commit. New SDK
 # work — batch RPC endpoints, performance fixes — lands on ad4m's branches well
 # before that happens, so a preview built against the pin cannot exercise it.
 #
-# Which ad4m ref to build, in the order the answers are consulted:
+# Which ad4m a preview gets, in the order the answers are consulted:
 #
 #   1. AD4M_BRANCH in the Netlify UI — site-wide, overrides everything below.
 #   2. A `preview:ad4m@<ref>` label on the pull request. `preview:ad4m@pin` means
@@ -125,6 +126,32 @@ else
   npx rollup -c rollup.config.js
   echo "  built: $(ls lib/index.cjs 2>/dev/null && echo 'ok' || echo 'MISSING')"
 
+  echo "── Build @coasys/ad4m-connect from source"
+  # The app's PerspectiveProxy comes from ad4m-connect, not from @coasys/ad4m:
+  # connect bundles the SDK it was built against (esbuild, bundle: true). So an
+  # SDK fix reaches the running app only through a connect built from the same
+  # revision — the pinned connect carries whatever SDK it was published with.
+  #
+  # connect's src/utils.ts reads the version from the repo root package.json,
+  # removed above so npm treats core/ as standalone. Put back a minimal one:
+  # the version, and no workspaces for a package manager to walk into.
+  AD4M_VERSION="$(git -C "$AD4M_DIR" show HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")"
+  printf '{"name":"ad4m-source-build","private":true,"version":"%s"}\n' "$AD4M_VERSION" > "$AD4M_DIR/package.json"
+  cd "$AD4M_DIR/connect"
+  # Bundle the SDK built above, not the one connect's manifest names.
+  node -e "
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    pkg.devDependencies['@coasys/ad4m'] = 'link:../core';
+    fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+  "
+  # --ignore-scripts as for core: pnpm 10 otherwise fails the install over
+  # esbuild's unapproved install script, and esbuild's binary arrives through
+  # its optional platform package regardless.
+  pnpm install --ignore-workspace --no-frozen-lockfile --ignore-scripts
+  NODE_ENV=production pnpm run build
+  echo "  built: $(ls dist/index.js dist/core.js 2>/dev/null | wc -l)/2 bundles"
+
   echo "── Link local SDK into WE workspace"
   cd "$WE_ROOT"
 
@@ -133,8 +160,9 @@ else
     const fs = require('fs');
     const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
     pkg.pnpm.overrides['@coasys/ad4m'] = 'link:${AD4M_DIR}/core';
+    pkg.pnpm.overrides['@coasys/ad4m-connect'] = 'link:${AD4M_DIR}/connect';
     fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-    console.log('  override:', pkg.pnpm.overrides['@coasys/ad4m']);
+    console.log('  override:', pkg.pnpm.overrides['@coasys/ad4m'], pkg.pnpm.overrides['@coasys/ad4m-connect']);
   "
 
   # Re-resolve with the rewritten override. --no-frozen-lockfile because the
@@ -146,11 +174,11 @@ fi
 
 NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
-# --- Say what this build used ------------------------------------------------
+# --- Say what this preview is -----------------------------------------------
 #
-# A page built from "ad4m dev at the time" cannot be diagnosed a week later,
-# and a tester hitting RPC failures has no way to tell a WE bug from an SDK
-# the executor in front of them does not match. Both halves are written:
+# A page built from "ad4m dev at the time" is otherwise unexplainable a week
+# later, and a tester hitting RPC failures has no way to tell a WE bug from an
+# SDK the executor in front of them does not match. Both halves are written:
 # /build-info.json for anything that wants to read it, and a console line for
 # the person who has the page open.
 
@@ -181,7 +209,7 @@ node -e "
 
   const summary =
     info.ad4mSource === 'source'
-      ? \`@coasys/ad4m built from \${info.ad4mRef}@\${(info.ad4mSha || '').slice(0, 9)} — NOT the pinned \${info.ad4mPinned}\`
+      ? \`@coasys/ad4m and ad4m-connect built from \${info.ad4mRef}@\${(info.ad4mSha || '').slice(0, 9)} — NOT the pinned \${info.ad4mPinned}\`
       : \`@coasys/ad4m \${info.ad4mPinned} (pinned)\`;
 
   const indexPath = path.join(dist, 'index.html');

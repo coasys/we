@@ -4,7 +4,7 @@
  * Everything here is backend-agnostic and DOM-free: given a channel, it gossips this agent's state on
  * a timer and decays peers who go quiet. The only backend-specific piece is the transport itself.
  * (Flux welds these together — its `useSignallingService` owns the timers, the decay ladder, the
- * handshake, profile hydration, *and* an unrelated WebRTC protocol, all inside one AD4M-coupled
+ * handshake, profile hydration, *and* an unrelated WebRTC protocol, all inside one backend-coupled
  * composable. Splitting them is the point.)
  *
  * Two shape decisions carry the design; see notes/we/August-2026/presence-port.md for the reasoning.
@@ -31,8 +31,8 @@ export interface Focus {
   /**
    * The dataset, by **global** uri — never a local handle id.
    *
-   * AD4M perspective uuids are local per-agent: the same shared neighbourhood has a different uuid on
-   * every peer, so a broadcast uuid is meaningless to whoever receives it. This is the local-id vs
+   * A backend-local dataset id is local per agent: the same shared dataset has a different id on
+   * every peer, so a broadcast id is meaningless to whoever receives it. This is the local-id vs
    * global-uri split from `DatasetHandle`, one layer down, and getting it wrong half-works — correct
    * in single-agent testing, silently broken across peers.
    */
@@ -223,7 +223,7 @@ function livenessFor(age: number, t: LivenessThresholds): Liveness {
  * Deliberately not offered as a bare `peersAtPath(peers, '/kanban')`: **a route path is only
  * meaningful within a dataset**, and two spaces routinely have the same one. A path-only selector
  * silently unions peers across spaces, which is the kind of bug that looks correct in single-space
- * testing — the same class of mistake as broadcasting a local perspective uuid. Requiring the caller
+ * testing — the same class of mistake as broadcasting a local dataset id. Requiring the caller
  * to write the whole focus they mean removes the hazard rather than documenting it.
  *
  * Excludes `offline` peers unless `includeOffline`.

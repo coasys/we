@@ -36,6 +36,7 @@ import { defineModule, type ModuleHost } from '@we/module-shared';
 import { peopleTooltip } from '@we/schema-kit';
 import { expr, type SchemaNode } from '@we/schema-shared';
 
+import { deviceSettings, deviceSettingsModal } from './DeviceSettings.schema';
 import { devPeersAvailable } from './devPeers';
 import { createCallStore } from './store';
 
@@ -249,6 +250,25 @@ const BAR_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as 
  * button wired to nothing the moment that module were uninstalled.
  */
 export const CALL_CONTROLS_ANCHOR = 'call-controls';
+
+/**
+ * Where development-only controls go: a region at the END of the bar, after everything shipped.
+ *
+ * A separate region from `CALL_CONTROLS_ANCHOR` rather than a high `order` within it, because the two
+ * differ in a way an order cannot express. A contributed *control* is part of the bar a user gets and
+ * belongs among the others; a contributed *harness* is absent from a shipped build entirely, and the
+ * thing worth being able to see at a glance is that what a developer is looking at differs from what
+ * everybody else gets by one trailing group and nothing else.
+ *
+ * It also puts the harness triples next to each other, which no ordering could: contributions from one
+ * module land at a single point, so this module's own fake-participant triple cannot be threaded in
+ * between another module's controls. Two identical-looking counters separated by the fold button was
+ * the state this replaced.
+ *
+ * Declared, and marked, only in a development build — see `anchors` — so a production bundle carries
+ * neither the region nor anything that could reach it.
+ */
+export const CALL_DEV_ANCHOR = 'call-dev';
 
 /**
  * A second extension point, under the bar rather than inside it — for chrome that *reports* rather
@@ -559,24 +579,126 @@ const tile: SchemaNode = {
               },
             },
             /**
-             * Click anyone to give them the stage; click them again to go back to an even grid.
+             * The tile's own controls, and the hover state that reveals them.
              *
-             * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
-             * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
-             * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
-             * order so those stay readable, and above the video so the whole picture is the target.
+             * One box over the whole picture holding both the click target and the reconnect button, so
+             * that pointing anywhere at the video brings the button up — see the note on the button
+             * itself for why that could not be done with the button alone.
+             *
+             * `opacity` on a parent composites its whole subtree, and the click target inside is the
+             * `bare` variant, which paints nothing — so fading this box fades exactly one visible thing.
+             * The badges are deliberately *outside* it: a name and "Reconnecting…" are not controls and
+             * must not dim, and a child cannot exceed its parent's opacity, so keeping them legible means
+             * keeping them out rather than setting `opacity: 1` on them.
+             *
+             * `focusProps` is what keeps the keyboard path open: the shared focus selector matches
+             * `:has(:focus-visible)`, so tabbing onto either button inside brings the box to full opacity
+             * rather than leaving a focus ring at 35%.
              */
             {
-              type: 'we-button',
+              type: 'Column',
               props: {
-                variant: 'bare',
                 position: 'absolute',
                 top: '0',
+                right: '0',
+                bottom: '0',
                 left: '0',
-                width: '100%',
-                height: '100%',
-                onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
+                opacity: expr`${stateOf('failed')} || ${stateOf('retrying')} ? 1 : 0.35`,
+                hoverProps: { opacity: 1 },
+                focusProps: { opacity: 1 },
               },
+              children: [
+                /**
+                 * Click anyone to give them the stage; click them again to go back to an even grid.
+                 *
+                 * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
+                 * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
+                 * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
+                 * order so those stay readable, and above the video so the whole picture is the target.
+                 */
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'bare',
+                    position: 'absolute',
+                    top: '0',
+                    left: '0',
+                    width: '100%',
+                    height: '100%',
+                    onClick: { $action: 'modules.call.focusTile', args: [{ $: 'tile.id' }] },
+                  },
+                },
+                /**
+                 * Build this one connection again, without leaving the call.
+                 *
+                 * The honest bottom of the recovery ladder. Everything above it is the mesh repairing
+                 * itself and most of the time that is enough; this is what is left when it is not, and
+                 * the alternative people were using is leaving the call and rejoining — which takes
+                 * everyone's picture down to fix one pair, and briefly tells the whole room you left.
+                 *
+                 * ## Why it is not gated on the connection looking broken
+                 *
+                 * A pair can be `connected` and useless: one-way audio, a picture that froze a minute
+                 * ago, a stream that never recovered from a laptop lid. Offering the button only in the
+                 * states WebRTC admits to would be the app insisting that what somebody is plainly
+                 * looking at is fine. It is faint on state instead — always reachable, never in the way.
+                 *
+                 * ## Why it sits in the bottom corner rather than the middle of the picture
+                 *
+                 * It used to be pinned to the top right, which put it over the one part of a tile that
+                 * is reliably somebody's face. The bottom strip is already chrome — the name and the
+                 * status badges live there — so the button lands in the row that is *for* this, at the
+                 * far end of it from the name. Both are `size: 'xs'` and so exactly one
+                 * `--we-component-height-xs` tall, which is why a shared `bottom` lines them up with no
+                 * arithmetic.
+                 *
+                 * ## Why the fade is on the box above and not here
+                 *
+                 * Zero opacity was never available: a control at zero has to be revealed by hovering
+                 * something *else*, and hovering the button itself cannot reveal it, because you cannot
+                 * point at what you cannot see. The earlier fix was to keep it faint and reveal it on its
+                 * own hover — which works, and asks somebody to find a 35%-opacity glyph before they know
+                 * it is there.
+                 *
+                 * Hovering the *tile* is the discoverable version, and a schema can express it after all:
+                 * not as an `$if` on a hover state (a tile has none to read, and remounting a node over
+                 * the video on every pointer move would be worse than the problem), but as `opacity` on a
+                 * box that covers the picture. `--we-ds-*` custom properties are declared
+                 * `inherits: false`, so a parent's `hoverProps` cannot reach in and restyle a child — but
+                 * it does not need to, because opacity composites the subtree on its own.
+                 *
+                 * Deliberately *not* on your own tile: there is no connection to yourself, and a control
+                 * that did nothing would be worse than no control.
+                 */
+                {
+                  type: '$if',
+                  props: {
+                    condition: expr`!tile.isSelf`,
+                    then: {
+                      type: 'we-tooltip',
+                      props: { content: 'Reconnect to this person', placement: 'top' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'secondary',
+                            size: 'xs',
+                            square: true,
+                            position: 'absolute',
+                            bottom: '200',
+                            right: '200',
+                            // A repair already running is not a reason to hide it, but it is a reason to
+                            // say something is happening rather than inviting a second press.
+                            loading: stateOf('retrying'),
+                            onClick: { $action: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
             },
             {
               type: 'Row',
@@ -719,72 +841,6 @@ const tile: SchemaNode = {
                 },
               ],
             },
-            /**
-             * Build this one connection again, without leaving the call.
-             *
-             * The honest bottom of the recovery ladder. Everything above it is the mesh repairing
-             * itself and most of the time that is enough; this is what is left when it is not, and
-             * the alternative people were using is leaving the call and rejoining — which takes
-             * everyone's picture down to fix one pair, and briefly tells the whole room you left.
-             *
-             * ## Why it is not gated on the connection looking broken
-             *
-             * A pair can be `connected` and useless: one-way audio, a picture that froze a minute
-             * ago, a stream that never recovered from a laptop lid. Offering the button only in the
-             * states WebRTC admits to would be the app insisting that what somebody is plainly
-             * looking at is fine. It is hidden on hover instead of on state — always reachable,
-             * never in the way.
-             *
-             * Deliberately *not* on your own tile: there is no connection to yourself, and a control
-             * that did nothing would be worse than no control.
-             */
-            {
-              type: '$if',
-              props: {
-                condition: expr`!tile.isSelf`,
-                then: {
-                  type: 'we-tooltip',
-                  props: { content: 'Reconnect to this person', placement: 'left' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'secondary',
-                        size: 'xs',
-                        square: true,
-                        position: 'absolute',
-                        top: '200',
-                        right: '200',
-                        /*
-                          Faint until it is wanted, and never invisible.
-
-                          Zero opacity was the obvious choice and is the wrong one here. A control at
-                          zero has to be revealed by hovering something *else* — the picture — which
-                          a schema cannot express: a tile has no hover state to read, and `$if` on
-                          one would remount a node over the video on every pointer move. Hovering the
-                          button itself cannot reveal it either, because you cannot point at what you
-                          cannot see.
-
-                          Faint solves the mechanics and is the better design anyway. This is the
-                          control for the moment everything else has failed, and a control nobody
-                          knows exists is one nobody reaches for then — so it sits quietly in the
-                          corner until it is pointed at, and stops being quiet the moment the
-                          connection is in trouble.
-                        */
-                        opacity: expr`${stateOf('failed')} || ${stateOf('retrying')} ? 1 : 0.35`,
-                        hoverProps: { opacity: 1 },
-                        focusProps: { opacity: 1 },
-                        // A repair already running is not a reason to hide it, but it is a reason to
-                        // say something is happening rather than inviting a second press.
-                        loading: stateOf('retrying'),
-                        onClick: { $action: 'modules.call.reconnectPeer', args: [{ $: 'tile.id' }] },
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
-                    },
-                  ],
-                },
-              },
-            },
           ],
         },
       ],
@@ -920,7 +976,22 @@ const devPeerControls: SchemaNode = {
   type: 'Row',
   props: { gap: '100', ay: 'center' },
   children: [
-    { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+    /*
+      The glyph, without which this is unreadable, and where the triple's own tooltip lives.
+
+      There is a second `−  N  +` immediately after it and the two were indistinguishable: identical
+      minus, number and plus. The icon is what tells them apart, so the icon is what a pointer looking
+      for an explanation lands on — the number is the one part of the triple somebody is *reading*
+      rather than interrogating, and a tooltip over it covers the value it explains.
+
+      No rule here. The region draws its own separators, so a contributed triple never has to know
+      whether it happens to be first.
+    */
+    {
+      type: 'we-tooltip',
+      props: { content: 'Fake participants — development only', placement: 'bottom' },
+      children: [{ type: 'we-icon', props: { name: 'users', size: 'sm', color: 'text-faint' } }],
+    },
     {
       type: 'we-tooltip',
       props: { content: 'One fewer fake participant', placement: 'bottom' },
@@ -941,15 +1012,9 @@ const devPeerControls: SchemaNode = {
       ],
     },
     {
-      type: 'we-tooltip',
-      props: { content: 'Fake participants — development only', placement: 'bottom' },
-      children: [
-        {
-          type: 'we-text',
-          props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
-          children: [{ type: 'we-number', props: { value: { $: 'modules.call.fakePeerCount' } } }],
-        },
-      ],
+      type: 'we-text',
+      props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
+      children: [{ type: 'we-number', props: { value: { $: 'modules.call.fakePeerCount' } } }],
     },
     {
       type: 'we-tooltip',
@@ -1086,12 +1151,11 @@ const participants: SchemaNode = peopleTooltip({
             wrap, "11 in the call" broke between the number and the words and made the whole bar a
             row taller, which moves every control in it.
 
-            Not a design-system prop, and `truncate` is the wrong one: that clips with an ellipsis,
-            where the honest behaviour for a bar too narrow for its contents is to overflow. Below
-            the compact tier this text is not rendered at all, which is the answer for the widths
-            where it actually happened.
+            `truncate` is the wrong prop: that clips with an ellipsis, where the honest behaviour
+            for a bar too narrow for its contents is to overflow. Below the compact tier this text
+            is not rendered at all, which is the answer for the widths where it actually happened.
           */
-            styles: { whiteSpace: 'nowrap' },
+            whiteSpace: 'nowrap',
           },
           children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.tiles)' } } }, ' in the call'],
         }),
@@ -1250,6 +1314,24 @@ const moreMenu: SchemaNode = {
       // Solo is only offered while something is focused. On the entry rather than around it: an
       // entry carries a handler, which no value expression can hold — see `hidden` on the menu.
       { ...menuToggle(SOLO), hidden: { $: "surface.tier != 'base' || !modules.call.focusedId" } },
+      {
+        /*
+          Which microphone and camera this agent is sending.
+
+          In the menu rather than beside the mute button, and the distinction the bar's own docblock
+          draws is why: mute and camera never fold, because "a menu between a person and their
+          microphone is a step too many". Choosing a *device* is not that — it is a thing done once
+          and then forgotten, usually before anybody notices it was wrong, and it costs a press to
+          reach rather than a press to use.
+
+          Never hidden. The two entries above fold away when the row is roomy because the row is
+          showing them itself; this one has no counterpart in the bar at any width.
+        */
+        id: 'devices',
+        label: 'Camera and microphone…',
+        icon: 'sliders-horizontal',
+        onAction: { $action: 'modules.call.openDeviceSettings' },
+      },
       {
         /*
           Start a second call from inside one — a breakout, a different subject.
@@ -1517,7 +1599,6 @@ const bar: SchemaNode = {
               — see `moreMenu` — and a control that exists only below 640px is a control most people
               never find.
             */
-            moreMenu,
             /*
           Show/hide sits with the devices, not with the call.
 
@@ -1527,25 +1608,6 @@ const bar: SchemaNode = {
           microphone, your camera, your screen, your transcript, and whether you are looking at the
           video. Everything right of it is the call itself — who is in it, and how much room it has.
         */
-            /*
-              Development only, and absent rather than inert in a production build — see
-              `devPeerControls`. Placed with the things you do to your own machine rather than with
-              the call itself, which is what the divider below separates: how many fake participants
-              you are looking at is a property of your session, not of the call.
-
-              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
-              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
-              developer looking at what a user sees loses these on the press rather than on the next
-              reload, and gets them back the same way.
-            */
-            ...(devPeersAvailable
-              ? [
-                  {
-                    type: '$if',
-                    props: { condition: { $: 'sessionStore.devTools' }, then: devPeerControls },
-                  },
-                ]
-              : []),
             /*
               Solo — the spotlight with the stage to itself.
 
@@ -1559,6 +1621,64 @@ const bar: SchemaNode = {
               props: { condition: { $: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
             }),
             whenRoomy(mediaToggle(STAGE)),
+            /*
+              The fold, after the controls it folds.
+
+              It was above the show/hide toggle, which put it between that toggle and the contributed
+              controls; since `STAGE` is one of the things it swallows when the row is compact, sitting
+              after it means the button occupies the place its own contents just left. The row reads the
+              same in either state either way, which was the original point.
+            */
+            moreMenu,
+            /*
+              Development only, and last, which is the whole arrangement in one line: a shipped bar and
+              a developer's bar differ by this trailing group and nothing else. Absent rather than inert
+              in a production build — see `devPeerControls` and `CALL_DEV_ANCHOR`.
+
+              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
+              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
+              developer looking at what a user sees loses these on the press rather than on the next
+              reload, and gets them back the same way.
+
+              The region takes other modules' harnesses too, and they draw no rule of their own: this
+              triple leads the group and brackets it once. The `$if` covers them as well, so the switch
+              puts away every harness in the bar rather than only this module's.
+            */
+            ...(devPeersAvailable
+              ? [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'sessionStore.devTools' },
+                      then: {
+                        type: 'Row',
+                        /*
+                          The region owns its separators, rather than each triple drawing its own.
+
+                          Two reasons. A contributed fragment cannot know whether it is first, so a rule
+                          drawn inside one is either missing or doubled depending on what else is
+                          installed. And a rule inside a triple sits against the triple's own tight gap,
+                          which reads as the icon being jammed against it; here each rule gets the bar's
+                          own gap on both sides.
+
+                          One rule in front of the contributed region rather than one between every
+                          contribution, since a slot renders its contributions in order and nothing can
+                          be interleaved between them. With one contributor that is exactly right, and
+                          with more it is a region of harnesses behind a single rule, which is still the
+                          truth about them.
+                        */
+                        props: { gap: '200', ay: 'center' },
+                        children: [
+                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                          devPeerControls,
+                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                          { type: '$slot', props: { anchor: CALL_DEV_ANCHOR } },
+                        ],
+                      },
+                    },
+                  },
+                ]
+              : []),
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
             // that already, and left alone against `md` it would have been half.
@@ -1878,11 +1998,11 @@ export const callModule = defineModule({
   // ── What it puts in front of a person ────────────────────────────────────
   contributes: {
     // Named fragments an interface places. Public API — see the note on `ModuleContributions.parts`.
-    parts: { anchoredCallButton, continueCallButton, startCallButton, tile },
+    parts: { anchoredCallButton, continueCallButton, deviceSettings, startCallButton, tile },
 
     // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
     // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
-    anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
+    anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR, ...(devPeersAvailable ? [CALL_DEV_ANCHOR] : [])],
 
     /*
       Drawn by the host's module rail. A launcher of its own rather than a panel's button, because
@@ -1944,6 +2064,12 @@ export const callModule = defineModule({
         the shell is, which is the property the sound needs and the panel deliberately does not have.
       */
       { anchor: 'dock-bottom', node: audioSink, order: 60 },
+      /*
+        The device chooser, as chrome for the same reason the sound is: it is opened from the call
+        bar and from a settings page, and neither of those can own a dialog the other also opens.
+        Order above the bar so a sheet is never drawn behind the row that raised it.
+      */
+      { anchor: 'overlay', node: deviceSettingsModal, order: 120 },
     ],
 
     /**

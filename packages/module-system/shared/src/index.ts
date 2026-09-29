@@ -21,6 +21,9 @@ export type {
   DocumentAccess,
   KernelName,
   LanguageModelKernel,
+  LiveAnchor,
+  LiveDecoration,
+  MediaDevice,
   MediaKernel,
   ModuleKernels,
   PeerConnectionKernel,
@@ -29,6 +32,8 @@ export type {
   RecordsKernel,
   SecretsKernel,
   TranscriptionKernel,
+  ViewFrame,
+  ViewKernel,
   WrittenDocument,
 } from './kernels';
 export {

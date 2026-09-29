@@ -42,6 +42,16 @@ it gives consistently styled scrollbars across themes.
 **Token values:** Use \`tokenVar\` from \`@we/design-utils\` when you need a token value
 inside a \`style={{}}\` object. Prefer DS props directly where possible.
 
+**Name a colour ROLE, in code as well as in a schema.** \`tokenVar('color', 'text-muted')\`, not
+\`tokenVar('color', 'neutral-600')\` — a step is invisible to the contrast corrections at apply time
+wherever it is written, and \`tokenVar\` accepts a role name directly. \`pnpm audit:roles\` covers the
+TypeScript and SCSS as well as the schemas, and gates CI.
+
+Note what \`tokenVar\` does with a name it does not know: it warns in development and returns
+\`var(--we-color-<name>)\` anyway, so a typo or an invented family compiles to a variable nothing
+declares and the declaration is dropped. The element paints nothing, which reads as a design
+decision rather than a bug.
+
 Raw inline styles and hardcoded CSS variable strings (\`var(--we-color-neutral-400)\`)
 are a signal that a DS prop or primitive is being missed — check before reaching for
 \`style={{}}\`.
@@ -175,8 +185,8 @@ pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
 pnpm --filter @we/primitives build                      # a Lit primitive
 \`\`\`
 
-**Do rebuild, though — a stale \`dist\` is invisible and wastes more time than the build saves.** Two
-symptoms worth recognising, both of which have happened here:
+**Do rebuild, though — a stale \`dist\` is invisible and wastes more time than the build saves.** Three
+symptoms worth recognising, all of which have happened here:
 
 - *"I changed the source and the app is unchanged."* The package ships a \`dist\` and it was not
   rebuilt. Note that packages differ: \`@we/template-shell\` has no \`dist\` and is consumed as source,
@@ -185,6 +195,9 @@ symptoms worth recognising, both of which have happened here:
 - *"The build says it failed but the error names a package I did not touch."* A dependency's types
   moved. Rebuild the chain in dependency order — tokens, then themes, then schema-shared, then
   whatever consumes them.
+- *"The adapter's test still sees the old behaviour."* A test that imports \`@we/backend-ad4m\` by its
+  own name resolves through the package's \`exports\` to \`dist\`, so it runs the last build rather than
+  \`src\`. Rebuild the package before \`pnpm --filter @we/backend-ad4m test\`.
 
 To find what is stale rather than guessing:
 
@@ -213,18 +226,51 @@ This validates every \`.schema.ts\` under \`packages/app-shell/src/shared/schema
 section files that are not named \`.schema.ts\` are still covered, because the template that composes
 them is — the walk descends into whatever a validated schema imports.
 
-Two further audits run over the same trees and are easy to miss. Both **import and walk the composed
+Further audits run over the same trees and are easy to miss. They all **import and walk the composed
 tree** rather than grepping source, which is the only way to attribute a node that a fragment from
 another package contributed:
 
 \`\`\`sh
-pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
-pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+pnpm audit:roles                               # a scale position where a role belongs
+pnpm audit:surfaces                            # a surface-sunken invisible against its ground
+pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via \`title\`
+pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
 \`\`\`
 
 Run them after any template, view or fragment change. A \`neutral-600\` label is invisible to the
 whole contrast layer — never measured against what is behind it — so \`role-audit\` is the only thing
 that will report it.
+
+**The first two gate CI**, so a scale position or an invisible well fails the build rather than
+waiting to be noticed. Both are at zero; keep them there.
+
+\`role-audit\` has a **code half** as well, which the root script runs by default: paths after
+\`--code\` are scanned textually rather than imported, because a colour in a \`style={{}}\`, an
+\`.scss\` rule or a CodeMirror theme is a string in a file and there is no tree to walk. It reads
+four spellings — \`var(--we-color-<hue>-<step>)\`, \`tokenVar('color', '<hue>-<step>')\`, a DS prop in
+TSX (\`color="neutral-800"\`), and a raw hex or \`rgb()\` next to a property that paints — plus a name
+handed to \`tokenVar\` that is **no colour at all**, which compiles to a variable nothing declares and
+paints nothing. Four of the editor's dividers were \`ui-200\`, a ramp that has never existed.
+
+A genuine palette is exempt, with its reason, in one of two places: \`CODE_PALETTES\` for a whole file
+(syntax highlighting, a WebGL scene, a theme's own definitions) or a \`role-audit: palette\` marker in
+the comment above the line, for a file that is mostly chrome and has one swatch. The reasons print on
+every run. \`EditorOverlay\` is the case worth reading: its annotation colours are fixed on purpose,
+because they are drawn over the template being edited in whatever theme its author is choosing.
+
+\`surface-audit\` judges a well by what is behind it rather than by the roles table's wording, which
+is looser than the ramp. \`surface-sunken\` is derived from \`page\`, so a trough on the page is right;
+on \`chrome\` it is half a lightness point away and **inverts** between light and dark, and on another
+\`surface-sunken\` there is no difference at all. Those two fail.
+
+\`query-audit\` is the one whose findings are invisible in development and expensive in a real space.
+A \`$query\` with no \`limit\` re-reads, re-hydrates and re-fingerprints every row of its entity on
+every change to that entity, so a list that grows costs O(n²) over a session — fine at twenty rows
+and unusable at two thousand, which is a transcript after forty minutes. It reports only what
+nothing else bounds: \`where.id\`, a \`scope\` with \`levels\` or \`limitPerAnchor\`, and a curated
+vocabulary all count as bounded. A list that really is read whole on purpose is declared in
+\`DELIBERATE\` in the script, **with the reason**, and the reasons are printed on every run so they
+get reviewed rather than accumulated.
 
 Two things it now catches that it used to miss, both worth knowing when adding a schema:
 
@@ -452,6 +498,44 @@ await space.save();
 // ✅ Correct
 const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name: 'My Space' });
 \`\`\`
+
+---
+
+### Watching the graph from \`@we/backend-ad4m\`
+
+To hear that something changed in a perspective, subscribe on the executor with \`subscribeQuery\`
+rather than \`addListener('link-added' | 'link-removed')\`. A link listener receives every link of a
+peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
+touches one of its predicates, and pushes only when the result changes.
+
+That filter needs SPARQL that writes each predicate out as a full \`<iri>\`: the executor reads the
+predicates from the query text. A variable predicate (even one a \`FILTER\` pins down), a prefixed
+name, or a Prolog query makes it re-run the subscription on every diff. \`onProposalsChanged\` in
+\`interpretationAdapter.ts\` shows the pattern, and \`interpretationDecisions.test.ts\` pins its query.
+
+What the SDK and executor do around a subscription, so a watch can rely on it:
+
+- A callback registered after \`subscribeQuery\` resolves does not receive the initial result — only
+  the changes after it.
+- After a websocket reconnect, the SDK re-subscribes and hands the current result to every
+  callback, so a watch hears a refresh rather than nothing.
+- The executor shares one server-side subscription between identical queries from the same user.
+  Disposing one ends it for the other too, until the other's 30-second keepalive fails and
+  re-subscribes. So hold one subscription per perspective and query, count its holders, and dispose
+  it a grace period after the last one lets go — \`onProposalsChanged\` shows how. The grace matters:
+  a dispose racing a fresh subscribe with the same text can land after it and end that one too.
+
+### Reading shapes from \`@we/backend-ad4m\`
+
+The \`PerspectiveProxy\` the app holds comes from the SDK copy bundled inside \`@coasys/ad4m-connect\`,
+not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only when ad4m-connect
+republishes, so measure performance work against that copy, not the workspace one.
+
+In that copy, \`getAllShacl()\` reads every shape one at a time — \`getShaclNames()\`, then \`getShacl()\`
+per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
+property transform a newer SDK encoded. For a question about many shapes, ask the executor
+once with SPARQL, and read a shape in full only when the answer needs it: \`readShapeProperties\` and
+\`getForeignShacl\` in \`perspectiveHelpers.ts\` show how.
 
 ---
 

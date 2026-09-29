@@ -396,6 +396,47 @@ describe('call mesh', () => {
     expect(alice.connections[0].remoteDescription).toBe(before);
   });
 
+  it('re-emits when an inbound track stops receiving, and again when it comes back', async () => {
+    /*
+      The frozen-peer bug, from the receiving side.
+
+      A remote track does not END when its sender goes away — it stays `readyState === 'live'` for as
+      long as the connection object exists, and what changes is `muted`, which the browser sets when
+      RTP stops arriving. Only `ended` was wired up, for the camera→screen replacement case, so
+      nothing told the store that a peer's picture had stopped: their `<video>` kept its `srcObject`
+      and went on painting the last frame it had decoded, for as long as the roster kept the tile.
+
+      Both edges, because a connection that recovers unmutes the same track and a tile that had
+      fallen back to an avatar has to come back without waiting for some unrelated event.
+    */
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    const listeners = new Map<string, () => void>();
+    const track = {
+      kind: 'video',
+      readyState: 'live',
+      muted: false,
+      addEventListener: (name: string, cb: () => void) => listeners.set(name, cb),
+    } as unknown as MediaStreamTrack;
+
+    alice.connections[0].ontrack?.({ track });
+    const afterArrival = alice.streams.length;
+    expect(listeners.has('mute'), 'the mesh listens for the track going quiet').toBe(true);
+    expect(listeners.has('unmute'), 'and for it coming back').toBe(true);
+
+    listeners.get('mute')?.();
+    expect(alice.streams.length, 'a muted track is reported').toBe(afterArrival + 1);
+
+    listeners.get('unmute')?.();
+    expect(alice.streams.length, 'so is it unmuting').toBe(afterArrival + 2);
+
+    // The track stays in the stream through both: muting is not removal, and a tile that dropped its
+    // track object would remount the `<video>` rather than swapping what it draws.
+    expect(alice.streams[alice.streams.length - 1].get('did:bob')?.getVideoTracks()).toEqual([track]);
+  });
+
   it('replaces rather than re-adds when an outbound track changes', async () => {
     const alice = makeMesh(bus, dataset, 'did:alice', callId);
     alice.mesh.setRoster(['did:alice', 'did:bob']);

@@ -27,6 +27,7 @@ import {
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
+import { fetchesRemotely } from './sanitiseCss';
 
 /**
  * The chroma taper at step 500, as CSS rather than as a number computed here.
@@ -480,6 +481,18 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   // Spacing scales on its own, so "denser" does not have to mean "smaller text".
   if (theme.spacingScale !== undefined) style['--we-theme-spacing-scale'] = String(theme.spacingScale);
   if (theme.disabledOpacity !== undefined) style['--we-theme-disabled-opacity'] = String(theme.disabledOpacity);
+
+  /*
+    No parameter may fetch.
+
+    A space's theme and a template's scoped theme come from other people, and a role pinned to
+    `url(https://…)` lands in every `background: var(--we-role-…)`: a beacon that reports who
+    opened the space, from where and when. `sanitiseCss` closes that for stylesheets; parameters
+    become custom properties without ever being one, so the same check runs here.
+  */
+  for (const [property, value] of Object.entries(style)) {
+    if (fetchesRemotely(value)) delete style[property];
+  }
 
   return style;
 }

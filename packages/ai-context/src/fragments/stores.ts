@@ -416,6 +416,7 @@ export const storeEntries: StoreEntry[] = [
       'updateInvolvementType',
       'setInvolvementTypeRetired',
       'upsertSignal',
+      'withdrawSignal',
       'navigateToSpace',
       'openRecordRef',
       'canAdministerSpace',
@@ -552,8 +553,17 @@ export const storeEntries: StoreEntry[] = [
     state: {
       activeShellView: { type: 'string' },
       createSpaceOpen: { type: 'boolean' },
+      joinSpaceOpen: { type: 'boolean' },
+      pendingScreenSources: { type: 'array' },
     },
-    actions: ['openShellView', 'closeShellView', 'setCreateSpaceOpen', 'scrollToId'],
+    actions: [
+      'openShellView',
+      'closeShellView',
+      'setCreateSpaceOpen',
+      'setJoinSpaceOpen',
+      'chooseScreenSource',
+      'scrollToId',
+    ],
   },
   {
     name: 'appStore',
@@ -668,11 +678,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         canManageLanguages: 'boolean — gate the languages section on this',
         canManageAi: 'boolean — gate the AI section on this',
         canConfigureAi:
-          "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
+          "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, which grants reading the models but refuses changing them. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
         canConfigureExecutor:
           'boolean — this host starts the backend, so how it starts it can be changed. False on web',
         unsupportedCapabilities:
-          "{ name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (an AD4M executor's RPC method), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health",
+          "{ name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health",
         mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
         mcpPort: 'number — the port MCP is served on',
         executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
@@ -702,11 +712,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         authorizedApps:
           'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
         networkMetrics:
-          'string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
+          'string — backend diagnostic blob, already formatted for reading (indented JSON, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs',
         peerInfos:
           "string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable",
         peerInfosReadable:
-          'string — the same records decoded for reading, as indented JSON (on AD4M: agent, space, dates, url, arc, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs',
+          'string — the same records decoded for reading, as indented JSON (agent, space, dates, url, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs',
         pending:
           "string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: \"'loadPeerInfos' in runtimeStore.pending\" }",
         loading:
@@ -766,7 +776,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     },
     datasetStore: {
       state: {
-        datasets: 'array of dataset handles (all joined datasets; AD4M perspectives in this backend)',
+        datasets: 'array of dataset handles (all joined datasets)',
         orderedDatasets: 'datasets sorted by user-defined sidebar order, system datasets excluded',
         currentDataset: 'dataset handle | null (the dataset currently being viewed)',
         currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
@@ -859,8 +869,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         automaticThemes:
           'array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes',
         installedThemes:
-          'array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")',
-        spaceThemes: 'array of ThemeData objects — themes stored in the current space perspective (origin: "custom")',
+          'array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")',
+        spaceThemes: 'array of ThemeData objects — themes stored in the current space (origin: "custom")',
         allThemes:
           'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
         currentThemeId: 'string — id of the currently active theme',
@@ -944,7 +954,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         personalTemplates:
           "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
-        spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space perspective',
+        spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space',
         pendingInstall:
           'the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template',
         builtInTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
@@ -1053,7 +1063,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         currentSpace:
           'Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, plus id/author/createdAt)',
         foreignSpacePrefill:
-          '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found',
+          '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found',
         enabledModules:
           'string[] — ids of the feature modules THIS SPACE has turned on: the community\u2019s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
         installedModules:
@@ -1102,6 +1112,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
         setAutoInterpret:
           '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
+        setThreadMode:
+          "(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen",
         autoInterpretForCall:
           "(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace",
         setAutoInterpretForCall:
@@ -1186,9 +1198,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         uploadFile:
           '(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload',
         upsertSignal:
-          '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
+          "(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right",
+        withdrawSignal:
+          "(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears",
         navigateToSpace:
-          '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
+          '(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together',
         openRecordRef:
           "(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens",
         updateSpaceMeta:
@@ -1247,6 +1261,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected',
         relationshipKind:
           'string — which named RelationshipType the pending connection is, or empty for one carrying only a label. Held beside the draft because the kinds are a list to pick from, which a generated form cannot render',
+        canvasHistory:
+          '{ canUndo, canRedo, undoLabel, redoLabel } — whether the canvas on screen has anything to undo or redo, and what each press would put back. Gate a control on canUndo rather than hiding it: a disabled key with a tooltip naming the act says more than an absence does',
       },
       actions: {
         setRelationshipKind: '(id): sets which named kind the pending connection is; an empty value clears it',
@@ -1255,7 +1271,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         dragOnCanvas:
           "(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $action calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were",
         removeFromCanvas:
-          '(canvas: string, nodeId: string): takes a record off a canvas, leaving the record itself alone. A card the canvas owns survives as an unplaced one in the tray',
+          "(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to",
+        deleteRecords:
+          "(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — a delete drops the record's links and a re-create earns a new id, so anything pointing at the old record breaks",
+        undoCanvas:
+          '(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off, a card moved in a tree. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo',
+        redoCanvas:
+          '(canvas: string): does again what undoCanvas put back, on the same terms and with the same argument',
         resizeOnCanvas:
           "(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected",
         anchorOnCanvas:
@@ -1264,8 +1286,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(canvas: string, payload): writes the shape of one connection's route on this canvas — the points it is bent through. Takes the graph's onEdgeReroute payload as it arrives; the whole list, in the edge's own frame, so a bend keeps its proportions when either card moves. An empty list straightens it, and a route with no points and no anchors is deleted",
         retargetOnCanvas:
           "(canvas: string, payload): moves one end of a connection onto a different record. Takes the graph's onEdgeRetarget payload as it arrives. Unlike anchorOnCanvas and rerouteOnCanvas this changes the CLAIM rather than how one canvas draws it — the relationship now says something different everywhere it is shown. That end's anchor is cleared; its waypoints stay",
+        arrangeOnTree:
+          "(canvas: string, relationshipTypeId: string, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first",
         setCardStyle:
-          "(canvas: string, nodeId: string, field: string, value): sets one presentation property of one card on one canvas — 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undone by taking the card off the canvas",
+          "(canvas: string, node: string | string[], field: string, value): sets one presentation property of one card — or of a whole selection — on one canvas: 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider, and one id or a list so a selection is not a special case. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undoable, each card keeping its own baseline — putting back a colour applied to nine cards restores nine different colours",
         previewCardStyle:
           '(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps',
         setTypeColor:
@@ -1495,6 +1519,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing',
         createSpaceOpen:
           'boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen',
+        joinSpaceOpen:
+          'boolean — the join-a-space dialog is open, where somebody pastes an address they were sent. Shell state for createSpaceOpen’s reason, opened from the same two places. It exists because a share link only opens itself on the web: a desktop build has no address bar and registers no protocol handler, so an address arriving by any other route needs somewhere to go',
+        pendingScreenSources:
+          'ScreenSource[] \u2014 the screens and windows the host is waiting for somebody to choose between ({ id, name, thumbnail }), or empty. Non-empty only on a desktop host whose OS draws no picker of its own, and only while a share is being asked for: on the web, on macOS 15+ and under a Wayland portal the OS or the browser asks instead',
         dockGeometry:
           "Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: \"shellStore.dockGeometry['<id>'].<field>\" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting",
         contentInset:
@@ -1592,6 +1620,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL',
         setCreateSpaceOpen:
           '(open: boolean): opens or closes the create-space modal. Shell state rather than a page\u2019s $localState because more than one place opens it — the settings page and the sidebar\u2019s spaces group — and a page-scoped flag could only be set from inside that page',
+        setJoinSpaceOpen:
+          '(open: boolean): opens or closes the join-a-space dialog, where somebody pastes an address they were sent. Asking for the dialog is not joining anything — spaceStore.joinSpace is where that decision is taken and keeps its own grant. Shell state for setCreateSpaceOpen’s reason, and offered beside it: the sidebar’s spaces group offers the pair behind one +',
+        chooseScreenSource:
+          '(sourceId: string): answers the host\u2019s "which screen do you want to share" with one of pendingScreenSources, or an empty id to cancel \u2014 which the page receives as the same refusal a browser\u2019s own picker gives when dismissed. Host chrome only: a `getDisplayMedia` is outstanding the whole time the prompt is up',
         closeShellView: '(): closes the currently open shell overlay',
         toggleSpaceSettings:
           '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',
@@ -1652,10 +1684,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {},
       actions: {
         create:
-          "(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
+          "(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See \"Record mutations via $action\" above",
         update:
-          '(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest',
-        delete: '(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible',
+          '(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest',
+        delete: '(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible',
       },
     },
     interpretationStore: {

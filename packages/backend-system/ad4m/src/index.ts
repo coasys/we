@@ -26,7 +26,7 @@ export * from './agentHelpers';
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 export {
   getEntity,
-  getEntitiesForPerspective,
+  getEntityForDataset,
   getEntityPredicates,
   getEntityTargetClass,
   getRegisteredEntityNames,

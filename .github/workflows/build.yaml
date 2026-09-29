@@ -38,8 +38,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
+      # The heap the whole-monorepo walk needs lives in the `lint` script itself, so CI and a developer's
+      # own `pnpm lint` cannot disagree about it. It used to be set here only, which meant the command
+      # passed in CI and died locally — a gate nobody could reproduce a failure of.
       - name: Lint
-        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
+        run: pnpm lint
 
       # Stylelint was configured (config, deps, editor integration) but never ran anywhere
       # but editors — now it gates the authored CSS.
@@ -64,6 +67,12 @@ jobs:
       # `tsc` cannot — the 29 errors it reports land in the package that is correct.
       - name: Check source-shipping consumers
         run: pnpm check:source-consumers
+
+      # Beside the one above because it is the same kind of gate: a rule nothing else can state.
+      # `tsc` is green either way, the markup shows no trace, and the symptom is a size or a weight
+      # that is quietly wrong — so without this it is found by a person noticing, months later.
+      - name: Check we-* props
+        run: pnpm check:we-props
 
   build:
     name: Build
@@ -296,3 +305,21 @@ jobs:
       # it on the way in.
       - name: Validate schemas
         run: pnpm validate:schemas
+
+      # The same shape of gap one layer along: a colour that typechecks, validates and renders,
+      # and is wrong in a way only a walk of the composed tree can see.
+      #
+      # `audit:roles` reports a scale position where a role belongs — in a template, and since
+      # September 2026 in the TypeScript and SCSS every template is rendered *through*. A step is
+      # invisible to the contrast corrections at apply time, so nothing else measures it, ever.
+      #
+      # `audit:surfaces` reports a `surface-sunken` that is invisible against its ground. Both were
+      # on-demand reports that nobody ran; both are at zero, which is the moment to gate them.
+      #
+      # Here rather than in Lint because they import and walk the real composed schema trees, which
+      # needs the build — the same reason schema validation is in this job.
+      - name: Audit roles
+        run: pnpm audit:roles
+
+      - name: Audit surfaces
+        run: pnpm audit:surfaces

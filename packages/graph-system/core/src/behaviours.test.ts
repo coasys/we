@@ -2,10 +2,12 @@ import type { BehaviourContext, PointerInput } from '@we/graph-protocol';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  arrangeNodesBehaviour,
   canvasDoubleClickBehaviour,
   connectNodesBehaviour,
   dispatchPointer,
   dragNodeBehaviour,
+  marqueeSelectBehaviour,
   nodeDoubleClickBehaviour,
   panZoomBehaviour,
   selectBehaviour,
@@ -45,14 +47,35 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
     collapse: vi.fn(),
     toScreen: (p) => p,
     drawConnection: vi.fn(),
+    drawMarquee: vi.fn(),
+    // No hierarchy by default, which is a layout with no parents — the rearranging gesture's fallback.
+    hierarchy: () => null,
+    boundsOf: (id) => {
+      const p = positions.get(id);
+      return p ? { minX: p.x - 20, minY: p.y - 20, maxX: p.x + 20, maxY: p.y + 20 } : null;
+    },
+    edgeOf: () => null,
+    placesOf: (_id, places) => places.map(() => null),
+    arrange: vi.fn(),
+    // The nodes are marks of radius 20, so "overlaps the rectangle" is the box around each centre.
+    within: (bounds) =>
+      [...positions]
+        .filter(
+          ([, p]) =>
+            p.x + 20 >= bounds.minX && p.x - 20 <= bounds.maxX && p.y + 20 >= bounds.minY && p.y - 20 <= bounds.maxY,
+        )
+        .map(([id]) => id),
     selectEdge: vi.fn(),
+    // No named zones in the fake's world. `arrange-nodes` asks first, since a drop into one means
+    // something quite different from a drop in open space — the tests that care override it.
+    regionAt: () => null,
   };
   return Object.assign(base, overrides);
 }
 
 function input(x: number, y: number, extra: Partial<PointerInput> = {}): PointerInput {
   // `metaKey` was missing, which the cast hid: the fake did not satisfy the interface it claimed.
-  const base: PointerInput = { at: { x, y }, buttons: 1, shiftKey: false, metaKey: false };
+  const base: PointerInput = { at: { x, y }, buttons: 1, shiftKey: false, ctrlKey: false, metaKey: false };
   return Object.assign(base, extra);
 }
 
@@ -132,6 +155,84 @@ describe('dragNodeBehaviour', () => {
   it('refuses to start while the engine is locked', () => {
     const ctx = fakeContext({ locked: () => true });
     expect(dragNodeBehaviour().onPointerDown!(input(100, 100), ctx)).toBeUndefined();
+  });
+
+  it('carries the rest of the selection, each holding its offset', () => {
+    // n1 at (100,100) and n2 at (300,100): n2 is 200 to the right and must stay 200 to the right.
+    const ctx = fakeContext({ selection: () => ['n1', 'n2'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledWith('n1', { x: 100, y: 400 });
+    expect(ctx.pin).toHaveBeenCalledWith('n2', { x: 300, y: 400 });
+  });
+
+  it('reports everything that travelled on the drop', () => {
+    const ctx = fakeContext({ selection: () => ['n1', 'n2'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+    behaviour.onPointerUp!(input(100, 400), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'nodeDragEnd',
+        position: { x: 100, y: 400 },
+        moved: [{ id: 'n2', position: { x: 300, y: 400 } }],
+      }),
+    );
+  });
+
+  it('drags one card when the press lands outside the selection', () => {
+    const ctx = fakeContext({ selection: () => ['n2'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledTimes(1);
+    expect(ctx.pin).toHaveBeenCalledWith('n1', { x: 100, y: 400 });
+  });
+
+  it('says nothing about companions for an ordinary single-card drag', () => {
+    const ctx = fakeContext({ selection: () => ['n1'] });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(150, 100), ctx);
+    behaviour.onPointerUp!(input(150, 100), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(expect.not.objectContaining({ moved: expect.anything() }));
+  });
+
+  it('leaves out a selected node that has nowhere to be moved from', () => {
+    // Folded away, or not laid out yet: it has no position, and dragging it to the origin because
+    // of that would be worse than leaving it where it is.
+    const ctx = fakeContext({
+      selection: () => ['n1', 'ghost'],
+      positionOf: (id) => (id === 'n1' ? { x: 100, y: 100 } : null),
+    });
+    const behaviour = dragNodeBehaviour({ pin: true });
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases every carried node when the layout stays in charge', () => {
+    const ctx = fakeContext({ selection: () => ['n1', 'n2'] });
+    const behaviour = dragNodeBehaviour();
+
+    behaviour.onPointerDown!(input(100, 100), ctx);
+    behaviour.onPointerMove!(input(100, 400), ctx);
+    behaviour.onPointerUp!(input(100, 400), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledWith('n1', null);
+    expect(ctx.pin).toHaveBeenCalledWith('n2', null);
   });
 });
 
@@ -213,6 +314,37 @@ describe('connectNodesBehaviour', () => {
     behaviour.onPointerDown?.(input(100, 100), ctx);
     behaviour.onPointerUp?.(input(105, 105), ctx);
 
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it('connects on a right-drag in its quick form, armed or not, and leaves the left button alone', () => {
+    const ctx = fakeContext();
+    const quick = connectNodesBehaviour({ button: 'secondary', armed: false });
+
+    // The left button is for moving cards: not this gesture's.
+    expect(quick.onPointerDown?.(input(100, 100), ctx)).toBeUndefined();
+
+    expect(quick.onPointerDown?.(input(100, 100, { buttons: 2 }), ctx)).toBe(true);
+    quick.onPointerMove?.(input(200, 100, { buttons: 2 }), ctx);
+    quick.onPointerUp?.(input(300, 100, { buttons: 0 }), ctx);
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'edgeCreate', source: expect.objectContaining({ id: 'n1' }) }),
+    );
+  });
+
+  it('leaves the right button to the quick form, so an armed tool does not claim it too', () => {
+    const ctx = fakeContext();
+    expect(connectNodesBehaviour().onPointerDown?.(input(100, 100, { buttons: 2 }), ctx)).toBeUndefined();
+  });
+
+  it('draws nothing and says nothing for a right-click that does not travel', () => {
+    const ctx = fakeContext();
+    const quick = connectNodesBehaviour({ button: 'secondary' });
+
+    quick.onPointerDown?.(input(100, 100, { buttons: 2 }), ctx);
+    quick.onPointerMove?.(input(102, 101, { buttons: 2 }), ctx);
+    expect(ctx.drawConnection).not.toHaveBeenCalledWith('n1', expect.anything());
+    quick.onPointerUp?.(input(102, 101, { buttons: 0 }), ctx);
     expect(ctx.emit).not.toHaveBeenCalled();
   });
 
@@ -415,5 +547,293 @@ describe('pan-zoom and select, in both orders', () => {
     dispatchPointer(behaviours, 'onPointerMove', input(40, 30), ctx);
 
     expect(panned).toEqual([[30, 20]]);
+  });
+});
+
+describe('marqueeSelectBehaviour', () => {
+  /** Records what the sweep drew and selected, over the two-node world the fake context holds. */
+  function harness(overrides: Partial<BehaviourContext> = {}) {
+    const selections: string[][] = [];
+    const drawn: (unknown | null)[] = [];
+    const ctx = fakeContext({
+      hitTest: () => [],
+      select: (ids) => {
+        selections.push([...ids].sort());
+      },
+      drawMarquee: (bounds) => {
+        drawn.push(bounds);
+      },
+      ...overrides,
+    });
+    return { ctx, selections, drawn };
+  }
+
+  it('selects what the rectangle touches, and follows it as it shrinks', () => {
+    const { ctx, selections } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    // Out past the second node, then pulled back in — the case an additive sweep cannot express.
+    behaviour.onPointerMove!(input(400, 200), ctx);
+    behaviour.onPointerMove!(input(150, 200), ctx);
+
+    expect(selections).toEqual([['n1', 'n2'], ['n1']]);
+  });
+
+  it('normalises a sweep drawn up and to the left', () => {
+    // Without `boundsFromPoints` this rectangle has min > max and matches nothing at all, which
+    // reads as the gesture working in two directions out of four.
+    const { ctx, selections } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(200, 200), ctx);
+    behaviour.onPointerMove!(input(50, 50), ctx);
+
+    expect(selections).toEqual([['n1']]);
+  });
+
+  it('adds to the selection when the modifier is held, and replaces when it is not', () => {
+    const held = harness({ selection: () => ['n2'] });
+    const extending = marqueeSelectBehaviour();
+    extending.onPointerDown!(input(0, 0, { shiftKey: true }), held.ctx);
+    extending.onPointerMove!(input(150, 150, { shiftKey: true }), held.ctx);
+    expect(held.selections).toEqual([['n1', 'n2']]);
+
+    const plain = harness({ selection: () => ['n2'] });
+    const replacing = marqueeSelectBehaviour({ armed: true });
+    replacing.onPointerDown!(input(0, 0), plain.ctx);
+    replacing.onPointerMove!(input(150, 150), plain.ctx);
+    expect(plain.selections).toEqual([['n1']]);
+  });
+
+  it('ignores a plain background press unless it is armed', () => {
+    const { ctx } = harness();
+    expect(marqueeSelectBehaviour().onPointerDown!(input(0, 0), ctx)).toBeUndefined();
+    expect(marqueeSelectBehaviour({ armed: true }).onPointerDown!(input(0, 0), ctx)).toBe(true);
+    expect(marqueeSelectBehaviour().onPointerDown!(input(0, 0, { ctrlKey: true }), ctx)).toBe(true);
+  });
+
+  it('leaves a press on a node alone, so an armed canvas can still drag cards', () => {
+    const { ctx } = harness({ hitTest: () => ['n1'] });
+    expect(marqueeSelectBehaviour({ armed: true }).onPointerDown!(input(100, 100), ctx)).toBeUndefined();
+  });
+
+  it('draws nothing and selects nothing below the drag threshold', () => {
+    const { ctx, selections, drawn } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(2, 1), ctx);
+
+    expect(drawn).toEqual([]);
+    expect(selections).toEqual([]);
+  });
+
+  it('clears the selection on an armed press that went nowhere', () => {
+    // `select` never sees the press — this behaviour claimed the pointer-down — so the deselect has
+    // to come from here or a canvas with the tool armed cannot be deselected at all.
+    const { ctx, selections } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerUp!(input(0, 0), ctx);
+
+    expect(selections).toEqual([[]]);
+  });
+
+  it('keeps the selection when a modifier press goes nowhere', () => {
+    const { ctx, selections } = harness({ selection: () => ['n2'] });
+    const behaviour = marqueeSelectBehaviour();
+
+    behaviour.onPointerDown!(input(0, 0, { shiftKey: true }), ctx);
+    behaviour.onPointerUp!(input(0, 0, { shiftKey: true }), ctx);
+
+    expect(selections).toEqual([]);
+  });
+
+  it('takes the rectangle down on release and on cancel', () => {
+    const { ctx, drawn } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(150, 150), ctx);
+    behaviour.onPointerUp!(input(150, 150), ctx);
+    expect(drawn.at(-1)).toBeNull();
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(150, 150), ctx);
+    behaviour.onPointerCancel!(input(150, 150), ctx);
+    expect(drawn.at(-1)).toBeNull();
+  });
+
+  it('abandons the sweep when no button is held', () => {
+    // The same dropped-pointer-up guard `drag-node` carries: without it a released sweep follows the
+    // cursor around the canvas selecting as it goes.
+    const { ctx, drawn } = harness();
+    const behaviour = marqueeSelectBehaviour({ armed: true });
+
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(150, 150, { buttons: 0 }), ctx);
+    expect(drawn).toEqual([null]);
+
+    expect(behaviour.onPointerMove!(input(300, 300), ctx)).toBeUndefined();
+  });
+
+  it('must be listed before pan-zoom to see the press at all', () => {
+    const { ctx, drawn } = harness();
+    const marquee = marqueeSelectBehaviour({ armed: true });
+
+    dispatchPointer([panZoomBehaviour(), marquee], 'onPointerDown', input(0, 0), ctx);
+    dispatchPointer([panZoomBehaviour(), marquee], 'onPointerMove', input(150, 150), ctx);
+    expect(drawn).toEqual([]);
+
+    dispatchPointer([marquee, panZoomBehaviour()], 'onPointerDown', input(0, 0), ctx);
+    dispatchPointer([marquee, panZoomBehaviour()], 'onPointerMove', input(150, 150), ctx);
+    expect(drawn).toHaveLength(1);
+  });
+});
+
+/**
+ * `arrange-nodes`.
+ *
+ * The three intents are geometric, so they can be told apart without knowing what a parent means on a
+ * given graph. Each of the three has a way of being quietly wrong: a reorder read as a reparent, a drop
+ * out of a tree read as a reorder, and a plain click read as a drop that rewrites the structure.
+ */
+describe('arrangeNodesBehaviour', () => {
+  const grab = (behaviour: ReturnType<typeof arrangeNodesBehaviour>, ctx: BehaviourContext) => {
+    behaviour.onPointerDown!(input(100, 100), ctx);
+  };
+  const emitted = (ctx: BehaviourContext) => (ctx.emit as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+
+  it('reads a drop onto another card as making it a child, and draws the line while it is in progress', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    // A line only for this intent — it is the one the geometry cannot show, and a line is what a
+    // relationship looks like everywhere else on the graph.
+    expect(ctx.drawConnection).toHaveBeenCalledWith('n2', { x: 300, y: 100 });
+
+    behaviour.onPointerUp!(input(300, 100), ctx);
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({ type: 'nodeArrange', into: 'child', target: { id: 'n2' } });
+  });
+
+  it('reads a drop in the gap beside a card as a reorder, and says which side', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour({ band: 40 });
+
+    grab(behaviour, ctx);
+    // Level with n2 and clear of it: between its neighbours rather than onto it.
+    behaviour.onPointerMove!(input(250, 100), ctx);
+    behaviour.onPointerUp!(input(250, 100), ctx);
+
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({
+      type: 'nodeArrange',
+      into: 'sibling',
+      target: { id: 'n2' },
+      before: true,
+    });
+  });
+
+  it('draws no line for a reorder, so the two intents are told apart before the drop', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour({ band: 40 });
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(250, 100), ctx);
+
+    expect(ctx.drawConnection).toHaveBeenCalledWith(null, { x: 250, y: 100 });
+  });
+
+  it('reads a drop past every card as loose rather than guessing a sibling', () => {
+    // A reorder means "between these two". A pointer a long way down an empty rank is not saying that
+    // about a card two screens away — it is saying nothing, and guessing is how a card ends up
+    // somewhere the reader did not put it.
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour({ band: 40, reach: 50 });
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(900, 100), ctx);
+    behaviour.onPointerUp!(input(900, 100), ctx);
+
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({ type: 'nodeArrange', into: 'loose' });
+    expect(emitted(ctx).at(-1)?.[0]).not.toHaveProperty('target');
+  });
+
+  it('reads a drop into a named zone as loose, even though the zone is full of cards', () => {
+    /*
+      The `forest`'s unconnected zone is cards at similar heights, so without asking about regions a
+      drop into it reads as a reorder — the exact opposite of what dragging a card out of a tree means.
+    */
+    const ctx = fakeContext({ regionAt: () => 'forest:unattached' });
+    const behaviour = arrangeNodesBehaviour({ band: 40 });
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    behaviour.onPointerUp!(input(300, 100), ctx);
+
+    expect(emitted(ctx).at(-1)?.[0]).toMatchObject({ type: 'nodeArrange', into: 'loose' });
+  });
+
+  it('lets a press that went nowhere fall through, so a card can still be selected', () => {
+    // `select` is listed after this one and would otherwise never see a press on a card at all.
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    expect(behaviour.onPointerUp!(input(100, 100), ctx)).toBeUndefined();
+    expect(emitted(ctx)).toHaveLength(0);
+  });
+
+  it('hands the card back to the layout on release, whatever the drop meant', () => {
+    /*
+      Nothing is written here, so the card has to be governed by the arrangement again — and the
+      arrangement is about to change under it. Left pinned, a card whose reparent the consumer refuses
+      would sit in the gap it was dropped in for the life of the page, looking as though it had worked.
+    */
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    behaviour.onPointerUp!(input(300, 100), ctx);
+
+    expect(ctx.pin).toHaveBeenCalledWith('n1', null);
+  });
+
+  it('refuses to start at all on a locked graph', () => {
+    const ctx = fakeContext({ locked: () => true });
+    const behaviour = arrangeNodesBehaviour();
+
+    expect(behaviour.onPointerDown!(input(100, 100), ctx)).toBeUndefined();
+    behaviour.onPointerMove!(input(300, 100), ctx);
+    expect(ctx.pin).not.toHaveBeenCalled();
+  });
+
+  it('gives up when the button is no longer held', () => {
+    // The pointer left the window, or something upstream swallowed the release.
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    behaviour.onPointerMove!(input(200, 100, { buttons: 0 }), ctx);
+    behaviour.onPointerUp!(input(200, 100), ctx);
+
+    expect(emitted(ctx)).toHaveLength(0);
+  });
+
+  it('never makes a card the child of itself', () => {
+    const ctx = fakeContext();
+    const behaviour = arrangeNodesBehaviour();
+
+    grab(behaviour, ctx);
+    // Back where it started, over its own card.
+    behaviour.onPointerMove!(input(105, 100), ctx);
+    behaviour.onPointerUp!(input(105, 100), ctx);
+
+    const event = emitted(ctx).at(-1)?.[0] as { target?: { id: string } };
+    expect(event.target?.id).not.toBe('n1');
   });
 });

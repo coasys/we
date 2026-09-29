@@ -1,6 +1,6 @@
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { PANEL_TITLE_PROPS } from '@we/schema-kit';
+import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, ScopeGroup, TemplateSchema } from '@we/schema-shared';
 import {
   contextData,
@@ -275,11 +275,11 @@ function TreeNode(props: TreeNodeProps) {
           cursor: 'pointer',
           'flex-shrink': '0',
           background: isSelected()
-            ? 'var(--we-color-primary-100)'
+            ? 'var(--we-role-accent-muted)'
             : isHovered()
-              ? 'var(--we-color-neutral-50)'
+              ? 'var(--we-role-surface-hover)'
               : 'transparent',
-          'border-left': isSelected() ? '2px solid var(--we-color-primary-500)' : '2px solid transparent',
+          'border-left': isSelected() ? '2px solid var(--we-role-accent)' : '2px solid transparent',
           'box-sizing': 'border-box',
         }}
       >
@@ -308,7 +308,7 @@ function TreeNode(props: TreeNodeProps) {
         <we-icon
           name={nodeTypeIcon(props.node.type)}
           size="xs"
-          color={isSelected() ? 'primary-600' : isSpecial() ? 'primary-400' : 'neutral-400'}
+          color={isSelected() ? 'accent-text' : isSpecial() ? 'accent' : 'text-faint'}
         />
 
         {/* Context label: route path, slot name, or prop name */}
@@ -327,8 +327,8 @@ function TreeNode(props: TreeNodeProps) {
           minWidth="0"
           whiteSpace="nowrap"
           styles={{ 'text-overflow': 'ellipsis' }}
-          color={isSelected() ? 'primary-700' : isSpecial() ? 'primary-500' : 'neutral-700'}
-          fontWeight={isSelected() ? '600' : '400'}
+          color={isSelected() ? 'accent-text' : isSpecial() ? 'accent' : 'text-muted'}
+          prop:fontWeight={isSelected() ? '600' : '400'}
         >
           {props.node.type ?? '(root)'}
         </we-text>
@@ -522,12 +522,10 @@ export function InspectorPanel() {
           ay="center"
           gap="200"
           flex="none"
-          borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
+          borderBottom={`1px solid ${tokenVar('color', 'border')}`}
         >
           <we-icon name="list" size="xs" color="text-faint" />
-          <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="widest" color="text-faint">
-            Layers
-          </we-text>
+          <we-text {...SECTION_LABEL_PROPS}>Layers</we-text>
         </Row>
         <div style={{ flex: '1', 'overflow-y': 'auto', 'overflow-x': 'hidden' }}>
           <NodeTree />
@@ -541,7 +539,7 @@ export function InspectorPanel() {
           height: '4px',
           cursor: 'row-resize',
           'flex-shrink': '0',
-          background: dividerResizing() ? 'var(--we-color-primary-300)' : 'var(--we-role-border)',
+          background: dividerResizing() ? 'var(--we-role-accent)' : 'var(--we-role-border)',
         }}
       />
 
@@ -931,17 +929,29 @@ function NodeProperties(props: {
 // CollapsibleSection
 // -----------------------------------------------------------------------
 
+/**
+ * A folding section, the shape every folding section in the app has.
+ *
+ * The schema side of this is `foldingSectionLabel` in `@we/schema-kit`, which a Solid component
+ * cannot call — it emits a tree, not JSX. What CAN be shared is every decision in it, and this is
+ * the same set: the label through `SECTION_LABEL_PROPS` rather than a fourth hand-spelling of the
+ * tracking, the caret after the words rather than before them, `caret-up`/`caret-down` rather than
+ * the right/down this used while `ThemePanel` two files away used up/down, and a real `<button>` so
+ * the row keeps its keyboard activation and says `aria-expanded`.
+ */
 function CollapsibleSection(props: { label: string; children: JSX.Element }) {
   const [open, setOpen] = createSignal(false);
 
   return (
     <Column borderTop="1px solid neutral-50">
-      <Row ay="center" gap="100" px="400" py="100" cursor="pointer" onClick={() => setOpen((v) => !v)}>
-        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="text-faint" />
-        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="text-faint">
-          {props.label}
-        </we-text>
-      </Row>
+      <we-button variant="bare" width="100%" r="200" expanded={open()} onClick={() => setOpen((v) => !v)}>
+        <Row ay="center" gap="200" px="400" py="100" width="100%">
+          <we-text {...SECTION_LABEL_PROPS} flex="1 1 auto" minWidth="0">
+            {props.label}
+          </we-text>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
+        </Row>
+      </we-button>
       <Show when={open()}>
         <Column pb="200">{props.children}</Column>
       </Show>
@@ -953,17 +963,16 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
 // SectionLabel
 // -----------------------------------------------------------------------
 
+/**
+ * A named region inside the panel — `sectionLabel`'s treatment, in the language this panel is in.
+ *
+ * It was a hand-spelled copy that agreed on the colour and the caps and differed on the tracking
+ * (`0.06em`, where the kit says `wide` and the row twenty lines up says `widest`). The padding is
+ * this panel's own and stays here; the type is not, and does not.
+ */
 function SectionLabel(props: { children: string }) {
   return (
-    <we-text
-      py="100"
-      px="14px"
-      fontSize="100"
-      fontWeight="600"
-      textTransform="uppercase"
-      letterSpacing="0.06em"
-      color="text-faint"
-    >
+    <we-text py="100" px="14px" {...SECTION_LABEL_PROPS}>
       {props.children}
     </we-text>
   );
@@ -994,8 +1003,8 @@ function InlineSpaceInput(props: {
 
   const textColor = () =>
     props.value
-      ? (props.color ?? 'var(--we-color-neutral-800)')
-      : (props.placeholderColor ?? props.color ?? 'var(--we-color-neutral-400)');
+      ? (props.color ?? 'var(--we-role-text)')
+      : (props.placeholderColor ?? props.color ?? 'var(--we-role-text-faint)');
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
@@ -1010,7 +1019,7 @@ function InlineSpaceInput(props: {
         }}
       >
         <we-text
-          fontWeight={props.value ? '500' : '400'}
+          prop:fontWeight={props.value ? '500' : '400'}
           color={textColor()}
           fontSize="10px"
           minWidth="22px"
@@ -1120,10 +1129,10 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
               'flex-shrink': '0',
               background: swatchBg(props.value),
               'border-radius': '2px',
-              border: '1px solid rgba(0,0,0,0.15)',
+              border: '1px solid var(--we-role-border)',
             }}
           />
-          <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+          <we-text flex="1" truncate color={props.value ? 'text' : 'text-faint'} fontSize="200">
             {props.value || '—'}
           </we-text>
           <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
@@ -1366,8 +1375,8 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
           background: isRole(v) ? `var(--we-role-${v})` : `var(--we-color-${v})`,
           'box-shadow':
             color() === v
-              ? `0 0 0 2px var(--we-color-primary-600)`
-              : `0 0 0 1px var(--we-color-primary-${hovered() === v ? 600 : 300})`,
+              ? `0 0 0 2px var(--we-role-accent)`
+              : `0 0 0 1px var(--we-role-${hovered() === v ? 'accent' : 'border'})`,
           'border-radius': '3px',
           cursor: 'pointer',
           padding: '0',
@@ -1388,11 +1397,11 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
               height: '12px',
               'flex-shrink': '0',
               'border-radius': '2px',
-              background: 'var(--we-color-neutral-0)',
+              background: 'var(--we-role-surface)',
               'box-shadow': previewShadow(),
             }}
           />
-          <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+          <we-text flex="1" truncate color={props.value ? 'text' : 'text-faint'} fontSize="200">
             {props.value
               ? `${widthPx()}px · ${color() === RING_THEME_ACCENT ? 'theme accent' : color() || 'custom'}`
               : '—'}
@@ -1493,7 +1502,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                       cursor: 'pointer',
                       padding: '4px 6px',
                       'border-radius': '4px',
-                      background: color() === RING_THEME_ACCENT ? 'var(--we-color-primary-50)' : 'transparent',
+                      background: color() === RING_THEME_ACCENT ? 'var(--we-role-accent-muted)' : 'transparent',
                     }}
                   >
                     <div
@@ -1684,11 +1693,11 @@ function BgImagePicker(props: {
               height: '16px',
               'flex-shrink': '0',
               'border-radius': '2px',
-              border: '1px solid rgba(0,0,0,0.15)',
+              border: '1px solid var(--we-role-border)',
               ...previewStyle(props.value),
             }}
           />
-          <we-text flex="1" minWidth="0" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+          <we-text flex="1" minWidth="0" truncate color={props.value ? 'text' : 'text-faint'} fontSize="200">
             {triggerLabel()}
           </we-text>
           <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
@@ -1770,7 +1779,7 @@ function BgImagePicker(props: {
                               'aspect-ratio': '1 / 1',
                               cursor: 'pointer',
                               'border-radius': '4px',
-                              'box-shadow': img.src === props.value ? '0 0 0 2px var(--we-color-primary-600)' : 'none',
+                              'box-shadow': img.src === props.value ? '0 0 0 2px var(--we-role-accent)' : 'none',
                               ...previewStyle(img.src),
                             }}
                           />
@@ -1879,25 +1888,25 @@ function BgImagePicker(props: {
 // -----------------------------------------------------------------------
 
 const BOX_MARGIN = {
-  bg: 'var(--we-color-warning-200)',
+  bg: 'var(--we-role-warning-surface)',
   border: 'var(--we-role-warning-text)',
-  label: 'var(--we-color-warning-800)',
-  value: 'var(--we-color-warning-800)',
+  label: 'var(--we-role-warning-text)',
+  value: 'var(--we-role-warning-text)',
   placeholder: 'var(--we-role-warning-text)',
 };
 
 const BOX_PADDING = {
-  bg: 'var(--we-color-success-200)',
+  bg: 'var(--we-role-success-surface)',
   border: 'var(--we-role-success-text)',
-  label: 'var(--we-color-success-800)',
-  value: 'var(--we-color-success-800)',
+  label: 'var(--we-role-success-text)',
+  value: 'var(--we-role-success-text)',
   placeholder: 'var(--we-role-success-text)',
 };
 
 const BOX_ELEMENT = {
   bg: 'var(--we-role-accent-muted)',
   border: 'var(--we-role-accent)',
-  text: 'var(--we-color-primary-800)',
+  text: 'var(--we-role-accent-text)',
 };
 
 function BoxRecord(props: {

@@ -26,9 +26,9 @@
  *
  * When the IR cannot express the query, or the adapter reports a blocking gap, this refuses. The
  * caller renders nothing and says why. There is deliberately no fallback to handing the backend the
- * raw dialect: that only ever worked because AD4M happens to be *both* the dialect and the backend,
- * and against any other backend it hands over something the adapter never agreed to read — so it hid
- * real gaps rather than surfacing them.
+ * raw dialect: that only ever worked because the dialect and the production backend's native query
+ * happened to coincide, and against any other backend it hands over something the adapter never
+ * agreed to read — so it hid real gaps rather than surfacing them.
  *
  * The one exception is a **`degraded`** gap, which is a backend *defect* rather than a capability
  * gap: the rows come back correct, one named feature is silently ignored. Refusing there would block
@@ -63,9 +63,9 @@ export type QueryRouting =
  * and it is what a `$localState` field or a store accessor answers when nothing has been chosen yet
  * (`modules.call.callRecordId` returns `''` by design, so every surface reading it gets a string).
  *
- * What reaches the screen without this is a SPARQL parse error. The AD4M executor builds a `VALUES`
- * clause, drops the id for not being an IRI, and refuses the now-empty data block — "expected UNDEF"
- * — naming neither the template, the entity nor the field.
+ * What reaches the screen without this is a query parse error from the backend: it builds a set
+ * clause, drops the id for not being a valid IRI, and refuses the now-empty block — "expected
+ * UNDEF" — naming neither the template, the entity nor the field.
  *
  * Reported rather than repaired, because no repair here is right. Pruning `''` would mean "do not
  * narrow by id", which answers with an arbitrary record and draws somebody else's data with nothing

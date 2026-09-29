@@ -179,7 +179,17 @@ export interface DragZone {
 export type GhostSpec =
   | { kind: 'chip'; label: string; icon?: string; count?: number }
   | { kind: 'clone'; source: HTMLElement; rect: DOMRect }
-  | { kind: 'node'; items: DragItem[] };
+  | { kind: 'node'; items: DragItem[] }
+  /**
+   * Nothing drawn — for a surface that is already moving the thing itself.
+   *
+   * A canvas drags its cards under the cursor in its own coordinate space, so a session begun from
+   * one would otherwise put a second copy of the card beside the first and neither would be the
+   * answer. The session still runs: zones light up, spring-loading works, and a release still lands.
+   * What it does not do is claim to be showing you what you are carrying, because the surface
+   * underneath already is.
+   */
+  | { kind: 'none' };
 
 /**
  * Draws a `node` ghost. Returns `null` to decline, which falls back to a chip.

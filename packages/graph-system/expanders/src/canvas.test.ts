@@ -11,13 +11,19 @@ import type { EntityShape, ExpanderContext, ExpanderQuery } from '@we/graph-prot
 import { describe, expect, it } from 'vitest';
 
 import { canvasSeed, PLACEMENT_UNSET } from './canvas';
+import { weighSignals } from './weighing';
 
 const SHAPES: EntityShape[] = [
   {
     name: 'CollectionBlock',
     identityProperty: 'title',
     properties: [{ name: 'title', type: 'string' }],
-    relations: [],
+    // The `WeNode` relations, untyped: what `counts` is asked over. `Sighting` below deliberately
+    // has none, which is the case that must not take a type off the canvas.
+    relations: [
+      { name: 'signals', target: 'Signal', cardinality: 'many' },
+      { name: 'comments', target: '', cardinality: 'many' },
+    ],
   },
   { name: 'TaskBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
   {
@@ -59,6 +65,8 @@ const SHAPES: EntityShape[] = [
     relations: [
       { name: 'source', target: '', cardinality: 'one' },
       { name: 'target', target: '', cardinality: 'one' },
+      { name: 'signals', target: 'Signal', cardinality: 'many' },
+      { name: 'comments', target: '', cardinality: 'many' },
     ],
   },
   {
@@ -181,6 +189,90 @@ describe('canvasSeed', () => {
 
     expect(asked).toContain('Sighting');
     expect(nodes.find((n) => n.type === 'Sighting')?.data).toMatchObject({ x: 10, y: 20 });
+  });
+
+  it('counts what people made of a card, in the read that was happening anyway', async () => {
+    // One more projection on a query the seed already makes, rather than a subscription per card —
+    // which is the difference between a canvas of three hundred cards loading and not.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 3, $commentsCount: 2 }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(nodes[0].data).toMatchObject({ signalsCount: 3, commentsCount: 2 });
+  });
+
+  it('counts what people made of a connection too, so a gesture can tell a discussed line from a bare one', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+      ],
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+      Relationship: [
+        {
+          id: 'r1',
+          source: 'c1',
+          sourceType: 'CollectionBlock',
+          target: 'c2',
+          targetType: 'CollectionBlock',
+          $commentsCount: 2,
+          $signalsCount: 0,
+        },
+      ],
+    });
+
+    const { edges } = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', counts: ['signals', 'comments'] },
+      ctx,
+    );
+
+    expect(edges[0].data).toMatchObject({ commentsCount: 2 });
+    expect(edges[0].data?.signalsCount).toBeUndefined();
+  });
+
+  it('leaves a zero out, so a card can ask whether the field is there', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 0, $commentsCount: 0 }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(nodes[0].data?.signalsCount).toBeUndefined();
+    expect(nodes[0].data?.commentsCount).toBeUndefined();
+  });
+
+  it('asks a type for no count it cannot answer, rather than losing the type to a refused query', async () => {
+    // A count over a relation an entity does not declare is a refused read, and the refusal would
+    // take every card of that type off the canvas — cards, lines and all — to save a number.
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 's1', nodeType: 'Sighting', x: 10, y: 10 },
+      ],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+      Sighting: [{ id: 's1', name: 'Heron' }],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+
+    expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toMatchObject({
+      $signalsCount: { from: 'signals', count: true },
+    });
+    expect(asked.find((q) => q.entity === 'Sighting')?.include).toBeUndefined();
+    expect(nodes.find((n) => n.type === 'Sighting')).toBeDefined();
   });
 
   it('never draws a placement as a node', async () => {
@@ -745,5 +837,341 @@ describe('canvas connection waypoints', () => {
 
     expect(edges[0].data?.sourceAnchor).toBe('n');
     expect(edges[0].data).not.toHaveProperty('waypoints');
+  });
+});
+
+/**
+ * What the canvas asks for, and what it says when it cannot ask for everything.
+ *
+ * Both of these are about cost and about honesty rather than about what ends up on screen — which is
+ * why neither was noticed: the canvas looked right in every case below.
+ */
+describe('the canvas seed’s reads', () => {
+  it('asks one question once, however many times it was listed', async () => {
+    /*
+      `contains` is a caller's list — on the workshop's canvas it is the call's stored extraction
+      targets — so a repeated entry is a thing that happens, and each repeat cost a round trip and a
+      standing subscription, since the engine keys its watches on the read.
+    */
+    const { context: ctx, asked } = context({
+      Placement: [],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock', 'TaskBlock', 'TaskBlock'] }, ctx);
+
+    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(1);
+  });
+
+  it('still asks twice for a type that is both placed and owned, which is two questions', async () => {
+    /*
+      The dedup is exact repeats only, and this is why. "The ones positioned here", by id, and "the
+      ones this canvas owns", by containment, are different questions — the second is what finds a
+      card nobody has placed yet. They cannot be merged into one query either: one is a `where` and
+      the other a `scope`, and the grammar has no union of the two.
+    */
+    const { context: ctx, asked } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 }],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock'] }, ctx);
+
+    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(2);
+  });
+
+  it('says so when there are more placed cards than it is allowed to read', async () => {
+    /*
+      The placements read is not like the others. Every read here is bounded, and for most of them
+      hitting the bound means some cards of that kind are missing — visible, and obviously a
+      truncation. This one decides which records round two asks for, so exceeding it does not drop
+      the overflow cards, it makes them invisible to the rest of the load entirely. Nothing else ever
+      learns they exist, and what a person sees is a canvas that silently stops.
+    */
+    const { context: ctx, warnings } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'TaskBlock', x: 1, y: 1 },
+      ],
+      TaskBlock: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two' },
+      ],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', limit: 2 }, ctx);
+
+    expect(warnings.some((w) => w.includes('stopped at 2 placed cards'))).toBe(true);
+  });
+
+  it('says nothing about a cap it did not reach', async () => {
+    // A warning on every ordinary canvas would be worth nothing on the one that is truncated.
+    const { context: ctx, warnings } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 }],
+      TaskBlock: [{ id: 't1', title: 'One' }],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', limit: 200 }, ctx);
+
+    expect(warnings.filter((w) => w.includes('placed cards'))).toEqual([]);
+  });
+});
+
+/**
+ * Weighing a card by the reactions on it.
+ *
+ * The aggregate is arithmetic and would be dull to test if the two rules around it were not both
+ * silent when wrong: a card that gained weight because somebody was offline, and a card nobody has
+ * answered about sitting where the least-liked card belongs.
+ */
+describe('weighSignals', () => {
+  const type = 'sig-like';
+  const signal = (author: string, value: number, createdAt = '2026-01-01') => ({
+    signalTypeId: type,
+    value,
+    author,
+    createdAt,
+  });
+
+  it('counts how many people reacted, by default', () => {
+    const data = weighSignals([signal('did:a', 1), signal('did:b', 1)], { signalTypeId: type });
+
+    // And says what produced it, for a card's own mark to read.
+    expect(data).toEqual({ weight: 2, weightCount: 2, weightType: type, weightAggregate: 'count' });
+  });
+
+  it('nets a vote out, averages a rating, and takes a median when asked', () => {
+    const rows = [signal('did:a', 5), signal('did:b', 1), signal('did:c', 3)];
+
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'sum' }).weight).toBe(9);
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'mean' }).weight).toBe(3);
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'median' }).weight).toBe(3);
+  });
+
+  it('takes the median between the middle pair when there is an even number', () => {
+    const rows = [signal('did:a', 1), signal('did:b', 2), signal('did:c', 8), signal('did:d', 10)];
+
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'median' }).weight).toBe(5);
+  });
+
+  it('gives one person one voice, however many records they hold', () => {
+    /*
+      A shared perspective is last-write-wins and writable by every member, so one agent can end up
+      holding two reactions of a kind on one record — two devices, or a write either side of a
+      partition. Counting both lets a card gain weight from somebody having been offline.
+    */
+    const rows = [signal('did:a', 1, '2026-01-01'), signal('did:a', 5, '2026-02-01'), signal('did:b', 1)];
+    const data = weighSignals(rows, { signalTypeId: type, aggregate: 'sum' });
+
+    // The newer of the two, and one voice from that author.
+    expect(data).toMatchObject({ weight: 6, weightCount: 2 });
+  });
+
+  it('answers with no weight when nobody has voted or rated, and with zero when nobody has liked', () => {
+    /*
+      Absent, not zero, for a vote or a rating. A card nobody has answered about sorts last whichever way
+      the order runs and leaves a heat rule falling through to the plain colour — where a zero would claim
+      the coldest colour. A count is the exception: no likes is a score, and belongs at the cold end.
+    */
+    expect(weighSignals([], { signalTypeId: type, mode: 'rating' }).weight).toBeUndefined();
+    expect(weighSignals([], { signalTypeId: type, mode: 'vote' }).weight).toBeUndefined();
+    expect(weighSignals([], { signalTypeId: type })).toMatchObject({ weight: 0, weightCount: 0 });
+    expect(weighSignals([signal('did:a', 1)], { signalTypeId: 'other', mode: 'toggle' })).toMatchObject({ weight: 0 });
+  });
+
+  it('reads a rating as its average even when its type still says count', () => {
+    // The manifest's default `count` is on every type nobody set an aggregate for, whatever its mode.
+    const rows = [signal('did:a', 5), signal('did:b', 1), signal('did:c', 3), signal('did:d', 3)];
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'count', mode: 'rating' })).toMatchObject({
+      weight: 3,
+      weightAggregate: 'mean',
+    });
+    expect(weighSignals(rows, { signalTypeId: type, aggregate: 'count', mode: 'vote' }).weight).toBe(12);
+  });
+
+  it('says what the reader gave, when they gave anything', () => {
+    const rows = [signal('did:a', 4), signal('did:me', 2)];
+    expect(weighSignals(rows, { signalTypeId: type, mode: 'rating', me: 'did:me' }).weightMine).toBe(2);
+    expect(weighSignals(rows, { signalTypeId: type, mode: 'rating', me: 'did:other' }).weightMine).toBeUndefined();
+  });
+
+  it('writes a zero that is a real answer', () => {
+    // A vote that netted out is not the same as a card nobody voted on.
+    const data = weighSignals([signal('did:a', 1), signal('did:b', -1)], {
+      signalTypeId: type,
+      aggregate: 'sum',
+    });
+
+    expect(data).toMatchObject({ weight: 0, weightCount: 2 });
+  });
+
+  it('leaves out a muted author, so a weight agrees with every other reaction surface', () => {
+    const data = weighSignals([signal('did:a', 1), signal('did:muted', 1)], {
+      signalTypeId: type,
+      excludeAuthors: ['did:muted'],
+    });
+
+    expect(data).toMatchObject({ weight: 1, weightCount: 1 });
+  });
+
+  it('ignores an unattributed reaction rather than counting it as a stranger', () => {
+    // Nothing can be said about it: not whose it is, not whether it is muted, not whether it is a
+    // duplicate of one already counted.
+    const data = weighSignals([{ signalTypeId: type, value: 1 }, signal('did:a', 1)], { signalTypeId: type });
+
+    expect(data).toMatchObject({ weight: 1, weightCount: 1 });
+  });
+
+  it('survives rubbish rather than taking the canvas down with it', () => {
+    expect(weighSignals(undefined, { signalTypeId: type })).toEqual({});
+    expect(weighSignals([null, 'nope', 7], { signalTypeId: type, mode: 'rating' }).weight).toBeUndefined();
+    expect(
+      weighSignals([{ ...signal('did:a', 1), value: 'many' }], { signalTypeId: type, aggregate: 'sum' }),
+    ).toMatchObject({ weight: 0, weightCount: 1 });
+  });
+
+  it('weighs nothing without a type, which is what lets a picker start empty', () => {
+    expect(weighSignals([signal('did:a', 1)], { signalTypeId: '' })).toEqual({});
+  });
+});
+
+describe('canvas seed — weighing', () => {
+  it('reads the reactions in the query it was already making, and puts the weight on the card', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [
+        {
+          id: 'c1',
+          title: 'Idea',
+          signals: [
+            { signalTypeId: 'sig-like', value: 1, author: 'did:a', createdAt: '2026-01-01' },
+            { signalTypeId: 'sig-like', value: 1, author: 'did:b', createdAt: '2026-01-01' },
+            { signalTypeId: 'sig-star', value: 5, author: 'did:a', createdAt: '2026-01-01' },
+          ],
+        },
+      ],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    const seed = canvasSeed();
+    const options = { canvas: 'b1', weigh: { signalTypeId: 'sig-like', aggregate: 'count' } };
+    // Read at fetch, weighed in `derive` — the engine runs the two in that order on every load.
+    const { nodes } = seed.derive!(await seed.seed(options, ctx), options);
+
+    /*
+      A projection on the reads the seed already makes — not a query per card. Two of them for this type
+      rather than one, which is the pair the seed always issues for it: the cards positioned here, by
+      id, and the ones this canvas owns and nobody has placed. Both carry the projection, so a card in
+      the tray is weighed exactly like a card on the board.
+    */
+    const reads = asked.filter((q) => q.entity === 'CollectionBlock');
+    expect(reads).toHaveLength(2);
+    expect(reads.every((q) => (q.include as Record<string, unknown> | undefined)?.signals === true)).toBe(true);
+    expect(nodes[0].data).toMatchObject({ weight: 2, weightCount: 2 });
+  });
+
+  it('re-weighs voices from the answers already read, asking nothing more', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [
+        {
+          id: 'c1',
+          title: 'Idea',
+          signals: [
+            { signalTypeId: 'rate', value: 5, author: 'did:a', createdAt: '2026-01-01' },
+            { signalTypeId: 'rate', value: 1, author: 'did:b', createdAt: '2026-01-01' },
+          ],
+        },
+      ],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+    const seed = canvasSeed();
+    const weigh = { signalTypeId: 'rate', mode: 'rating' };
+    const fetched = await seed.seed({ canvas: 'b1', weigh }, ctx);
+    const reads = asked.length;
+
+    expect(seed.derive!(fetched, { canvas: 'b1', weigh }).nodes[0].data).toMatchObject({ weight: 3 });
+    // Only did:a heard: the average is theirs, and nothing was read to find it out.
+    const onlyA = seed.derive!(fetched, { canvas: 'b1', weigh, weights: 'did:b=0' });
+    expect(onlyA.nodes[0].data).toMatchObject({ weight: 5, weightCount: 1 });
+    expect(asked.length).toBe(reads);
+    // And the voices it was made from, for a list beside the canvas.
+    expect(onlyA.summary).toMatchObject({
+      type: 'rate',
+      voices: [
+        { author: 'did:a', cards: 1, mean: 5 },
+        { author: 'did:b', cards: 1, mean: 1 },
+      ],
+    });
+  });
+
+  it('asks a type that declares no reactions for none, rather than losing it to a refused read', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 's1', nodeType: 'Sighting', x: 10, y: 10 },
+      ],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+      Sighting: [{ id: 's1', name: 'Heron' }],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', weigh: { signalTypeId: 'sig-like' } }, ctx);
+
+    expect(asked.find((q) => q.entity === 'Sighting')?.include).toBeUndefined();
+    // Present, and simply unweighed — which a sort reads as "no answer" and puts last.
+    const sighting = nodes.find((n) => n.type === 'Sighting');
+    expect(sighting).toBeDefined();
+    expect(sighting?.data?.weight).toBeUndefined();
+  });
+
+  it('asks for no reactions at all when nothing is being weighed', async () => {
+    const asked: ExpanderQuery[] = [];
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+    });
+    const query = ctx.query;
+    ctx.query = async (request: ExpanderQuery) => {
+      asked.push(request);
+      return query(request);
+    };
+
+    await canvasSeed().seed({ canvas: 'b1' }, ctx);
+
+    expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toBeUndefined();
+  });
+});
+
+describe('canvas seed — what a card carries for ordering', () => {
+  it('lets a record\'s own timestamp reach the card, so "oldest first" has something to order by', async () => {
+    /*
+      `createdAt` lives on the record rather than in any model's declared properties, so the scalar
+      allowlist dropped it — and a layout told to order siblings by it fell silently back to sorting by
+      address, which is stable, meaningless, and indistinguishable from working.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', createdAt: '2026-03-04T10:00:00Z' }],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1' }, ctx);
+
+    expect(nodes[0].data?.createdAt).toBe('2026-03-04T10:00:00Z');
   });
 });

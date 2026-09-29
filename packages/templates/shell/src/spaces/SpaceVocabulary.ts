@@ -1,7 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { sectionCard } from '@we/template-kit';
+import { createSignalTypeModal, sectionCard } from '@we/template-kit';
 
-import { createSignalTypeModal } from './vocabulary/CreateSignalTypeModal.ts';
 import { modelsSection } from './vocabulary/EntitiesSection.ts';
 import { involvementTypesSection } from './vocabulary/InvolvementTypesSection.ts';
 import { relationshipTypesSection } from './vocabulary/RelationshipTypesSection.ts';
@@ -31,7 +30,7 @@ import { topicsSection } from './vocabulary/TopicsSection.ts';
  */
 const openSpaceFirst: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -87,7 +86,10 @@ const signalTypesSection: SchemaNode = sectionCard({
       children: [signalTypeCard],
     },
     // Carries its own `$if` — see `formModal`.
-    createSignalTypeModal,
+    createSignalTypeModal({
+      open: { $: 'local.createSignalTypeOpen' },
+      close: { $setLocal: 'createSignalTypeOpen', value: false },
+    }),
   ],
 });
 

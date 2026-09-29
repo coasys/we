@@ -147,6 +147,33 @@ describe('adapter.lower', () => {
   });
 });
 
+describe('adapter.lower — select', () => {
+  /**
+   * `Ad4mModel` names the field list `properties`. Passed as `select`, it is ignored and the executor
+   * answers with every field — relation id lists included, which on a container is everything in it.
+   */
+  it('names the field list the way the model reads it, at the root and on a relation sub-query', () => {
+    const opts = adapter.lower(
+      base({
+        select: ['title'],
+        include: { signals: { select: ['value'] } },
+        aggregate: [{ fn: 'count', over: 'signals', as: '$signalCount' }],
+      }),
+    ) as Record<string, unknown>;
+    expect(opts.properties).toEqual(['title']);
+    expect(opts).not.toHaveProperty('select');
+    const include = opts.include as Record<string, Record<string, unknown>>;
+    expect(include.signals).toMatchObject({ properties: ['value'] });
+    expect(include.signals).not.toHaveProperty('select');
+    // A projection takes no field list, and is passed on as it was.
+    expect(include.$signalCount).toEqual({ from: 'signals', count: true });
+  });
+
+  it('asks for every field when nothing is selected', () => {
+    expect(adapter.lower(base({}))).not.toHaveProperty('properties');
+  });
+});
+
 describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
   const scopedIr = (): QueryIR => ({
     irVersion: 1,
