@@ -235,7 +235,7 @@ export function createAd4mDataBindings(
  * them is on that same branch and **not on `dev`**, which is what `electron-package.yaml` defaults
  * `ad4m_ref` to. Build the executor from the same branch, or pass `ad4m_ref` when packaging.
  */
-export const VERIFIED_AGAINST_AD4M = '0.13.0-test-inverse-relations';
+export const VERIFIED_AGAINST_AD4M = '0.13.0-test-flows-1';
 
 export const ad4mCapabilities: AdapterCapabilities = {
   /*
