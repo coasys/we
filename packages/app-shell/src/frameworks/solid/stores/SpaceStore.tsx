@@ -3975,9 +3975,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     void (async () => {
       try {
-        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY as never);
+        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY);
         // A read that lands after a space switch belongs to the space that was left.
-        if (datasetStore.currentDataset() === ds) setActivityRows(rows as unknown as ContainerActivity[]);
+        if (datasetStore.currentDataset() === ds) setActivityRows(rows);
       } catch (error) {
         console.error('SpaceStore: could not read container activity', error);
       }
