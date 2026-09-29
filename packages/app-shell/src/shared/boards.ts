@@ -24,6 +24,7 @@
 import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
+import type { TaskMoveOutcome } from './taskFlow';
 
 /** What the board actions need from the app around them. */
 export interface BoardDeps {
@@ -79,6 +80,29 @@ export interface BoardDeps {
   holdStatus?: (recordId: string, status: string) => void;
   releaseStatus?: (recordId: string) => void;
   doneStatus?: (recordId: string) => void;
+  /**
+   * The space's task flow, where its states ask for agreement — see `taskFlow.ts`.
+   *
+   * With one, a drop into a bound column *asks* for the card's new state rather than writing it: the
+   * move happens, and the arrangement and `status` are written as before, only once enough people
+   * have asked; otherwise the card stays where it was and its card says what it is waiting on.
+   * Optional, and a space whose states ask for nothing behaves exactly as if it were absent.
+   */
+  flow?: BoardFlow;
+}
+
+/** What the board needs from a task flow. */
+export interface BoardFlow {
+  /** Whether the space's states run as a flow at all. */
+  enabled: () => boolean;
+  /** Whether a drop into this state waits for agreement, so nothing should be drawn ahead of it. */
+  needsAgreement: (slug: string) => boolean;
+  /** The state a task's run is in, where it has one. */
+  stateOf: (taskId: string) => string | undefined;
+  /** Ask for a move. `null` means the space has no flow after all, and the caller writes the state. */
+  move: (taskId: string, from: string, to: string) => Promise<TaskMoveOutcome>;
+  /** The state a task made into a column that asks for agreement starts in instead. */
+  entryFor: (to: string) => string;
 }
 
 export interface CreateBoardOptions {
@@ -116,7 +140,7 @@ export interface BoardActions {
 const ids = (value: unknown): string[] => (Array.isArray(value) ? (value as string[]) : []);
 
 export function createBoardActions(deps: BoardDeps): BoardActions {
-  const { dataset, offeredStates, notify, resolveSuggestion } = deps;
+  const { dataset, offeredStates, notify, resolveSuggestion, flow } = deps;
   const hold = deps.hold ?? (() => {});
   const release = deps.release ?? (() => {});
   const holdStatus = deps.holdStatus ?? (() => {});
@@ -626,8 +650,15 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       has the slug on screen already. It is a **hint for the drawing only**: the write below still
       reads the column and uses what it finds, so a stale hint costs a frame, never a wrong write.
     */
-    if (Array.isArray(orderedIds) && orderedIds.includes(cardId)) hold(toColumnId, 'arranges', orderedIds);
-    if (toSlug) holdStatus(cardId, toSlug);
+    /*
+      Except where the state waits for agreement. A card drawn in Done a frame after the drop and
+      back in Doing a round trip later reads as a move that happened and was undone, which is the
+      opposite of what is going on: nothing has moved, somebody has asked. The card stays put and its
+      chip says so.
+    */
+    const asking = Boolean(toSlug && flow?.enabled() && flow.needsAgreement(toSlug));
+    if (!asking && Array.isArray(orderedIds) && orderedIds.includes(cardId)) hold(toColumnId, 'arranges', orderedIds);
+    if (!asking && toSlug) holdStatus(cardId, toSlug);
     try {
       const [from, to] = await Promise.all([
         /*
@@ -652,6 +683,22 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
       // cannot race.
       if (task && resolveSuggestion) await resolveSuggestion(cardId, 'status');
+      /*
+        Where the space's states run as a flow, the drop asks rather than writes. Only a move that
+        happened goes on to the writes below — the arrangement, and `status` as the mirror every other
+        surface reads. One that is waiting leaves the board as it was; its card shows the question.
+      */
+      if (task && to.slug && flow?.enabled()) {
+        const current = flow.stateOf(cardId) ?? String((task as { status?: unknown }).status ?? '');
+        const outcome = await flow.move(cardId, current, to.slug);
+        if (outcome !== null && outcome !== 'moved') {
+          release(to.id, 'arranges');
+          if (from) release(from.id, 'arranges');
+          releaseStatus(cardId);
+          if (outcome === 'stalled') notify('That card is stuck between two moves — one of them has to be withdrawn');
+          return;
+        }
+      }
       /*
         Shown before it is written — see `BoardDeps.hold`.
 
@@ -748,13 +795,23 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       if (!column) return;
       const Task = getEntityForDataset('TaskBlock', p);
       if (!Task) return;
+      /*
+        A column whose state waits for agreement cannot be the state a task is born in — that would be
+        a way round the question. The task starts in the first state that asks for nothing, and asks
+        for this one straight away, so it appears where the rest of the waiting work does, saying so.
+      */
+      const asking = Boolean(column.slug && flow?.enabled() && flow.needsAgreement(column.slug));
+      const initial = asking && flow ? flow.entryFor(column.slug!) : column.slug;
+      let taskId = '';
       await runEntityTransaction(p, async (tx) => {
-        const task = await Task.create(p, { title: title.trim(), ...(column.slug ? { status: column.slug } : {}) }, {
+        const task = await Task.create(p, { title: title.trim(), ...(initial ? { status: initial } : {}) }, {
           ...(anchorId ? { parent: { id: anchorId, predicate: 'we://children' } } : {}),
           batchId: tx.batchId,
         } as never);
-        await CollectionBlock.addRelation(p, column.id, 'arranges', (task as { id: string }).id, tx.batchId);
+        taskId = (task as { id: string }).id;
+        if (!asking) await CollectionBlock.addRelation(p, column.id, 'arranges', taskId, tx.batchId);
       });
+      if (asking && flow && taskId && initial) await flow.move(taskId, initial, column.slug!);
     } catch (error) {
       console.error('SpaceStore: could not add that task', error);
       notify('Could not add that task');
