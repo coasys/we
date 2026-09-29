@@ -389,7 +389,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     recordWatchPass: WIRING,
     onDatasetRemoved: WIRING,
+    readDatasets: WIRING,
     initSystemDatasets: WIRING,
+    prepareDataset: WIRING,
     loadDatasets: WIRING,
     subscribeToChanges: WIRING,
     getDatasetOrder: WIRING,
@@ -652,6 +654,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     updateSpaceInCache: WIRING,
     loadSpaces: WIRING,
+    prepareSpaceAt: WIRING,
   },
 
   shapeStore: {

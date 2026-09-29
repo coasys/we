@@ -38,6 +38,16 @@
 [context.deploy-preview]
   command = "bash scripts/netlify-build.sh"
 
+# A deploy of `dev` goes through the same script, which keeps it on the pin unless the site itself
+# opts in with WE_AD4M_FROM_SOURCE=1. This file is shared by every Netlify site built from this
+# repo, so the choice has to live in a site's own environment rather than here.
+#
+# That is what lets two sites deploy the same branch for two audiences: the dev site, which people
+# are invited to and which stays on the pin for the reason above, and a staging site that sets the
+# variable and tracks ad4m `dev` — for the team, against an executor that tracks it too.
+[context.production]
+  command = "bash scripts/netlify-build.sh"
+
 [build.environment]
   # Pinned rather than relying on Netlify's `.nvmrc` detection, which depends on where it
   # decides the base directory is. The value tracks .nvmrc — if you bump one, bump both.
