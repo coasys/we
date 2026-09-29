@@ -819,7 +819,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     if (!refs) return null;
 
     // Side by side: the three share nothing but the list, and each is several round trips to the
-    // executor — one after another they were most of the wait before a space could open.
+    // backend — one after another they were most of the wait before a space could open.
     const made: AppDataset[] = [];
     await Promise.all([
       initRootDataset(refs, made).catch((error) => console.error('DatasetStore: root dataset error', error)),
@@ -848,12 +848,18 @@ export function DatasetStoreProvider(props: ParentProps) {
 
     if (existing) {
       // An existing root already holds `AgentSettings`, so reading it need not wait for the
-      // reinstall, which only brings shapes up to date.
-      const [, settings] = await Promise.all([
-        schemas.installRoot(existing.handle),
-        AgentSettings.findOne(existing.handle),
-      ]);
+      // reinstall, which only brings shapes up to date. Settled rather than awaited alongside it:
+      // a failed read must not leave the root unset, which loses every saved template and theme.
+      const early = AgentSettings.findOne(existing.handle).then(
+        (settings) => ({ settings }),
+        (error: unknown) => ({ error }),
+      );
+      await schemas.installRoot(existing.handle);
       setRootDataset(existing);
+      const read = await early;
+      // The likeliest failure is the first boot after the settings model changed, when the read
+      // lands mid-reinstall. The reinstall has finished now, so ask once more.
+      const settings = 'settings' in read ? read.settings : await AgentSettings.findOne(existing.handle);
       if (settings) setAgentSettings(settings);
       return;
     }
