@@ -36,10 +36,9 @@ async function ensureExecutorReady(client: Ad4mClient): Promise<{ status: AgentS
 export async function connectToLocalExecutor(
   port: number,
   token: string,
-  subscribe = true,
 ): Promise<{ client: Ad4mClient; status: AgentStatus }> {
   const baseUrl = `http://localhost:${port}`;
-  const ad4mClient = new Ad4mClient(baseUrl, token, subscribe);
+  const ad4mClient = new Ad4mClient(baseUrl, token);
   const { status } = await ensureExecutorReady(ad4mClient);
   return { client: ad4mClient, status };
 }
