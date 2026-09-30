@@ -1,10 +1,16 @@
-## Summary
+<!-- How to fill this in: docs/contributing/pull-requests.md -->
 
-<!-- The problem being solved and the high-level approach, 1–2 paragraphs. -->
+## What
 
-## Changes
+<!-- What merging this changes, in a few bullets. -->
 
-<!-- One entry per file or logical group — the *why*, not the what. -->
+## Why
+
+<!-- The problem, and why this is the right fix. Link the issue or earlier PR. -->
+
+## How
+
+<!-- Where a reviewer should start, and the route through the change. A table of files helps when it is wide. -->
 
 ## Docs kept in sync
 
@@ -18,4 +24,14 @@
 
 ## Test plan
 
-<!-- What was actually verified — not a hypothetical list. -->
+<!-- What was actually verified, ticked. What was not, unticked, with the reason. -->
+
+<!--
+To build this PR's preview against an unpublished ad4m change, add a line outside this comment,
+naming an ad4m pull request or an ad4m branch, tag or commit:
+
+    for example:  ad4m: coasys/ad4m#1187
+    or:           ad4m: coasys/ad4m@dev
+
+Remove it before merging, once the pin is bumped. See docs/contributing/ad4m-and-deploys.md.
+-->
