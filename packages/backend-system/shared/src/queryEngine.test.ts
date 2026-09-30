@@ -419,7 +419,7 @@ describe('executeQueryIR — bounded traversal', () => {
   });
 
   it('finds the parent when reading inward', () => {
-    expect(run({ via: 'comments', anchorId: 'rr1', anchor: 'Comment', direction: 'in' })).toEqual(['rr1']);
+    expect(run({ via: 'comments', anchorId: 'rr1', anchor: 'Comment', direction: 'in' })).toEqual(['r1']);
   });
 
   /**
