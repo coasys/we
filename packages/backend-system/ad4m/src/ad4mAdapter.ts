@@ -232,8 +232,8 @@ export function createAd4mDataBindings(
  * Note what rides along, the fix having been published from a feature branch rather than from
  * `dev`: the TypeScript half of bounded traversal is now in core, so `levels`/`limitPerAnchor`
  * reach the executor instead of being dropped before the call — and the Rust half that answers
- * them is on that same branch and **not on `dev`**, which is what `electron-package.yaml` defaults
- * `ad4m_ref` to. Build the executor from the same branch, or pass `ad4m_ref` when packaging.
+ * them is on that same branch and **not on `dev`**. `electron-package.yaml` therefore builds the
+ * executor from the commit the pinned version was published from, not from `dev`.
  */
 export const VERIFIED_AGAINST_AD4M = '0.13.0-test-inverse-relations';
 
