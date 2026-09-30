@@ -87,26 +87,41 @@ than quietly using the pin. So does a description with two lines.
 
 ## Keeping the pin current
 
-| Step | Who                | What                                                                                               |
-| ---- | ------------------ | -------------------------------------------------------------------------------------------------- |
-| 1    | ad4m CI            | On every merge to ad4m `dev`, publish the npm packages at one new version, under the npm tag `dev` |
-| 2    | A person (for now) | Run `pnpm bump:ad4m` on a new branch and open a PR with what it prints                             |
-| 3    | CI and preview     | Build and test WE against the new version                                                          |
-| 4    | A person           | Run `pnpm verify:ad4m`, check the preview, and merge                                               |
+| Step | Who            | What                                                                                                  |
+| ---- | -------------- | ----------------------------------------------------------------------------------------------------- |
+| 1    | ad4m CI        | On every merge to ad4m `dev`, publish the npm packages at one new version, under the npm tag `dev`    |
+| 2    | WE's bump bot  | Within the hour, open a PR moving the pin to that version, listing the ad4m changes since the old pin |
+| 3    | CI and preview | Build and test WE against the new version                                                             |
+| 4    | A person       | Run `pnpm verify:ad4m`, check the preview, and merge                                                  |
 
-Step 1 is not in place yet: today ad4m publishes automatically only on merges to its `main`, and the
-versions WE pins are published by hand. Until it lands, anyone with npm publish rights can publish a
-version by hand under the `dev` tag, from one commit for all the packages. A bot could do step 2
-later.
+Step 1 is proposed in coasys/ad4m#1216. Until it merges, the versions WE pins are published by hand,
+and anyone with npm publish rights can publish one under the `dev` tag, from one commit for all the
+packages.
 
-Bump in a PR of its own, not inside a feature PR, so a breakage points at one cause. `npm install`
-only picks up the `latest` tag, so nobody installs a `dev` version by accident.
+**The bump bot** is `.github/workflows/bump-ad4m.yaml`. Every hour it runs `pnpm bump:ad4m` from
+`dev`, and when there is a newer version it pushes the result to the branch `bot/bump-ad4m`. So there
+is at most one bump PR open, and it always names the newest version: a new ad4m publish updates it
+rather than opening another. Merging it ends it; the next publish opens a new one. A PR closed
+without merging stays closed until a newer version appears. To run it now rather than on the hour,
+use "Run workflow" on the workflow's page in the Actions tab.
+
+It opens the PR as `github-actions`, which needs the repository setting "Allow GitHub Actions to
+create and approve pull requests" (Settings → Actions → General). A PR opened that way starts no
+workflows by itself, so the bot starts CI on the branch, and the checks appear on the PR as usual.
+
+**A routine bump** (WE catching up, with nothing in WE needing the new version) is the bot's PR, on
+its own, so a breakage points at one cause. **A feature that needs a new ad4m** bumps inside its own
+PR instead, as step 4 of pairing says: the feature and the version it depends on are one change.
+
+`npm install` only picks up the `latest` tag, so nobody installs a `dev` version by accident.
 
 ### What `pnpm bump:ad4m` does
 
 `pnpm bump:ad4m` moves to whatever npm's `dev` tag points at; `pnpm bump:ad4m <version>` moves to a
 particular version. It updates the root `pnpm.overrides` and every exact version a workspace package
 declares, runs `pnpm install`, and prints the ad4m commits since the old pin for the PR description.
+The bot runs it with `--if-newer` (a version it cannot move to yet ends the run quietly),
+`--lockfile-only` (updates `pnpm-lock.yaml` without installing) and `--pr-body <file>`.
 
 It refuses:
 
