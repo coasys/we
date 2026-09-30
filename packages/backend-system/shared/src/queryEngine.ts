@@ -220,11 +220,17 @@ function scopeRows(rows: Row[], entity: string, scope: Scope, data: InMemoryData
   const anchorSet = new Set(anchors);
 
   // `direction: 'in'` asks the opposite question: not "what does this anchor point at" but "what
-  // points at it". Here that is the anchors read as rows and their key followed outward.
+  // points at it". A to-many relation is a key on the target row, so what points at an anchor is
+  // whatever the anchor's own key names: read the anchors as rows, and follow their key outward.
   const parentOf = (r: Row) => String(r[fk]);
   const idOf = (r: Row) => String(r['id']);
-  const matches =
-    scope.direction === 'in' ? (r: Row) => anchorSet.has(idOf(r)) : (r: Row) => anchorSet.has(parentOf(r));
+  const pointingAtAnchors =
+    scope.direction === 'in'
+      ? new Set((data.tables[rel.target] ?? []).filter((r) => anchorSet.has(idOf(r))).map(parentOf))
+      : undefined;
+  const matches = pointingAtAnchors
+    ? (r: Row) => pointingAtAnchors.has(idOf(r))
+    : (r: Row) => anchorSet.has(parentOf(r));
 
   let kept: Row[];
   if (scope.levels && scope.direction !== 'in') {
