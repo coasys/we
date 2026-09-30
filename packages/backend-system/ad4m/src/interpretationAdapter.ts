@@ -460,19 +460,6 @@ export function runtimeSupportsAutoProcessing(dataset: DatasetHandle): boolean {
 }
 
 /**
- * Whether the runtime can report a pass while it runs.
- *
- * A third probe rather than folding into the two above, for the same reason those are separate: the
- * event streams arrived after the engine did, so a build that interprets and watches perfectly well
- * may still have nothing to say about either. A host that assumed otherwise would subscribe, never
- * hear anything, and show a bar that is permanently empty rather than falling back to the local
- * spinner it had before.
- */
-export function runtimeSupportsObservation(dataset: DatasetHandle): boolean {
-  return typeof (proxy(dataset) as Partial<PerspectiveProxy>).addAutoProcessorEventListener === 'function';
-}
-
-/**
  * AD4M's thirteen steps, as WE's seven phases.
  *
  * `null` means the event describes a pass that is **not happening here** — `backedOff`,
@@ -555,7 +542,7 @@ async function runObserved(
  * pre-#903 executor sends none, and falling back to the processor id is the best available guess:
  * wrong only when one processor runs two passes at once, which the claim mechanism already prevents.
  */
-function passIdOf(event: { batchKey?: string; processorId: string }): string {
+function passIdOf(event: { batchKey?: string | null; processorId: string }): string {
   return event.batchKey ?? event.processorId;
 }
 
@@ -651,10 +638,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     watch was the only one ever subscribed — a second space silently got no listener at all, since
     the flag was already true. Keyed by uuid, each perspective gets its own, and the map is also
     what lets `observe` hand out an unsubscribe without tearing down the parenting the watch relies
-    on: subscribers come and go, the underlying AD4M listener does not.
-
-    That last part is not a choice. `addAutoProcessorEventListener` returns nothing to unsubscribe
-    with, so the one subscription per perspective has to be permanent and fan out in front of it.
+    on: subscribers come and go, the underlying AD4M listener does not — the parenting below needs
+    it for as long as a watch runs, whether or not anyone is watching the progress.
   */
   type Observer = (activity: InterpretationActivity) => void;
   interface DatasetStream {
@@ -688,7 +673,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     every online member would link the same records and the call would collect one duplicate edge
     per participant.
   */
-  async function attachListener(perspective: PerspectiveProxy): Promise<DatasetStream> {
+  function attachListener(perspective: PerspectiveProxy): DatasetStream {
     const existing = streams.get(perspective.uuid);
     if (existing) return existing;
     const stream: DatasetStream = { observers: new Set(), ownPasses: new Set() };
@@ -713,31 +698,22 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       this executor and every local pass appears on both. It earns its place on a *hosted* node,
       where one executor runs passes for several agents and a client holding perspective read access
       is not the pass owner — there, this is the only one of the two that arrives at all.
-
-      Best-effort: an executor with the fine-grained stream and not this one is a normal older
-      build, and failing the subscription would take the useful stream down with it.
     */
-    if (typeof perspective.addAutoProcessorNeighbourhoodStateListener === 'function') {
-      try {
-        await perspective.addAutoProcessorNeighbourhoodStateListener((event) => {
-          const passId = passIdOf(event);
-          if (stream.ownPasses.has(passId)) return;
-          const phase = event.phase === 'claimed' ? 'queued' : event.phase === 'finished' ? 'done' : 'skipped';
-          publish({
-            passId,
-            watchId: event.processorId,
-            runner: event.claimantDid,
-            mine: event.claimantDid === selfId?.(),
-            phase,
-            at: Date.now(),
-          });
-        });
-      } catch (error) {
-        console.info('[interpretation] no neighbourhood-state stream on this runtime', error);
-      }
-    }
+    perspective.on('auto-processor-neighbourhood-state', (event) => {
+      const passId = passIdOf(event);
+      if (stream.ownPasses.has(passId)) return;
+      const phase = event.phase === 'claimed' ? 'queued' : event.phase === 'finished' ? 'done' : 'skipped';
+      publish({
+        passId,
+        watchId: event.processorId,
+        runner: event.claimantDid,
+        mine: event.claimantDid === selfId?.(),
+        phase,
+        at: Date.now(),
+      });
+    });
 
-    await perspective.addAutoProcessorEventListener(async (event) => {
+    perspective.on('auto-processor-event', async (event) => {
       /*
         Every step, not only the one this listener acts on.
 
@@ -778,7 +754,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         publish({
           passId,
           watchId: event.processorId,
-          runner: event.agentDid,
+          runner: event.agentDid ?? undefined,
           // This stream is DID-filtered to the pass owner, so anything arriving here is this
           // agent's own work — but `agentDid` is checked rather than assumed, because a hosted
           // executor running passes for several managed users would deliver more than one DID's
@@ -787,7 +763,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           phase,
           at: Date.now(),
           ids: event.step === 'processed' ? (event.bases ?? []) : undefined,
-          detail: event.detail,
+          detail: event.detail ?? undefined,
           /*
             What this pass read, and what started it — the two facts a durable history needs and the
             only two only this side can supply.
@@ -930,8 +906,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         Subscribing first, because the pass can reach the model before the await returns and an
         observer attached afterwards would miss the phase it most wants.
       */
-      const observed = runtimeSupportsObservation(dataset);
-      if (observed) await attachListener(perspective);
+      attachListener(perspective);
       const passId = `one-shot/${crypto.randomUUID()}`;
       // What this pass is reading, for as long as it reads it — see `oneShotParents`. A press with
       // no parent has no call to be about, which is a caller doing something other than reading a
@@ -959,13 +934,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         */
         let ids: string[];
         try {
-          ids = await runObserved(
-            perspective,
-            withTime(turns),
-            basePrefix,
-            request.classes,
-            observed ? passId : undefined,
-          );
+          ids = await runObserved(perspective, withTime(turns), basePrefix, request.classes, passId);
         } catch (error) {
           if (!recordMissingMethod(error)) throw error;
           executorSupports = false;
@@ -1012,11 +981,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       cb: (activity: InterpretationActivity) => void,
       options?: { detail?: boolean },
     ): Promise<() => void> {
-      // A no-op unsubscribe rather than a throw: a host subscribing at boot has no better answer to
-      // "this runtime cannot report progress" than to carry on without it, and every caller would
-      // otherwise wrap this in the same try/catch.
-      if (!runtimeSupportsObservation(dataset)) return () => {};
-      const stream = await attachListener(proxy(dataset));
+      const stream = attachListener(proxy(dataset));
       const entry = { cb, detail: options?.detail ?? false };
       stream.observers.add(entry);
       return () => stream.observers.delete(entry);
@@ -1142,7 +1107,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       await assertShapesInstalled(perspective, request.classes);
 
       watchParents.set(request.watchId, { ...request.parent, provenance: request.provenance });
-      await attachListener(perspective);
+      attachListener(perspective);
 
       const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
       const interpretationClasses = targetClasses(perspective, request.classes);

@@ -18,11 +18,10 @@ type StatusListener = (status: unknown) => void;
 function fakeClient(unlock: () => Promise<unknown>) {
   let listener: StatusListener = () => {};
   const client = {
-    agent: {
-      unlock,
-      addAgentStatusChangedListener: (l: StatusListener) => {
-        listener = l;
-      },
+    agent: { unlock },
+    on: (type: string, l: (event: { agent: unknown }) => void) => {
+      if (type === 'agent-status-changed') listener = (status) => l({ agent: status });
+      return () => {};
     },
   };
   return { client, emitStatus: (status: unknown) => listener(status) };
