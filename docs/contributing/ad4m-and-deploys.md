@@ -73,7 +73,8 @@ To try an ad4m change in WE with no WE change to go with it, open a draft WE PR 
 (`git commit --allow-empty`) and the line. Close it when you are done.
 
 Editing the line does not rebuild the preview: push again, or use "Retry deploy" in Netlify. If the
-line names something that cannot be found, the preview fails rather than quietly using the pin.
+line names something that cannot be found, or is not in one of the two forms, the preview fails rather
+than quietly using the pin. So does a description with two lines.
 
 ## An example, end to end
 

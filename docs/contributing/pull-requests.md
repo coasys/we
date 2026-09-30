@@ -38,10 +38,13 @@ tested is not.
 **Docs kept in sync**, when it applies. The template's checklist names the documents that go stale
 silently. Tick what you updated, or say none applied.
 
+Write for the reviewer who has not followed the work. Plain sentences, no shorthand from the
+conversation the PR came out of.
+
 ## Pairing with an ad4m change
 
 When a WE change needs an ad4m change that has not been published yet, add one line to the
-description:
+description, in exactly one of these forms:
 
 ```
 ad4m: coasys/ad4m#1187        an ad4m pull request
@@ -52,11 +55,10 @@ The preview then builds both `@coasys/ad4m` and `@coasys/ad4m-connect` from that
 installing the pin. Both live in the `coasys/ad4m` repository, so one line covers both. CI still
 builds against the pin.
 
+A line in any other form, such as a pasted link, fails the preview rather than being ignored.
+
 Remove the line before merging, once the pin has been bumped to a version that contains the change.
 See [ad4m and deploys](./ad4m-and-deploys.md).
-
-Write for the reviewer who has not followed the work. Plain sentences, no shorthand from the
-conversation the PR came out of.
 
 ## Stacked PRs
 

@@ -80,13 +80,20 @@ if [ -n "$PR_JSON" ]; then
 fi
 
 # The pairing line, if the description has one: `#1187` or `@some-branch`.
+#
+# HTML comments and fenced code blocks are dropped first: the PR template and the docs show the line
+# as an example inside them. A line that starts with `ad4m:`, names coasys/ad4m and still does not
+# match (a pasted URL, a stray space) comes back as `!` plus the line. Silently using the pin there
+# would give a preview that looks paired and is not. So would picking one of two lines.
 PAIRING=''
 if [ -n "$PR_JSON" ]; then
-  # HTML comments are dropped first: the PR template shows the line as an example inside one.
   PAIRING="$(printf '%s' "$PR_JSON" | json_field "pr => {
-    const body = (pr.body ?? '').replace(/<!--[\s\S]*?-->/g, '');
-    const m = body.match(/^[ \t]*ad4m:[ \t]*coasys\/ad4m([#@][^ \t\r\n]+)[ \t]*\r?$/im);
-    return m ? m[1] : '';
+    const body = (pr.body ?? '').replace(/<!--[\\s\\S]*?-->/g, '').replace(/^[ \\t]*\\\`\\\`\\\`[\\s\\S]*?^[ \\t]*\\\`\\\`\\\`/gm, '');
+    const lines = body.split(/\\r?\\n/).filter((l) => /^[ \\t]*ad4m:/i.test(l) && /coasys\\/ad4m/i.test(l));
+    if (!lines.length) return '';
+    if (lines.length > 1) return '!' + lines.map((l) => l.trim()).join(' | ');
+    const m = lines[0].match(/^[ \\t]*ad4m:[ \\t]*coasys\\/ad4m([#@][^ \\t]+)[ \\t]*$/i);
+    return m ? m[1] : '!' + lines[0].trim();
   }")"
 fi
 
@@ -95,6 +102,14 @@ REASON="a ${CONTEXT:-local} build uses the pin"
 
 if [ -n "$PAIRING" ]; then
   case "$PAIRING" in
+    '!'*)
+      echo "── The description has an ad4m pairing line this script cannot read:"
+      echo "     ${PAIRING#!}"
+      echo "   Write exactly one line, in one of these forms:"
+      echo "     ad4m: coasys/ad4m#<pull request number>"
+      echo "     ad4m: coasys/ad4m@<branch, tag or commit>"
+      exit 1
+      ;;
     '#'*)
       AD4M_PR="${PAIRING#\#}"
       if ! [[ "$AD4M_PR" =~ ^[0-9]+$ ]]; then
