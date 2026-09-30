@@ -35,13 +35,25 @@ helps when the change is wide. Explain the reason for a change the diff does not
 ones with the reason. "Not run on Netlify" is useful to a reviewer; a list of things that could be
 tested is not.
 
-Two more, when they apply:
+**Docs kept in sync**, when it applies. The template's checklist names the documents that go stale
+silently. Tick what you updated, or say none applied.
 
-- **Docs kept in sync.** The template's checklist names the documents that go stale silently. Tick
-  what you updated, or say none applied.
-- **Pairing with ad4m.** A line `ad4m: coasys/ad4m#<N>` or `ad4m: coasys/ad4m@<ref>` builds the
-  preview against that ad4m change instead of the pin. Remove it before merging, once the pin has
-  been bumped to a version that contains the change. See [ad4m and deploys](./ad4m-and-deploys.md).
+## Pairing with an ad4m change
+
+When a WE change needs an ad4m change that has not been published yet, add one line to the
+description:
+
+```
+ad4m: coasys/ad4m#1187        an ad4m pull request
+ad4m: coasys/ad4m@dev         an ad4m branch, tag or commit
+```
+
+The preview then builds both `@coasys/ad4m` and `@coasys/ad4m-connect` from that change instead of
+installing the pin. Both live in the `coasys/ad4m` repository, so one line covers both. CI still
+builds against the pin.
+
+Remove the line before merging, once the pin has been bumped to a version that contains the change.
+See [ad4m and deploys](./ad4m-and-deploys.md).
 
 Write for the reviewer who has not followed the work. Plain sentences, no shorthand from the
 conversation the PR came out of.
