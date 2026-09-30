@@ -1,34 +1,29 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Netlify build — for deploy previews, and for branch deploys whose site opts in,
-# optionally builds @coasys/ad4m and @coasys/ad4m-connect from source and links
-# both into the WE workspace before running the normal build.
+# Netlify build. Every build installs the @coasys/ad4m and @coasys/ad4m-connect this
+# repo pins, except a deploy preview whose pull request pairs itself with an ad4m
+# change. That preview builds both packages from that change and links them into
+# the workspace before running the normal build.
 #
-# Why: WE's pnpm override pins a published pre-release tag of the SDK, and that
-# tag only moves when somebody hand-publishes one from an ad4m commit. New SDK
-# work — batch RPC endpoints, performance fixes — lands on ad4m's branches well
-# before that happens, so a preview built against the pin cannot exercise it.
+# A pull request pairs itself with one line in its description:
 #
-# A deploy of a branch (Netlify's `production` context — `dev` on both sites) builds
-# against the pin unless the site sets WE_AD4M_FROM_SOURCE=1. The dev site people
-# are invited to leaves it unset; a staging site for the team sets it, and then
-# answers the questions below like a preview does. See netlify.toml.
+#   ad4m: coasys/ad4m#1187        an ad4m pull request (its head, or its merge
+#                                 commit once merged)
+#   ad4m: coasys/ad4m@some-branch an ad4m branch, tag or commit
 #
-# Which ad4m a build gets, in the order the answers are consulted:
+# The line rather than a label or a matching branch name: it is visible to reviewers,
+# it is there before the first build, several WE pull requests can name one ad4m pull
+# request, and nothing is paired by accident. Editing it does not rebuild the preview;
+# push again, or use "Retry deploy".
 #
-#   0. On a branch deploy, the pin, unless WE_AD4M_FROM_SOURCE=1.
-#   1. AD4M_BRANCH in the Netlify UI — site-wide, overrides everything below.
-#   2. A `preview:ad4m@<ref>` label on the pull request. `preview:ad4m@pin` means
-#      "use the version this repo pins", for a branch whose whole point is that
-#      pin. A label rather than a committed marker file because it cannot merge:
-#      the file would land on `dev` and go on governing every later preview.
-#   3. An ad4m branch of the same name as the WE branch — the cross-repo case,
-#      where the two halves of one change are being written together.
-#   4. `dev`.
+# Why only previews: the pin says "this WE was built and tested against this ad4m",
+# and merging the pull request that set it is the confirmation. A build from another
+# ad4m changes whenever that repository does, cannot be reproduced, and was never
+# tested by CI. See docs/contributing/ad4m-and-deploys.md.
 #
-# Nothing here reaches the required build, which installs the lockfile and stops:
-# see the comment on `Install dependencies` in .github/workflows/build.yaml for
-# why a branch of another repository must not decide whether a WE change merges.
+# Nothing here reaches the required build, which installs the lockfile and stops: see
+# the comment on `Install dependencies` in .github/workflows/build.yaml for why a
+# branch of another repository must not decide whether a WE change merges.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -42,66 +37,92 @@ echo "  pwd:  $PWD"
 AD4M_DIR="/tmp/ad4m-sdk"
 WE_ROOT="$PWD"
 WE_REPO="${WE_REPO:-coasys/we}"
+AD4M_REPO='coasys/ad4m'
 DIST="$WE_ROOT/apps/we-web/dist"
+
+# Public repositories need no token, but unauthenticated requests share a small
+# per-address limit. A GITHUB_TOKEN set on the site raises it.
+github_api() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    curl -sf -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/$1"
+  else
+    curl -sf "https://api.github.com/$1"
+  fi
+}
+
+# Reads one field of a JSON document on stdin, or prints nothing.
+json_field() {
+  node -e "
+    let s = ''; process.stdin.on('data', c => (s += c)).on('end', () => {
+      try {
+        const v = ($1)(JSON.parse(s));
+        console.log(v ?? '');
+      } catch { console.log('') }
+    })
+  "
+}
 
 # --- Which ad4m, and why -----------------------------------------------------
 
-# Netlify sets BRANCH to `pull/N/head` on a deploy preview, so the PR is the only
-# reliable place to read the head branch — and it carries the labels too. One
-# request answers both; a private repo would need a token, this one does not.
+# Netlify sets BRANCH to `pull/N/head` on a deploy preview, so the pull request is the
+# only reliable place to read the head branch, and it carries the description too.
 PR_JSON=''
-if [ -n "${REVIEW_ID:-}" ]; then
-  PR_JSON="$(curl -sf "https://api.github.com/repos/$WE_REPO/pulls/$REVIEW_ID" || true)"
+if [ "${CONTEXT:-}" = 'deploy-preview' ] && [ -n "${REVIEW_ID:-}" ]; then
+  PR_JSON="$(github_api "repos/$WE_REPO/pulls/$REVIEW_ID" || true)"
+  if [ -z "$PR_JSON" ]; then
+    echo "  could not read $WE_REPO#$REVIEW_ID from the GitHub API; building against the pin"
+  fi
 fi
 
 WE_BRANCH="${BRANCH:-${HEAD:-}}"
 if [ -n "$PR_JSON" ]; then
-  WE_BRANCH="$(printf '%s' "$PR_JSON" | node -e "
-    let s = ''; process.stdin.on('data', c => (s += c)).on('end', () => {
-      try { console.log(JSON.parse(s).head?.ref ?? '') } catch { console.log('') }
-    })
-  ")"
+  WE_BRANCH="$(printf '%s' "$PR_JSON" | json_field 'pr => pr.head?.ref')"
 fi
 
-AD4M_REF=''
-REASON=''
-
-if [ "${CONTEXT:-}" = 'production' ] && [ "${WE_AD4M_FROM_SOURCE:-}" != '1' ]; then
-  AD4M_REF='pin'
-  REASON='a branch deploy stays on the pin unless its site sets WE_AD4M_FROM_SOURCE=1'
+# The pairing line, if the description has one: `#1187` or `@some-branch`.
+PAIRING=''
+if [ -n "$PR_JSON" ]; then
+  # HTML comments are dropped first: the PR template shows the line as an example inside one.
+  PAIRING="$(printf '%s' "$PR_JSON" | json_field "pr => {
+    const body = (pr.body ?? '').replace(/<!--[\s\S]*?-->/g, '');
+    const m = body.match(/^[ \t]*ad4m:[ \t]*coasys\/ad4m([#@][^ \t\r\n]+)[ \t]*\r?$/im);
+    return m ? m[1] : '';
+  }")"
 fi
 
-if [ -z "$AD4M_REF" ] && [ -n "${AD4M_BRANCH:-}" ]; then
-  AD4M_REF="$AD4M_BRANCH"
-  REASON='AD4M_BRANCH is set in the Netlify UI'
-fi
+AD4M_REF='pin'
+REASON="a ${CONTEXT:-local} build uses the pin"
 
-if [ -z "$AD4M_REF" ] && [ -n "$PR_JSON" ]; then
-  LABEL_REF="$(printf '%s' "$PR_JSON" | node -e "
-    let s = ''; process.stdin.on('data', c => (s += c)).on('end', () => {
-      let labels = [];
-      try { labels = JSON.parse(s).labels ?? [] } catch {}
-      const hit = labels.map(l => l.name ?? '').find(n => n.startsWith('preview:ad4m@'));
-      console.log(hit ? hit.slice('preview:ad4m@'.length) : '');
-    })
-  ")"
-  if [ -n "$LABEL_REF" ]; then
-    AD4M_REF="$LABEL_REF"
-    REASON="the PR carries the label preview:ad4m@$LABEL_REF"
-  fi
-fi
-
-if [ -z "$AD4M_REF" ] && [ -n "$WE_BRANCH" ]; then
-  if git ls-remote --exit-code --heads \
-    https://github.com/coasys/ad4m.git "$WE_BRANCH" >/dev/null 2>&1; then
-    AD4M_REF="$WE_BRANCH"
-    REASON="coasys/ad4m has a branch named $WE_BRANCH too"
-  fi
-fi
-
-if [ -z "$AD4M_REF" ]; then
-  AD4M_REF='dev'
-  REASON='nothing asked for anything else'
+if [ -n "$PAIRING" ]; then
+  case "$PAIRING" in
+    '#'*)
+      AD4M_PR="${PAIRING#\#}"
+      if ! [[ "$AD4M_PR" =~ ^[0-9]+$ ]]; then
+        echo "── The description names ad4m pull request '$AD4M_PR', which is not a number."
+        exit 1
+      fi
+      AD4M_PR_JSON="$(github_api "repos/$AD4M_REPO/pulls/$AD4M_PR" || true)"
+      if [ -z "$AD4M_PR_JSON" ]; then
+        # Asked for, so failing is right: silently building against the pin would
+        # show a preview that is not what the description says it is.
+        echo "── The description pairs this preview with $AD4M_REPO#$AD4M_PR, which could not be read."
+        exit 1
+      fi
+      MERGE_SHA="$(printf '%s' "$AD4M_PR_JSON" | json_field 'pr => pr.merged_at ? pr.merge_commit_sha : ""')"
+      if [ -n "$MERGE_SHA" ]; then
+        AD4M_REF="$MERGE_SHA"
+        REASON="the description pairs it with $AD4M_REPO#$AD4M_PR, which has merged"
+      else
+        # `pull/N/head` works for a pull request from a fork as well as from a branch.
+        AD4M_REF="pull/$AD4M_PR/head"
+        REASON="the description pairs it with $AD4M_REPO#$AD4M_PR"
+      fi
+      ;;
+    '@'*)
+      AD4M_REF="${PAIRING#@}"
+      REASON="the description pairs it with $AD4M_REPO@$AD4M_REF"
+      ;;
+  esac
 fi
 
 echo "── ad4m: $AD4M_REF ($REASON)"
@@ -111,16 +132,20 @@ echo "── ad4m: $AD4M_REF ($REASON)"
 # Read before anything rewrites it: the source path points the override at the
 # local build, so asking afterwards answers `link:…` rather than what is pinned.
 PINNED_VERSION="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
+WE_VERSION="$(node -p "require('./package.json').version")"
 
 AD4M_SHA=''
 
 if [ "$AD4M_REF" = 'pin' ]; then
   echo "── Build WE against the pinned SDK"
 else
-  echo "── Clone coasys/ad4m ($AD4M_REF)"
+  echo "── Fetch $AD4M_REPO ($AD4M_REF)"
+  # A fetch of one ref rather than `git clone --branch`, which cannot take a commit
+  # or a pull request ref.
   rm -rf "$AD4M_DIR"
-  git clone --depth 1 --branch "$AD4M_REF" \
-    https://github.com/coasys/ad4m.git "$AD4M_DIR"
+  git init -q "$AD4M_DIR"
+  git -C "$AD4M_DIR" fetch -q --depth 1 "https://github.com/$AD4M_REPO.git" "$AD4M_REF"
+  git -C "$AD4M_DIR" checkout -q FETCH_HEAD
   AD4M_SHA="$(git -C "$AD4M_DIR" rev-parse HEAD)"
   echo "  revision: $AD4M_SHA"
 
@@ -185,18 +210,17 @@ fi
 
 NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
-# --- Say what this preview is -----------------------------------------------
+# --- Say what this build is -------------------------------------------------
 #
-# A page built from "ad4m dev at the time" is otherwise unexplainable a week
-# later, and a tester hitting RPC failures has no way to tell a WE bug from an
-# SDK the executor in front of them does not match. Both halves are written:
-# /build-info.json for anything that wants to read it, and a console line for
-# the person who has the page open.
+# A page built from "ad4m at the time" is otherwise unexplainable a week later, and a
+# tester hitting RPC failures has no way to tell a WE bug from an SDK the executor in
+# front of them does not match. Both halves are written: /build-info.json for anything
+# that wants to read it, and a console line for the person who has the page open.
 
 BUILD_INFO_SOURCE='pin'
 [ "$AD4M_REF" = 'pin' ] || BUILD_INFO_SOURCE='source'
 
-export DIST BUILD_INFO_SOURCE AD4M_REF AD4M_SHA PINNED_VERSION WE_BRANCH
+export DIST BUILD_INFO_SOURCE AD4M_REF AD4M_SHA PINNED_VERSION WE_BRANCH WE_VERSION
 
 node -e "
   const fs = require('fs');
@@ -208,6 +232,7 @@ node -e "
   }
 
   const info = {
+    weVersion: process.env.WE_VERSION,
     ad4mSource: process.env.BUILD_INFO_SOURCE,
     ad4mRef: process.env.AD4M_REF,
     ad4mSha: process.env.AD4M_SHA || null,
@@ -220,8 +245,8 @@ node -e "
 
   const summary =
     info.ad4mSource === 'source'
-      ? \`@coasys/ad4m and ad4m-connect built from \${info.ad4mRef}@\${(info.ad4mSha || '').slice(0, 9)} — NOT the pinned \${info.ad4mPinned}\`
-      : \`@coasys/ad4m \${info.ad4mPinned} (pinned)\`;
+      ? \`WE \${info.weVersion}, with @coasys/ad4m and ad4m-connect built from \${info.ad4mRef}@\${(info.ad4mSha || '').slice(0, 9)} — NOT the pinned \${info.ad4mPinned}\`
+      : \`WE \${info.weVersion}, with @coasys/ad4m \${info.ad4mPinned} (pinned)\`;
 
   const indexPath = path.join(dist, 'index.html');
   const html = fs.readFileSync(indexPath, 'utf8');

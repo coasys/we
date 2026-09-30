@@ -1,5 +1,5 @@
-# Deploy-preview build for the `coasys-we` site — a preview of `apps/we-web` per pull
-# request. This file exists so those settings are reviewable in the repo rather than living
+# Netlify builds for the `coasys-we` site: `apps/we-web` for production (`main`), for the `dev`
+# branch, and as a preview per pull request. This file exists so those settings are reviewable in the repo rather than living
 # only in the Netlify UI, where nobody reading the codebase can see them and no change to
 # them shows up in a diff.
 #
@@ -23,29 +23,21 @@
   command = "pnpm build"
   publish = "apps/we-web/dist"
 
-# Deploy previews, and only deploy previews, may build @coasys/ad4m from source instead of
-# installing the version `pnpm.overrides` pins.
+# Every context runs the same script, so every deploy writes /build-info.json saying which ad4m it
+# was built against. The script builds against the version `pnpm.overrides` pins, with one
+# exception: a deploy preview whose pull request pairs itself with an ad4m change in its
+# description. See its header, and docs/contributing/ad4m-and-deploys.md.
 #
-# The distinction is the whole point of putting it here rather than in [build], which covers
-# every context: the pin is a claim about which executor a build requires — VERIFIED_AGAINST_AD4M
-# in @we/backend-ad4m names both the version and the ad4m commit — and the published site has to
-# keep making it, because the people opening it are running whatever executor they installed.
-# A preview is the opposite case: it exists to be tried against an executor somebody has in front
-# of them, which during cross-repo work is a build of ad4m rather than a release.
-#
-# What the script actually does per preview is decided per PR — see its header. Left alone it
-# tracks ad4m `dev`.
-[context.deploy-preview]
+#   production     `main`, at coasys-we.netlify.app. Always the pin.
+#   branch-deploy  `dev`, at dev--coasys-we.netlify.app. Always the pin.
+#   deploy-preview a pull request. The pin, or the ad4m change it pairs with.
+[context.production]
   command = "bash scripts/netlify-build.sh"
 
-# A deploy of `dev` goes through the same script, which keeps it on the pin unless the site itself
-# opts in with WE_AD4M_FROM_SOURCE=1. This file is shared by every Netlify site built from this
-# repo, so the choice has to live in a site's own environment rather than here.
-#
-# That is what lets two sites deploy the same branch for two audiences: the dev site, which people
-# are invited to and which stays on the pin for the reason above, and a staging site that sets the
-# variable and tracks ad4m `dev` — for the team, against an executor that tracks it too.
-[context.production]
+[context.branch-deploy]
+  command = "bash scripts/netlify-build.sh"
+
+[context.deploy-preview]
   command = "bash scripts/netlify-build.sh"
 
 [build.environment]
