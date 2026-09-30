@@ -153,11 +153,14 @@ published from (`npm view @coasys/ad4m@<version> gitHead`), with
 It runs locally rather than in CI because it needs an executor, which takes the better part of an
 hour to compile. Live queries are not checked.
 
-### An early warning
+### Testing an ad4m branch against WE's tests
 
-The `AD4M compatibility` workflow builds WE against ad4m `dev` every night. It never blocks a PR; it
-opens an issue when ad4m `dev` has changed something WE depends on, so the next bump does not come as
-a surprise.
+A paired preview builds WE against an ad4m branch, but only builds it, and CI on a paired PR still
+uses the pin. To also typecheck and test WE against an ad4m branch before it merges, run the
+`AD4M compatibility` workflow from the Actions tab and name the branch. It never blocks a PR.
+
+The early warning that a change on ad4m `dev` breaks WE is the bump bot's PR: its CI goes red within
+the hour of the ad4m merge.
 
 ## Why this shape
 
